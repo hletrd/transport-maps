@@ -1,118 +1,99 @@
-"""Wikipedia 'Airlines and destinations' tables -> airline route network."""
+"""Wikipedia 'Airlines and destinations' sections -> airline route network."""
 
-import asyncio
+import itertools
 import json
 import re
+import time
 import urllib.parse
 
 import httpx
 import polars as pl
-from selectolax.parser import HTMLParser
 
 from transport_maps import config
 from transport_maps.sources import airports, wikidata
 from transport_maps.sources._utils import _atomic_write
 
-REST_HTML = "https://en.wikipedia.org/api/rest_v1/page/html/{title}"
+ACTION_API = "https://en.wikipedia.org/w/api.php"
+TITLES_PER_REQUEST = 50
 HEADERS = {"User-Agent": "transport-maps/0.1 (open-data isochrone build)"}
-# Each REST HTML page is fetched independently and each is roughly 1 MB, so a
-# ~4,000-page crawl is dominated by network round trips, not CPU. A bounded
-# pool of concurrent requests (rather than one request at a time) is what
-# keeps the crawl to minutes instead of hours; the descriptive User-Agent is
-# what makes this level of concurrency acceptable to Wikipedia.
-CONCURRENCY = 16
 MAX_RETRIES = 6
-# Batch cache flushes to bound json.dumps/write overhead on a large, still-
-# growing cache, while still capping lost work on interruption to one batch.
-SAVE_EVERY = 25
 
+_SECTION_RE = re.compile(r"^==+\s*Airlines and destinations\s*==+\s*$", re.IGNORECASE | re.MULTILINE)
+# Cargo routes carry no passengers, so they must not become graph edges.
+_CARGO_RE = re.compile(r"^===+\s*(Cargo|Freight)[^=]*===+\s*$", re.IGNORECASE | re.MULTILINE)
+_NEXT_TOP_HEADING_RE = re.compile(r"^==[^=]", re.MULTILINE)
+_LINK_RE = re.compile(r"\[\[([^\]|#]+?)(?:\|[^\]]*)?\]\]")
 _SKIP_PREFIXES = (
     "File:", "Category:", "Help:", "Template:", "Special:", "Portal:", "Wikipedia:",
+    "Image:",
 )
-_HEADING_RE = re.compile(r"airlines?\s+and\s+destinations", re.IGNORECASE)
-# Large airports split destinations into "Passenger" and "Cargo" subsections.
-# Cargo routes carry no passengers, so they must not become graph edges.
-_EXCLUDE_SUBSECTION_RE = re.compile(r"cargo|freight", re.IGNORECASE)
+# Routes so well-established that their absence means the crawl or the
+# Wikidata resolution silently broke somewhere, not that the route doesn't
+# exist. ICN<->NRT is one of the world's busiest routes; resolver bugs in
+# this pipeline have twice produced a network that "built successfully"
+# while missing it.
+_SANITY_PAIRS: tuple[tuple[str, str], ...] = (("ICN", "NRT"),)
 
 
-def _destination_tables(tree: HTMLParser) -> list:
-    """Tables under the 'Airlines and destinations' section, minus cargo subsections.
+def parse_destinations(wikitext: str) -> list[str]:
+    """Wiki article titles linked from the Airlines and destinations section."""
+    match = _SECTION_RE.search(wikitext)
+    if match is None:
+        return []
 
-    The REST HTML nests <section> elements, and on big airports the tables sit in
-    an h3 subsection ("Passenger"), NOT directly under the h2. Walking previous
-    siblings therefore finds "Passenger" and never the h2 - which yields zero
-    destinations. Find the owning section and descend instead.
-    """
-    for section in tree.css("section"):
-        headings = section.css("h2")
-        if not headings or not _HEADING_RE.search(headings[0].text() or ""):
-            continue
-        tables = []
-        for table in section.css("table"):
-            node, excluded = table.parent, False
-            while node is not None and node is not section:
-                if node.tag == "section":
-                    sub = node.css("h2,h3,h4")
-                    if sub and _EXCLUDE_SUBSECTION_RE.search(sub[0].text() or ""):
-                        excluded = True
-                        break
-                node = node.parent
-            if not excluded:
-                tables.append(table)
-        return tables
-    return []
+    body = wikitext[match.end():]
+    nxt = _NEXT_TOP_HEADING_RE.search(body)
+    if nxt is not None:
+        body = body[: nxt.start()]
 
+    cargo = _CARGO_RE.search(body)
+    if cargo is not None:
+        body = body[: cargo.start()]
 
-def parse_destinations(html: str) -> list[str]:
-    """Wiki article titles linked from the Airlines and destinations table(s)."""
-    tree = HTMLParser(html)
     titles: list[str] = []
+    for raw in _LINK_RE.findall(body):
+        title = raw.strip().replace(" ", "_")
+        if not title or title.startswith(_SKIP_PREFIXES):
+            continue
+        titles.append(title)
 
-    for table in _destination_tables(tree):
-        for anchor in table.css("a[href]"):
-            href = anchor.attributes.get("href", "")
-            if href.startswith("./"):
-                title = href[2:]
-            elif "/wiki/" in href:
-                title = href.split("/wiki/")[-1]
-            else:
-                continue
-            title = urllib.parse.unquote(title.split("#")[0])
-            if not title or title.startswith(_SKIP_PREFIXES):
-                continue
-            titles.append(title)
-
-    # Preserve order, drop duplicates.
     return list(dict.fromkeys(titles))
 
 
-async def _fetch_page_html_async(
-    client: httpx.AsyncClient, iata: str, title: str, semaphore: asyncio.Semaphore
-) -> tuple[str, list[str] | None]:
-    """Fetch and parse one airport's REST HTML, retrying on 429 with backoff.
+def _fetch_wikitext(client: httpx.Client, titles: list[str]) -> dict[str, str]:
+    """Article title -> wikitext, up to TITLES_PER_REQUEST titles per call."""
+    r = client.get(ACTION_API, params={
+        "action": "query", "format": "json", "formatversion": "2",
+        "prop": "revisions", "rvprop": "content", "rvslots": "main",
+        "titles": "|".join(titles),
+    })
+    r.raise_for_status()
+    data = r.json().get("query", {})
+    alias = {n["to"]: n["from"] for n in data.get("normalized", [])}
+    alias.update({n["to"]: n["from"] for n in data.get("redirects", [])})
 
-    Returns (iata, None) for a missing page (404) rather than raising, since a
-    stale or renamed wikipedia_link in the OurAirports data should not abort
-    the whole crawl over one airport.
-    """
-    async with semaphore:
-        for attempt in range(MAX_RETRIES):
-            try:
-                r = await client.get(REST_HTML.format(title=urllib.parse.quote(title, safe="")))
-            except httpx.TransportError:
-                if attempt == MAX_RETRIES - 1:
-                    raise
-                await asyncio.sleep(2**attempt)
+    out: dict[str, str] = {}
+    for page in data.get("pages", []):
+        revisions = page.get("revisions")
+        if not revisions:
+            continue
+        title = page.get("title", "")
+        out[alias.get(title, title)] = revisions[0]["slots"]["main"]["content"]
+    return out
+
+
+def _fetch_wikitext_with_retry(client: httpx.Client, titles: list[str]) -> dict[str, str]:
+    """`_fetch_wikitext`, backing off and retrying on HTTP 429 rather than crashing."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            return _fetch_wikitext(client, titles)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429 and attempt < MAX_RETRIES - 1:
+                wait = float(e.response.headers.get("Retry-After", 2**attempt))
+                time.sleep(wait)
                 continue
-            if r.status_code == 404:
-                return iata, None
-            if r.status_code == 429:
-                wait = float(r.headers.get("Retry-After", 2**attempt))
-                await asyncio.sleep(wait)
-                continue
-            r.raise_for_status()
-            return iata, parse_destinations(r.text)
-    raise RuntimeError(f"exhausted retries fetching {iata} ({title!r}, HTTP 429)")
+            raise
+    raise RuntimeError("exhausted retries fetching a wikitext batch (HTTP 429)")
 
 
 def _destination_cache_path():
@@ -120,10 +101,10 @@ def _destination_cache_path():
 
 
 def _load_destination_cache() -> dict[str, list[str] | None]:
-    """IATA -> parsed destination titles, or None for a 404'd article.
+    """IATA -> parsed destination titles, or None for an article with no revision.
 
     Persisted incrementally during the crawl so an interrupted run resumes
-    from the last completed airport instead of refetching from scratch.
+    from the last completed batch instead of refetching from scratch.
     """
     path = _destination_cache_path()
     if not path.exists():
@@ -136,36 +117,31 @@ def _save_destination_cache(cache: dict[str, list[str] | None]) -> None:
     _atomic_write(path, lambda tmp: tmp.write_text(json.dumps(cache)))
 
 
-async def _crawl_destinations_async(
-    titles_by_iata: dict[str, str],
-) -> dict[str, list[str] | None]:
+def _crawl_destinations(titles_by_iata: dict[str, str]) -> dict[str, list[str] | None]:
+    """Fetch and parse each airport's destinations section, resuming from cache.
+
+    Wikipedia's Action API returns up to TITLES_PER_REQUEST full-article
+    wikitexts per call, so ~4,000 airports cost on the order of 80 requests
+    rather than one per airport.
+    """
     config.ensure_dirs()
     cache = _load_destination_cache()
     todo = [(iata, title) for iata, title in titles_by_iata.items() if iata not in cache]
     if not todo:
         return cache
 
-    print(f"routes: {len(cache)} airports cached, {len(todo)} to fetch "
-          f"(concurrency={CONCURRENCY})")
-    semaphore = asyncio.Semaphore(CONCURRENCY)
-    async with httpx.AsyncClient(timeout=60, headers=HEADERS, follow_redirects=True) as client:
-        tasks = [
-            asyncio.create_task(_fetch_page_html_async(client, iata, title, semaphore))
-            for iata, title in todo
-        ]
-        for n, coro in enumerate(asyncio.as_completed(tasks), start=1):
-            iata, dest_titles = await coro
-            cache[iata] = dest_titles
-            if n % SAVE_EVERY == 0 or n == len(todo):
-                _save_destination_cache(cache)
-            if n % 100 == 0 or n == len(todo):
-                print(f"routes: fetched {n}/{len(todo)} ({iata})")
+    batches = list(itertools.batched(todo, TITLES_PER_REQUEST))
+    print(f"routes: {len(cache)} airports cached, {len(todo)} to fetch in {len(batches)} batches")
+    with httpx.Client(timeout=60, headers=HEADERS, follow_redirects=True) as client:
+        for n, batch in enumerate(batches, start=1):
+            titles = [title for _, title in batch]
+            wikitext_by_title = _fetch_wikitext_with_retry(client, titles)
+            for iata, title in batch:
+                wikitext = wikitext_by_title.get(title)
+                cache[iata] = parse_destinations(wikitext) if wikitext is not None else None
+            _save_destination_cache(cache)
+            print(f"routes: batch {n}/{len(batches)} done ({len(cache)} airports cached)")
     return cache
-
-
-def _crawl_destinations(titles_by_iata: dict[str, str]) -> dict[str, list[str] | None]:
-    """Fetch and parse each airport's destinations page, resuming from cache."""
-    return asyncio.run(_crawl_destinations_async(titles_by_iata))
 
 
 def route_network() -> pl.DataFrame:
@@ -199,6 +175,14 @@ def route_network() -> pl.DataFrame:
 
     if len(pairs) < 20_000:
         raise RuntimeError(f"route network implausibly small: {len(pairs)} pairs")
+
+    missing_sanity_pairs = [p for p in _SANITY_PAIRS if p not in pairs]
+    if missing_sanity_pairs:
+        raise RuntimeError(
+            f"route network is missing well-known route(s): {missing_sanity_pairs} -- "
+            "this means the crawl or Wikidata resolution silently broke somewhere, "
+            "not that the route doesn't exist"
+        )
 
     df = pl.DataFrame(sorted(pairs), schema=["src", "dst"], orient="row")
     _atomic_write(out, lambda tmp: df.write_parquet(tmp))
