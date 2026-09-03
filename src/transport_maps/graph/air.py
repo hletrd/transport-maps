@@ -1,6 +1,5 @@
 """Flight block-time and expected-wait models."""
 
-import math
 import tomllib
 from dataclasses import dataclass
 

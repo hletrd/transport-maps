@@ -40,3 +40,23 @@ def test_expected_wait_is_half_the_headway():
 
 def test_zero_frequency_is_unreachable():
     assert air.expected_wait_min(0.0) == air.NO_SERVICE
+
+
+def test_mixed_sizes_taxi_asymmetry(cal):
+    # Catches taxi_out and taxi_in being transposed. With current coefficients,
+    # small->large gives taxi 8+9=17, while swapped would give 4+17=21 (4 min diff).
+    # Over 1000 km: small->large is faster than large->small because small dep
+    # has less taxi_out (8 vs 17).
+    small_to_large = air.block_time_min(1000.0, "small", "large", cal)
+    large_to_small = air.block_time_min(1000.0, "large", "small", cal)
+    assert small_to_large != large_to_small
+    assert small_to_large < large_to_small
+
+
+def test_block_time_is_affine_in_distance(cal):
+    # Block time is affine in distance: successive differences over equal distance
+    # intervals should be equal (within 1 minute of rounding tolerance).
+    times = [air.block_time_min(d, "large", "large", cal) for d in (2000, 6000, 10000)]
+    diff1 = times[1] - times[0]
+    diff2 = times[2] - times[1]
+    assert abs(diff1 - diff2) <= 1
