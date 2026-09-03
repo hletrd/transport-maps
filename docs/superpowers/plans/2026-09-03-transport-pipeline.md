@@ -141,7 +141,8 @@ Expected: 3 passed
 - [ ] **Step 6: Add data directories to .gitignore**
 
 ```bash
-printf 'data/\ndist/\n.venv/\n__pycache__/\n.pytest_cache/\n.ruff_cache/\n' > .gitignore
+# data/origins.toml is committed, so ignore only the generated subdirectories.
+printf 'data/cache/\ndata/build/\ndist/\n.venv/\n__pycache__/\n.pytest_cache/\n.ruff_cache/\n' > .gitignore
 ```
 
 - [ ] **Step 7: Commit**
@@ -1122,6 +1123,10 @@ class NodeIndex:
     def cell_index(self, cell: str) -> int:
         return self._cell_pos[cell]
 
+    def try_cell_index(self, cell: str) -> int | None:
+        """Position of `cell`, or None when it is not a land cell."""
+        return self._cell_pos.get(cell)
+
     def airport_index(self, iata: str) -> int:
         return self._airport_pos[iata]
 
@@ -1240,19 +1245,20 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         for neighbour in h3.grid_disk(cell, 1):
             if neighbour == cell:  # grid_disk includes the centre cell
                 continue
-            v = idx._cell_pos.get(neighbour)
+            v = idx.try_cell_index(neighbour)
             if v is not None:
                 rows.append(u)
                 cols.append(v)
 
     r = np.asarray(rows, dtype=np.int64)
     c = np.asarray(cols, dtype=np.int64)
-    dist_km = _haversine_km(centroids[r], centroids[c])
+    dist_km = haversine_km(centroids[r], centroids[c])
     minutes = dist_km / speeds[c] * 60.0
     return r, c, minutes
 
 
-def _haversine_km(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+def haversine_km(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Great-circle distance between arrays of (lat, lon). Public: rail and ferry use it."""
     lat1, lon1 = np.radians(a[:, 0]), np.radians(a[:, 1])
     lat2, lon2 = np.radians(b[:, 0]), np.radians(b[:, 1])
     dlat, dlon = lat2 - lat1, lon2 - lon1
@@ -1667,3 +1673,1753 @@ git add src/transport_maps/solve/ src/transport_maps/contour/ src/transport_maps
         src/transport_maps/cli.py pyproject.toml tests/
 git commit -S -m "feat(solve): 🎯 solve isochrones and emit band GeoJSON"
 ```
+
+---
+
+# Phase B — Real Transport Modes
+
+Each task here replaces a Phase A placeholder with a real model. The graph assembly and
+solver do not change shape; only the edges get better.
+
+## Task 8: Ground speed field from GRIP4 road density
+
+Replaces the uniform 45 km/h with a per-cell speed. GRIP4's 5-arcmin grid (~8×8 km) is
+almost exactly an H3 res-5 cell, so a centroid sample is the right level of detail — no
+interpolation needed.
+
+**Files:**
+- Create: `src/transport_maps/sources/roads.py`
+- Modify: `src/transport_maps/graph/ground.py` (replace `cell_speed_kmh`)
+- Test: `tests/sources/test_roads.py`, `tests/graph/test_ground.py`
+
+**Interfaces:**
+- Consumes: `nodes.NodeIndex`
+- Produces: `roads.road_class_grid() -> np.ndarray` (shape `(2160, 4320)`, `uint8`, values 0–5 where 0 is roadless and 1 is the highest grade), `roads.sample_class(lats, lons) -> np.ndarray`, `ground.cell_speed_kmh(idx) -> np.ndarray` (unchanged signature)
+
+- [ ] **Step 1: Download the GRIP4 rasters**
+
+GRIP4 is CC-0 and distributed from GLOBIO. The download is manual — the site does not
+offer a stable direct URL.
+
+1. Open <https://www.globio.info/download-grip-dataset>
+2. Download the **global raster** archive (5 arcmin road density).
+3. Extract the five per-type density grids into `data/cache/grip4/`, named
+   `grip4_tp1.asc` … `grip4_tp5.asc` (type 1 = highways, 5 = local roads).
+
+```bash
+mkdir -p data/cache/grip4
+ls data/cache/grip4   # expect grip4_tp1.asc .. grip4_tp5.asc
+```
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/sources/test_roads.py
+import numpy as np
+import pytest
+
+from transport_maps.sources import roads
+
+
+@pytest.fixture(scope="module")
+def grid():
+    return roads.road_class_grid()
+
+
+def test_grid_shape_is_five_arcmin_global(grid):
+    assert grid.shape == (2160, 4320)
+    assert grid.dtype == np.uint8
+
+
+def test_open_ocean_has_no_roads(grid):
+    assert roads.sample_class(np.array([0.0]), np.array([-160.0]))[0] == 0
+
+
+def test_dense_urban_regions_have_the_highest_grade(grid):
+    # Seoul, Los Angeles and the Ruhr all have motorway-grade roads.
+    lats = np.array([37.5665, 34.0522, 51.5136])
+    lons = np.array([126.9780, -118.2437, 7.4653])
+    assert (roads.sample_class(lats, lons) == 1).all()
+
+
+def test_remote_interior_is_lower_grade_than_a_capital(grid):
+    remote = roads.sample_class(np.array([-24.0]), np.array([126.0]))[0]  # W. Australia
+    seoul = roads.sample_class(np.array([37.5665]), np.array([126.9780]))[0]
+    assert remote > seoul or remote == 0  # higher number = lower grade
+```
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `uv run pytest tests/sources/test_roads.py -v`
+Expected: FAIL with `ModuleNotFoundError`
+
+- [ ] **Step 4: Implement the road grid**
+
+```bash
+uv add rasterio
+```
+
+```python
+# src/transport_maps/sources/roads.py
+"""GRIP4 road-density rasters -> per-location road class.
+
+GRIP4 ships one density grid per road type at 5 arcmin. We reduce them to a single
+"best grade present" grid: 1 = highway, 5 = local road, 0 = roadless.
+"""
+
+import numpy as np
+import rasterio
+
+from transport_maps import config
+
+GRID_ROWS, GRID_COLS = 2160, 4320  # 5 arcmin global
+N_TYPES = 5
+# Density below this is noise rather than usable road.
+DENSITY_THRESHOLD = 1.0
+
+_grid_cache: np.ndarray | None = None
+
+
+def road_class_grid() -> np.ndarray:
+    """Best road grade per 5-arcmin cell. 0 = roadless, 1 = highway .. 5 = local."""
+    global _grid_cache
+    if _grid_cache is not None:
+        return _grid_cache
+
+    cached = config.BUILD / "road_class_grid.npy"
+    if cached.exists():
+        _grid_cache = np.load(cached)
+        return _grid_cache
+
+    best = np.zeros((GRID_ROWS, GRID_COLS), dtype=np.uint8)
+    for road_type in range(N_TYPES, 0, -1):  # worst grade first, best overwrites
+        path = config.CACHE / "grip4" / f"grip4_tp{road_type}.asc"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"missing {path}. Download the GRIP4 5-arcmin rasters from "
+                "https://www.globio.info/download-grip-dataset (see Task 8 Step 1)."
+            )
+        with rasterio.open(path) as src:
+            band = src.read(1)
+        if band.shape != (GRID_ROWS, GRID_COLS):
+            raise RuntimeError(f"{path} has shape {band.shape}, expected {(GRID_ROWS, GRID_COLS)}")
+        best[band >= DENSITY_THRESHOLD] = road_type
+
+    config.ensure_dirs()
+    np.save(cached, best)
+    _grid_cache = best
+    return best
+
+
+def sample_class(lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
+    """Road class at each coordinate. Vectorised nearest-cell lookup."""
+    grid = road_class_grid()
+    rows = np.clip(((90.0 - lats) * GRID_ROWS / 180.0).astype(np.int64), 0, GRID_ROWS - 1)
+    cols = np.clip(((lons + 180.0) * GRID_COLS / 360.0).astype(np.int64), 0, GRID_COLS - 1)
+    return grid[rows, cols]
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `uv run pytest tests/sources/test_roads.py -v`
+Expected: 4 passed
+
+- [ ] **Step 6: Wire the speed field into the ground module**
+
+Replace `cell_speed_kmh` in `src/transport_maps/graph/ground.py`. Delete
+`UNIFORM_GROUND_KMH`; nothing else in the module changes.
+
+```python
+# src/transport_maps/graph/ground.py  (replace cell_speed_kmh)
+import h3
+import numpy as np
+
+from transport_maps.graph.nodes import NodeIndex
+from transport_maps.sources import roads
+
+# Index by GRIP road class: 0 = roadless, 1 = highway .. 5 = local road.
+SPEED_BY_ROAD_CLASS_KMH = np.array([5.0, 85.0, 60.0, 40.0, 30.0, 25.0], dtype=np.float64)
+
+
+def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
+    centroids = np.array([h3.cell_to_latlng(c) for c in idx.cells], dtype=np.float64)
+    classes = roads.sample_class(centroids[:, 0], centroids[:, 1])
+    return SPEED_BY_ROAD_CLASS_KMH[classes]
+```
+
+- [ ] **Step 7: Test the speed field**
+
+```python
+# tests/graph/test_ground.py
+import numpy as np
+import pytest
+
+from transport_maps.graph import ground, nodes
+
+
+@pytest.fixture(scope="module")
+def idx():
+    return nodes.build_index()
+
+
+def test_every_cell_has_a_positive_speed(idx):
+    speeds = ground.cell_speed_kmh(idx)
+    assert len(speeds) == idx.n_cells
+    assert (speeds > 0).all()
+
+
+def test_speeds_span_the_full_range(idx):
+    speeds = ground.cell_speed_kmh(idx)
+    assert speeds.min() == ground.SPEED_BY_ROAD_CLASS_KMH.min()
+    assert speeds.max() == ground.SPEED_BY_ROAD_CLASS_KMH.max()
+
+
+def test_roadless_terrain_is_slower_than_motorway_terrain(idx):
+    import h3
+    speeds = ground.cell_speed_kmh(idx)
+    sahara = idx.cell_index(h3.latlng_to_cell(23.0, 10.0, 5))
+    seoul = idx.cell_index(h3.latlng_to_cell(37.5665, 126.9780, 5))
+    assert speeds[sahara] < speeds[seoul]
+```
+
+Run: `uv run pytest tests/graph/test_ground.py tests/test_golden.py -v`
+Expected: all pass. The golden times will shift; if `test_seoul_to_tokyo_is_a_half_day_or_less`
+now fails, the speed field is wired backwards — check that class 1 maps to 85 km/h.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/transport_maps/sources/roads.py src/transport_maps/graph/ground.py tests/ pyproject.toml uv.lock
+git commit -S -m "feat(graph): 🛣️ derive per-cell ground speed from GRIP4 road density"
+```
+
+---
+
+## Task 9: Rail network from OSM route relations
+
+OSM `type=route, route=train` relations carry an **ordered list of stops**, which gives
+station-to-station edges directly. Walking way geometry to infer station order is the
+trap here — do not do it.
+
+**Files:**
+- Create: `src/transport_maps/sources/osm.py`, `src/transport_maps/graph/rail.py`
+- Modify: `src/transport_maps/graph/nodes.py` (add station nodes), `src/transport_maps/graph/build.py` (add rail edges)
+- Test: `tests/sources/test_osm.py`, `tests/graph/test_rail.py`
+
+**Interfaces:**
+- Consumes: `nodes.NodeIndex`
+- Produces: `osm.rail_routes() -> pl.DataFrame` with columns `route_id: i64`, `seq: i64`, `stop_id: i64`, `lat: f64`, `lon: f64`, `name: str`, `highspeed: bool`; `rail.rail_edges(idx) -> Edges`; `NodeIndex.station_index(stop_id: int) -> int`
+
+- [ ] **Step 1: Download and filter the OSM extracts**
+
+Full continent PBFs are the only source with the `usage` and `highspeed` tags intact.
+Filter each one down before parsing — the filtered output is a few hundred MB total
+versus roughly 100 GB of input.
+
+```bash
+brew install osmium-tool
+mkdir -p data/cache/osm
+
+for region in africa asia australia-oceania central-america europe north-america south-america; do
+  test -f "data/cache/osm/${region}.osm.pbf" || \
+    curl -L --retry 3 -o "data/cache/osm/${region}.osm.pbf" \
+      "https://download.geofabrik.de/${region}-latest.osm.pbf"
+  test -f "data/cache/osm/${region}-rail.osm.pbf" || \
+    osmium tags-filter "data/cache/osm/${region}.osm.pbf" \
+      r/type=route,route=train \
+      w/railway=rail \
+      n/railway=station,halt \
+      w/route=ferry n/amenity=ferry_terminal \
+      -o "data/cache/osm/${region}-rail.osm.pbf"
+done
+```
+
+This downloads roughly 100 GB and takes several hours. It is resumable — each `test -f`
+skips work already done. Delete the unfiltered PBFs afterwards to reclaim the space.
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/sources/test_osm.py
+import pytest
+
+from transport_maps.sources import osm
+
+
+@pytest.fixture(scope="module")
+def df():
+    return osm.rail_routes()
+
+
+def test_has_required_columns(df):
+    assert set(df.columns) >= {"route_id", "seq", "stop_id", "lat", "lon", "name", "highspeed"}
+
+
+def test_stop_sequences_are_contiguous_from_zero(df):
+    first = df.filter(df["route_id"] == df["route_id"][0]).sort("seq")
+    assert first["seq"].to_list() == list(range(len(first)))
+
+
+def test_finds_a_plausible_number_of_routes_and_stops(df):
+    assert df["route_id"].n_unique() > 2_000
+    assert len(df) > 50_000
+
+
+def test_some_routes_are_flagged_high_speed(df):
+    assert df["highspeed"].any()
+```
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `uv run pytest tests/sources/test_osm.py -v`
+Expected: FAIL with `ModuleNotFoundError`
+
+- [ ] **Step 4: Implement the OSM reader**
+
+Two passes are required: ways first to learn which are high-speed, then relations to read
+stop order.
+
+```bash
+uv add osmium
+```
+
+```python
+# src/transport_maps/sources/osm.py
+"""OSM route relations -> ordered rail and ferry stop sequences."""
+
+import osmium
+import polars as pl
+
+from transport_maps import config
+
+REGIONS = (
+    "africa", "asia", "australia-oceania", "central-america",
+    "europe", "north-america", "south-america",
+)
+
+
+class _HighspeedWays(osmium.SimpleHandler):
+    """Pass 1: collect ids of ways tagged highspeed=yes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.ids: set[int] = set()
+
+    def way(self, w) -> None:
+        if w.tags.get("highspeed") == "yes":
+            self.ids.add(w.id)
+
+
+class _RailRoutes(osmium.SimpleHandler):
+    """Pass 2: read ordered stops from route=train relations."""
+
+    def __init__(self, highspeed_ways: set[int]) -> None:
+        super().__init__()
+        self.highspeed_ways = highspeed_ways
+        self.rows: list[dict] = []
+        self._locations: dict[int, tuple[float, float]] = {}
+
+    def node(self, n) -> None:
+        if n.tags.get("railway") in {"station", "halt"}:
+            self._locations[n.id] = (n.location.lat, n.location.lon)
+
+    def relation(self, r) -> None:
+        if r.tags.get("type") != "route" or r.tags.get("route") != "train":
+            return
+        high = any(m.type == "w" and m.ref in self.highspeed_ways for m in r.members)
+        seq = 0
+        for member in r.members:
+            if member.type != "n" or member.role not in {"stop", "platform", ""}:
+                continue
+            loc = self._locations.get(member.ref)
+            if loc is None:
+                continue
+            self.rows.append({
+                "route_id": r.id, "seq": seq, "stop_id": member.ref,
+                "lat": loc[0], "lon": loc[1],
+                "name": r.tags.get("name", ""), "highspeed": high,
+            })
+            seq += 1
+
+
+def rail_routes() -> pl.DataFrame:
+    """Ordered rail stops per route. Cached to parquet."""
+    out = config.BUILD / "rail_routes.parquet"
+    if out.exists():
+        return pl.read_parquet(out)
+
+    rows: list[dict] = []
+    for region in REGIONS:
+        path = config.CACHE / "osm" / f"{region}-rail.osm.pbf"
+        if not path.exists():
+            raise FileNotFoundError(f"missing {path}; run Task 9 Step 1 first")
+
+        ways = _HighspeedWays()
+        ways.apply_file(str(path))
+        routes = _RailRoutes(ways.ids)
+        routes.apply_file(str(path), locations=False)
+        rows.extend(routes.rows)
+
+    # Routes with a single stop carry no edge.
+    df = pl.DataFrame(rows)
+    counts = df.group_by("route_id").len().filter(pl.col("len") >= 2)
+    df = df.filter(pl.col("route_id").is_in(counts["route_id"]))
+
+    config.ensure_dirs()
+    df.write_parquet(out)
+    return df
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `uv run pytest tests/sources/test_osm.py -v`
+Expected: 4 passed. If `test_some_routes_are_flagged_high_speed` fails, the `tags-filter`
+in Step 1 dropped the `highspeed` ways — re-run it including `w/railway=rail`.
+
+- [ ] **Step 6: Add station nodes to the registry**
+
+Extend `NodeIndex` with a third block after airports. Cells stay at `[0, n_cells)` so the
+time-surface slice is unaffected.
+
+```python
+# src/transport_maps/graph/nodes.py  (additions)
+#   dataclass fields:  stations: list[int]
+#                      _station_pos: dict[int, int]
+#                      _station_cell: dict[int, int]
+#
+#   @property n  ->  len(cells) + len(airports) + len(stations)
+#
+#   def station_index(self, stop_id: int) -> int:
+#       return self._station_pos[stop_id]
+#
+#   def station_cell_index(self, stop_id: int) -> int:
+#       return self._station_cell[stop_id]
+#
+# In build_index(), after the airport block, deduplicate stops by id, map each to its
+# containing land cell exactly as airports are mapped, skip any that miss the mask, and
+# offset positions by len(cells) + len(codes).
+```
+
+- [ ] **Step 7: Implement rail edges**
+
+```python
+# src/transport_maps/graph/rail.py
+"""Station-to-station rail edges from ordered route stops."""
+
+import numpy as np
+import polars as pl
+
+from transport_maps.graph import air, ground
+from transport_maps.graph.nodes import NodeIndex
+from transport_maps.sources import osm
+
+SPEED_HIGHSPEED_KMH = 250.0
+SPEED_CONVENTIONAL_KMH = 80.0
+# Track is never a straight line between stops.
+SINUOSITY = 1.15
+# OSM carries no timetable; these are per-class service assumptions.
+FREQUENCY_HIGHSPEED_PER_WEEK = 140.0
+FREQUENCY_CONVENTIONAL_PER_WEEK = 56.0
+
+
+def rail_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    df = osm.rail_routes().sort(["route_id", "seq"])
+    rows: list[int] = []
+    cols: list[int] = []
+    minutes: list[float] = []
+
+    for (_route_id,), group in df.group_by(["route_id"], maintain_order=True):
+        stops = group.to_dicts()
+        high = bool(stops[0]["highspeed"])
+        speed = SPEED_HIGHSPEED_KMH if high else SPEED_CONVENTIONAL_KMH
+        freq = FREQUENCY_HIGHSPEED_PER_WEEK if high else FREQUENCY_CONVENTIONAL_PER_WEEK
+        wait = air.expected_wait_min(freq)
+
+        for a, b in zip(stops, stops[1:]):
+            try:
+                u = idx.station_index(a["stop_id"])
+                v = idx.station_index(b["stop_id"])
+            except KeyError:
+                continue
+            d = ground.haversine_km(
+                np.array([[a["lat"], a["lon"]]]), np.array([[b["lat"], b["lon"]]])
+            )[0] * SINUOSITY
+            travel = d / speed * 60.0 + wait
+            rows.extend((u, v)); cols.extend((v, u)); minutes.extend((travel, travel))
+
+    return (
+        np.asarray(rows, dtype=np.int64),
+        np.asarray(cols, dtype=np.int64),
+        np.asarray(minutes, dtype=np.float64),
+    )
+```
+
+- [ ] **Step 8: Write the rail test**
+
+```python
+# tests/graph/test_rail.py
+import numpy as np
+import pytest
+
+from transport_maps.graph import nodes, rail
+
+
+@pytest.fixture(scope="module")
+def edges():
+    return rail.rail_edges(nodes.build_index())
+
+
+def test_produces_a_substantial_number_of_edges(edges):
+    rows, cols, minutes = edges
+    assert len(rows) == len(cols) == len(minutes)
+    assert len(rows) > 20_000
+
+
+def test_edges_are_bidirectional(edges):
+    rows, cols, _ = edges
+    forward = set(zip(rows.tolist(), cols.tolist()))
+    assert all((v, u) in forward for u, v in list(forward)[:500])
+
+
+def test_all_weights_positive_and_finite(edges):
+    _, _, minutes = edges
+    assert np.isfinite(minutes).all() and (minutes > 0).all()
+```
+
+Run: `uv run pytest tests/graph/test_rail.py -v`
+Expected: 3 passed
+
+- [ ] **Step 9: Add rail edges and station access to `build_graph`**
+
+In `src/transport_maps/graph/build.py`, add `rail.rail_edges(idx)` to the `parts` list,
+and extend `_access_edges` to connect every station to its containing cell with
+`STATION_ACCESS_MIN = 15.0` in each direction (rail needs no security screening, which is
+exactly why it beats short-haul air on the map).
+
+- [ ] **Step 10: Run the golden test and commit**
+
+```bash
+uv run pytest tests/ -v
+git add src/transport_maps/ tests/ pyproject.toml uv.lock
+git commit -S -m "feat(graph): 🚄 add rail network from OSM route relations"
+```
+
+---
+
+## Task 10: Ferry network
+
+Ferries matter more than their share of traffic suggests: they are the only public
+transport reaching large parts of Indonesia, the Philippines, Greece and the Caribbean.
+In OSM most ferries are **ways** tagged `route=ferry`, not relations, so the endpoints of
+the way are the terminals.
+
+**Files:**
+- Create: `src/transport_maps/graph/ferry.py`
+- Modify: `src/transport_maps/sources/osm.py` (add `ferry_routes`), `src/transport_maps/graph/build.py`
+- Test: `tests/graph/test_ferry.py`
+
+**Interfaces:**
+- Produces: `osm.ferry_routes() -> pl.DataFrame` with columns `way_id: i64`, `from_lat`, `from_lon`, `to_lat`, `to_lon`, `length_km: f64`; `ferry.ferry_edges(idx) -> Edges`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/graph/test_ferry.py
+import numpy as np
+import pytest
+
+from transport_maps.graph import ferry, nodes
+
+
+@pytest.fixture(scope="module")
+def edges():
+    return ferry.ferry_edges(nodes.build_index())
+
+
+def test_produces_ferry_edges(edges):
+    rows, _, minutes = edges
+    assert len(rows) > 1_000
+    assert np.isfinite(minutes).all() and (minutes > 0).all()
+
+
+def test_ferry_is_slower_per_km_than_rail():
+    assert ferry.SPEED_KMH < 60.0
+
+
+def test_very_long_crossings_are_excluded():
+    assert ferry.MAX_CROSSING_KM <= 2000.0
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `uv run pytest tests/graph/test_ferry.py -v`
+Expected: FAIL with `ModuleNotFoundError`
+
+- [ ] **Step 3: Add the ferry reader to `osm.py`**
+
+```python
+# append to src/transport_maps/sources/osm.py
+class _FerryWays(osmium.SimpleHandler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[dict] = []
+
+    def way(self, w) -> None:
+        if w.tags.get("route") != "ferry" or len(w.nodes) < 2:
+            return
+        try:
+            a, b = w.nodes[0].location, w.nodes[-1].location
+        except osmium.InvalidLocationError:
+            return
+        if not (a.valid() and b.valid()):
+            return
+        self.rows.append({
+            "way_id": w.id,
+            "from_lat": a.lat, "from_lon": a.lon,
+            "to_lat": b.lat, "to_lon": b.lon,
+        })
+
+
+def ferry_routes() -> pl.DataFrame:
+    out = config.BUILD / "ferry_routes.parquet"
+    if out.exists():
+        return pl.read_parquet(out)
+
+    rows: list[dict] = []
+    for region in REGIONS:
+        path = config.CACHE / "osm" / f"{region}-rail.osm.pbf"
+        handler = _FerryWays()
+        handler.apply_file(str(path), locations=True)
+        rows.extend(handler.rows)
+
+    df = pl.DataFrame(rows).unique(subset=["way_id"])
+    config.ensure_dirs()
+    df.write_parquet(out)
+    return df
+```
+
+Note `locations=True` here — unlike the relation pass, ferry ways need node coordinates
+resolved. pyosmium builds the location index on the fly.
+
+- [ ] **Step 4: Implement ferry edges**
+
+Ferry terminals are attached directly to their containing land cell rather than getting
+their own node type; at res 5 the terminal and its town share a cell anyway.
+
+```python
+# src/transport_maps/graph/ferry.py
+"""Cell-to-cell ferry edges from OSM route=ferry ways."""
+
+import h3
+import numpy as np
+
+from transport_maps import config
+from transport_maps.graph import air, ground
+from transport_maps.graph.nodes import NodeIndex
+from transport_maps.sources import osm
+
+SPEED_KMH = 35.0
+# Longer than this is freight or a repositioning route, not scheduled passenger service.
+MAX_CROSSING_KM = 1500.0
+BOARDING_MIN = 30.0
+FREQUENCY_PER_WEEK = 21.0
+
+
+def ferry_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    df = osm.ferry_routes()
+    wait = air.expected_wait_min(FREQUENCY_PER_WEEK)
+
+    rows: list[int] = []
+    cols: list[int] = []
+    minutes: list[float] = []
+    for r in df.iter_rows(named=True):
+        d = ground.haversine_km(
+            np.array([[r["from_lat"], r["from_lon"]]]),
+            np.array([[r["to_lat"], r["to_lon"]]]),
+        )[0]
+        if d > MAX_CROSSING_KM or d <= 0:
+            continue
+        try:
+            u = idx.cell_index(h3.latlng_to_cell(r["from_lat"], r["from_lon"], config.SOLVE_RES))
+            v = idx.cell_index(h3.latlng_to_cell(r["to_lat"], r["to_lon"], config.SOLVE_RES))
+        except KeyError:
+            continue
+        if u == v:
+            continue
+        t = d / SPEED_KMH * 60.0 + BOARDING_MIN + wait
+        rows.extend((u, v)); cols.extend((v, u)); minutes.extend((t, t))
+
+    return (
+        np.asarray(rows, dtype=np.int64),
+        np.asarray(cols, dtype=np.int64),
+        np.asarray(minutes, dtype=np.float64),
+    )
+```
+
+- [ ] **Step 5: Run test, wire into `build_graph`, and commit**
+
+Add `ferry.ferry_edges(idx)` to the `parts` list in `build.py`.
+
+```bash
+uv run pytest tests/graph/test_ferry.py tests/test_golden.py -v
+git add src/transport_maps/ tests/
+git commit -S -m "feat(graph): ⛴️ add ferry crossings from OSM route=ferry ways"
+```
+
+---
+
+## Task 11: Realistic transfer penalties
+
+Phase A used one flat airport access cost. Split it by domestic versus international and
+give each airport a size-appropriate minimum connection time.
+
+**Files:**
+- Create: `src/transport_maps/graph/transfers.py`
+- Modify: `src/transport_maps/graph/build.py`, `calibration.toml`
+- Test: `tests/graph/test_transfers.py`
+
+**Interfaces:**
+- Produces: `transfers.access_min(size: str, international: bool, cal) -> float`, `transfers.egress_min(size: str, international: bool, cal) -> float`, `transfers.connection_min(size: str, cal) -> float`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/graph/test_transfers.py
+import pytest
+
+from transport_maps.graph import air, transfers
+
+
+@pytest.fixture(scope="module")
+def cal():
+    return air.load_calibration()
+
+
+def test_international_access_exceeds_domestic(cal):
+    assert transfers.access_min("large", True, cal) > transfers.access_min("large", False, cal)
+
+
+def test_large_hubs_have_longer_connections_than_small_airports(cal):
+    assert transfers.connection_min("large", cal) > transfers.connection_min("small", cal)
+
+
+def test_egress_is_shorter_than_access(cal):
+    # Leaving an airport is faster than entering one: no check-in, no security.
+    assert transfers.egress_min("large", True, cal) < transfers.access_min("large", True, cal)
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `uv run pytest tests/graph/test_transfers.py -v`
+Expected: FAIL with `ModuleNotFoundError`
+
+- [ ] **Step 3: Add coefficients to `calibration.toml`**
+
+```toml
+[access_min]
+# Arrive, check in, clear security. International adds passport control.
+domestic = { large = 70.0, medium = 55.0, small = 40.0 }
+international = { large = 100.0, medium = 80.0, small = 65.0 }
+
+[egress_min]
+domestic = { large = 30.0, medium = 22.0, small = 15.0 }
+international = { large = 55.0, medium = 45.0, small = 35.0 }
+
+[connection_min]
+# Minimum connection time, refitted in Task 12 from observed connections.
+large = 75.0
+medium = 50.0
+small = 35.0
+```
+
+- [ ] **Step 4: Implement, extending `Calibration` with the three new dicts**
+
+```python
+# src/transport_maps/graph/transfers.py
+"""Mode-change penalties."""
+
+from transport_maps.graph.air import Calibration
+
+STATION_ACCESS_MIN = 15.0
+STATION_EGRESS_MIN = 10.0
+
+
+def access_min(size: str, international: bool, cal: Calibration) -> float:
+    key = "international" if international else "domestic"
+    return cal.access_min[key][size]
+
+
+def egress_min(size: str, international: bool, cal: Calibration) -> float:
+    key = "international" if international else "domestic"
+    return cal.egress_min[key][size]
+
+
+def connection_min(size: str, cal: Calibration) -> float:
+    return cal.connection_min[size]
+```
+
+- [ ] **Step 5: Apply them in `build.py`**
+
+Two changes:
+
+1. `_access_edges` takes the airport's `size` and uses `access_min` / `egress_min`. Since
+   an origin's international status is not known when the graph is built, use the
+   `international` variant — it is the conservative choice and correct for the majority
+   of a global map's long-haul paths.
+2. `_air_edges` adds `connection_min(dep_size)` to each flight edge, so every hop after
+   the first pays a realistic connection cost. The first hop double-counts slightly
+   against `access_min`; accept it, and note it in the golden-test tolerances.
+
+- [ ] **Step 6: Run the full suite and commit**
+
+```bash
+uv run pytest tests/ -v
+git add src/transport_maps/ calibration.toml tests/
+git commit -S -m "feat(graph): 🔀 split transfer penalties by domestic and international"
+```
+
+---
+
+# Phase C — Calibration
+
+Both tasks here read commercial APIs and write only coefficients. **Nothing they fetch may
+reach `dist/`.** Task 15 enforces this with a test.
+
+## Task 12: Fit the flight model from real flights
+
+**Files:**
+- Create: `src/transport_maps/calibrate/__init__.py`, `src/transport_maps/calibrate/fr24.py`, `src/transport_maps/calibrate/fit.py`
+- Modify: `calibration.toml` (rewritten by the fit), `src/transport_maps/cli.py`
+- Test: `tests/calibrate/test_fit.py`
+
+**Interfaces:**
+- Produces: `fr24.sample_flights(days: int, limit: int) -> pl.DataFrame` with columns `dep_iata`, `arr_iata`, `block_min`, `distance_km`, `dep_size`, `arr_size`; `fit.fit_airborne(df) -> tuple[float, float]`, `fit.fit_frequency(df) -> tuple[float, float, dict[str, float]]`, `fit.write_calibration(path, ...) -> None`
+
+- [ ] **Step 1: Write the failing test using synthetic data**
+
+The fit must be testable without touching the API, so test it against data generated from
+known coefficients and assert it recovers them.
+
+```python
+# tests/calibrate/test_fit.py
+import numpy as np
+import polars as pl
+
+from transport_maps.calibrate import fit
+
+
+def test_recovers_known_airborne_coefficients():
+    rng = np.random.default_rng(0)
+    distances = rng.uniform(200, 12_000, 4_000)
+    # Truth: 25 min penalty, 800 km/h cruise, small gaussian noise.
+    block = 25.0 + 60.0 * distances / 800.0 + rng.normal(0, 4.0, len(distances))
+    df = pl.DataFrame({"distance_km": distances, "airborne_min": block})
+
+    penalty, cruise = fit.fit_airborne(df)
+    assert penalty == pytest.approx(25.0, abs=3.0)
+    assert cruise == pytest.approx(800.0, abs=25.0)
+
+
+def test_recovers_known_frequency_coefficients():
+    rng = np.random.default_rng(2)
+    n = 3_000
+    d = rng.uniform(200, 12_000, n)
+    dep = rng.choice(["large", "medium", "small"], n)
+    arr = rng.choice(["large", "medium", "small"], n)
+    truth = {"large": 1.0, "medium": 0.55, "small": 0.25}
+    f = 42.0 * np.array([truth[s] for s in dep]) * np.array([truth[s] for s in arr]) * d ** -0.35
+    df = pl.DataFrame(
+        {"distance_km": d, "dep_size": dep, "arr_size": arr, "flights_per_week": f}
+    )
+
+    base, decay, weights = fit.fit_frequency(df)
+    assert base == pytest.approx(42.0, rel=0.15)
+    assert decay == pytest.approx(-0.35, abs=0.05)
+    assert weights["medium"] == pytest.approx(0.55, rel=0.15)
+    assert weights["small"] == pytest.approx(0.25, rel=0.15)
+
+
+def test_holdout_mae_is_reported_and_small_on_clean_data():
+    rng = np.random.default_rng(1)
+    d = rng.uniform(200, 12_000, 2_000)
+    df = pl.DataFrame({"distance_km": d, "airborne_min": 25.0 + 60.0 * d / 800.0})
+    _, _, mae = fit.fit_airborne_with_holdout(df)
+    assert mae < 2.0
+```
+
+Add `import pytest` at the top.
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `uv run pytest tests/calibrate/test_fit.py -v`
+Expected: FAIL with `ModuleNotFoundError`
+
+- [ ] **Step 3: Implement the fit**
+
+```python
+# src/transport_maps/calibrate/fit.py
+"""Regress model coefficients from sampled flights. Reads records, writes only numbers."""
+
+import numpy as np
+import polars as pl
+
+HOLDOUT_FRACTION = 0.2
+
+
+def fit_airborne(df: pl.DataFrame) -> tuple[float, float]:
+    """Least squares on airborne_min = penalty + 60 * distance / cruise."""
+    d = df["distance_km"].to_numpy()
+    y = df["airborne_min"].to_numpy()
+    # y = a + b*d, so cruise = 60 / b.
+    design = np.column_stack([np.ones_like(d), d])
+    (a, b), *_ = np.linalg.lstsq(design, y, rcond=None)
+    if b <= 0:
+        raise RuntimeError("non-positive distance coefficient; sample is unusable")
+    return float(a), float(60.0 / b)
+
+
+def fit_frequency(df: pl.DataFrame) -> tuple[float, float, dict[str, float]]:
+    """Fit flights_per_week = base * w[dep] * w[arr] * distance ^ decay.
+
+    Linear in log space: log f = log base + log w[dep] + log w[arr] + decay * log d.
+    `large` is the reference category with weight fixed at 1.0, so the design matrix
+    stays full rank.
+    """
+    sizes = ("medium", "small")
+    log_f = np.log(df["flights_per_week"].to_numpy())
+    log_d = np.log(np.maximum(df["distance_km"].to_numpy(), 1.0))
+
+    columns = [np.ones_like(log_d), log_d]
+    for size in sizes:
+        dep = (df["dep_size"].to_numpy() == size).astype(float)
+        arr = (df["arr_size"].to_numpy() == size).astype(float)
+        columns.append(dep + arr)
+
+    coefficients, *_ = np.linalg.lstsq(np.column_stack(columns), log_f, rcond=None)
+    base = float(np.exp(coefficients[0]))
+    decay = float(coefficients[1])
+    weights = {"large": 1.0}
+    for offset, size in enumerate(sizes):
+        weights[size] = float(np.exp(coefficients[2 + offset]))
+    return base, decay, weights
+
+
+def fit_airborne_with_holdout(df: pl.DataFrame) -> tuple[float, float, float]:
+    shuffled = df.sample(fraction=1.0, shuffle=True, seed=0)
+    cut = int(len(shuffled) * (1.0 - HOLDOUT_FRACTION))
+    train, test = shuffled[:cut], shuffled[cut:]
+    penalty, cruise = fit_airborne(train)
+    predicted = penalty + 60.0 * test["distance_km"].to_numpy() / cruise
+    mae = float(np.abs(predicted - test["airborne_min"].to_numpy()).mean())
+    return penalty, cruise, mae
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `uv run pytest tests/calibrate/test_fit.py -v`
+Expected: 3 passed
+
+- [ ] **Step 5: Implement the FR24 sampler**
+
+Credentials come from the environment, never from a file in the repo.
+
+```bash
+export FR24_API_TOKEN=...      # add to your shell profile, not to git
+```
+
+```python
+# src/transport_maps/calibrate/fr24.py
+"""Sample real flights for calibration. Records are held in memory and discarded."""
+
+import datetime as dt
+import os
+
+import httpx
+import polars as pl
+
+BASE = "https://fr24api.flightradar24.com/api"
+# The API caps a summary query at a 14-day window.
+MAX_WINDOW_DAYS = 14
+
+
+def _client() -> httpx.Client:
+    token = os.environ.get("FR24_API_TOKEN")
+    if not token:
+        raise RuntimeError("FR24_API_TOKEN is not set")
+    return httpx.Client(
+        base_url=BASE, timeout=120,
+        headers={"Authorization": f"Bearer {token}", "Accept-Version": "v1"},
+    )
+
+
+def sample_flights(airports: list[str], days: int = 7) -> pl.DataFrame:
+    """Landed flights departing the given airports over a recent window."""
+    if days > MAX_WINDOW_DAYS:
+        raise ValueError(f"window capped at {MAX_WINDOW_DAYS} days")
+    end = dt.datetime.now(dt.UTC)
+    start = end - dt.timedelta(days=days)
+
+    rows: list[dict] = []
+    with _client() as client:
+        for iata in airports:
+            r = client.get("/flight-summary/light", params={
+                "flight_datetime_from": start.isoformat(timespec="seconds"),
+                "flight_datetime_to": end.isoformat(timespec="seconds"),
+                "airports": f"outbound:{iata}",
+            })
+            if r.status_code == 404:
+                continue
+            r.raise_for_status()
+            for f in r.json().get("data", []):
+                if not (f.get("takeoff") and f.get("landed")):
+                    continue
+                rows.append({
+                    "dep_iata": f.get("orig_iata"), "arr_iata": f.get("dest_iata"),
+                    "takeoff": f["takeoff"], "landed": f["landed"],
+                })
+    return pl.DataFrame(rows)
+```
+
+Confirm the exact response field names against the sandbox key before a paid run — the
+sandbox hits the same endpoints with sample data and costs no credits:
+
+```bash
+uv run python -c "
+from transport_maps.calibrate import fr24
+print(fr24.sample_flights(['ICN'], days=1).head())
+"
+```
+
+If the field names differ, fix the dict keys above; everything downstream reads the
+normalised names.
+
+- [ ] **Step 6: Add the `calibrate` CLI command and write the results**
+
+The command samples flights, derives `airborne_min` from takeoff/landing timestamps and
+`distance_km` from airport coordinates, runs both fits, and rewrites `calibration.toml`
+with `meta.calibrated = true`, the sample size and the holdout MAE. It must never write
+the sampled rows to disk.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/transport_maps/calibrate/ tests/calibrate/ calibration.toml src/transport_maps/cli.py
+git commit -S -m "feat(calibrate): 📐 fit flight model coefficients from sampled flights"
+```
+
+---
+
+## Task 13: Real transit times for city-to-airport legs
+
+Replaces the assumed access/egress constants for the origin cities specifically, where a
+wrong guess is most visible.
+
+**Files:**
+- Create: `src/transport_maps/calibrate/transit.py`, `data/origins.toml`
+- Test: `tests/calibrate/test_transit.py`
+
+**Interfaces:**
+- Produces: `transit.transit_minutes(origin: tuple[float, float], dest: tuple[float, float]) -> int | None`, `transit.build_access_table() -> pl.DataFrame` with columns `city: str`, `iata: str`, `minutes: i64`
+
+- [ ] **Step 1: Define the origin city list**
+
+```toml
+# data/origins.toml — v1 set, expand freely; adding entries needs no code change.
+[[origin]]
+slug = "seoul"
+name = "Seoul"
+lat = 37.5665
+lon = 126.9780
+
+[[origin]]
+slug = "tokyo"
+name = "Tokyo"
+lat = 35.6762
+lon = 139.6503
+
+[[origin]]
+slug = "london"
+name = "London"
+lat = 51.5072
+lon = -0.1276
+```
+
+Fill to roughly 150 cities: the busiest airports by passenger volume, plus at least five
+per inhabited continent so the picker is not Northern-Hemisphere-only.
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/calibrate/test_transit.py
+import pytest
+
+from transport_maps.calibrate import transit
+
+
+@pytest.mark.network
+def test_seoul_to_incheon_airport_is_a_plausible_transit_time():
+    minutes = transit.transit_minutes((37.5665, 126.9780), (37.4602, 126.4407))
+    # The AREX express is about an hour; allow for slower all-stops routings.
+    assert minutes is not None
+    assert 40 < minutes < 150
+
+
+def test_missing_api_key_raises_clearly(monkeypatch):
+    monkeypatch.delenv("GOOGLE_ROUTES_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="GOOGLE_ROUTES_API_KEY"):
+        transit.transit_minutes((0.0, 0.0), (1.0, 1.0))
+```
+
+- [ ] **Step 3: Implement**
+
+```python
+# src/transport_maps/calibrate/transit.py
+"""Google Routes API TRANSIT durations for city-centre to airport legs."""
+
+import os
+
+import httpx
+
+ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
+FIELD_MASK = "routes.duration"
+
+
+def transit_minutes(origin: tuple[float, float], dest: tuple[float, float]) -> int | None:
+    key = os.environ.get("GOOGLE_ROUTES_API_KEY")
+    if not key:
+        raise RuntimeError("GOOGLE_ROUTES_API_KEY is not set")
+
+    body = {
+        "origin": {"location": {"latLng": {"latitude": origin[0], "longitude": origin[1]}}},
+        "destination": {"location": {"latLng": {"latitude": dest[0], "longitude": dest[1]}}},
+        "travelMode": "TRANSIT",
+    }
+    r = httpx.post(ROUTES_URL, json=body, timeout=60, headers={
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": FIELD_MASK,
+        "Content-Type": "application/json",
+    })
+    r.raise_for_status()
+    routes = r.json().get("routes", [])
+    if not routes:
+        return None
+    # duration comes back as e.g. "3600s".
+    return int(round(int(routes[0]["duration"].rstrip("s")) / 60))
+```
+
+- [ ] **Step 4: Build the access table**
+
+For each origin in `data/origins.toml`, find airports within 150 km, query transit time to
+each, and cache the result to `data/build/city_access.parquet`. Roughly 150 cities × 2–4
+airports is a few hundred calls. `build_graph` prefers a cached measured value over the
+`access_min` default when one exists.
+
+- [ ] **Step 5: Run and commit**
+
+```bash
+uv run pytest tests/calibrate/test_transit.py -v -m "not network"
+git add src/transport_maps/calibrate/transit.py data/origins.toml tests/
+git commit -S -m "feat(calibrate): 🚇 measure city-to-airport transit with Google Routes"
+```
+
+---
+
+# Phase D — Production Artifact
+
+## Task 14: Emit PMTiles, hover array, route index and origin index
+
+Replaces the skeleton's single GeoJSON with the four files the frontend actually consumes.
+
+**Files:**
+- Create: `src/transport_maps/emit/tiles.py`, `src/transport_maps/emit/hover.py`, `src/transport_maps/emit/routes_json.py`, `src/transport_maps/emit/index.py`
+- Modify: `src/transport_maps/solve/dijkstra.py` (return predecessors), `src/transport_maps/cli.py`
+- Test: `tests/emit/test_hover.py`, `tests/emit/test_tiles.py`
+
+**Interfaces:**
+- Consumes: `bands.band_feature_collection`, `dijkstra.solve_from`
+- Produces: `tiles.write_pmtiles(fc: dict, out: Path) -> None`, `hover.write_hover(idx, cell_minutes, out: Path) -> None`, `routes_json.write_routes(idx, minutes, predecessors, out: Path) -> None`, `index.write_index(origins, out: Path) -> None`, `dijkstra.solve_from(csr, source, with_predecessors: bool = False)`
+
+- [ ] **Step 1: Install tippecanoe**
+
+```bash
+brew install tippecanoe
+tippecanoe --version   # must be >= 2.17 for .pmtiles output
+```
+
+- [ ] **Step 2: Write the failing test for the hover array**
+
+The frontend reads this as a flat `Uint16Array`, so byte layout is a contract.
+
+```python
+# tests/emit/test_hover.py
+import numpy as np
+
+from transport_maps import config
+from transport_maps.emit import hover
+
+
+class FakeIndex:
+    # Two res-5 cells that share a res-4 parent, plus one that does not.
+    cells = ["8530e08ffffffff", "8530e087fffffff", "85754e63fffffff"]
+    n_cells = 3
+
+
+def test_writes_uint16_little_endian(tmp_path):
+    out = tmp_path / "h.bin"
+    hover.write_hover(FakeIndex(), np.array([10.0, 20.0, 5000.0]), out)
+    raw = np.frombuffer(out.read_bytes(), dtype="<u2")
+    assert raw.dtype.itemsize == 2
+    assert len(raw) == len(hover.hover_cells(FakeIndex()))
+
+
+def test_parent_cell_takes_the_minimum_of_its_children(tmp_path):
+    out = tmp_path / "h.bin"
+    hover.write_hover(FakeIndex(), np.array([10.0, 20.0, 5000.0]), out)
+    values = np.frombuffer(out.read_bytes(), dtype="<u2")
+    assert 10 in values  # the faster of the two siblings wins
+
+
+def test_unreachable_becomes_the_sentinel(tmp_path):
+    out = tmp_path / "h.bin"
+    hover.write_hover(FakeIndex(), np.array([np.inf, np.inf, np.inf]), out)
+    values = np.frombuffer(out.read_bytes(), dtype="<u2")
+    assert (values == config.UNREACHABLE).all()
+
+
+def test_values_are_clamped_below_the_sentinel(tmp_path):
+    out = tmp_path / "h.bin"
+    hover.write_hover(FakeIndex(), np.array([99_999.0, 99_999.0, 99_999.0]), out)
+    values = np.frombuffer(out.read_bytes(), dtype="<u2")
+    assert (values < config.UNREACHABLE).all()
+```
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `uv run pytest tests/emit/test_hover.py -v`
+Expected: FAIL with `ModuleNotFoundError`
+
+- [ ] **Step 4: Implement the hover array**
+
+```python
+# src/transport_maps/emit/hover.py
+"""Coarse res-4 time array for instant hover readout.
+
+Layout contract with the frontend: little-endian uint16 minutes, one entry per
+res-4 cell, ordered by the sorted res-4 cell id list that `hover_cells` returns.
+The frontend fetches that ordering once from index.json.
+"""
+
+from pathlib import Path
+
+import h3
+import numpy as np
+
+from transport_maps import config
+
+# Reserve the sentinel; anything slower is clamped to just below it.
+MAX_MINUTES = config.UNREACHABLE - 1
+
+
+def hover_cells(idx) -> list[str]:
+    """Sorted res-4 parents of the solver cells."""
+    return sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
+
+
+def write_hover(idx, cell_minutes: np.ndarray, out: Path) -> None:
+    parents = hover_cells(idx)
+    position = {cell: i for i, cell in enumerate(parents)}
+
+    best = np.full(len(parents), np.inf, dtype=np.float64)
+    for pos, cell in enumerate(idx.cells):
+        p = position[h3.cell_to_parent(cell, config.HOVER_RES)]
+        value = cell_minutes[pos]
+        if value < best[p]:
+            best[p] = value
+
+    encoded = np.where(
+        np.isfinite(best), np.minimum(best, MAX_MINUTES), config.UNREACHABLE
+    ).astype("<u2")
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(encoded.tobytes())
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `uv run pytest tests/emit/test_hover.py -v`
+Expected: 4 passed
+
+- [ ] **Step 6: Implement the PMTiles writer**
+
+```python
+# src/transport_maps/emit/tiles.py
+"""Band GeoJSON -> PMTiles via tippecanoe."""
+
+import json
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+MIN_ZOOM, MAX_ZOOM = 0, 7
+LAYER = "bands"
+
+
+def write_pmtiles(feature_collection: dict, out: Path) -> None:
+    if shutil.which("tippecanoe") is None:
+        raise RuntimeError("tippecanoe not on PATH; run: brew install tippecanoe")
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", suffix=".geojson", delete=False) as fh:
+        json.dump(feature_collection, fh)
+        src = Path(fh.name)
+
+    try:
+        subprocess.run([
+            "tippecanoe",
+            "-o", str(out), "--force",
+            "-l", LAYER,
+            "-Z", str(MIN_ZOOM), "-z", str(MAX_ZOOM),
+            "--simplification=4",
+            "--coalesce-densest-as-needed",
+            "--extend-zooms-if-still-dropping",
+        ], check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"tippecanoe failed: {exc.stderr}") from exc
+    finally:
+        src.unlink(missing_ok=True)
+
+    if not out.exists() or out.stat().st_size == 0:
+        raise RuntimeError(f"tippecanoe produced no output at {out}")
+```
+
+- [ ] **Step 7: Test the PMTiles writer**
+
+```python
+# tests/emit/test_tiles.py
+import pytest
+
+from transport_maps.emit import tiles
+
+SQUARE = {
+    "type": "FeatureCollection",
+    "features": [{
+        "type": "Feature",
+        "properties": {"band": 0, "max_minutes": 120},
+        "geometry": {"type": "Polygon", "coordinates": [[
+            [126.0, 37.0], [127.0, 37.0], [127.0, 38.0], [126.0, 38.0], [126.0, 37.0]
+        ]]},
+    }],
+}
+
+
+def test_writes_a_non_empty_pmtiles_file(tmp_path):
+    out = tmp_path / "t.pmtiles"
+    tiles.write_pmtiles(SQUARE, out)
+    assert out.stat().st_size > 0
+    assert out.read_bytes()[:7] == b"PMTiles"
+```
+
+Run: `uv run pytest tests/emit/test_tiles.py -v`
+Expected: 1 passed
+
+- [ ] **Step 8: Implement the route index and origin index**
+
+`routes_json` needs predecessors, so first extend the solver:
+
+```python
+# src/transport_maps/solve/dijkstra.py  (replace solve_from)
+def solve_from(csr, source: int, with_predecessors: bool = False):
+    """Minutes from `source`. Returns (dist, pred) when with_predecessors is set."""
+    if with_predecessors:
+        return _dijkstra(
+            csgraph=csr, directed=True, indices=source, return_predecessors=True
+        )
+    return _dijkstra(csgraph=csr, directed=True, indices=source)
+```
+
+```python
+# src/transport_maps/emit/routes_json.py
+"""Reachable transport nodes with arrival time and predecessor.
+
+The frontend walks `prev` back to the origin to render a route breakdown such as
+`ICN -> DXB -> GRU - 31h 20m`. `offsets` lets it classify a node id without a lookup.
+"""
+
+import json
+from pathlib import Path
+
+import numpy as np
+
+# scipy marks "no predecessor" with -9999.
+NO_PREDECESSOR = -9999
+
+
+def write_routes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) -> None:
+    nodes = []
+
+    def add(node_id: int, kind: str, code: str) -> None:
+        if not np.isfinite(minutes[node_id]):
+            return
+        prev = int(predecessors[node_id])
+        nodes.append({
+            "id": node_id,
+            "kind": kind,
+            "code": code,
+            "min": int(round(float(minutes[node_id]))),
+            "prev": prev if prev != NO_PREDECESSOR else None,
+        })
+
+    for iata in idx.airports:
+        add(idx.airport_index(iata), "air", iata)
+    for stop_id in idx.stations:
+        add(idx.station_index(stop_id), "rail", str(stop_id))
+
+    payload = {
+        "offsets": {
+            "cells": 0,
+            "airports": idx.n_cells,
+            "stations": idx.n_cells + len(idx.airports),
+        },
+        "nodes": nodes,
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+```
+
+The res-4 cell ordering is roughly 83,000 ids. Embedding it in `index.json` would bloat a
+file every page load fetches, so it ships once as its own binary and is cached across all
+origins.
+
+```python
+# src/transport_maps/emit/index.py
+"""index.json plus the shared hover-cell ordering."""
+
+import json
+import tomllib
+from pathlib import Path
+
+import h3
+import numpy as np
+
+from transport_maps import config
+from transport_maps.emit import hover
+
+
+def load_origins(path: Path | None = None) -> list[dict]:
+    path = path or (config.DATA / "origins.toml")
+    with open(path, "rb") as fh:
+        origins = tomllib.load(fh)["origin"]
+    slugs = [o["slug"] for o in origins]
+    if len(set(slugs)) != len(slugs):
+        raise ValueError("duplicate origin slug in origins.toml")
+    return origins
+
+
+def write_hover_cells(idx, out: Path) -> None:
+    """Sorted res-4 cell ids as little-endian uint64, matching the .bin ordering.
+
+    The frontend computes h3.latLngToCell(lat, lon, 4), converts it to its integer
+    form, and binary-searches this array to get the index into each origin's .bin.
+    """
+    ids = np.array([h3.str_to_int(c) for c in hover.hover_cells(idx)], dtype="<u8")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(ids.tobytes())
+
+
+def write_index(origins: list[dict], out: Path) -> None:
+    payload = {
+        "bandEdgesMin": list(config.BAND_EDGES_MIN),
+        "unreachable": config.UNREACHABLE,
+        "hoverRes": config.HOVER_RES,
+        "hoverCellsUrl": "hover_cells.bin",
+        "origins": [
+            {"slug": o["slug"], "name": o["name"], "lat": o["lat"], "lon": o["lon"]}
+            for o in origins
+        ],
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+```
+
+Add a test asserting `write_hover_cells` output is sorted ascending, since the frontend's
+binary search depends on it:
+
+```python
+# tests/emit/test_index.py
+import numpy as np
+
+from transport_maps.emit import index
+
+
+class FakeIndex:
+    cells = ["8530e08ffffffff", "8530e087fffffff", "85754e63fffffff"]
+    n_cells = 3
+
+
+def test_hover_cell_ids_are_sorted_ascending(tmp_path):
+    out = tmp_path / "hover_cells.bin"
+    index.write_hover_cells(FakeIndex(), out)
+    ids = np.frombuffer(out.read_bytes(), dtype="<u8")
+    assert len(ids) > 0
+    assert (np.diff(ids.astype(object)) > 0).all()
+```
+
+Run: `uv run pytest tests/emit/ -v`
+Expected: all pass
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/transport_maps/emit/ src/transport_maps/solve/ tests/emit/
+git commit -S -m "feat(emit): 📦 write PMTiles bands, hover array and route index"
+```
+
+---
+
+## Task 15: Batch build, validation gates, and the licence firewall
+
+The last task. Builds every origin and refuses to publish a broken or non-compliant
+artifact.
+
+**Files:**
+- Create: `src/transport_maps/validate.py`
+- Modify: `src/transport_maps/cli.py` (add `build-all`)
+- Test: `tests/test_validate.py`, `tests/test_licence_firewall.py`
+
+**Interfaces:**
+- Produces: `validate.check_coverage(minutes, idx) -> float`, `validate.check_bands_disjoint(fc) -> None`, `validate.check_monotonic_ground(idx, minutes) -> None`
+
+- [ ] **Step 1: Write the failing validation tests**
+
+```python
+# tests/test_validate.py
+import numpy as np
+import pytest
+
+from transport_maps import validate
+
+
+def test_coverage_is_the_reachable_fraction():
+    minutes = np.array([10.0, 20.0, np.inf, np.inf])
+
+    class Idx:
+        n_cells = 4
+    assert validate.check_coverage(minutes, Idx()) == 0.5
+
+
+def test_overlapping_bands_are_rejected():
+    fc = {"features": [
+        {"properties": {"band": 0}, "geometry": {"type": "Polygon", "coordinates": [[
+            [0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]}},
+        {"properties": {"band": 1}, "geometry": {"type": "Polygon", "coordinates": [[
+            [1, 1], [3, 1], [3, 3], [1, 3], [1, 1]]]}},
+    ]}
+    with pytest.raises(ValueError, match="overlap"):
+        validate.check_bands_disjoint(fc)
+
+
+def test_disjoint_bands_are_accepted():
+    fc = {"features": [
+        {"properties": {"band": 0}, "geometry": {"type": "Polygon", "coordinates": [[
+            [0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}},
+        {"properties": {"band": 1}, "geometry": {"type": "Polygon", "coordinates": [[
+            [5, 5], [6, 5], [6, 6], [5, 6], [5, 5]]]}},
+    ]}
+    validate.check_bands_disjoint(fc)  # must not raise
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `uv run pytest tests/test_validate.py -v`
+Expected: FAIL with `ModuleNotFoundError`
+
+- [ ] **Step 3: Implement the validators**
+
+```python
+# src/transport_maps/validate.py
+"""Publication gates. Every check aborts the build rather than shipping bad data."""
+
+import numpy as np
+import shapely
+from shapely.geometry import shape
+
+MIN_COVERAGE = 0.90
+
+
+def check_coverage(minutes: np.ndarray, idx) -> float:
+    """Fraction of land cells with any path to the origin."""
+    return float(np.isfinite(minutes[: idx.n_cells]).mean())
+
+
+def check_bands_disjoint(feature_collection: dict) -> None:
+    geoms = [shape(f["geometry"]) for f in feature_collection["features"]]
+    for i, a in enumerate(geoms):
+        for b in geoms[i + 1:]:
+            if a.intersection(b).area > 1e-9:
+                raise ValueError("isochrone bands overlap; dissolution is broken")
+
+
+def check_monotonic_ground(idx, minutes: np.ndarray) -> None:
+    """Adjacent land cells must not differ by more than the fastest ground hop allows."""
+    import h3
+    from transport_maps.graph import ground
+    speeds = ground.cell_speed_kmh(idx)
+    fastest = speeds.max()
+    for pos, cell in enumerate(idx.cells[::997]):  # sample; a full sweep is O(n*7)
+        t = minutes[pos * 997] if pos * 997 < idx.n_cells else None
+        if t is None or not np.isfinite(t):
+            continue
+        for neighbour in h3.grid_disk(cell, 1):
+            if neighbour == cell:
+                continue
+            try:
+                q = idx.cell_index(neighbour)
+            except KeyError:
+                continue
+            if np.isfinite(minutes[q]):
+                # ~15 km between res-5 centroids at the fastest available speed.
+                limit = t + 15.0 / fastest * 60.0 + 1.0
+                if minutes[q] > limit:
+                    raise ValueError(
+                        f"cell {neighbour} is {minutes[q]:.0f} min but its neighbour is "
+                        f"{t:.0f} min; ground edges are missing or mis-weighted"
+                    )
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `uv run pytest tests/test_validate.py -v`
+Expected: 3 passed
+
+- [ ] **Step 5: Write the licence firewall test**
+
+This is the check that keeps the project publishable. It asserts that nothing in `dist/`
+carries provider fingerprints.
+
+```python
+# tests/test_licence_firewall.py
+"""Nothing derived from FR24 or FlightAware may reach the published artifact."""
+
+import json
+import tomllib
+from pathlib import Path
+
+import pytest
+
+from transport_maps import config
+
+FORBIDDEN = ("fr24", "flightradar", "flightaware", "aeroapi", "fa_flight_id")
+
+
+def _dist_files() -> list[Path]:
+    return [p for p in config.DIST.rglob("*") if p.is_file()]
+
+
+@pytest.mark.skipif(not config.DIST.exists(), reason="nothing built yet")
+def test_no_provider_fingerprints_in_shipped_text():
+    for path in _dist_files():
+        if path.suffix not in {".json", ".geojson", ".toml"}:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore").lower()
+        for token in FORBIDDEN:
+            assert token not in text, f"{path} contains '{token}'"
+
+
+def test_calibration_contains_only_numbers():
+    raw = tomllib.loads((config.ROOT / "calibration.toml").read_text())
+
+    def assert_scalar(node, path=""):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                assert_scalar(v, f"{path}.{k}")
+        elif isinstance(node, list):
+            raise AssertionError(f"calibration.toml{path} is a list; records are forbidden")
+        else:
+            assert isinstance(node, (int, float, bool, str)), f"{path} is {type(node)}"
+
+    assert_scalar(raw)
+    # A record dump would be far larger than a coefficient table.
+    assert len(json.dumps(raw)) < 4_000
+```
+
+- [ ] **Step 6: Run the firewall test**
+
+Run: `uv run pytest tests/test_licence_firewall.py -v`
+Expected: 2 passed
+
+- [ ] **Step 7: Add the `build-all` command**
+
+Build the graph once, then solve each origin against it. Abort on the first failure — a
+partially written `dist/` is worse than none.
+
+```python
+# src/transport_maps/cli.py  (add alongside the existing solve command)
+def _build_all() -> None:
+    import numpy as np
+
+    from transport_maps import config, validate
+    from transport_maps.contour import bands
+    from transport_maps.emit import hover, index, routes_json, tiles
+    from transport_maps.graph import build, nodes
+    from transport_maps.solve import dijkstra
+
+    idx = nodes.build_index()
+    csr = build.build_graph(idx)
+    origins = index.load_origins()
+
+    index.write_index(origins, config.DIST / "index.json")
+    index.write_hover_cells(idx, config.DIST / "hover_cells.bin")
+
+    print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}")
+    for origin in origins:
+        slug = origin["slug"]
+        source = dijkstra.origin_node(idx, origin["lat"], origin["lon"])
+        minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
+
+        coverage = validate.check_coverage(minutes, idx)
+        if coverage < validate.MIN_COVERAGE:
+            raise SystemExit(
+                f"{slug}: coverage {coverage:.1%} below {validate.MIN_COVERAGE:.0%}"
+            )
+        validate.check_monotonic_ground(idx, minutes)
+
+        fc = bands.band_feature_collection(idx, minutes[: idx.n_cells])
+        validate.check_bands_disjoint(fc)
+
+        out = config.DIST / "origins"
+        tiles.write_pmtiles(fc, out / f"{slug}.pmtiles")
+        hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
+        routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
+
+        size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
+        print(f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}")
+```
+
+Wire it into `main()` by adding a `build-all` subparser with no arguments that calls
+`_build_all()`.
+
+- [ ] **Step 8: Run the full build**
+
+```bash
+uv run transport-maps build-all
+uv run pytest tests/ -v
+```
+
+Expected: `dist/` contains `index.json` and four files per origin. Every origin reports
+coverage above 90%.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/transport_maps/validate.py src/transport_maps/cli.py tests/
+git commit -S -m "feat(build): ✅ add batch build with coverage and licence gates"
+```
+
+---
+
+## Done
+
+At this point the pipeline produces the complete shipped artifact. The frontend plan
+(`docs/superpowers/plans/<date>-transport-frontend.md`) consumes `dist/` and needs no
+further pipeline work.

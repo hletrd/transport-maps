@@ -152,13 +152,17 @@ this terrain", including road-based public transport, not a specific route.
 
 Derived from OSM tags, falling back down the list when tags are absent:
 
-| Tag pattern | Effective speed |
-|---|---|
-| `highspeed=yes` | 250 km/h |
-| `usage=main` + `electrified` | 100 km/h |
-| `usage=main` | 80 km/h |
-| `usage=branch` | 60 km/h |
-| narrow gauge, industrial, tourism | excluded |
+Rail is read from OSM `type=route, route=train` relations, which carry an ordered stop
+list. A route counts as high-speed when any member way is tagged `highspeed=yes`.
+
+| Route class | Effective speed | Assumed frequency |
+|---|---|---|
+| high-speed | 250 km/h | 140 /week |
+| conventional | 80 km/h | 56 /week |
+
+Relations carry no timetable, so frequency is a per-class assumption rather than a fitted
+value. Track is never straight between stops, so distances are scaled by a sinuosity
+factor of 1.15.
 
 ### Flight block time
 
