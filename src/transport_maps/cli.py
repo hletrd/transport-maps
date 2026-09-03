@@ -34,7 +34,11 @@ def _build_all(limit: int | None = None) -> None:
     if limit is not None:
         origins = origins[:limit]
 
-    index.write_index(origins, config.DIST / "index.json")
+    # hover_cells.bin depends only on the graph, not on any origin, so it is
+    # safe to write eagerly. index.json is different: it lists the origins the
+    # frontend expects to find files for, so it must wait until every origin
+    # below has actually succeeded -- writing it first would leave it naming
+    # origins whose per-origin files an aborted run never produced.
     index.write_hover_cells(idx, config.DIST / "hover_cells.bin")
 
     print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}")
@@ -60,6 +64,9 @@ def _build_all(limit: int | None = None) -> None:
 
         size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
         print(f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}")
+
+    # Only reached once every origin above has succeeded.
+    index.write_index(origins, config.DIST / "index.json")
 
 
 def main() -> None:
