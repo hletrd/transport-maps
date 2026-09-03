@@ -102,12 +102,31 @@ def test_cell_class_handles_the_antimeridian_without_crashing():
     min/max bounding box meaningless (it would span the wrong side of the globe),
     so cell_class must fall back to centroid sampling for it instead of crashing
     or silently returning a bogus window.
+
+    Pin the fallback's actual OUTPUT, not just its shape: near +/-180 degrees the
+    naive bbox path computes c0 about 0 and c1 about 4319 -- nearly the entire
+    longitude band at that latitude -- which would still return some class in
+    [0, 5] without crashing. Only checking the shape/range therefore cannot tell
+    a working fallback from a dead one, so assert equality with the exact
+    centroid sample the fallback is meant to return instead.
     """
     cell = "85045b23fffffff"  # near Chukotka, Russia; boundary lon span > 180 deg
     boundary = h3.cell_to_boundary(cell)
     lons = [p[1] for p in boundary]
     assert max(lons) - min(lons) > 180.0  # confirms this cell exercises the fallback
 
-    result = roads.cell_class([cell])
-    assert result.shape == (1,)
-    assert 0 <= result[0] <= 5
+    lat, lon = h3.cell_to_latlng(cell)
+    expected = roads.sample_class(np.array([lat]), np.array([lon]))[0]
+    assert roads.cell_class([cell])[0] == expected
+
+
+def test_row_and_col_helpers_are_not_transposed():
+    """Direct pin against a source/column swap, rather than relying only on the
+    statistical coverage of the Alta case and the 4,000-cell invariant test.
+
+    lat=60, lon=-120 gives row = (90-60)*12 = 360 and col = (-120+180)*12 = 720 --
+    clearly distinct values (12 = cells per degree, since 5 arcmin = 1/12 degree),
+    so a `_row_of`/`_col_of` transposition fails this immediately.
+    """
+    assert roads._row_of(60.0) == 360
+    assert roads._col_of(-120.0) == 720

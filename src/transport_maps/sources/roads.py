@@ -69,8 +69,16 @@ def road_class_grid() -> np.ndarray:
             raise RuntimeError(f"{path} has shape {band.shape}, expected {(GRID_ROWS, GRID_COLS)}")
         best[band >= DENSITY_THRESHOLD] = road_type
 
+    def _write(tmp: Path) -> None:
+        # np.save(path, ...) on a bare path appends ".npy" if missing, which
+        # would write past the atomic temp file instead of into it -- pass an
+        # explicitly closed file object so the bytes land exactly at `tmp`
+        # before the rename below runs.
+        with tmp.open("wb") as f:
+            np.save(f, best)
+
     config.ensure_dirs()
-    np.save(cached, best)
+    _atomic_write(cached, _write)
     _grid_cache = best
     return best
 
@@ -89,7 +97,8 @@ def cell_class(cells: list[str]) -> np.ndarray:
         cells made worse              ->  0.00% (a superset cannot be worse)
 
     The spec says "the highest-grade road class present in it" -- present in the
-    cell, not at its centre. Full pass over 548,557 cells takes about 2 seconds.
+    cell, not at its centre. Measured (not estimated) full pass over 548,557 cells:
+    4.77 seconds.
     """
     grid = road_class_grid()
     out = np.zeros(len(cells), dtype=np.uint8)
