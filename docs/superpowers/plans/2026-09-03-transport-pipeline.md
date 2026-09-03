@@ -1743,20 +1743,33 @@ interpolation needed.
 - Consumes: `nodes.NodeIndex`
 - Produces: `roads.road_class_grid() -> np.ndarray` (shape `(2160, 4320)`, `uint8`, values 0–5 where 0 is roadless and 1 is the highest grade), `roads.sample_class(lats, lons) -> np.ndarray`, `ground.cell_speed_kmh(idx) -> np.ndarray` (unchanged signature)
 
-- [ ] **Step 1: Download the GRIP4 rasters**
+- [ ] **Step 1: Confirm the GRIP4 download works**
 
-GRIP4 is CC-0 and distributed from GLOBIO. The download is manual — the site does not
-offer a stable direct URL.
-
-1. Open <https://www.globio.info/download-grip-dataset>
-2. Download the **global raster** archive (5 arcmin road density).
-3. Extract the five per-type density grids into `data/cache/grip4/`, named
-   `grip4_tp1.asc` … `grip4_tp5.asc` (type 1 = highways, 5 = local roads).
+GRIP4 is CC-0 and served as direct downloads — no registration, no form. Verified live:
 
 ```bash
-mkdir -p data/cache/grip4
-ls data/cache/grip4   # expect grip4_tp1.asc .. grip4_tp5.asc
+curl -sIL https://dataportaal.pbl.nl/downloads/GRIP4/GRIP4_density_tp1.zip | grep -i '^HTTP\|content-length'
+# HTTP/2 200, content-length: 2057941
 ```
+
+Each `GRIP4_density_tp{N}.zip` is roughly 2 MB and contains `grip4_tp{N}_dens_m_km2.asc`
+(about 47 MB uncompressed) plus a land-area grid and a ReadMe. Fetching all five types is
+a normal pipeline step; do NOT make it a manual instruction.
+
+Measured properties of the rasters, confirmed against the real files:
+
+| Property | Value |
+|---|---|
+| Shape | `(2160, 4320)` — 5 arcmin global |
+| Bounds | -180, -90 to 180, 90 |
+| dtype | `int32` |
+| NoData | `-9999.0` |
+| Units | **metres of road per km² per cell** (from the ReadMe) |
+| Type 1 (highways) non-zero cells | 68,489 of 9,331,200 |
+| Median density where present | 140 m/km² |
+
+`DENSITY_THRESHOLD = 1.0` keeps 68,240 of the 68,489 non-zero highway cells (99.6%), and
+NoData (-9999) falls below it automatically, so no separate NoData mask is needed.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1814,17 +1827,47 @@ GRIP4 ships one density grid per road type at 5 arcmin. We reduce them to a sing
 "best grade present" grid: 1 = highway, 5 = local road, 0 = roadless.
 """
 
+import io
+import zipfile
+from pathlib import Path
+
+import httpx
 import numpy as np
 import rasterio
 
 from transport_maps import config
+from transport_maps.sources._utils import _atomic_write
 
-GRID_ROWS, GRID_COLS = 2160, 4320  # 5 arcmin global
+GRIP4_URL = "https://dataportaal.pbl.nl/downloads/GRIP4/GRIP4_density_tp{n}.zip"
+GRID_ROWS, GRID_COLS = 2160, 4320  # 5 arcmin global; verified against the real rasters
 N_TYPES = 5
 # Density below this is noise rather than usable road.
 DENSITY_THRESHOLD = 1.0
 
 _grid_cache: np.ndarray | None = None
+
+
+def _ensure_raster(road_type: int) -> Path:
+    """Download and extract one GRIP4 density raster, cached under config.CACHE."""
+    target = config.CACHE / "grip4" / f"grip4_tp{road_type}_dens_m_km2.asc"
+    if target.exists():
+        return target
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    url = GRIP4_URL.format(n=road_type)
+    r = httpx.get(url, follow_redirects=True, timeout=300)
+    r.raise_for_status()
+
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        member = next(
+            (n for n in z.namelist() if n.lower().endswith(f"tp{road_type}_dens_m_km2.asc")),
+            None,
+        )
+        if member is None:
+            raise RuntimeError(f"{url} has no tp{road_type} density raster: {z.namelist()}")
+        _atomic_write(target, lambda tmp: tmp.write_bytes(z.read(member)))
+
+    return target
 
 
 def road_class_grid() -> np.ndarray:
@@ -1840,12 +1883,7 @@ def road_class_grid() -> np.ndarray:
 
     best = np.zeros((GRID_ROWS, GRID_COLS), dtype=np.uint8)
     for road_type in range(N_TYPES, 0, -1):  # worst grade first, best overwrites
-        path = config.CACHE / "grip4" / f"grip4_tp{road_type}.asc"
-        if not path.exists():
-            raise FileNotFoundError(
-                f"missing {path}. Download the GRIP4 5-arcmin rasters from "
-                "https://www.globio.info/download-grip-dataset (see Task 8 Step 1)."
-            )
+        path = _ensure_raster(road_type)
         with rasterio.open(path) as src:
             band = src.read(1)
         if band.shape != (GRID_ROWS, GRID_COLS):
