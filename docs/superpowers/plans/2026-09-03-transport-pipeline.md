@@ -1795,11 +1795,23 @@ def test_open_ocean_has_no_roads(grid):
     assert roads.sample_class(np.array([0.0]), np.array([-160.0]))[0] == 0
 
 
-def test_dense_urban_regions_have_the_highest_grade(grid):
-    # Seoul, Los Angeles and the Ruhr all have motorway-grade roads.
-    lats = np.array([37.5665, 34.0522, 51.5136])
-    lons = np.array([126.9780, -118.2437, 7.4653])
+def test_motorway_corridors_are_class_one(grid):
+    """Points on real expressways. Measured tp1 density: 243, 666, 494 m/km2."""
+    # Yangjae IC on the Gyeongbu Expressway; Los Angeles; Essen in the Ruhr.
+    lats = np.array([37.4837, 34.0522, 51.5136])
+    lons = np.array([127.0325, -118.2437, 7.4653])
     assert (roads.sample_class(lats, lons) == 1).all()
+
+
+def test_dense_urban_core_without_a_motorway_is_still_well_roaded(grid):
+    """Seoul's historic core has no motorway in its 5-arcmin cell but is dense.
+
+    Measured: tp1 = 0, tp2 = 1573 m/km2. Seoul's expressways ring the old city
+    rather than cross it, so this cell is class 2, not class 1. Asserting class 1
+    here would be a false premise about how road networks are laid out, not a
+    threshold problem -- do not "fix" it by lowering DENSITY_THRESHOLD.
+    """
+    assert roads.sample_class(np.array([37.5665]), np.array([126.9780]))[0] == 2
 
 
 def test_remote_interior_is_lower_grade_than_a_capital(grid):
