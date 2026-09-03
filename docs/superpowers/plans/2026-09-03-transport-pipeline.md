@@ -1536,7 +1536,7 @@ import bisect
 import h3
 import numpy as np
 from shapely import affinity
-from shapely.geometry import Polygon, box, shape
+from shapely.geometry import Polygon, box, mapping, shape
 from shapely.ops import unary_union
 
 from transport_maps import config
@@ -1571,8 +1571,7 @@ def _split_at_antimeridian(cell: str):
     """
     boundary = h3.cell_to_boundary(cell)
     lats = [lat for lat, _lon in boundary]
-    unwrapped = [lon + 360.0 if lon < 0 else lon for lon in boundary and
-                 [lon for _lat, lon in boundary]]
+    unwrapped = [lon + 360.0 if lon < 0 else lon for _lat, lon in boundary]
     ring = Polygon(zip(unwrapped, lats))
     left = ring.intersection(box(-180.0, -90.0, 180.0, 90.0))
     right = affinity.translate(
@@ -1632,7 +1631,7 @@ def band_feature_collection(idx, cell_minutes: np.ndarray) -> dict:
                     else None
                 ),
             },
-            "geometry": shapely.geometry.mapping(geometry),
+            "geometry": mapping(geometry),
         })
 
     return {"type": "FeatureCollection", "features": features}
