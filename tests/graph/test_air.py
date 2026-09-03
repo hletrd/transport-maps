@@ -76,3 +76,13 @@ def test_frequency_falls_with_airport_size(cal):
 
 def test_frequency_never_below_floor(cal):
     assert air.frequency_model("small", "small", 19000.0, cal) >= air.MIN_FLIGHTS_PER_WEEK
+
+
+def test_high_frequency_short_haul_has_short_expected_wait(cal):
+    # ICN -> NRT, 1257.7 km, large-large: one of the busiest routes on Earth.
+    # A too-shallow frequency decay collapses every route to a handful of
+    # flights per week, which once produced a 24+ hour expected wait here and
+    # made the whole travel-time map meaningless. Guard against that regression.
+    freq = air.frequency_model("large", "large", 1257.7, cal)
+    wait = air.expected_wait_min(freq)
+    assert wait < 120
