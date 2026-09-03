@@ -46,6 +46,9 @@ revisited in a later iteration without re-deriving the reasoning.
 | D9 | Paid APIs | Google Routes API (TRANSIT) for city↔airport legs | Guessing access times; Amazon Location Service | User prefers Google/Amazon; replaces the weakest guess in the model for ~$5–25 |
 | D10 | Hosting | AWS S3 + CloudFront, serving PMTiles | GCP Cloud Storage + CDN; Cloudflare Pages | User prefers Google/Amazon; one storage tech for basemap and isochrones, no per-tile pricing |
 | D11 | Route network source | Wikipedia "Airlines and destinations" tables + OurAirports | OpenFlights routes.dat (stale, 2014); OpenSky (licence forbids); paid schedules (cannot redistribute) | Only open, current, redistributable global route network |
+| D12 | Road speed field source | GRIP4 5-arcmin road-density rasters | Planet OSM highway parsing; Natural Earth roads | 5 arcmin (~8x8 km) matches H3 res-5 cell size almost exactly; CC-0; removes the pipeline's heaviest stage |
+| D13 | Antarctica | Excluded from the cell universe | Include with a special case | H3 cannot polyfill a pole-wrapping shape, and it has no scheduled service |
+| D14 | Route frequency | Fitted gravity model, coefficients calibrated | Ship observed frequencies; assume uniform frequency | Wikipedia gives the network but not frequency; a fitted model keeps observed data out of `dist/` |
 
 ### Choices deliberately deferred
 
@@ -87,7 +90,8 @@ and testable alone:
 |---|---|---|---|
 | OurAirports | Airport coordinates, size, IATA/ICAO | Public domain | Yes |
 | Wikipedia airport pages | Airline route network (who flies A→B) | CC-BY-SA | Yes, attributed |
-| OpenStreetMap | Rail lines, stations, roads, ferry routes | ODbL | Yes, attributed |
+| OpenStreetMap | Rail lines, stations, ferry routes | ODbL | Yes, attributed |
+| GRIP4 road density | Per-cell ground speed field | CC-0 | Yes, attributed |
 | Protomaps basemap | Globe basemap tiles | Open, OSM-derived | Yes, self-hosted |
 | Google Routes API | City↔airport transit times | Commercial | Derived values only |
 | FR24 / FlightAware | Model calibration | Commercial, no redistribution | **No — coefficients only** |
@@ -112,7 +116,7 @@ One unified graph. One Dijkstra per origin. That is the entire algorithm.
 
 | Type | Approx. count | Notes |
 |---|---|---|
-| Hex cells | ~590,000 | H3 resolution 5, land only (~253 km²/cell, ~8.5 km edge) |
+| Hex cells | 548,557 | H3 resolution 5, land excluding Antarctica (~253 km²/cell, ~8.5 km edge) |
 | Airports | ~4,000 | Filtered to those with scheduled passenger service |
 | Rail stations | ~10,000 | Intercity and high-speed; commuter-only stations excluded |
 | Ferry terminals | ~2,000 | OSM `route=ferry` endpoints |
@@ -130,9 +134,10 @@ One unified graph. One Dijkstra per origin. That is the entire algorithm.
 
 ### Ground speed field
 
-Each land cell gets an effective speed from the OSM highway classes present in it:
+Each land cell gets an effective speed from the highest-grade road class present in it,
+read from the GRIP4 density rasters:
 
-| Best road class in cell | Effective speed |
+| Best GRIP road class in cell | Effective speed |
 |---|---|
 | motorway | 85 km/h |
 | trunk / primary | 60 km/h |
@@ -205,8 +210,10 @@ FR24 flight-summary endpoint and FlightAware AeroAPI, then regresses:
 - Airborne time vs. great-circle distance, by distance band and aircraft class
 - Taxi-out and taxi-in overhead by airport size class
 - Realistic minimum connection time per hub
-- Observed route frequency, used to **validate coverage** of the Wikipedia-derived
-  network and report the percentage of real routes it captures
+- Observed route frequency, used twice: to fit the **gravity frequency model**
+  (`flights_per_week = base * size_weight[dep] * size_weight[arr] * distance_km ^ decay`),
+  since Wikipedia supplies the route network but no frequencies; and to **validate
+  coverage** of that network, reporting the percentage of real routes it captures
 
 Fit on 80% of the sample, report mean absolute error on the held-out 20%. The MAE is
 committed alongside the coefficients so accuracy claims are auditable.
@@ -221,7 +228,7 @@ durations are retained.
 |---|---|---|
 | `index.json` | ~20 KB | Origin city list with coordinates and display names |
 | `origins/{iata}.pmtiles` | 0.5–1.5 MB | Dissolved isochrone band polygons |
-| `origins/{iata}.bin` | ~170 KB | H3 res-4 uint16 minutes array, for hover readout |
+| `origins/{iata}.bin` | 162 KB | H3 res-4 uint16 minutes array (82,983 cells), for hover readout |
 | `origins/{iata}.json` | ~200 KB | Transport nodes with arrival time and predecessor, for route inspection |
 | `basemap.pmtiles` | ~100 MB | Protomaps globe basemap, served once |
 
