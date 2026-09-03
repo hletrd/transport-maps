@@ -13,6 +13,7 @@ dependencies = [
     "numpy>=2.5.2",
     "polars>=1.44.1",
     "pyarrow>=25.0.1",
+    "pyogrio>=0.13.0",
     "scipy>=1.18.1",
     "selectolax>=0.4.11",
     "shapely>=2.1.2",
