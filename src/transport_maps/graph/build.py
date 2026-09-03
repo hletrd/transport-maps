@@ -1,5 +1,7 @@
 """Assemble the multi-modal graph as a scipy CSR matrix."""
 
+import logging
+
 import h3
 import numpy as np
 import scipy.sparse as sp
@@ -7,6 +9,8 @@ import scipy.sparse as sp
 from transport_maps.graph import air, ground
 from transport_maps.graph.nodes import NodeIndex
 from transport_maps.sources import airports, routes
+
+logger = logging.getLogger(__name__)
 
 # Phase A constants, split by domestic/international in Task 12.
 AIRPORT_ACCESS_MIN = 75.0   # arrive, check in, clear security
@@ -32,7 +36,14 @@ def is_geographically_plausible(distance_km: float, size1: str, size2: str) -> b
     return size1 == "large" or size2 == "large"
 
 
-def _air_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _air_edges(
+    idx: NodeIndex, rejected_out: list[tuple[str, str, float]] | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Directed flight edges. Pairs failing `is_geographically_plausible` are
+    dropped and, if `rejected_out` is given, appended to it as (src, dst, km)
+    so a caller (or a test) can inspect exactly what was rejected rather than
+    only reading a log line.
+    """
     cal = air.load_calibration()
     apts = airports.scheduled_airports()
     meta = {
@@ -63,10 +74,12 @@ def _air_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
     if rejected:
         detail = ", ".join(f"{s}->{d} ({km:.0f} km)" for s, d, km in rejected)
-        print(
-            f"build: rejected {len(rejected)} geographically implausible route(s) "
-            f"(>{IMPLAUSIBLE_LONGHAUL_KM:.0f} km, neither endpoint large): {detail}"
+        logger.warning(
+            "rejected %d geographically implausible route(s) (>%.0f km, neither endpoint large): %s",
+            len(rejected), IMPLAUSIBLE_LONGHAUL_KM, detail,
         )
+    if rejected_out is not None:
+        rejected_out.extend(rejected)
 
     return (
         np.asarray(rows, dtype=np.int64),
@@ -91,8 +104,13 @@ def _access_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     )
 
 
-def build_graph(idx: NodeIndex) -> sp.csr_matrix:
-    parts = [ground.hex_edges(idx), _air_edges(idx), _access_edges(idx)]
+def build_graph(
+    idx: NodeIndex, rejected_air_pairs: list[tuple[str, str, float]] | None = None
+) -> sp.csr_matrix:
+    """Assemble the graph. Pass a list as `rejected_air_pairs` to have it filled
+    with the (src, dst, km) triples `is_geographically_plausible` dropped.
+    """
+    parts = [ground.hex_edges(idx), _air_edges(idx, rejected_air_pairs), _access_edges(idx)]
     rows = np.concatenate([p[0] for p in parts])
     cols = np.concatenate([p[1] for p in parts])
     data = np.concatenate([p[2] for p in parts])
