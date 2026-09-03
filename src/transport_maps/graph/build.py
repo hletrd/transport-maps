@@ -12,6 +12,25 @@ from transport_maps.sources import airports, routes
 AIRPORT_ACCESS_MIN = 75.0   # arrive, check in, clear security
 AIRPORT_EGRESS_MIN = 45.0   # deplane, immigration, baggage
 
+# The longest real nonstop flight is about 15,300 km (e.g. Singapore-New York
+# JFK), and no scheduled route beyond this distance is flown without a large
+# hub at one end -- small/medium equipment can't cover it. This catches
+# Wikidata P238 resolution errors that fabricate a route to the wrong tiny
+# airfield (e.g. Lasondre_Airport, which has no IATA code of its own,
+# resolving to LSE -- La Crosse Regional Airport, Wisconsin -- inventing an
+# Indonesia-to-Wisconsin route). It does NOT touch legitimate long-haul pairs
+# that Wikipedia lists as a single "route" even though they're flown with a
+# stop, e.g. SYD->LHR, PEK->GRU, NOU->CDG: those always have a large airport
+# at one or both ends.
+IMPLAUSIBLE_LONGHAUL_KM = 8000.0
+
+
+def is_geographically_plausible(distance_km: float, size1: str, size2: str) -> bool:
+    """Reject ultra-long-haul pairs where neither endpoint is a large airport."""
+    if distance_km <= IMPLAUSIBLE_LONGHAUL_KM:
+        return True
+    return size1 == "large" or size2 == "large"
+
 
 def _air_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     cal = air.load_calibration()
@@ -25,6 +44,7 @@ def _air_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     rows: list[int] = []
     cols: list[int] = []
     minutes: list[float] = []
+    rejected: list[tuple[str, str, float]] = []
     net = routes.route_network()
     for src, dst in zip(net["src"], net["dst"]):
         if src not in known or dst not in known:
@@ -32,11 +52,21 @@ def _air_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         (lat1, lon1, size1) = meta[src]
         (lat2, lon2, size2) = meta[dst]
         d = h3.great_circle_distance((lat1, lon1), (lat2, lon2), unit="km")
+        if not is_geographically_plausible(d, size1, size2):
+            rejected.append((src, dst, d))
+            continue
         block = air.block_time_min(d, size1, size2, cal)
         wait = air.expected_wait_min(air.frequency_model(size1, size2, d, cal))
         rows.append(idx.airport_index(src))
         cols.append(idx.airport_index(dst))
         minutes.append(float(block + wait))
+
+    if rejected:
+        detail = ", ".join(f"{s}->{d} ({km:.0f} km)" for s, d, km in rejected)
+        print(
+            f"build: rejected {len(rejected)} geographically implausible route(s) "
+            f"(>{IMPLAUSIBLE_LONGHAUL_KM:.0f} km, neither endpoint large): {detail}"
+        )
 
     return (
         np.asarray(rows, dtype=np.int64),
