@@ -1,0 +1,947 @@
+# Origin cities for the isochrone picker.
+# slug/name/lat/lon -- lat/lon are the CITY CENTRE, not the airport.
+# Top world cities by airport passenger volume, plus coverage for every
+# inhabited continent (Africa, South America, Oceania included).
+
+[[origin]]
+slug = "seoul"
+name = "Seoul"
+lat = 37.5665
+lon = 126.978
+
+[[origin]]
+slug = "tokyo"
+name = "Tokyo"
+lat = 35.6762
+lon = 139.6503
+
+[[origin]]
+slug = "osaka"
+name = "Osaka"
+lat = 34.6937
+lon = 135.5023
+
+[[origin]]
+slug = "nagoya"
+name = "Nagoya"
+lat = 35.1815
+lon = 136.9066
+
+[[origin]]
+slug = "fukuoka"
+name = "Fukuoka"
+lat = 33.5904
+lon = 130.4017
+
+[[origin]]
+slug = "sapporo"
+name = "Sapporo"
+lat = 43.0618
+lon = 141.3545
+
+[[origin]]
+slug = "beijing"
+name = "Beijing"
+lat = 39.9042
+lon = 116.4074
+
+[[origin]]
+slug = "shanghai"
+name = "Shanghai"
+lat = 31.2304
+lon = 121.4737
+
+[[origin]]
+slug = "guangzhou"
+name = "Guangzhou"
+lat = 23.1291
+lon = 113.2644
+
+[[origin]]
+slug = "shenzhen"
+name = "Shenzhen"
+lat = 22.5431
+lon = 114.0579
+
+[[origin]]
+slug = "chengdu"
+name = "Chengdu"
+lat = 30.5728
+lon = 104.0668
+
+[[origin]]
+slug = "chongqing"
+name = "Chongqing"
+lat = 29.4316
+lon = 106.9123
+
+[[origin]]
+slug = "xian"
+name = "Xi'an"
+lat = 34.3416
+lon = 108.9398
+
+[[origin]]
+slug = "hangzhou"
+name = "Hangzhou"
+lat = 30.2741
+lon = 120.1551
+
+[[origin]]
+slug = "hong-kong"
+name = "Hong Kong"
+lat = 22.3193
+lon = 114.1694
+
+[[origin]]
+slug = "macau"
+name = "Macau"
+lat = 22.1987
+lon = 113.5439
+
+[[origin]]
+slug = "taipei"
+name = "Taipei"
+lat = 25.033
+lon = 121.5654
+
+[[origin]]
+slug = "kaohsiung"
+name = "Kaohsiung"
+lat = 22.6273
+lon = 120.3014
+
+[[origin]]
+slug = "ulaanbaatar"
+name = "Ulaanbaatar"
+lat = 47.8864
+lon = 106.9057
+
+[[origin]]
+slug = "singapore"
+name = "Singapore"
+lat = 1.3521
+lon = 103.8198
+
+[[origin]]
+slug = "bangkok"
+name = "Bangkok"
+lat = 13.7563
+lon = 100.5018
+
+[[origin]]
+slug = "kuala-lumpur"
+name = "Kuala Lumpur"
+lat = 3.139
+lon = 101.6869
+
+[[origin]]
+slug = "jakarta"
+name = "Jakarta"
+lat = -6.2088
+lon = 106.8456
+
+[[origin]]
+slug = "surabaya"
+name = "Surabaya"
+lat = -7.2575
+lon = 112.7521
+
+[[origin]]
+slug = "denpasar"
+name = "Denpasar"
+lat = -8.65
+lon = 115.2167
+
+[[origin]]
+slug = "manila"
+name = "Manila"
+lat = 14.5995
+lon = 120.9842
+
+[[origin]]
+slug = "cebu-city"
+name = "Cebu City"
+lat = 10.3157
+lon = 123.8854
+
+[[origin]]
+slug = "ho-chi-minh-city"
+name = "Ho Chi Minh City"
+lat = 10.8231
+lon = 106.6297
+
+[[origin]]
+slug = "hanoi"
+name = "Hanoi"
+lat = 21.0285
+lon = 105.8542
+
+[[origin]]
+slug = "phnom-penh"
+name = "Phnom Penh"
+lat = 11.5564
+lon = 104.9282
+
+[[origin]]
+slug = "vientiane"
+name = "Vientiane"
+lat = 17.9757
+lon = 102.6331
+
+[[origin]]
+slug = "yangon"
+name = "Yangon"
+lat = 16.8409
+lon = 96.1735
+
+[[origin]]
+slug = "bandar-seri-begawan"
+name = "Bandar Seri Begawan"
+lat = 4.9031
+lon = 114.9398
+
+[[origin]]
+slug = "delhi"
+name = "Delhi"
+lat = 28.7041
+lon = 77.1025
+
+[[origin]]
+slug = "mumbai"
+name = "Mumbai"
+lat = 19.076
+lon = 72.8777
+
+[[origin]]
+slug = "bangalore"
+name = "Bangalore"
+lat = 12.9716
+lon = 77.5946
+
+[[origin]]
+slug = "chennai"
+name = "Chennai"
+lat = 13.0827
+lon = 80.2707
+
+[[origin]]
+slug = "hyderabad"
+name = "Hyderabad"
+lat = 17.385
+lon = 78.4867
+
+[[origin]]
+slug = "kolkata"
+name = "Kolkata"
+lat = 22.5726
+lon = 88.3639
+
+[[origin]]
+slug = "ahmedabad"
+name = "Ahmedabad"
+lat = 23.0225
+lon = 72.5714
+
+[[origin]]
+slug = "pune"
+name = "Pune"
+lat = 18.5204
+lon = 73.8567
+
+[[origin]]
+slug = "karachi"
+name = "Karachi"
+lat = 24.8607
+lon = 67.0011
+
+[[origin]]
+slug = "lahore"
+name = "Lahore"
+lat = 31.5497
+lon = 74.3436
+
+[[origin]]
+slug = "islamabad"
+name = "Islamabad"
+lat = 33.6844
+lon = 73.0479
+
+[[origin]]
+slug = "dhaka"
+name = "Dhaka"
+lat = 23.8103
+lon = 90.4125
+
+[[origin]]
+slug = "colombo"
+name = "Colombo"
+lat = 6.9271
+lon = 79.8612
+
+[[origin]]
+slug = "kathmandu"
+name = "Kathmandu"
+lat = 27.7172
+lon = 85.324
+
+[[origin]]
+slug = "dubai"
+name = "Dubai"
+lat = 25.2048
+lon = 55.2708
+
+[[origin]]
+slug = "abu-dhabi"
+name = "Abu Dhabi"
+lat = 24.4539
+lon = 54.3773
+
+[[origin]]
+slug = "doha"
+name = "Doha"
+lat = 25.2854
+lon = 51.531
+
+[[origin]]
+slug = "riyadh"
+name = "Riyadh"
+lat = 24.7136
+lon = 46.6753
+
+[[origin]]
+slug = "jeddah"
+name = "Jeddah"
+lat = 21.4858
+lon = 39.1925
+
+[[origin]]
+slug = "kuwait-city"
+name = "Kuwait City"
+lat = 29.3759
+lon = 47.9774
+
+[[origin]]
+slug = "manama"
+name = "Manama"
+lat = 26.2285
+lon = 50.586
+
+[[origin]]
+slug = "muscat"
+name = "Muscat"
+lat = 23.588
+lon = 58.3829
+
+[[origin]]
+slug = "istanbul"
+name = "Istanbul"
+lat = 41.0082
+lon = 28.9784
+
+[[origin]]
+slug = "ankara"
+name = "Ankara"
+lat = 39.9334
+lon = 32.8597
+
+[[origin]]
+slug = "tel-aviv"
+name = "Tel Aviv"
+lat = 32.0853
+lon = 34.7818
+
+[[origin]]
+slug = "amman"
+name = "Amman"
+lat = 31.9454
+lon = 35.9284
+
+[[origin]]
+slug = "beirut"
+name = "Beirut"
+lat = 33.8938
+lon = 35.5018
+
+[[origin]]
+slug = "baghdad"
+name = "Baghdad"
+lat = 33.3152
+lon = 44.3661
+
+[[origin]]
+slug = "almaty"
+name = "Almaty"
+lat = 43.222
+lon = 76.8512
+
+[[origin]]
+slug = "tashkent"
+name = "Tashkent"
+lat = 41.2995
+lon = 69.2401
+
+[[origin]]
+slug = "baku"
+name = "Baku"
+lat = 40.4093
+lon = 49.8671
+
+[[origin]]
+slug = "tbilisi"
+name = "Tbilisi"
+lat = 41.7151
+lon = 44.8271
+
+[[origin]]
+slug = "yerevan"
+name = "Yerevan"
+lat = 40.1792
+lon = 44.4991
+
+[[origin]]
+slug = "london"
+name = "London"
+lat = 51.5072
+lon = -0.1276
+
+[[origin]]
+slug = "paris"
+name = "Paris"
+lat = 48.8566
+lon = 2.3522
+
+[[origin]]
+slug = "frankfurt"
+name = "Frankfurt"
+lat = 50.1109
+lon = 8.6821
+
+[[origin]]
+slug = "munich"
+name = "Munich"
+lat = 48.1351
+lon = 11.582
+
+[[origin]]
+slug = "berlin"
+name = "Berlin"
+lat = 52.52
+lon = 13.405
+
+[[origin]]
+slug = "hamburg"
+name = "Hamburg"
+lat = 53.5511
+lon = 9.9937
+
+[[origin]]
+slug = "amsterdam"
+name = "Amsterdam"
+lat = 52.3676
+lon = 4.9041
+
+[[origin]]
+slug = "brussels"
+name = "Brussels"
+lat = 50.8503
+lon = 4.3517
+
+[[origin]]
+slug = "madrid"
+name = "Madrid"
+lat = 40.4168
+lon = -3.7038
+
+[[origin]]
+slug = "barcelona"
+name = "Barcelona"
+lat = 41.3874
+lon = 2.1686
+
+[[origin]]
+slug = "rome"
+name = "Rome"
+lat = 41.9028
+lon = 12.4964
+
+[[origin]]
+slug = "milan"
+name = "Milan"
+lat = 45.4642
+lon = 9.19
+
+[[origin]]
+slug = "zurich"
+name = "Zurich"
+lat = 47.3769
+lon = 8.5417
+
+[[origin]]
+slug = "geneva"
+name = "Geneva"
+lat = 46.2044
+lon = 6.1432
+
+[[origin]]
+slug = "vienna"
+name = "Vienna"
+lat = 48.2082
+lon = 16.3738
+
+[[origin]]
+slug = "copenhagen"
+name = "Copenhagen"
+lat = 55.6761
+lon = 12.5683
+
+[[origin]]
+slug = "stockholm"
+name = "Stockholm"
+lat = 59.3293
+lon = 18.0686
+
+[[origin]]
+slug = "oslo"
+name = "Oslo"
+lat = 59.9139
+lon = 10.7522
+
+[[origin]]
+slug = "helsinki"
+name = "Helsinki"
+lat = 60.1699
+lon = 24.9384
+
+[[origin]]
+slug = "reykjavik"
+name = "Reykjavik"
+lat = 64.1466
+lon = -21.9426
+
+[[origin]]
+slug = "dublin"
+name = "Dublin"
+lat = 53.3498
+lon = -6.2603
+
+[[origin]]
+slug = "lisbon"
+name = "Lisbon"
+lat = 38.7223
+lon = -9.1393
+
+[[origin]]
+slug = "athens"
+name = "Athens"
+lat = 37.9838
+lon = 23.7275
+
+[[origin]]
+slug = "warsaw"
+name = "Warsaw"
+lat = 52.2297
+lon = 21.0122
+
+[[origin]]
+slug = "prague"
+name = "Prague"
+lat = 50.0755
+lon = 14.4378
+
+[[origin]]
+slug = "budapest"
+name = "Budapest"
+lat = 47.4979
+lon = 19.0402
+
+[[origin]]
+slug = "bucharest"
+name = "Bucharest"
+lat = 44.4268
+lon = 26.1025
+
+[[origin]]
+slug = "sofia"
+name = "Sofia"
+lat = 42.6977
+lon = 23.3219
+
+[[origin]]
+slug = "belgrade"
+name = "Belgrade"
+lat = 44.7866
+lon = 20.4489
+
+[[origin]]
+slug = "zagreb"
+name = "Zagreb"
+lat = 45.815
+lon = 15.9819
+
+[[origin]]
+slug = "moscow"
+name = "Moscow"
+lat = 55.7558
+lon = 37.6173
+
+[[origin]]
+slug = "saint-petersburg"
+name = "Saint Petersburg"
+lat = 59.9311
+lon = 30.3609
+
+[[origin]]
+slug = "kyiv"
+name = "Kyiv"
+lat = 50.4501
+lon = 30.5234
+
+[[origin]]
+slug = "manchester"
+name = "Manchester"
+lat = 53.4808
+lon = -2.2426
+
+[[origin]]
+slug = "edinburgh"
+name = "Edinburgh"
+lat = 55.9533
+lon = -3.1883
+
+[[origin]]
+slug = "new-york"
+name = "New York"
+lat = 40.7128
+lon = -74.006
+
+[[origin]]
+slug = "los-angeles"
+name = "Los Angeles"
+lat = 34.0522
+lon = -118.2437
+
+[[origin]]
+slug = "chicago"
+name = "Chicago"
+lat = 41.8781
+lon = -87.6298
+
+[[origin]]
+slug = "atlanta"
+name = "Atlanta"
+lat = 33.749
+lon = -84.388
+
+[[origin]]
+slug = "dallas"
+name = "Dallas"
+lat = 32.7767
+lon = -96.797
+
+[[origin]]
+slug = "denver"
+name = "Denver"
+lat = 39.7392
+lon = -104.9903
+
+[[origin]]
+slug = "san-francisco"
+name = "San Francisco"
+lat = 37.7749
+lon = -122.4194
+
+[[origin]]
+slug = "miami"
+name = "Miami"
+lat = 25.7617
+lon = -80.1918
+
+[[origin]]
+slug = "houston"
+name = "Houston"
+lat = 29.7604
+lon = -95.3698
+
+[[origin]]
+slug = "seattle"
+name = "Seattle"
+lat = 47.6062
+lon = -122.3321
+
+[[origin]]
+slug = "las-vegas"
+name = "Las Vegas"
+lat = 36.1699
+lon = -115.1398
+
+[[origin]]
+slug = "orlando"
+name = "Orlando"
+lat = 28.5383
+lon = -81.3792
+
+[[origin]]
+slug = "boston"
+name = "Boston"
+lat = 42.3601
+lon = -71.0589
+
+[[origin]]
+slug = "washington-dc"
+name = "Washington, D.C."
+lat = 38.9072
+lon = -77.0369
+
+[[origin]]
+slug = "toronto"
+name = "Toronto"
+lat = 43.6532
+lon = -79.3832
+
+[[origin]]
+slug = "vancouver"
+name = "Vancouver"
+lat = 49.2827
+lon = -123.1207
+
+[[origin]]
+slug = "montreal"
+name = "Montreal"
+lat = 45.5019
+lon = -73.5674
+
+[[origin]]
+slug = "mexico-city"
+name = "Mexico City"
+lat = 19.4326
+lon = -99.1332
+
+[[origin]]
+slug = "cancun"
+name = "Cancún"
+lat = 21.1619
+lon = -86.8515
+
+[[origin]]
+slug = "guadalajara"
+name = "Guadalajara"
+lat = 20.6597
+lon = -103.3496
+
+[[origin]]
+slug = "sao-paulo"
+name = "São Paulo"
+lat = -23.5505
+lon = -46.6333
+
+[[origin]]
+slug = "rio-de-janeiro"
+name = "Rio de Janeiro"
+lat = -22.9068
+lon = -43.1729
+
+[[origin]]
+slug = "brasilia"
+name = "Brasília"
+lat = -15.7939
+lon = -47.8828
+
+[[origin]]
+slug = "buenos-aires"
+name = "Buenos Aires"
+lat = -34.6037
+lon = -58.3816
+
+[[origin]]
+slug = "bogota"
+name = "Bogotá"
+lat = 4.711
+lon = -74.0721
+
+[[origin]]
+slug = "lima"
+name = "Lima"
+lat = -12.0464
+lon = -77.0428
+
+[[origin]]
+slug = "santiago"
+name = "Santiago"
+lat = -33.4489
+lon = -70.6693
+
+[[origin]]
+slug = "caracas"
+name = "Caracas"
+lat = 10.4806
+lon = -66.9036
+
+[[origin]]
+slug = "quito"
+name = "Quito"
+lat = -0.1807
+lon = -78.4678
+
+[[origin]]
+slug = "montevideo"
+name = "Montevideo"
+lat = -34.9011
+lon = -56.1645
+
+[[origin]]
+slug = "la-paz"
+name = "La Paz"
+lat = -16.4897
+lon = -68.1193
+
+[[origin]]
+slug = "asuncion"
+name = "Asunción"
+lat = -25.2637
+lon = -57.5759
+
+[[origin]]
+slug = "medellin"
+name = "Medellín"
+lat = 6.2442
+lon = -75.5812
+
+[[origin]]
+slug = "cairo"
+name = "Cairo"
+lat = 30.0444
+lon = 31.2357
+
+[[origin]]
+slug = "johannesburg"
+name = "Johannesburg"
+lat = -26.2041
+lon = 28.0473
+
+[[origin]]
+slug = "cape-town"
+name = "Cape Town"
+lat = -33.9249
+lon = 18.4241
+
+[[origin]]
+slug = "lagos"
+name = "Lagos"
+lat = 6.5244
+lon = 3.3792
+
+[[origin]]
+slug = "abuja"
+name = "Abuja"
+lat = 9.0765
+lon = 7.3986
+
+[[origin]]
+slug = "nairobi"
+name = "Nairobi"
+lat = -1.2921
+lon = 36.8219
+
+[[origin]]
+slug = "addis-ababa"
+name = "Addis Ababa"
+lat = 9.025
+lon = 38.7469
+
+[[origin]]
+slug = "casablanca"
+name = "Casablanca"
+lat = 33.5731
+lon = -7.5898
+
+[[origin]]
+slug = "tunis"
+name = "Tunis"
+lat = 36.8065
+lon = 10.1815
+
+[[origin]]
+slug = "algiers"
+name = "Algiers"
+lat = 36.7538
+lon = 3.0588
+
+[[origin]]
+slug = "accra"
+name = "Accra"
+lat = 5.6037
+lon = -0.187
+
+[[origin]]
+slug = "dakar"
+name = "Dakar"
+lat = 14.7167
+lon = -17.4677
+
+[[origin]]
+slug = "kigali"
+name = "Kigali"
+lat = -1.9403
+lon = 30.0587
+
+[[origin]]
+slug = "dar-es-salaam"
+name = "Dar es Salaam"
+lat = -6.7924
+lon = 39.2083
+
+[[origin]]
+slug = "khartoum"
+name = "Khartoum"
+lat = 15.5007
+lon = 32.5599
+
+[[origin]]
+slug = "sydney"
+name = "Sydney"
+lat = -33.8688
+lon = 151.2093
+
+[[origin]]
+slug = "melbourne"
+name = "Melbourne"
+lat = -37.8136
+lon = 144.9631
+
+[[origin]]
+slug = "brisbane"
+name = "Brisbane"
+lat = -27.4698
+lon = 153.0251
+
+[[origin]]
+slug = "perth"
+name = "Perth"
+lat = -31.9505
+lon = 115.8605
+
+[[origin]]
+slug = "auckland"
+name = "Auckland"
+lat = -36.8485
+lon = 174.7633
+
+[[origin]]
+slug = "wellington"
+name = "Wellington"
+lat = -41.2865
+lon = 174.7762
+
+[[origin]]
+slug = "suva"
+name = "Suva"
+lat = -18.1416
+lon = 178.4419
+
+[[origin]]
+slug = "port-moresby"
+name = "Port Moresby"
+lat = -9.4438
+lon = 147.1803
+
