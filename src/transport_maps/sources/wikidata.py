@@ -8,6 +8,7 @@ import httpx
 from transport_maps import config
 from transport_maps.sources._utils import (
     _atomic_write,
+    _refuse_partial,
     _retry_after_seconds,
     _validated_json,
 )
@@ -173,6 +174,13 @@ def iata_for_titles(titles: list[str]) -> dict[str, str]:
     stays un-cached (and so is retried later) unless it was actually queried
     and found to lack (or have) property P238 -- a batch that fails outright
     after retries is skipped, not recorded as "not an airport".
+
+    Raises rather than returning a partial mapping when anything was left
+    unresolved. The caller (`routes.route_network`) writes its result to
+    `routes.parquet` and returns that file forever after, so "retry on the
+    next call" never happens: a title silently omitted here is a route
+    permanently missing from the shipped network. The flush above still runs
+    first, so the re-run this forces is cheap.
     """
     config.ensure_dirs()
     cache: dict[str, str] = json.loads(_cache_path().read_text()) if _cache_path().exists() else {}
@@ -187,20 +195,24 @@ def iata_for_titles(titles: list[str]) -> dict[str, str]:
                     resolved = _resolve_batch(client, batch)
                 except (httpx.HTTPStatusError, httpx.TransportError, RuntimeError) as e:
                     failed_titles.extend(batch)
-                    print(f"wikidata: batch {n}/{len(batches)} failed, will retry "
-                          f"next run: {e!r}")
+                    print(f"wikidata: batch {n}/{len(batches)} failed: {e!r}")
                 else:
                     for title in batch:
                         if title in resolved:
                             cache[title] = resolved[title]
-                        # else: unconfirmed this round -- leave un-cached.
+                        else:
+                            # Unconfirmed this round -- left un-cached so a
+                            # re-run retries it, and counted so this run
+                            # refuses to hand back a partial mapping.
+                            failed_titles.append(title)
                 if n % SAVE_EVERY == 0 or n == len(batches):
                     _save_cache(cache)
                 if n % 20 == 0 or n == len(batches):
                     print(f"wikidata: batch {n}/{len(batches)} done ({len(cache)} titles cached)")
                 time.sleep(BATCH_DELAY_S)
-        if failed_titles:
-            print(f"wikidata: {len(failed_titles)} titles unresolved this run "
-                  "(will retry on next call)")
+        _refuse_partial(
+            "Wikidata IATA resolution", failed_titles,
+            "the resolved titles are already cached, so a re-run retries only these",
+        )
 
     return {t: cache[t] for t in titles if cache.get(t)}

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import polars as pl
 import pytest
 
 from transport_maps import config
@@ -108,3 +109,158 @@ def test_resolves_both_titles_when_two_collapse_to_the_same_page(tmp_path, monke
     got = wikidata.iata_for_titles(["Narita_Airport", "Narita_International_Airport"])
     assert got["Narita_Airport"] == "NRT"
     assert got["Narita_International_Airport"] == "NRT"
+
+
+# --- Refusal to persist a partially-crawled network (C1) ---------------------
+#
+# routes.parquet is returned verbatim by every later call, so the old
+# "will retry next run" messages named a retry that structurally could never
+# happen. These tests pin that a partial crawl now aborts instead of becoming
+# the permanent route network.
+
+
+def _stub_route_network_inputs(monkeypatch, tmp_path, destinations, unresolved):
+    """Point route_network at a tmp BUILD dir and fake every crawl collaborator."""
+    monkeypatch.setattr(config, "BUILD", tmp_path)
+    monkeypatch.setattr(
+        routes.airports, "scheduled_airports",
+        lambda: pl.DataFrame({"iata": ["ICN", "NRT"]}),
+    )
+    monkeypatch.setattr(routes, "_wikipedia_titles", lambda apts: {"ICN": "A", "NRT": "B"})
+    monkeypatch.setattr(
+        routes, "_crawl_destinations", lambda titles: (destinations, unresolved)
+    )
+    monkeypatch.setattr(routes.wikidata, "iata_for_titles", lambda titles: {})
+
+
+def test_route_network_refuses_to_persist_a_partial_crawl(tmp_path, monkeypatch):
+    _stub_route_network_inputs(
+        monkeypatch, tmp_path, destinations={"ICN": ["B"]}, unresolved=["NRT"]
+    )
+
+    with pytest.raises(RuntimeError, match="refusing to persist a partial route network"):
+        routes.route_network()
+
+    assert not (tmp_path / "routes.parquet").exists()
+
+
+def test_route_network_names_the_unresolved_count_and_a_sample(tmp_path, monkeypatch):
+    _stub_route_network_inputs(
+        monkeypatch, tmp_path,
+        destinations={}, unresolved=[f"X{i:02d}" for i in range(30)],
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        routes.route_network()
+    assert "30 entries unresolved" in str(excinfo.value)
+    assert "X00" in str(excinfo.value)
+
+
+def test_route_network_still_builds_when_nothing_is_unresolved(tmp_path, monkeypatch):
+    """Companion to the refusal tests: the guard must not block a clean crawl.
+
+    Without this, deleting the whole crawl and always raising would pass the
+    two tests above.
+    """
+    pairs = {f"A{i:03d}" for i in range(200)}
+    apts = pl.DataFrame({"iata": sorted(pairs | {"ICN", "NRT"})})
+    monkeypatch.setattr(config, "BUILD", tmp_path)
+    monkeypatch.setattr(routes.airports, "scheduled_airports", lambda: apts)
+    monkeypatch.setattr(routes, "_wikipedia_titles", lambda a: {})
+    # Every airport flies to every other: 202 * 201 = 40,602 directed pairs,
+    # comfortably over the 20,000-pair implausibility floor, and ICN<->NRT is
+    # present so the sanity-pair gate passes too.
+    codes = apts["iata"].to_list()
+    monkeypatch.setattr(
+        routes, "_crawl_destinations",
+        lambda titles: ({c: [d for d in codes if d != c] for c in codes}, []),
+    )
+    monkeypatch.setattr(routes.wikidata, "iata_for_titles", lambda titles: {c: c for c in codes})
+
+    df = routes.route_network()
+
+    assert (tmp_path / "routes.parquet").exists()
+    assert len(df) == len(codes) * (len(codes) - 1)
+
+
+# --- Confirmed-absent vs merely-unreturned articles --------------------------
+
+
+class _FakeResponse:
+    def __init__(self, body):
+        self._body = body
+
+    def json(self):
+        return self._body
+
+    def raise_for_status(self):
+        pass
+
+
+class _FakeClient:
+    def __init__(self, body):
+        self._body = body
+
+    def get(self, *_args, **_kwargs):
+        return _FakeResponse(self._body)
+
+
+def _wikitext_body(pages):
+    return {"batchcomplete": True, "query": {"pages": pages}}
+
+
+def _content_page(title, text):
+    return {"title": title, "revisions": [{"slots": {"main": {"content": text}}}]}
+
+
+def test_missing_article_is_confirmed_absent_not_merely_unreturned():
+    """A page the API marks "missing" is a permanent answer; a page it simply
+    never mentions is not. Conflating them is how a failed fetch gets cached
+    forever as an airport with no destinations.
+    """
+    body = _wikitext_body([
+        _content_page("Alpha", "== Airlines and destinations ==\n[[Beta Airport]]\n"),
+        {"title": "Gamma", "missing": True},
+        # "Delta" is not mentioned at all.
+    ])
+    content, absent = routes._fetch_wikitext(_FakeClient(body), ["Alpha", "Gamma", "Delta"])
+
+    assert set(content) == {"Alpha"}
+    assert absent == {"Gamma"}
+    assert "Delta" not in absent  # unresolved, not "this article does not exist"
+
+
+def test_crawl_caches_none_only_for_confirmed_absent_and_reports_the_rest(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    monkeypatch.setattr(
+        routes, "_fetch_wikitext_with_retry",
+        lambda client, titles: (
+            {"Alpha": "== Airlines and destinations ==\n[[Beta Airport]]\n"},
+            {"Gamma"},
+        ),
+    )
+
+    cache, unresolved = routes._crawl_destinations(
+        {"AAA": "Alpha", "GGG": "Gamma", "DDD": "Delta"}
+    )
+
+    assert cache["AAA"] == ["Beta_Airport"]
+    assert cache["GGG"] is None      # enwiki confirms no such article
+    assert "DDD" not in cache        # unconfirmed -> refetched next run
+    assert unresolved == ["DDD"]
+
+
+def test_crawl_reports_a_failed_batch_without_caching_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+
+    def _boom(client, titles):
+        raise RuntimeError("API error: readonly")
+
+    monkeypatch.setattr(routes, "_fetch_wikitext_with_retry", _boom)
+
+    cache, unresolved = routes._crawl_destinations({"AAA": "Alpha", "BBB": "Beta"})
+
+    assert cache == {}
+    assert sorted(unresolved) == ["AAA", "BBB"]

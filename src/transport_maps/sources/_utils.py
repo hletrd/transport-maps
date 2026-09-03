@@ -73,3 +73,23 @@ def _atomic_write(path: pathlib.Path, write_fn: Callable[[pathlib.Path], None]) 
     except BaseException:
         tmp_path.unlink(missing_ok=True)
         raise
+
+
+def _refuse_partial(what: str, unresolved: list[str], remedy: str) -> None:
+    """Abort rather than let a partially-crawled result become the cached one.
+
+    `routes.parquet` is returned verbatim by every later call, so a network
+    written while part of the crawl was still unresolved is not a temporary
+    state that a "retry next run" ever revisits -- it is permanent, and the
+    only gates downstream (a 20,000-pair floor against ~68,000 real pairs, and
+    the ICN-NRT sanity pair) would let roughly 70% of the crawl go missing
+    unnoticed. Refuse to write instead. Per-item caches are still flushed
+    first, so a re-run resumes from exactly what is left.
+    """
+    if not unresolved:
+        return
+    sample = ", ".join(sorted(unresolved)[:10])
+    raise RuntimeError(
+        f"{what} left {len(unresolved)} entries unresolved (e.g. {sample}); "
+        f"refusing to persist a partial route network -- {remedy}"
+    )

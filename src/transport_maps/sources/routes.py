@@ -13,6 +13,7 @@ from transport_maps import config
 from transport_maps.sources import airports, wikidata
 from transport_maps.sources._utils import (
     _atomic_write,
+    _refuse_partial,
     _retry_after_seconds,
     _validated_json,
 )
@@ -84,8 +85,17 @@ def parse_destinations(wikitext: str) -> list[str]:
     return list(dict.fromkeys(titles))
 
 
-def _fetch_wikitext(client: httpx.Client, titles: list[str]) -> dict[str, str]:
-    """Article title -> wikitext, up to TITLES_PER_REQUEST titles per call."""
+def _fetch_wikitext(
+    client: httpx.Client, titles: list[str]
+) -> tuple[dict[str, str], set[str]]:
+    """Article title -> wikitext, plus the titles enwiki confirms do not exist.
+
+    Returns `(content_by_title, confirmed_absent)`. A title in neither is one
+    the API did not account for at all -- treat that as an unresolved fetch to
+    retry, NOT as "this airport has no destinations". Conflating the two is
+    how a title whose article merely failed to come back gets cached forever
+    as a destination-less airport.
+    """
     r = client.get(ACTION_API, params={
         "action": "query", "format": "json", "formatversion": "2",
         "prop": "revisions", "rvprop": "content", "rvslots": "main",
@@ -104,25 +114,40 @@ def _fetch_wikitext(client: httpx.Client, titles: list[str]) -> dict[str, str]:
     # for both, so a page-keyed alias map can hand it back to only one of
     # them and silently drops the other.
     content_by_canonical: dict[str, str] = {}
+    # A page the API marks "missing" (no such article) or "invalid" (not a
+    # legal title) is a definitive answer: enwiki has nothing to fetch, now
+    # or on any later run. OurAirports' wikipedia_link column points at
+    # non-English Wikipedias for a handful of airports (Flugplatz_Juist,
+    # Пластун_(аэропорт), Bandar_Udara_Oksibil, ...) and carries the odd
+    # typo, so a small number of these is expected and permanent.
+    absent_canonical: set[str] = set()
     for page in data.get("pages", []):
+        title = page.get("title", "")
         revisions = page.get("revisions")
         if revisions:
-            content_by_canonical[page.get("title", "")] = revisions[0]["slots"]["main"]["content"]
+            content_by_canonical[title] = revisions[0]["slots"]["main"]["content"]
+        elif page.get("missing") or page.get("invalid"):
+            absent_canonical.add(title)
 
     normalize_to = {n["from"]: n["to"] for n in data.get("normalized", [])}
     redirect_to = {r_["from"]: r_["to"] for r_ in data.get("redirects", [])}
 
     out: dict[str, str] = {}
+    confirmed_absent: set[str] = set()
     for original in titles:
         canonical = normalize_to.get(original, original)
         canonical = redirect_to.get(canonical, canonical)
         content = content_by_canonical.get(canonical)
         if content is not None:
             out[original] = content
-    return out
+        elif canonical in absent_canonical:
+            confirmed_absent.add(original)
+    return out, confirmed_absent
 
 
-def _fetch_wikitext_with_retry(client: httpx.Client, titles: list[str]) -> dict[str, str]:
+def _fetch_wikitext_with_retry(
+    client: httpx.Client, titles: list[str]
+) -> tuple[dict[str, str], set[str]]:
     """`_fetch_wikitext`, backing off and retrying on HTTP 429 rather than crashing.
 
     An API-level error (readonly, maxlag, ...) or an incomplete/paginated
@@ -162,39 +187,54 @@ def _save_destination_cache(cache: dict[str, list[str] | None]) -> None:
     _atomic_write(path, lambda tmp: tmp.write_text(json.dumps(cache)))
 
 
-def _crawl_destinations(titles_by_iata: dict[str, str]) -> dict[str, list[str] | None]:
+def _crawl_destinations(
+    titles_by_iata: dict[str, str],
+) -> tuple[dict[str, list[str] | None], list[str]]:
     """Fetch and parse each airport's destinations section, resuming from cache.
 
     Wikipedia's Action API returns up to TITLES_PER_REQUEST full-article
     wikitexts per call, so ~4,000 airports cost on the order of 80 requests
     rather than one per airport.
+
+    Returns `(cache, unresolved)`. `unresolved` lists every IATA code this run
+    could not settle either way -- a batch that failed outright, or a title the
+    API neither returned content for nor confirmed absent. Those codes are
+    deliberately NOT written to the cache, so a re-run refetches exactly them
+    and nothing else; the caller must refuse to persist a route network while
+    the list is non-empty (see `route_network`).
     """
     config.ensure_dirs()
     cache = _load_destination_cache()
     todo = [(iata, title) for iata, title in titles_by_iata.items() if iata not in cache]
     if not todo:
-        return cache
+        return cache, []
 
     batches = list(itertools.batched(todo, TITLES_PER_REQUEST))
     print(f"routes: {len(cache)} airports cached, {len(todo)} to fetch in {len(batches)} batches")
-    failed_iatas: list[str] = []
+    unresolved: list[str] = []
     with httpx.Client(timeout=60, headers=HEADERS, follow_redirects=True) as client:
         for n, batch in enumerate(batches, start=1):
             titles = [title for _, title in batch]
             try:
-                wikitext_by_title = _fetch_wikitext_with_retry(client, titles)
+                wikitext_by_title, confirmed_absent = _fetch_wikitext_with_retry(client, titles)
             except (httpx.HTTPStatusError, httpx.TransportError, RuntimeError) as e:
-                failed_iatas.extend(iata for iata, _ in batch)
-                print(f"routes: batch {n}/{len(batches)} failed, will retry next run: {e!r}")
+                unresolved.extend(iata for iata, _ in batch)
+                print(f"routes: batch {n}/{len(batches)} failed: {e!r}")
             else:
                 for iata, title in batch:
                     wikitext = wikitext_by_title.get(title)
-                    cache[iata] = parse_destinations(wikitext) if wikitext is not None else None
+                    if wikitext is not None:
+                        cache[iata] = parse_destinations(wikitext)
+                    elif title in confirmed_absent:
+                        # enwiki has no such article; nothing to fetch, ever.
+                        cache[iata] = None
+                    else:
+                        unresolved.append(iata)
                 _save_destination_cache(cache)
             print(f"routes: batch {n}/{len(batches)} done ({len(cache)} airports cached)")
-    if failed_iatas:
-        print(f"routes: {len(failed_iatas)} airports unresolved this run (will retry on next call)")
-    return cache
+    if unresolved:
+        print(f"routes: {len(unresolved)} airports unresolved this run")
+    return cache, unresolved
 
 
 def route_network() -> pl.DataFrame:
@@ -207,7 +247,11 @@ def route_network() -> pl.DataFrame:
     valid = set(apts["iata"].to_list())
     titles_by_iata = _wikipedia_titles(apts)
 
-    destinations = _crawl_destinations(titles_by_iata)
+    destinations, unresolved = _crawl_destinations(titles_by_iata)
+    _refuse_partial(
+        "destination crawl", unresolved,
+        "re-run to refetch exactly these; the per-airport cache keeps the rest",
+    )
 
     # Resolve every distinct destination title once, in bulk, rather than per
     # airport: wikidata.iata_for_titles() already caches by title, so this
