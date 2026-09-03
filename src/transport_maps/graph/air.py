@@ -20,6 +20,9 @@ class Calibration:
     frequency_base: float
     frequency_decay: float
     frequency_size_weight: dict[str, float]
+    access_min: dict[str, dict[str, float]]
+    egress_min: dict[str, dict[str, float]]
+    connection_min: dict[str, float]
     calibrated: bool
 
 
@@ -35,6 +38,9 @@ def load_calibration(path=None) -> Calibration:
         frequency_base=raw["frequency"]["base"],
         frequency_decay=raw["frequency"]["decay"],
         frequency_size_weight=raw["frequency"]["size_weight"],
+        access_min=raw["access_min"],
+        egress_min=raw["egress_min"],
+        connection_min=raw["connection_min"],
         calibrated=raw["meta"]["calibrated"],
     )
 

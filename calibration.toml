@@ -48,3 +48,18 @@ decay = -1.10
 large = 1.0
 medium = 0.55
 small = 0.25
+
+[access_min]
+# Arrive, check in, clear security. International adds passport control.
+domestic = { large = 70.0, medium = 55.0, small = 40.0 }
+international = { large = 100.0, medium = 80.0, small = 65.0 }
+
+[egress_min]
+domestic = { large = 30.0, medium = 22.0, small = 15.0 }
+international = { large = 55.0, medium = 45.0, small = 35.0 }
+
+[connection_min]
+# Minimum connection time, refitted in Task 12 from observed connections.
+large = 75.0
+medium = 50.0
+small = 35.0

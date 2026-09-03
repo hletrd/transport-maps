@@ -6,15 +6,11 @@ import h3
 import numpy as np
 import scipy.sparse as sp
 
-from transport_maps.graph import air, ground
+from transport_maps.graph import air, ground, transfers
 from transport_maps.graph.nodes import NodeIndex
 from transport_maps.sources import airports, routes
 
 logger = logging.getLogger(__name__)
-
-# Phase A constants, split by domestic/international in Task 12.
-AIRPORT_ACCESS_MIN = 75.0   # arrive, check in, clear security
-AIRPORT_EGRESS_MIN = 45.0   # deplane, immigration, baggage
 
 # The longest real nonstop flight is about 15,300 km (e.g. Singapore-New York
 # JFK), and no scheduled route beyond this distance is flown without a large
@@ -68,9 +64,16 @@ def _air_edges(
             continue
         block = air.block_time_min(d, size1, size2, cal)
         wait = air.expected_wait_min(air.frequency_model(size1, size2, d, cal))
+        # Minimum connection time at the departure airport. This double-counts
+        # slightly against access_min on a journey's very first hop (that leg
+        # was never a connection), but a per-edge model can't distinguish "first
+        # hop" from "connecting hop" without knowing the full path, so the brief
+        # accepts the small overcount everywhere in exchange for realistic
+        # connections on every later hop.
+        conn = transfers.connection_min(size1, cal)
         rows.append(idx.airport_index(src))
         cols.append(idx.airport_index(dst))
-        minutes.append(float(block + wait))
+        minutes.append(float(block + wait + conn))
 
     if rejected:
         detail = ", ".join(f"{s}->{d} ({km:.0f} km)" for s, d, km in rejected)
@@ -89,14 +92,27 @@ def _air_edges(
 
 
 def _access_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    cal = air.load_calibration()
+    apts = airports.scheduled_airports()
+    size_by_iata = dict(zip(apts["iata"], apts["size"]))
+
     rows: list[int] = []
     cols: list[int] = []
     minutes: list[float] = []
     for iata in idx.airports:
         cell = idx.airport_cell_index(iata)
         node = idx.airport_index(iata)
-        rows.append(cell); cols.append(node); minutes.append(AIRPORT_ACCESS_MIN)
-        rows.append(node); cols.append(cell); minutes.append(AIRPORT_EGRESS_MIN)
+        size = size_by_iata[iata]
+        # The graph is built once, before any particular origin is known, so
+        # whether a given trip through this airport is domestic or
+        # international can't be decided here. Use the international
+        # variant unconditionally: it is the conservative (longer) choice,
+        # and correct for the majority of hops on a global map, which are
+        # long-haul international connections.
+        access = transfers.access_min(size, True, cal)
+        egress = transfers.egress_min(size, True, cal)
+        rows.append(cell); cols.append(node); minutes.append(access)
+        rows.append(node); cols.append(cell); minutes.append(egress)
     return (
         np.asarray(rows, dtype=np.int64),
         np.asarray(cols, dtype=np.int64),
