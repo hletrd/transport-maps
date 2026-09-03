@@ -714,8 +714,41 @@ from transport_maps.sources import airports, wikidata
 
 REST_HTML = "https://en.wikipedia.org/api/rest_v1/page/html/{title}"
 
-_SKIP_PREFIXES = ("File:", "Category:", "Help:", "Template:", "Special:", "Portal:")
+_SKIP_PREFIXES = (
+    "File:", "Category:", "Help:", "Template:", "Special:", "Portal:", "Wikipedia:",
+)
 _HEADING_RE = re.compile(r"airlines?\s+and\s+destinations", re.I)
+# Large airports split destinations into "Passenger" and "Cargo" subsections.
+# Cargo routes carry no passengers, so they must not become graph edges.
+_EXCLUDE_SUBSECTION_RE = re.compile(r"cargo|freight", re.I)
+
+
+def _destination_tables(tree: HTMLParser) -> list:
+    """Tables under the 'Airlines and destinations' section, minus cargo subsections.
+
+    The REST HTML nests <section> elements, and on big airports the tables sit in
+    an h3 subsection ("Passenger"), NOT directly under the h2. Walking previous
+    siblings therefore finds "Passenger" and never the h2 - which yields zero
+    destinations. Find the owning section and descend instead.
+    """
+    for section in tree.css("section"):
+        headings = section.css("h2")
+        if not headings or not _HEADING_RE.search(headings[0].text() or ""):
+            continue
+        tables = []
+        for table in section.css("table"):
+            node, excluded = table.parent, False
+            while node is not None and node is not section:
+                if node.tag == "section":
+                    sub = node.css("h2,h3,h4")
+                    if sub and _EXCLUDE_SUBSECTION_RE.search(sub[0].text() or ""):
+                        excluded = True
+                        break
+                node = node.parent
+            if not excluded:
+                tables.append(table)
+        return tables
+    return []
 
 
 def parse_destinations(html: str) -> list[str]:
@@ -723,14 +756,15 @@ def parse_destinations(html: str) -> list[str]:
     tree = HTMLParser(html)
     titles: list[str] = []
 
-    for table in tree.css("table"):
-        if not _table_is_destinations(table):
-            continue
+    for table in _destination_tables(tree):
         for anchor in table.css("a[href]"):
             href = anchor.attributes.get("href", "")
-            if not href.startswith("./") and "/wiki/" not in href:
+            if href.startswith("./"):
+                title = href[2:]
+            elif "/wiki/" in href:
+                title = href.split("/wiki/")[-1]
+            else:
                 continue
-            title = href.split("/wiki/")[-1] if "/wiki/" in href else href[2:]
             title = urllib.parse.unquote(title.split("#")[0])
             if not title or title.startswith(_SKIP_PREFIXES):
                 continue
@@ -738,29 +772,13 @@ def parse_destinations(html: str) -> list[str]:
 
     # Preserve order, drop duplicates.
     return list(dict.fromkeys(titles))
-
-
-def _table_is_destinations(table) -> bool:
-    """True when the table sits under an 'Airlines and destinations' heading."""
-    node = table
-    for _ in range(40):
-        node = node.prev
-        while node is not None and node.tag == "-text":
-            node = node.prev
-        if node is None:
-            return False
-        if node.tag in {"h2", "h3", "section"} and _HEADING_RE.search(node.text() or ""):
-            return True
-        if node.tag in {"h2", "h3"}:
-            return False
-    return False
 ```
 
-`selectolax` walks siblings with `.prev`; if the REST HTML wraps sections in `<section>`
-elements, the loop finds the enclosing heading through the section's own text. Verify by
-running the test — if `_table_is_destinations` returns `False` for every table, print
-`[t.tag for t in tree.css('table')]` and the nearest preceding heading to see the real
-structure, then adjust the traversal.
+This traversal is verified against the live REST API on four airports of different
+sizes. Measured title counts: Incheon 259, Keflavik 124, Male (Velana) 108, Gimpo 30.
+Incheon's cargo table is correctly excluded. Airline links (`Air_Canada`, `9_Air`) come
+through too; they are filtered out in Step 7, because only airports carry Wikidata
+property P238.
 
 - [ ] **Step 4: Run test to verify it passes**
 
