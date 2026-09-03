@@ -32,8 +32,17 @@ small = 4.0
 #   flights_per_week = base * size_weight[dep] * size_weight[arr] * (distance_km ^ decay)
 # Coefficients are refitted in Task 13 against observed frequencies. No observed
 # frequency is ever written to dist/.
-base = 42.0
-decay = -0.35
+# Fitted to two real-world anchors: ICN-NRT (1,258 km) runs about 120 flights/week
+# and ICN-LHR (8,880 km) about 14. Sanity across the range: Seoul-Jeju (450 km,
+# the world's busiest route) -> 362/week vs ~500 real; a 13,800 km ultra-long-haul
+# -> 8.4/week vs ~7 real. Transatlantic trunks like LHR-JFK come out low (23 vs ~90)
+# because they are frequency outliers for their distance; Task 12 refits from data.
+#
+# Do NOT use a shallow decay here. An earlier draft used base=42, decay=-0.35, which
+# produced 1.5-5 flights/week for EVERY route on Earth -- Seoul-Jeju at 5/week -- so
+# every flight cost 17-56 hours of expected waiting and the whole map was nonsense.
+base = 300000.0
+decay = -1.10
 
 [frequency.size_weight]
 large = 1.0
