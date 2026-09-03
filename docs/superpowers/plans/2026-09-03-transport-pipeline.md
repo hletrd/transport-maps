@@ -116,9 +116,9 @@ CACHE = DATA / "cache"
 BUILD = DATA / "build"
 DIST = ROOT / "dist"
 
-# H3 resolution for the solver grid: 589,157 land cells at ~253 km^2 each.
+# H3 resolution for the solver grid: 548,557 land cells at ~253 km^2 each (measured).
 SOLVE_RES = 5
-# H3 resolution for the shipped hover array: 84,164 land cells -> 168 KB as uint16.
+# H3 resolution for the shipped hover array: 82,983 cells -> 165,966 bytes as uint16.
 HOVER_RES = 4
 
 # Upper edge of each isochrone band, in minutes. The 11th band is open-ended.
