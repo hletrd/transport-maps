@@ -1,0 +1,32 @@
+[project]
+name = "transport-maps"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Jiyong Youn", email = "01@0101010101.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "h3>=4.5.0",
+    "httpx>=0.28.1",
+    "numpy>=2.5.2",
+    "polars>=1.44.1",
+    "pyarrow>=25.0.1",
+    "scipy>=1.18.1",
+    "selectolax>=0.4.11",
+    "shapely>=2.1.2",
+]
+
+[project.scripts]
+transport-maps = "transport_maps:main"
+
+[build-system]
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.5",
+]
