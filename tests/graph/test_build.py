@@ -34,3 +34,17 @@ def test_neighbouring_land_cells_are_connected(csr, idx):
 def test_incheon_reaches_narita_directly(csr, idx):
     u, v = idx.airport_index("ICN"), idx.airport_index("NRT")
     assert csr[u, v] > 0
+
+
+def test_implausible_longhaul_pair_between_small_airports_is_rejected():
+    # A 14,000 km pair between two medium airports has no real-world analogue
+    # (no scheduled aircraft flies that far without a large hub at one end) --
+    # this is the shape of the Wikidata resolution error that fabricated
+    # Lasondre_Airport -> LSE (Indonesia -> Wisconsin).
+    assert not build.is_geographically_plausible(14000.0, "medium", "medium")
+
+
+def test_implausible_longhaul_pair_with_a_large_airport_is_kept():
+    # Same distance, but a large airport at one end: real long-haul routes
+    # like SYD->LHR look exactly like this and must not be rejected.
+    assert build.is_geographically_plausible(14000.0, "large", "medium")
