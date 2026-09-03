@@ -1,0 +1,28 @@
+# calibration.toml
+#
+# Fitted coefficients for the flight time model. This file contains NO flight
+# records from any provider -- only regression outputs. See the licence firewall
+# note in the design spec.
+#
+# Values below are pre-calibration defaults derived from published block times.
+# Task 13 replaces them with a fit over sampled real flights.
+
+[meta]
+calibrated = false
+sample_size = 0
+holdout_mae_min = 0.0
+
+[airborne]
+# airborne_min = climb_descent_penalty_min + 60 * distance_km / cruise_kmh
+climb_descent_penalty_min = 25.0
+cruise_kmh = 800.0
+
+[taxi_out_min]
+large = 17.0
+medium = 12.0
+small = 8.0
+
+[taxi_in_min]
+large = 9.0
+medium = 6.0
+small = 4.0
