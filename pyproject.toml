@@ -28,3 +28,6 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.5",
 ]
+
+[tool.pytest.ini_options]
+markers = ["network: hits a live API"]

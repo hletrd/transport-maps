@@ -696,88 +696,102 @@ def test_ignores_non_destination_links():
 Run: `uv run pytest tests/sources/test_routes.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Implement the destination-table parser**
+- [ ] **Step 3: Implement the destination parser**
+
+Use the **Action API** (`/w/api.php`), not the REST API (`/api/rest_v1/`). This matters
+more than it looks:
+
+- The REST endpoint serves one page per request at roughly 1 MB each, and enforces a
+  stricter per-client limiter. Crawling ~4,000 airports through it measured **4-5
+  airports/minute** and tripped a 429 penalty (`x-envoy-ratelimited: true`).
+- The Action API returns **50 pages per request**. Measured: 50 pages in **1.6 s** for
+  0.19 MB, so the entire network is **80 requests, about 2 minutes**.
+
+That is a ~50x reduction in requests and a ~400x reduction in wall-clock. Parse the
+wikitext directly.
 
 ```python
 # src/transport_maps/sources/routes.py
-"""Wikipedia 'Airlines and destinations' tables -> airline route network."""
+"""Wikipedia 'Airlines and destinations' sections -> airline route network."""
 
 import re
 import urllib.parse
 
 import httpx
 import polars as pl
-from selectolax.parser import HTMLParser
 
 from transport_maps import config
 from transport_maps.sources import airports, wikidata
 
-REST_HTML = "https://en.wikipedia.org/api/rest_v1/page/html/{title}"
+ACTION_API = "https://en.wikipedia.org/w/api.php"
+TITLES_PER_REQUEST = 50
+HEADERS = {"User-Agent": "transport-maps/0.1 (open-data isochrone build)"}
 
+_SECTION_RE = re.compile(r"^==+\s*Airlines and destinations\s*==+\s*$", re.I | re.M)
+# Cargo routes carry no passengers, so they must not become graph edges.
+_CARGO_RE = re.compile(r"^===+\s*(Cargo|Freight)[^=]*===+\s*$", re.I | re.M)
+_NEXT_TOP_HEADING_RE = re.compile(r"^==[^=]", re.M)
+_LINK_RE = re.compile(r"\[\[([^\]|#]+?)(?:\|[^\]]*)?\]\]")
 _SKIP_PREFIXES = (
     "File:", "Category:", "Help:", "Template:", "Special:", "Portal:", "Wikipedia:",
+    "Image:",
 )
-_HEADING_RE = re.compile(r"airlines?\s+and\s+destinations", re.I)
-# Large airports split destinations into "Passenger" and "Cargo" subsections.
-# Cargo routes carry no passengers, so they must not become graph edges.
-_EXCLUDE_SUBSECTION_RE = re.compile(r"cargo|freight", re.I)
 
 
-def _destination_tables(tree: HTMLParser) -> list:
-    """Tables under the 'Airlines and destinations' section, minus cargo subsections.
+def parse_destinations(wikitext: str) -> list[str]:
+    """Wiki article titles linked from the Airlines and destinations section."""
+    match = _SECTION_RE.search(wikitext)
+    if match is None:
+        return []
 
-    The REST HTML nests <section> elements, and on big airports the tables sit in
-    an h3 subsection ("Passenger"), NOT directly under the h2. Walking previous
-    siblings therefore finds "Passenger" and never the h2 - which yields zero
-    destinations. Find the owning section and descend instead.
-    """
-    for section in tree.css("section"):
-        headings = section.css("h2")
-        if not headings or not _HEADING_RE.search(headings[0].text() or ""):
-            continue
-        tables = []
-        for table in section.css("table"):
-            node, excluded = table.parent, False
-            while node is not None and node is not section:
-                if node.tag == "section":
-                    sub = node.css("h2,h3,h4")
-                    if sub and _EXCLUDE_SUBSECTION_RE.search(sub[0].text() or ""):
-                        excluded = True
-                        break
-                node = node.parent
-            if not excluded:
-                tables.append(table)
-        return tables
-    return []
+    body = wikitext[match.end():]
+    nxt = _NEXT_TOP_HEADING_RE.search(body)
+    if nxt is not None:
+        body = body[: nxt.start()]
 
+    cargo = _CARGO_RE.search(body)
+    if cargo is not None:
+        body = body[: cargo.start()]
 
-def parse_destinations(html: str) -> list[str]:
-    """Wiki article titles linked from the Airlines and destinations table(s)."""
-    tree = HTMLParser(html)
     titles: list[str] = []
+    for raw in _LINK_RE.findall(body):
+        title = raw.strip().replace(" ", "_")
+        if not title or title.startswith(_SKIP_PREFIXES):
+            continue
+        titles.append(title)
 
-    for table in _destination_tables(tree):
-        for anchor in table.css("a[href]"):
-            href = anchor.attributes.get("href", "")
-            if href.startswith("./"):
-                title = href[2:]
-            elif "/wiki/" in href:
-                title = href.split("/wiki/")[-1]
-            else:
-                continue
-            title = urllib.parse.unquote(title.split("#")[0])
-            if not title or title.startswith(_SKIP_PREFIXES):
-                continue
-            titles.append(title)
-
-    # Preserve order, drop duplicates.
     return list(dict.fromkeys(titles))
+
+
+def _fetch_wikitext(client: httpx.Client, titles: list[str]) -> dict[str, str]:
+    """Article title -> wikitext, up to TITLES_PER_REQUEST titles per call."""
+    r = client.get(ACTION_API, params={
+        "action": "query", "format": "json", "formatversion": "2",
+        "prop": "revisions", "rvprop": "content", "rvslots": "main",
+        "titles": "|".join(titles),
+    })
+    r.raise_for_status()
+    data = r.json().get("query", {})
+    alias = {n["to"]: n["from"] for n in data.get("normalized", [])}
+    alias.update({n["to"]: n["from"] for n in data.get("redirects", [])})
+
+    out: dict[str, str] = {}
+    for page in data.get("pages", []):
+        revisions = page.get("revisions")
+        if not revisions:
+            continue
+        title = page.get("title", "")
+        out[alias.get(title, title)] = revisions[0]["slots"]["main"]["content"]
+    return out
 ```
 
-This traversal is verified against the live REST API on four airports of different
-sizes. Measured title counts: Incheon 259, Keflavik 124, Male (Velana) 108, Gimpo 30.
-Incheon's cargo table is correctly excluded. Airline links (`Air_Canada`, `9_Air`) come
-through too; they are filtered out in Step 7, because only airports carry Wikidata
+Verified against the live API: Incheon yields 191 airport-like links, Keflavik 98,
+Male (Velana) 58, Gimpo 11, with cargo subsections excluded. Across an arbitrary batch of
+50 mostly-small airports, 39 had a destinations section — the rest are airports too small
+to have one, which is expected, not a parse failure.
+
+Airline links (`Air_Canada`, `9_Air`) and city links (`Tokyo`) come through the regex too.
+They are filtered out at the Wikidata stage, because only airports carry Wikidata
 property P238.
 
 - [ ] **Step 4: Run test to verify it passes**

@@ -60,3 +60,19 @@ def test_block_time_is_affine_in_distance(cal):
     diff1 = times[1] - times[0]
     diff2 = times[2] - times[1]
     assert abs(diff1 - diff2) <= 1
+
+
+def test_frequency_falls_with_distance(cal):
+    near = air.frequency_model("large", "large", 1000.0, cal)
+    far = air.frequency_model("large", "large", 10000.0, cal)
+    assert near > far
+
+
+def test_frequency_falls_with_airport_size(cal):
+    big = air.frequency_model("large", "large", 2000.0, cal)
+    small = air.frequency_model("small", "small", 2000.0, cal)
+    assert big > small
+
+
+def test_frequency_never_below_floor(cal):
+    assert air.frequency_model("small", "small", 19000.0, cal) >= air.MIN_FLIGHTS_PER_WEEK

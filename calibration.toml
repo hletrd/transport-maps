@@ -26,3 +26,16 @@ small = 8.0
 large = 9.0
 medium = 6.0
 small = 4.0
+
+[frequency]
+# Gravity model for weekly frequency on a route that is known to exist:
+#   flights_per_week = base * size_weight[dep] * size_weight[arr] * (distance_km ^ decay)
+# Coefficients are refitted in Task 13 against observed frequencies. No observed
+# frequency is ever written to dist/.
+base = 42.0
+decay = -0.35
+
+[frequency.size_weight]
+large = 1.0
+medium = 0.55
+small = 0.25
