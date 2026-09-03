@@ -3107,7 +3107,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-MIN_ZOOM, MAX_ZOOM = 0, 7
+# Measured on a real Seoul band set: Z0-7 gives 3.84 MB, Z0-6 gives 2.38 MB
+# (-38%), while quadrupling simplification only saves 12%. Max zoom is the
+# dominant size lever. The source is H3 res-5 hexes (~8.5 km edge), and at
+# zoom 6 that is already ~3.5 px, so zoom 7 spends bytes on detail finer than
+# the underlying data. Do not raise this without re-measuring.
+MIN_ZOOM, MAX_ZOOM = 0, 6
 LAYER = "bands"
 
 
