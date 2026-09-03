@@ -86,3 +86,42 @@ def test_high_frequency_short_haul_has_short_expected_wait(cal):
     freq = air.frequency_model("large", "large", 1257.7, cal)
     wait = air.expected_wait_min(freq)
     assert wait < 120
+
+
+def test_frequency_is_bounded_at_short_range(cal):
+    """The decay exponent is negative, so the raw distance term diverges as
+    distance goes to zero. Unbounded, the 2.8 km Westray-Papa Westray hop --
+    the world's shortest scheduled flight, about 14 flights/week -- came out at
+    6,041 flights/week and a 1-minute expected wait. Pin the knee that stops it.
+    """
+    assert air.frequency_model("small", "small", 3.0, cal) < 40
+
+
+def test_short_hop_expected_wait_is_hours_not_minutes(cal):
+    """Companion to the bound above, stated in the units that actually reach
+    the graph: a twice-daily island hop must cost hours of waiting, not one
+    minute.
+    """
+    wait = air.expected_wait_min(air.frequency_model("small", "small", 3.0, cal))
+    assert 60 < wait < 600
+
+
+def test_the_knee_does_not_move_a_fitted_anchor(cal):
+    """The knee must bound the short end WITHOUT disturbing the coefficients'
+    fit. Seoul-Jeju (ICN-CJU, 450 km) is the closest fitted anchor to the knee
+    at 361.9 flights/week; a knee raised past ~450 km would clamp it. This is
+    the guard against "fixing" the short end by breaking the calibration.
+    """
+    assert air.frequency_model("large", "large", 450.0, cal) == pytest.approx(361.9, abs=1.0)
+
+
+def test_frequency_still_falls_with_distance_above_the_knee(cal):
+    """The knee must flatten the model only BELOW itself; above it the gravity
+    decay has to keep working, or a flat model would pass the two bounds above.
+    """
+    at_knee = air.frequency_model("large", "large", air.KNEE_KM, cal)
+    above = air.frequency_model("large", "large", 500.0, cal)
+    far = air.frequency_model("large", "large", 5000.0, cal)
+    assert at_knee > above > far
+    # ...and below the knee it IS flat, which is the whole point.
+    assert air.frequency_model("large", "large", 10.0, cal) == pytest.approx(at_knee)
