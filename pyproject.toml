@@ -19,6 +19,9 @@ dependencies = [
     "shapely>=2.1.2",
 ]
 
+[project.scripts]
+transport-maps = "transport_maps.cli:main"
+
 [build-system]
 requires = ["uv_build>=0.9.28,<0.10.0"]
 build-backend = "uv_build"
