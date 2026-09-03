@@ -6,7 +6,11 @@ import time
 import httpx
 
 from transport_maps import config
-from transport_maps.sources._utils import _atomic_write
+from transport_maps.sources._utils import (
+    _atomic_write,
+    _retry_after_seconds,
+    _validated_json,
+)
 
 WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
@@ -49,8 +53,7 @@ def _get_with_retry(client: httpx.Client, url: str, params: dict) -> httpx.Respo
         if r.status_code == 429:
             if attempt == MAX_RETRIES - 1:
                 r.raise_for_status()
-            wait = float(r.headers.get("Retry-After", 2**attempt))
-            time.sleep(wait)
+            time.sleep(_retry_after_seconds(r.headers.get("Retry-After"), attempt))
             continue
         r.raise_for_status()
         return r
@@ -58,68 +61,99 @@ def _get_with_retry(client: httpx.Client, url: str, params: dict) -> httpx.Respo
 
 
 def _qids_for_titles(client: httpx.Client, titles: list[str]) -> dict[str, str]:
+    """Resolve up to BATCH titles to Wikidata QIDs in a single request."""
+    r = _get_with_retry(client, WIKIPEDIA_API, {
+        "action": "query", "format": "json", "redirects": "1",
+        "prop": "pageprops", "ppprop": "wikibase_item",
+        "titles": "|".join(titles),
+    })
+    data = _validated_json(r, expect_key="query", require_batchcomplete=True)
+
+    # Resolve QIDs by canonical title first, then map every ORIGINAL title
+    # in this batch to its own canonical form (normalize, then follow any
+    # redirect) and look that up. Building this the other way around --
+    # from each returned page back to "the" title that produced it --
+    # silently drops input titles: when two different titles in one batch
+    # collapse to the same canonical page (e.g. a redirect alias like
+    # "Narita_Airport" alongside the canonical "Narita_International_
+    # Airport"), the API reports only ONE page for both, so a page-keyed
+    # alias map can recover only one of the two original titles and drops
+    # the other -- caching it as "not an airport" even though it plainly
+    # is one.
+    qid_by_canonical: dict[str, str] = {}
+    for page in data.get("pages", {}).values():
+        qid = page.get("pageprops", {}).get("wikibase_item")
+        if qid:
+            qid_by_canonical[page.get("title", "")] = qid
+
+    normalize_to = {n["from"]: n["to"] for n in data.get("normalized", [])}
+    redirect_to = {r_["from"]: r_["to"] for r_ in data.get("redirects", [])}
+
     out: dict[str, str] = {}
-    for batch in _chunks(titles, BATCH):
-        r = _get_with_retry(client, WIKIPEDIA_API, {
-            "action": "query", "format": "json", "redirects": "1",
-            "prop": "pageprops", "ppprop": "wikibase_item",
-            "titles": "|".join(batch),
-        })
-        data = r.json().get("query", {})
-
-        # Resolve QIDs by canonical title first, then map every ORIGINAL
-        # title in this batch to its own canonical form (normalize, then
-        # follow any redirect) and look that up. Building this the other
-        # way around -- from each returned page back to "the" title that
-        # produced it -- silently drops input titles: when two different
-        # titles in one batch collapse to the same canonical page (e.g. a
-        # redirect alias like "Narita_Airport" alongside the canonical
-        # "Narita_International_Airport"), the API reports only ONE page
-        # for both, so a page-keyed alias map can recover only one of the
-        # two original titles and drops the other -- caching it as "not an
-        # airport" even though it plainly is one.
-        qid_by_canonical: dict[str, str] = {}
-        for page in data.get("pages", {}).values():
-            qid = page.get("pageprops", {}).get("wikibase_item")
-            if qid:
-                qid_by_canonical[page.get("title", "")] = qid
-
-        normalize_to = {n["from"]: n["to"] for n in data.get("normalized", [])}
-        redirect_to = {r_["from"]: r_["to"] for r_ in data.get("redirects", [])}
-
-        for original in batch:
-            canonical = normalize_to.get(original, original)
-            canonical = redirect_to.get(canonical, canonical)
-            qid = qid_by_canonical.get(canonical)
-            if qid:
-                out[original] = qid
+    for original in titles:
+        canonical = normalize_to.get(original, original)
+        canonical = redirect_to.get(canonical, canonical)
+        qid = qid_by_canonical.get(canonical)
+        if qid:
+            out[original] = qid
     return out
 
 
 def _iata_for_qids(client: httpx.Client, qids: list[str]) -> dict[str, str]:
+    """Resolve up to BATCH QIDs to IATA codes ("" if confirmed P238-less).
+
+    A qid absent from the returned dict was NOT confirmed either way this
+    round -- e.g. `wbgetentities` is documented to follow an entity
+    redirect by default, and may report the result keyed by the redirect's
+    target id rather than the id actually requested, in which case the
+    requested id never appears as a response key at all. The caller must
+    not conflate "absent from this result" with "confirmed to lack P238":
+    doing that once poisoned real, resolvable airports as empty forever,
+    since an empty result is cached specifically so it's never re-queried.
+    """
+    r = _get_with_retry(client, WIKIDATA_API, {
+        "action": "wbgetentities", "format": "json",
+        "props": "claims", "ids": "|".join(qids),
+    })
+    entities = _validated_json(r, expect_key="entities", require_batchcomplete=False)
+
     out: dict[str, str] = {}
-    for batch in _chunks(qids, BATCH):
-        r = _get_with_retry(client, WIKIDATA_API, {
-            "action": "wbgetentities", "format": "json",
-            "props": "claims", "ids": "|".join(batch),
-        })
-        for qid, entity in r.json().get("entities", {}).items():
-            claims = entity.get("claims", {}).get(IATA_PROPERTY, [])
-            for claim in claims:
-                value = claim.get("mainsnak", {}).get("datavalue", {}).get("value")
-                if isinstance(value, str) and len(value) == 3:
-                    out[qid] = value.upper()
-                    break
+    for qid, entity in entities.items():
+        if qid not in qids:
+            # Reported under a different id than requested (e.g. a
+            # redirect target) -- we cannot map it back to which requested
+            # id it satisfies, so leave the requested id unconfirmed rather
+            # than guessing at a mapping.
+            continue
+        value = ""
+        for claim in entity.get("claims", {}).get(IATA_PROPERTY, []):
+            candidate = claim.get("mainsnak", {}).get("datavalue", {}).get("value")
+            if isinstance(candidate, str) and len(candidate) == 3:
+                value = candidate.upper()
+                break
+        out[qid] = value
     return out
 
 
 def _resolve_batch(client: httpx.Client, titles: list[str]) -> dict[str, str]:
-    """Resolve one batch (<= BATCH titles) straight through to IATA codes."""
+    """Resolve one batch (<= BATCH titles) straight through to IATA codes.
+
+    A title absent from the returned dict was not confirmed either way
+    this round and must be retried later, not cached as "not an airport".
+    """
     qids = _qids_for_titles(client, titles)
-    if not qids:
-        return {}
-    iata = _iata_for_qids(client, sorted(set(qids.values())))
-    return {title: iata.get(qid, "") for title, qid in qids.items()}
+    # Titles that never resolved to any Wikidata item at all (not a valid
+    # Wikipedia article, or an article with no linked item) are genuinely
+    # not airports -- safe to resolve as "" immediately.
+    result: dict[str, str] = {t: "" for t in titles if t not in qids}
+    if qids:
+        iata = _iata_for_qids(client, sorted(set(qids.values())))
+        for title, qid in qids.items():
+            if qid in iata:
+                result[title] = iata[qid]
+            # else: qid's status wasn't confirmed this round -- leave title
+            # out of `result` so it's retried on a later call.
+    return result
 
 
 def _cache_path():
@@ -157,7 +191,9 @@ def iata_for_titles(titles: list[str]) -> dict[str, str]:
                           f"next run: {e!r}")
                 else:
                     for title in batch:
-                        cache[title] = resolved.get(title, "")
+                        if title in resolved:
+                            cache[title] = resolved[title]
+                        # else: unconfirmed this round -- leave un-cached.
                 if n % SAVE_EVERY == 0 or n == len(batches):
                     _save_cache(cache)
                 if n % 20 == 0 or n == len(batches):

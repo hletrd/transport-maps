@@ -31,3 +31,4 @@ dev = [
 
 [tool.pytest.ini_options]
 markers = ["network: hits a live API"]
+addopts = "-m 'not network'"

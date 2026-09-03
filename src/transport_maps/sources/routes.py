@@ -11,7 +11,11 @@ import polars as pl
 
 from transport_maps import config
 from transport_maps.sources import airports, wikidata
-from transport_maps.sources._utils import _atomic_write
+from transport_maps.sources._utils import (
+    _atomic_write,
+    _retry_after_seconds,
+    _validated_json,
+)
 
 ACTION_API = "https://en.wikipedia.org/w/api.php"
 TITLES_PER_REQUEST = 50
@@ -20,7 +24,9 @@ MAX_RETRIES = 6
 
 _SECTION_RE = re.compile(r"^==+\s*Airlines and destinations\s*==+\s*$", re.IGNORECASE | re.MULTILINE)
 # Cargo routes carry no passengers, so they must not become graph edges.
-_CARGO_RE = re.compile(r"^===+\s*(Cargo|Freight)[^=]*===+\s*$", re.IGNORECASE | re.MULTILINE)
+# Captures the heading's leading "=" run so its level can be compared
+# against later headings (see _strip_cargo_subsections).
+_CARGO_RE = re.compile(r"^(===+)\s*(?:Cargo|Freight)[^=]*=+\s*$", re.IGNORECASE | re.MULTILINE)
 _NEXT_TOP_HEADING_RE = re.compile(r"^==[^=]", re.MULTILINE)
 _LINK_RE = re.compile(r"\[\[([^\]|#]+?)(?:\|[^\]]*)?\]\]")
 _SKIP_PREFIXES = (
@@ -35,6 +41,26 @@ _SKIP_PREFIXES = (
 _SANITY_PAIRS: tuple[tuple[str, str], ...] = (("ICN", "NRT"),)
 
 
+def _strip_cargo_subsections(body: str) -> str:
+    """Remove Cargo/Freight subsections without discarding what follows them.
+
+    Cutting everything from the first Cargo heading to the end of the body
+    would also throw away any later Passenger subsection. Excise only the
+    span from a Cargo heading up to the next heading at the same level or
+    shallower (a sibling or parent section), or to the end of the body if
+    there is none.
+    """
+    while True:
+        cargo = _CARGO_RE.search(body)
+        if cargo is None:
+            return body
+        level = len(cargo.group(1))
+        next_boundary_re = re.compile(rf"^={{2,{level}}}[^=]", re.MULTILINE)
+        boundary = next_boundary_re.search(body, cargo.end())
+        end = boundary.start() if boundary is not None else len(body)
+        body = body[: cargo.start()] + body[end:]
+
+
 def parse_destinations(wikitext: str) -> list[str]:
     """Wiki article titles linked from the Airlines and destinations section."""
     match = _SECTION_RE.search(wikitext)
@@ -46,9 +72,7 @@ def parse_destinations(wikitext: str) -> list[str]:
     if nxt is not None:
         body = body[: nxt.start()]
 
-    cargo = _CARGO_RE.search(body)
-    if cargo is not None:
-        body = body[: cargo.start()]
+    body = _strip_cargo_subsections(body)
 
     titles: list[str] = []
     for raw in _LINK_RE.findall(body):
@@ -65,32 +89,53 @@ def _fetch_wikitext(client: httpx.Client, titles: list[str]) -> dict[str, str]:
     r = client.get(ACTION_API, params={
         "action": "query", "format": "json", "formatversion": "2",
         "prop": "revisions", "rvprop": "content", "rvslots": "main",
+        "redirects": "1",
         "titles": "|".join(titles),
     })
     r.raise_for_status()
-    data = r.json().get("query", {})
-    alias = {n["to"]: n["from"] for n in data.get("normalized", [])}
-    alias.update({n["to"]: n["from"] for n in data.get("redirects", [])})
+    data = _validated_json(r, expect_key="query", require_batchcomplete=True)
 
-    out: dict[str, str] = {}
+    # Resolve content by canonical title first, then map every ORIGINAL
+    # title in this batch to its own canonical form (normalize, then follow
+    # any redirect) and look that up -- see wikidata._qids_for_titles for
+    # why building this the other way around (page -> "the" title that
+    # produced it) is wrong: when two different input titles collapse to
+    # the same canonical page in one batch, the API reports only one page
+    # for both, so a page-keyed alias map can hand it back to only one of
+    # them and silently drops the other.
+    content_by_canonical: dict[str, str] = {}
     for page in data.get("pages", []):
         revisions = page.get("revisions")
-        if not revisions:
-            continue
-        title = page.get("title", "")
-        out[alias.get(title, title)] = revisions[0]["slots"]["main"]["content"]
+        if revisions:
+            content_by_canonical[page.get("title", "")] = revisions[0]["slots"]["main"]["content"]
+
+    normalize_to = {n["from"]: n["to"] for n in data.get("normalized", [])}
+    redirect_to = {r_["from"]: r_["to"] for r_ in data.get("redirects", [])}
+
+    out: dict[str, str] = {}
+    for original in titles:
+        canonical = normalize_to.get(original, original)
+        canonical = redirect_to.get(canonical, canonical)
+        content = content_by_canonical.get(canonical)
+        if content is not None:
+            out[original] = content
     return out
 
 
 def _fetch_wikitext_with_retry(client: httpx.Client, titles: list[str]) -> dict[str, str]:
-    """`_fetch_wikitext`, backing off and retrying on HTTP 429 rather than crashing."""
+    """`_fetch_wikitext`, backing off and retrying on HTTP 429 rather than crashing.
+
+    An API-level error (readonly, maxlag, ...) or an incomplete/paginated
+    response raises RuntimeError from `_validated_json` immediately, without
+    retrying here -- the caller's per-batch skip handles that the same way
+    it handles a batch that exhausts its 429 retries.
+    """
     for attempt in range(MAX_RETRIES):
         try:
             return _fetch_wikitext(client, titles)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429 and attempt < MAX_RETRIES - 1:
-                wait = float(e.response.headers.get("Retry-After", 2**attempt))
-                time.sleep(wait)
+                time.sleep(_retry_after_seconds(e.response.headers.get("Retry-After"), attempt))
                 continue
             raise
     raise RuntimeError("exhausted retries fetching a wikitext batch (HTTP 429)")
@@ -132,15 +177,23 @@ def _crawl_destinations(titles_by_iata: dict[str, str]) -> dict[str, list[str] |
 
     batches = list(itertools.batched(todo, TITLES_PER_REQUEST))
     print(f"routes: {len(cache)} airports cached, {len(todo)} to fetch in {len(batches)} batches")
+    failed_iatas: list[str] = []
     with httpx.Client(timeout=60, headers=HEADERS, follow_redirects=True) as client:
         for n, batch in enumerate(batches, start=1):
             titles = [title for _, title in batch]
-            wikitext_by_title = _fetch_wikitext_with_retry(client, titles)
-            for iata, title in batch:
-                wikitext = wikitext_by_title.get(title)
-                cache[iata] = parse_destinations(wikitext) if wikitext is not None else None
-            _save_destination_cache(cache)
+            try:
+                wikitext_by_title = _fetch_wikitext_with_retry(client, titles)
+            except (httpx.HTTPStatusError, httpx.TransportError, RuntimeError) as e:
+                failed_iatas.extend(iata for iata, _ in batch)
+                print(f"routes: batch {n}/{len(batches)} failed, will retry next run: {e!r}")
+            else:
+                for iata, title in batch:
+                    wikitext = wikitext_by_title.get(title)
+                    cache[iata] = parse_destinations(wikitext) if wikitext is not None else None
+                _save_destination_cache(cache)
             print(f"routes: batch {n}/{len(batches)} done ({len(cache)} airports cached)")
+    if failed_iatas:
+        print(f"routes: {len(failed_iatas)} airports unresolved this run (will retry on next call)")
     return cache
 
 
