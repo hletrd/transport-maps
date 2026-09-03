@@ -10,6 +10,54 @@ import numpy as np
 from transport_maps import config
 from transport_maps.emit import hover
 
+# Redistribution obligations of the open datasets this artifact is derived from.
+# The licence firewall (tests/test_licence_firewall.py) only proves that NO
+# commercial flight records leaked into dist/; it says nothing about crediting
+# the sources that legitimately did. Shipping the map without this block leaves
+# the CC-BY-SA and ODbL obligations unmet while every gate reports green.
+#
+# GRIP4 is itself built from many sources INCLUDING OpenStreetMap, which is why
+# OSM appears here even though this pipeline never queries OSM directly: the
+# road-density rasters that set every ground speed are downstream of it.
+ATTRIBUTION: tuple[dict[str, str], ...] = (
+    {
+        "name": "Wikipedia",
+        "licence": "CC BY-SA 4.0",
+        "url": "https://en.wikipedia.org/",
+        "usedFor": "airline route network, from 'Airlines and destinations' sections",
+    },
+    {
+        "name": "Wikidata",
+        "licence": "CC0 1.0",
+        "url": "https://www.wikidata.org/",
+        "usedFor": "resolving destination articles to IATA codes (property P238)",
+    },
+    {
+        "name": "OurAirports",
+        "licence": "Public Domain",
+        "url": "https://ourairports.com/data/",
+        "usedFor": "airport locations, sizes and scheduled-service status",
+    },
+    {
+        "name": "Natural Earth",
+        "licence": "Public Domain",
+        "url": "https://www.naturalearthdata.com/",
+        "usedFor": "1:10m land polygons defining the H3 cell universe",
+    },
+    {
+        "name": "GRIP4 (Global Roads Inventory Project)",
+        "licence": "CC0 1.0",
+        "url": "https://www.globio.info/download-grip-dataset",
+        "usedFor": "road-density rasters setting per-cell ground speed",
+    },
+    {
+        "name": "OpenStreetMap",
+        "licence": "ODbL 1.0",
+        "url": "https://www.openstreetmap.org/copyright",
+        "usedFor": "upstream source of the GRIP4 road network",
+    },
+)
+
 
 def load_origins(path: Path | None = None) -> list[dict]:
     path = path or (config.DATA / "origins.toml")
@@ -38,6 +86,7 @@ def write_index(origins: list[dict], out: Path) -> None:
         "unreachable": config.UNREACHABLE,
         "hoverRes": config.HOVER_RES,
         "hoverCellsUrl": "hover_cells.bin",
+        "attribution": [dict(entry) for entry in ATTRIBUTION],
         "origins": [
             {"slug": o["slug"], "name": o["name"], "lat": o["lat"], "lon": o["lon"]}
             for o in origins
