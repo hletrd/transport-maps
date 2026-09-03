@@ -3,7 +3,7 @@
 import argparse
 import re
 
-from transport_maps import config
+from transport_maps import config, validate
 from transport_maps.contour import bands
 from transport_maps.emit import hover, index, routes_json, tiles
 from transport_maps.graph import build, nodes
@@ -22,6 +22,46 @@ def _slug(name: str) -> str:
     return name
 
 
+def _build_all(limit: int | None = None) -> None:
+    """Build the graph once, then solve, validate and emit every origin.
+
+    Aborts on the first failing gate -- a partially written dist/ is worse
+    than none. `limit` restricts to the first N origins, for smoke-testing.
+    """
+    idx = nodes.build_index()
+    csr = build.build_graph(idx)
+    origins = index.load_origins()
+    if limit is not None:
+        origins = origins[:limit]
+
+    index.write_index(origins, config.DIST / "index.json")
+    index.write_hover_cells(idx, config.DIST / "hover_cells.bin")
+
+    print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}")
+    for origin in origins:
+        slug = origin["slug"]
+        source = dijkstra.origin_node(idx, origin["lat"], origin["lon"])
+        minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
+
+        coverage = validate.check_coverage(minutes, idx)
+        if coverage < validate.MIN_COVERAGE:
+            raise SystemExit(
+                f"{slug}: coverage {coverage:.1%} below {validate.MIN_COVERAGE:.0%}"
+            )
+        validate.check_monotonic_ground(idx, minutes)
+
+        fc = bands.band_feature_collection(idx, minutes[: idx.n_cells])
+        validate.check_bands_disjoint(fc)
+
+        out = config.DIST / "origins"
+        tiles.write_pmtiles(fc, out / f"{slug}.pmtiles")
+        hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
+        routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
+
+        size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
+        print(f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="transport-maps")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -37,6 +77,16 @@ def main() -> None:
 
     sub.add_parser(
         "index", help="write index.json and the shared hover-cell ordering from origins.toml"
+    )
+
+    build_all = sub.add_parser(
+        "build-all", help="build the graph once and solve, validate and emit every origin"
+    )
+    build_all.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="only build the first N origins from origins.toml (for smoke-testing)",
     )
 
     args = parser.parse_args()
@@ -71,3 +121,6 @@ def main() -> None:
         index.write_hover_cells(idx, hover_cells_out)
 
         print(f"wrote {index_out} ({len(origins)} origins), {hover_cells_out}")
+
+    elif args.command == "build-all":
+        _build_all(limit=args.limit)
