@@ -9,8 +9,15 @@ from transport_maps import config
 from transport_maps.graph.nodes import NodeIndex
 
 
-def solve_from(csr: sp.csr_matrix, source: int) -> np.ndarray:
-    """Minutes from `source` to every node. Unreachable nodes are inf."""
+def solve_from(csr: sp.csr_matrix, source: int, with_predecessors: bool = False):
+    """Minutes from `source` to every node. Unreachable nodes are inf.
+
+    Returns `(dist, pred)` when `with_predecessors` is set, else `dist` alone.
+    """
+    if with_predecessors:
+        return _dijkstra(
+            csgraph=csr, directed=True, indices=source, return_predecessors=True
+        )
     return _dijkstra(csgraph=csr, directed=True, indices=source)
 
 
