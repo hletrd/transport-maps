@@ -3412,30 +3412,46 @@ def check_bands_disjoint(feature_collection: dict) -> None:
 
 
 def check_monotonic_ground(idx, minutes: np.ndarray) -> None:
-    """Adjacent land cells must not differ by more than the fastest ground hop allows."""
+    """Dijkstra's invariant: no cell beats reaching it via an adjacent cell.
+
+    For adjacent p and q, minutes[q] must not exceed minutes[p] plus the ACTUAL
+    cost of the p->q ground hop. Charge the real edge weight, which is the hop
+    distance divided by the DESTINATION cell's speed -- the same rule
+    ground.hex_edges uses.
+
+    An earlier draft compared against the fastest speed on the grid (85 km/h,
+    about 10.6 minutes per hop). That is wrong: ground speeds span 5 to 85 km/h,
+    so a roadless neighbour legitimately costs about 180 minutes, and the tight
+    bound fails on any slow terrain. Do not reintroduce a single global bound.
+    """
     import h3
+
     from transport_maps.graph import ground
+
     speeds = ground.cell_speed_kmh(idx)
-    fastest = speeds.max()
-    for pos, cell in enumerate(idx.cells[::997]):  # sample; a full sweep is O(n*7)
-        t = minutes[pos * 997] if pos * 997 < idx.n_cells else None
-        if t is None or not np.isfinite(t):
+    stride = 997  # sample; a full sweep is O(n * 7) and this gate runs per origin
+    for pos in range(0, idx.n_cells, stride):
+        here = float(minutes[pos])
+        if not np.isfinite(here):
             continue
+        cell = idx.cells[pos]
+        origin_latlng = np.array([h3.cell_to_latlng(cell)])
         for neighbour in h3.grid_disk(cell, 1):
             if neighbour == cell:
                 continue
-            try:
-                q = idx.cell_index(neighbour)
-            except KeyError:
+            q = idx.try_cell_index(neighbour)
+            if q is None or not np.isfinite(minutes[q]):
                 continue
-            if np.isfinite(minutes[q]):
-                # ~15 km between res-5 centroids at the fastest available speed.
-                limit = t + 15.0 / fastest * 60.0 + 1.0
-                if minutes[q] > limit:
-                    raise ValueError(
-                        f"cell {neighbour} is {minutes[q]:.0f} min but its neighbour is "
-                        f"{t:.0f} min; ground edges are missing or mis-weighted"
-                    )
+            distance = ground.haversine_km(
+                origin_latlng, np.array([h3.cell_to_latlng(neighbour)])
+            )[0]
+            hop = distance / speeds[q] * 60.0
+            if minutes[q] > here + hop + 1e-6:
+                raise ValueError(
+                    f"cell {neighbour} is {minutes[q]:.1f} min but its neighbour "
+                    f"{cell} is {here:.1f} min and the hop costs only {hop:.1f} min; "
+                    "the solver or the ground edges are inconsistent"
+                )
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
