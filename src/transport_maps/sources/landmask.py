@@ -1,9 +1,6 @@
 """Natural Earth land polygons -> the H3 cell universe."""
 
-import os
 import pathlib
-import tempfile
-from collections.abc import Callable
 
 import h3
 import httpx
@@ -12,6 +9,7 @@ import pyogrio
 import shapely
 
 from transport_maps import config
+from transport_maps.sources._utils import _atomic_write
 
 LAND_URL = "https://naturalearth.s3.amazonaws.com/10m_physical/ne_10m_land.zip"
 
@@ -23,25 +21,6 @@ LAND_URL = "https://naturalearth.s3.amazonaws.com/10m_physical/ne_10m_land.zip"
 ANTARCTICA_MAX_LAT = -60.0
 
 _MULTIPOLYGON_TYPE_ID = 6
-
-
-def _atomic_write(path: pathlib.Path, write_fn: Callable[[pathlib.Path], None]) -> None:
-    """Write via a same-directory temp file, then atomically replace `path`.
-
-    `write_fn` receives the temp file's path and must write the full content
-    to it. Same-directory rename is atomic on POSIX, so a process killed
-    mid-write can never leave a truncated file at `path` for the next run's
-    `.exists()` check to mistake for a complete, valid cache entry.
-    """
-    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-    os.close(fd)
-    tmp_path = pathlib.Path(tmp_name)
-    try:
-        write_fn(tmp_path)
-        os.replace(tmp_path, path)
-    except BaseException:
-        tmp_path.unlink(missing_ok=True)
-        raise
 
 
 def _download() -> pathlib.Path:
