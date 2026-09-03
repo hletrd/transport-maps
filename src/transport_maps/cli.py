@@ -30,6 +30,11 @@ def _build_all(limit: int | None = None) -> None:
     """
     idx = nodes.build_index()
     csr = build.build_graph(idx)
+    # Graph-level gate: runs once, before any origin is solved, because a
+    # disconnected airport is a property of the network rather than of a
+    # particular origin -- and per-origin coverage cannot see it.
+    validate.check_airport_connectivity(idx, csr)
+
     origins = index.load_origins()
     if limit is not None:
         origins = origins[:limit]

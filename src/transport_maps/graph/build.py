@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 # at one or both ends.
 IMPLAUSIBLE_LONGHAUL_KM = 8000.0
 
+# A route pair naming an airport that never made it into the node index (see
+# nodes.MAX_DROPPED_AIRPORT_FRACTION) cannot become an edge. 124 of 68,152
+# directed pairs today (0.18%), all downstream of the 25 dropped airports.
+# Unbounded, a land-mask regression would silently delete the air network one
+# pair at a time while every other gate stayed green.
+MAX_UNKNOWN_PAIR_FRACTION = 0.02
+
 
 def is_geographically_plausible(distance_km: float, size1: str, size2: str) -> bool:
     """Reject ultra-long-haul pairs where neither endpoint is a large airport."""
@@ -33,12 +40,18 @@ def is_geographically_plausible(distance_km: float, size1: str, size2: str) -> b
 
 
 def _air_edges(
-    idx: NodeIndex, rejected_out: list[tuple[str, str, float]] | None = None
+    idx: NodeIndex,
+    rejected_out: list[tuple[str, str, float]] | None = None,
+    unknown_out: list[tuple[str, str]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Directed flight edges. Pairs failing `is_geographically_plausible` are
     dropped and, if `rejected_out` is given, appended to it as (src, dst, km)
     so a caller (or a test) can inspect exactly what was rejected rather than
     only reading a log line.
+
+    Pairs naming an airport absent from the node index are dropped too, and
+    collected into `unknown_out` on the same principle -- that skip used to be
+    silent and unbounded.
     """
     cal = air.load_calibration()
     apts = airports.scheduled_airports()
@@ -52,9 +65,11 @@ def _air_edges(
     cols: list[int] = []
     minutes: list[float] = []
     rejected: list[tuple[str, str, float]] = []
+    unknown: list[tuple[str, str]] = []
     net = routes.route_network()
     for src, dst in zip(net["src"], net["dst"]):
         if src not in known or dst not in known:
+            unknown.append((src, dst))
             continue
         (lat1, lon1, size1) = meta[src]
         (lat2, lon2, size2) = meta[dst]
@@ -83,6 +98,23 @@ def _air_edges(
         )
     if rejected_out is not None:
         rejected_out.extend(rejected)
+
+    if unknown:
+        logger.warning(
+            "dropped %d of %d route pair(s) naming an airport absent from the node "
+            "index (%s%s)",
+            len(unknown), len(net), ", ".join(f"{s}->{d}" for s, d in unknown[:10]),
+            ", ..." if len(unknown) > 10 else "",
+        )
+    limit = MAX_UNKNOWN_PAIR_FRACTION * len(net)
+    if len(unknown) > limit:
+        raise RuntimeError(
+            f"{len(unknown)} of {len(net)} route pairs name an airport absent from "
+            f"the node index, above the {MAX_UNKNOWN_PAIR_FRACTION:.0%} bound "
+            f"({limit:.0f}); the land mask or the airport table has regressed"
+        )
+    if unknown_out is not None:
+        unknown_out.extend(unknown)
 
     return (
         np.asarray(rows, dtype=np.int64),
@@ -121,12 +153,20 @@ def _access_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def build_graph(
-    idx: NodeIndex, rejected_air_pairs: list[tuple[str, str, float]] | None = None
+    idx: NodeIndex,
+    rejected_air_pairs: list[tuple[str, str, float]] | None = None,
+    unknown_airport_pairs: list[tuple[str, str]] | None = None,
 ) -> sp.csr_matrix:
     """Assemble the graph. Pass a list as `rejected_air_pairs` to have it filled
-    with the (src, dst, km) triples `is_geographically_plausible` dropped.
+    with the (src, dst, km) triples `is_geographically_plausible` dropped, and
+    one as `unknown_airport_pairs` for those naming an airport the node index
+    does not hold.
     """
-    parts = [ground.hex_edges(idx), _air_edges(idx, rejected_air_pairs), _access_edges(idx)]
+    parts = [
+        ground.hex_edges(idx),
+        _air_edges(idx, rejected_air_pairs, unknown_airport_pairs),
+        _access_edges(idx),
+    ]
     rows = np.concatenate([p[0] for p in parts])
     cols = np.concatenate([p[1] for p in parts])
     data = np.concatenate([p[2] for p in parts])

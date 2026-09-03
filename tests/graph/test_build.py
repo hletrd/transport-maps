@@ -72,3 +72,41 @@ def test_geographic_plausibility_guard_rejects_a_small_but_nonzero_count(rejecte
     # (e.g. a broken size lookup), and a jump into the hundreds means it
     # started over-rejecting real long-haul routes.
     assert 1 <= len(rejected_air_pairs) <= 20
+
+
+@pytest.fixture(scope="module")
+def unknown_airport_pairs(idx):
+    unknown: list[tuple[str, str]] = []
+    build.build_graph(idx, None, unknown)
+    return unknown
+
+
+def test_route_pairs_naming_an_unknown_airport_are_counted(unknown_airport_pairs, idx):
+    """These pairs reference airports the land mask had no cell for, so they
+    cannot become edges. The skip used to be silent and unbounded: a land-mask
+    regression would have deleted the air network one pair at a time with only
+    the land-CELL coverage gate in the way.
+
+    124 today, all downstream of the 25 dropped airports. Loose on purpose --
+    investigate rather than adjust if it moves far.
+    """
+    from transport_maps.sources import routes
+
+    total = len(routes.route_network())
+    assert 0 < len(unknown_airport_pairs) <= build.MAX_UNKNOWN_PAIR_FRACTION * total
+    # Every dropped pair must name an airport that really is absent, rather
+    # than the count being padded by pairs that should have been edges.
+    known = set(idx.airports)
+    assert all(s not in known or d not in known for s, d in unknown_airport_pairs)
+
+
+def test_the_real_graph_passes_the_airport_connectivity_gate(csr, idx):
+    """The gate has to hold against the live network, not just the doubles in
+    tests/test_validate.py. 9 of 3,983 airports are isolated today (0.23%),
+    all small-island fields with no resolvable destinations.
+    """
+    from transport_maps import validate
+
+    isolated: list[str] = []
+    validate.check_airport_connectivity(idx, csr, isolated)
+    assert 0 <= len(isolated) <= validate.MAX_ISOLATED_AIRPORT_FRACTION * len(idx.airports)
