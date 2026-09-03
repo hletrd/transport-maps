@@ -1,7 +1,7 @@
 [project]
 name = "transport-maps"
 version = "0.1.0"
-description = "Add your description here"
+description = "Pipeline for building global travel-time isochrone maps from open geodata"
 readme = "README.md"
 authors = [
     { name = "Jiyong Youn", email = "01@0101010101.com" }
@@ -17,9 +17,6 @@ dependencies = [
     "selectolax>=0.4.11",
     "shapely>=2.1.2",
 ]
-
-[project.scripts]
-transport-maps = "transport_maps:main"
 
 [build-system]
 requires = ["uv_build>=0.9.28,<0.10.0"]
