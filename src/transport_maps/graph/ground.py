@@ -4,14 +4,17 @@ import h3
 import numpy as np
 
 from transport_maps.graph.nodes import NodeIndex
+from transport_maps.sources import roads
 
-# Phase A placeholder, replaced by the OSM speed field in Task 9.
-UNIFORM_GROUND_KMH = 45.0
+# Index by GRIP road class: 0 = roadless, 1 = highway .. 5 = local road.
+SPEED_BY_ROAD_CLASS_KMH = np.array([5.0, 85.0, 60.0, 40.0, 30.0, 25.0], dtype=np.float64)
 
 
 def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
     """Effective ground speed per cell, indexed by cell position."""
-    return np.full(idx.n_cells, UNIFORM_GROUND_KMH, dtype=np.float64)
+    centroids = np.array([h3.cell_to_latlng(c) for c in idx.cells], dtype=np.float64)
+    classes = roads.sample_class(centroids[:, 0], centroids[:, 1])
+    return SPEED_BY_ROAD_CLASS_KMH[classes]
 
 
 def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
