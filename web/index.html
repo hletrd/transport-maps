@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Reach — global travel time</title>
+<meta name="description" content="How long it takes to reach anywhere on Earth, from 157 cities, by air, rail and ground.">
+<link href="./vendor/fonts.css" rel="stylesheet">
+<link href="./vendor/maplibre-gl.css" rel="stylesheet">
+<style>
+:root{
+  --void:#0a0c10; --void-2:#0e1118; --rule:#1c2230; --rule-hi:#2b3446;
+  --ink:#dfe6f2; --ink-2:#8d99ae; --ink-3:#5c6678;
+  --b0:#cde2fb; --b1:#b7d3f6; --b2:#9ec5f4; --b3:#86b6ef; --b4:#6da7ec; --b5:#5598e7;
+  --b6:#3987e5; --b7:#2a78d6; --b8:#256abf; --b9:#1c5cab; --b10:#184f95;
+  --rail:336px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--void); color:var(--ink);
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px;
+  overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+#map{position:fixed;inset:0}
+.maplibregl-ctrl-attrib,.maplibregl-ctrl-logo{display:none!important}
+
+/* ---- grain + vignette over the globe ---- */
+.veil{position:fixed;inset:0;pointer-events:none;z-index:2}
+.veil::before{
+  content:"";position:absolute;inset:0;
+  background:radial-gradient(120% 90% at 62% 45%,transparent 42%,rgba(4,6,10,.72) 100%);
+}
+.veil::after{
+  content:"";position:absolute;inset:0;opacity:.16;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='.5'/></svg>");
+}
+
+/* ---- left rail ---- */
+.rail{
+  position:fixed;top:0;left:0;bottom:0;width:var(--rail);z-index:5;
+  background:linear-gradient(180deg,rgba(10,12,16,.97),rgba(10,12,16,.90));
+  border-right:1px solid var(--rule);
+  backdrop-filter:blur(14px);
+  display:flex;flex-direction:column;
+  animation:rail-in .8s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes rail-in{from{transform:translateX(-14px);opacity:0}to{transform:none;opacity:1}}
+
+.masthead{padding:26px 24px 18px;border-bottom:1px solid var(--rule)}
+.wordmark{
+  font-family:Fraunces,Georgia,serif; font-weight:300; font-size:40px; line-height:.92;
+  letter-spacing:-.022em; margin:0; color:var(--ink);
+  font-variation-settings:"opsz" 96,"SOFT" 0;
+}
+.wordmark em{font-style:italic;font-weight:500;color:var(--b2)}
+.tagline{
+  margin:11px 0 0; font-size:11px; line-height:1.55; color:var(--ink-2);
+  letter-spacing:.02em; max-width:30ch;
+}
+
+/* ---- origin picker ---- */
+.picker{padding:18px 24px 14px;border-bottom:1px solid var(--rule)}
+.eyebrow{
+  font-size:9.5px;letter-spacing:.19em;text-transform:uppercase;color:var(--ink-3);
+  margin:0 0 9px;font-weight:500;
+}
+.field{position:relative}
+.field input{
+  width:100%;background:var(--void-2);border:1px solid var(--rule-hi);color:var(--ink);
+  font:400 13px/1 "IBM Plex Mono",monospace;padding:11px 12px 11px 30px;border-radius:2px;
+  outline:none;transition:border-color .18s,box-shadow .18s;
+}
+.field input:focus{border-color:var(--b6);box-shadow:0 0 0 3px rgba(57,135,229,.13)}
+.field input::placeholder{color:var(--ink-3)}
+.field svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.5}
+
+.results{
+  list-style:none;margin:10px 0 0;padding:0;overflow-y:auto;max-height:34vh;
+  scrollbar-width:thin;scrollbar-color:var(--rule-hi) transparent;
+}
+.results li{margin:0}
+.results button{
+  width:100%;text-align:left;background:none;border:0;color:var(--ink-2);
+  font:400 12.5px/1 "IBM Plex Mono",monospace;padding:8px 10px;border-radius:2px;
+  cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:baseline;
+  transition:background .13s,color .13s;
+}
+.results button:hover{background:rgba(57,135,229,.10);color:var(--ink)}
+.results button[aria-current="true"]{background:rgba(57,135,229,.16);color:var(--b0)}
+.results .coord{font-size:10px;color:var(--ink-3);letter-spacing:.02em;flex:none}
+
+/* ---- readout ---- */
+.readout{padding:20px 24px;border-bottom:1px solid var(--rule);min-height:132px}
+.readout .big{
+  font-family:Fraunces,Georgia,serif;font-weight:300;font-size:52px;line-height:1;
+  letter-spacing:-.03em;margin:2px 0 0;color:var(--b1);
+  font-variation-settings:"opsz" 120;
+  font-feature-settings:"tnum" 1;
+}
+.readout .big small{font-size:19px;color:var(--ink-2);margin-left:5px;letter-spacing:0}
+.readout .where{
+  margin:9px 0 0;font-size:11px;color:var(--ink-2);letter-spacing:.02em;
+  min-height:1.4em;
+}
+.readout .hint{margin:9px 0 0;font-size:10.5px;color:var(--ink-3);line-height:1.5}
+
+/* ---- legend ---- */
+.legend{padding:18px 24px;margin-top:auto}
+.scale{display:flex;height:9px;border-radius:1px;overflow:hidden;margin:0 0 8px}
+.scale span{flex:1}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--ink-3);letter-spacing:.04em}
+.legend .note{margin:13px 0 0;font-size:10px;line-height:1.6;color:var(--ink-3)}
+.legend .note b{color:var(--ink-2);font-weight:500}
+
+.credits{
+  padding:13px 24px 17px;border-top:1px solid var(--rule);
+  font-size:9.5px;line-height:1.65;color:var(--ink-3);
+}
+.credits a{color:var(--ink-2);text-decoration:none;border-bottom:1px solid var(--rule-hi)}
+.credits a:hover{color:var(--b2)}
+
+/* ---- loading ---- */
+.boot{
+  position:fixed;inset:0;z-index:9;background:var(--void);
+  display:grid;place-items:center;transition:opacity .7s ease;
+}
+.boot.gone{opacity:0;pointer-events:none}
+.boot .pulse{
+  font-family:Fraunces,Georgia,serif;font-size:15px;color:var(--ink-3);letter-spacing:.05em;
+  animation:pulse 1.7s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:.32}50%{opacity:.85}}
+
+/* ---- cursor crosshair ---- */
+.cross{position:fixed;z-index:3;pointer-events:none;opacity:0;transition:opacity .18s}
+.cross.on{opacity:.55}
+.cross i{position:absolute;background:var(--b3)}
+.cross i:nth-child(1){width:13px;height:1px;left:-16px;top:0}
+.cross i:nth-child(2){width:13px;height:1px;left:4px;top:0}
+.cross i:nth-child(3){width:1px;height:13px;left:0;top:-16px}
+.cross i:nth-child(4){width:1px;height:13px;left:0;top:4px}
+
+@media (max-width:820px){
+  :root{--rail:100%}
+  .rail{bottom:auto;height:auto;max-height:56vh;border-right:0;border-bottom:1px solid var(--rule)}
+  .results{max-height:22vh}
+  .legend{margin-top:0}
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="veil"></div>
+<div class="cross" id="cross"><i></i><i></i><i></i><i></i></div>
+
+<aside class="rail">
+  <header class="masthead">
+    <h1 class="wordmark">Re<em>ach</em></h1>
+    <p class="tagline">How long it takes to get anywhere on Earth — by air, rail and ground — starting from one city.</p>
+  </header>
+
+  <section class="picker">
+    <p class="eyebrow">Departing from</p>
+    <div class="field">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8d99ae" stroke-width="2.4">
+        <circle cx="11" cy="11" r="7"/><path d="M20 20l-4.5-4.5"/>
+      </svg>
+      <input id="q" type="search" placeholder="Search 157 cities…" autocomplete="off" spellcheck="false">
+    </div>
+    <ul class="results" id="results"></ul>
+  </section>
+
+  <section class="readout">
+    <p class="eyebrow">Travel time</p>
+    <p class="big" id="time">—</p>
+    <p class="where" id="where">Point at the globe.</p>
+    <p class="hint" id="hint"></p>
+  </section>
+
+  <section class="legend">
+    <p class="eyebrow">Hours to arrive</p>
+    <div class="scale" id="scale"></div>
+    <div class="ticks"><span>0</span><span>6</span><span>12</span><span>24</span><span>48</span><span>72+</span></div>
+    <p class="note">
+      Assumes you <b>leave at a random moment</b> — so waiting for the next
+      departure counts. A twice-daily route costs about six hours of waiting; a
+      weekly one costs days.
+    </p>
+  </section>
+
+  <footer class="credits" id="credits"></footer>
+</aside>
+
+<div class="boot" id="boot"><p class="pulse">reticulating the planet…</p></div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
