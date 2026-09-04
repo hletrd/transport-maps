@@ -9,7 +9,7 @@ import pyogrio
 import shapely
 
 from transport_maps import config
-from transport_maps.sources._utils import _atomic_write
+from transport_maps.sources._utils import _atomic_write, _params_hash
 
 LAND_URL = "https://naturalearth.s3.amazonaws.com/10m_physical/ne_10m_land.zip"
 
@@ -58,10 +58,21 @@ def _land_parts() -> list[shapely.Geometry]:
     return kept
 
 
+def _cells_cache_path(res: int):
+    """Cache path for `res`, stamped with the other constants that shape it.
+
+    The resolution was already encoded in the filename; ANTARCTICA_MAX_LAT and
+    the source archive were not, so changing either would have been read back
+    from the file built under the old value.
+    """
+    stamp = _params_hash(LAND_URL, ANTARCTICA_MAX_LAT)
+    return config.BUILD / f"land_cells_r{res}_{stamp}.parquet"
+
+
 def land_cells(res: int) -> list[str]:
     """H3 cells at `res` overlapping land. Cached to parquet."""
     config.ensure_dirs()
-    out = config.BUILD / f"land_cells_r{res}.parquet"
+    out = _cells_cache_path(res)
     if out.exists():
         return pl.read_parquet(out)["cell"].to_list()
 

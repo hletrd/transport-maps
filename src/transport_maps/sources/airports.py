@@ -4,7 +4,7 @@ import httpx
 import polars as pl
 
 from transport_maps import config
-from transport_maps.sources._utils import _atomic_write
+from transport_maps.sources._utils import _atomic_write, _params_hash
 
 AIRPORTS_URL = "https://davidmegginson.github.io/ourairports-data/airports.csv"
 
@@ -30,8 +30,19 @@ def _download() -> bytes:
     return cached.read_bytes()
 
 
+def _table_cache_path():
+    """Cache path stamped with the constants that determine the table's rows.
+
+    Changing which OurAirports `type` values count as scheduled service, or
+    which source columns are required, must produce a cache miss rather than
+    silently reading back the table built under the old rules.
+    """
+    stamp = _params_hash(AIRPORTS_URL, SIZE_BY_TYPE, sorted(REQUIRED_SOURCE_COLUMNS))
+    return config.BUILD / f"airports_{stamp}.parquet"
+
+
 def scheduled_airports() -> pl.DataFrame:
-    out = config.BUILD / "airports.parquet"
+    out = _table_cache_path()
     if out.exists():
         return pl.read_parquet(out)
 

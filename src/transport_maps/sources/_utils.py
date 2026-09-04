@@ -1,5 +1,7 @@
 """Shared utilities for sources modules."""
 
+import hashlib
+import json
 import os
 import pathlib
 import tempfile
@@ -93,3 +95,19 @@ def _refuse_partial(what: str, unresolved: list[str], remedy: str) -> None:
         f"{what} left {len(unresolved)} entries unresolved (e.g. {sample}); "
         f"refusing to persist a partial route network -- {remedy}"
     )
+
+
+def _params_hash(*values, length: int = 8) -> str:
+    """Short stable digest of the constants that govern a derived cache.
+
+    Derived caches key on a bare `.exists()`, so lowering (say)
+    DENSITY_THRESHOLD and re-running would short-circuit on the file built
+    under the OLD value: the change silently never takes effect, and every test
+    still passes because they all read the same stale artifact. Stamping this
+    into the filename turns that into a cache MISS instead.
+
+    Values are serialised with `json.dumps(..., sort_keys=True)`, so dict order
+    does not affect the digest but any change of value does.
+    """
+    payload = json.dumps(values, sort_keys=True, default=repr)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:length]

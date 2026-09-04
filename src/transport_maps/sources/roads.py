@@ -14,7 +14,7 @@ import numpy as np
 import rasterio
 
 from transport_maps import config
-from transport_maps.sources._utils import _atomic_write
+from transport_maps.sources._utils import _atomic_write, _params_hash
 
 GRIP4_URL = "https://dataportaal.pbl.nl/downloads/GRIP4/GRIP4_density_tp{n}.zip"
 GRID_ROWS, GRID_COLS = 2160, 4320  # 5 arcmin global; verified against the real rasters
@@ -49,13 +49,24 @@ def _ensure_raster(road_type: int) -> Path:
     return target
 
 
+def _grid_cache_path():
+    """Cache path stamped with the constants that determine the grid's content.
+
+    Without the stamp, lowering DENSITY_THRESHOLD and re-running `build-all`
+    reads back the grid built under the old threshold, so the change silently
+    no-ops and every test still passes against the stale file.
+    """
+    stamp = _params_hash(DENSITY_THRESHOLD, GRID_ROWS, GRID_COLS, N_TYPES)
+    return config.BUILD / f"road_class_grid_{stamp}.npy"
+
+
 def road_class_grid() -> np.ndarray:
     """Best road grade per 5-arcmin cell. 0 = roadless, 1 = highway .. 5 = local."""
     global _grid_cache
     if _grid_cache is not None:
         return _grid_cache
 
-    cached = config.BUILD / "road_class_grid.npy"
+    cached = _grid_cache_path()
     if cached.exists():
         _grid_cache = np.load(cached)
         return _grid_cache
