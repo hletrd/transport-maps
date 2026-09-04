@@ -86,9 +86,17 @@ def _air_edges(
         # accepts the small overcount everywhere in exchange for realistic
         # connections on every later hop.
         conn = transfers.connection_min(size1, cal)
+        # The design spec charges the air->air TRANSFER as max(MCT, headway/2),
+        # not their sum: if flights are frequent, the wait is short and MCT
+        # dominates; if flights are rare, the headway/2 wait already exceeds
+        # MCT on its own, and adding MCT on top of it double-charges time
+        # already spent waiting. The two forms agree on busy routes (wait is
+        # small either way) and diverge on low-frequency ones, where a sum
+        # overcounts by up to the smaller of the two terms.
+        transfer = max(wait, conn)
         rows.append(idx.airport_index(src))
         cols.append(idx.airport_index(dst))
-        minutes.append(float(block + wait + conn))
+        minutes.append(float(block + transfer))
 
     if rejected:
         detail = ", ".join(f"{s}->{d} ({km:.0f} km)" for s, d, km in rejected)
