@@ -50,6 +50,10 @@ def _stub_pipeline(monkeypatch, written, coverages):
         ],
     )
     monkeypatch.setattr(cli.index, "write_hover_cells", lambda idx, out: None)
+    # cell_speed_kmh would otherwise call h3.cell_to_boundary("dummy") for real
+    # and blow up; _build_all now computes it once and threads it through to
+    # check_monotonic_ground (M5), so this stub needs a stand-in too.
+    monkeypatch.setattr(cli.ground, "cell_speed_kmh", lambda idx: np.array([1.0]))
     monkeypatch.setattr(cli.dijkstra, "origin_node", lambda idx, lat, lon: 0)
     monkeypatch.setattr(
         cli.dijkstra, "solve_from",
@@ -58,7 +62,9 @@ def _stub_pipeline(monkeypatch, written, coverages):
 
     remaining = iter(coverages)
     monkeypatch.setattr(cli.validate, "check_coverage", lambda minutes, idx: next(remaining))
-    monkeypatch.setattr(cli.validate, "check_monotonic_ground", lambda idx, minutes: None)
+    monkeypatch.setattr(
+        cli.validate, "check_monotonic_ground", lambda idx, minutes, speeds: None
+    )
     monkeypatch.setattr(cli.bands, "band_feature_collection", lambda idx, minutes: {"features": []})
     monkeypatch.setattr(cli.validate, "check_bands_disjoint", lambda fc: None)
 

@@ -6,7 +6,7 @@ import re
 from transport_maps import config, validate
 from transport_maps.contour import bands
 from transport_maps.emit import hover, index, routes_json, tiles
-from transport_maps.graph import build, nodes
+from transport_maps.graph import build, ground, nodes
 from transport_maps.solve import dijkstra
 
 # Origin slugs become filenames under config.DIST, so reject anything that
@@ -34,6 +34,10 @@ def _build_all(limit: int | None = None) -> None:
     # disconnected airport is a property of the network rather than of a
     # particular origin -- and per-origin coverage cannot see it.
     validate.check_airport_connectivity(idx, csr)
+    # Computed once and reused by check_monotonic_ground below: the ground
+    # speed grid does not change between origins, and re-deriving it per
+    # origin cost ~4.8s x 157 origins for the same value.
+    speeds = ground.cell_speed_kmh(idx)
 
     origins = index.load_origins()
     if limit is not None:
@@ -57,7 +61,7 @@ def _build_all(limit: int | None = None) -> None:
             raise SystemExit(
                 f"{slug}: coverage {coverage:.1%} below {validate.MIN_COVERAGE:.0%}"
             )
-        validate.check_monotonic_ground(idx, minutes)
+        validate.check_monotonic_ground(idx, minutes, speeds)
 
         fc = bands.band_feature_collection(idx, minutes[: idx.n_cells])
         validate.check_bands_disjoint(fc)

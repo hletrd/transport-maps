@@ -4,6 +4,7 @@ import pytest
 import scipy.sparse as sp
 
 from transport_maps import config, validate
+from transport_maps.graph import ground
 
 
 def test_coverage_is_the_reachable_fraction():
@@ -78,7 +79,7 @@ def test_inconsistent_neighbour_time_is_rejected():
     minutes = np.array([0.0, 1e6])
 
     with pytest.raises(ValueError, match="inconsistent"):
-        validate.check_monotonic_ground(idx, minutes)
+        validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx))
 
 
 def test_consistent_neighbour_time_is_accepted():
@@ -89,7 +90,8 @@ def test_consistent_neighbour_time_is_accepted():
     idx = _TwoCellIdx(cell, neighbour)
     minutes = np.array([0.0, 0.0])  # reaching the neighbour "for free" only helps
 
-    validate.check_monotonic_ground(idx, minutes)  # must not raise
+    # must not raise
+    validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx))
 
 
 # --- Graph connectivity gate (I3) --------------------------------------------

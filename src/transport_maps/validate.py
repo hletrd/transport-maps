@@ -28,7 +28,7 @@ def check_bands_disjoint(feature_collection: dict) -> None:
                 raise ValueError("isochrone bands overlap; dissolution is broken")
 
 
-def check_monotonic_ground(idx, minutes: np.ndarray) -> None:
+def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray) -> None:
     """Dijkstra's invariant: no cell beats reaching it via an adjacent cell.
 
     For adjacent p and q, minutes[q] must not exceed minutes[p] plus the ACTUAL
@@ -40,12 +40,17 @@ def check_monotonic_ground(idx, minutes: np.ndarray) -> None:
     about 10.6 minutes per hop). That is wrong: ground speeds span 5 to 85 km/h,
     so a roadless neighbour legitimately costs about 180 minutes, and the tight
     bound fails on any slow terrain. Do not reintroduce a single global bound.
+
+    `speeds` is `ground.cell_speed_kmh(idx)`, computed once by the caller. This
+    gate runs once per origin (157 times in a full build), and the grid it is
+    derived from does not change between origins; recomputing it here cost
+    ~4.8s of `roads.cell_class` work per origin for a value the caller already
+    has.
     """
     import h3
 
     from transport_maps.graph import ground
 
-    speeds = ground.cell_speed_kmh(idx)
     stride = 997  # sample; a full sweep is O(n * 7) and this gate runs per origin
     for pos in range(0, idx.n_cells, stride):
         here = float(minutes[pos])
