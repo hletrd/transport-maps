@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import h3
 import numpy as np
 import pytest
@@ -24,7 +26,7 @@ def test_beyond_the_last_edge_is_the_open_ended_band():
 
 def test_feature_collection_has_one_feature_per_occupied_band():
     class FakeIndex:
-        cells = ["8530e08ffffffff", "8530e087fffffff"]
+        cells: ClassVar[list[str]] = ["8530e08ffffffff", "8530e087fffffff"]
         n_cells = 2
     fc = bands.band_feature_collection(FakeIndex(), np.array([10.0, 5000.0]))
     assert fc["type"] == "FeatureCollection"
@@ -36,7 +38,7 @@ def test_bands_are_emitted_in_ascending_order():
     """Bands are drawn as stacked fills on the frontend; emitting the slow
     bands before the fast ones would paint the fast bands underneath."""
     class FakeIndex:
-        cells = ["8530e08ffffffff", "8530e087fffffff", "852f5a37fffffff"]
+        cells: ClassVar[list[str]] = ["8530e08ffffffff", "8530e087fffffff", "852f5a37fffffff"]
         n_cells = 3
     # Insertion order (9, 0, 5) deliberately does not match ascending band order,
     # so a reversed or unsorted emission order would show up here.
@@ -46,7 +48,7 @@ def test_bands_are_emitted_in_ascending_order():
 
 def test_max_minutes_matches_the_band_edge_and_is_none_past_the_last_edge():
     class FakeIndex:
-        cells = ["8530e08ffffffff", "8530e087fffffff", "852f5a37fffffff"]
+        cells: ClassVar[list[str]] = ["8530e08ffffffff", "8530e087fffffff", "852f5a37fffffff"]
         n_cells = 3
     # band 0 (10 min), band 5 (1000 min), and past the last edge (5000 min -> open band)
     fc = bands.band_feature_collection(FakeIndex(), np.array([10.0, 1000.0, 5000.0]))
@@ -58,7 +60,7 @@ def test_max_minutes_matches_the_band_edge_and_is_none_past_the_last_edge():
 
 def test_cell_minutes_shorter_than_the_cell_universe_is_rejected():
     class FakeIndex:
-        cells = ["8530e08ffffffff", "8530e087fffffff"]
+        cells: ClassVar[list[str]] = ["8530e08ffffffff", "8530e087fffffff"]
         n_cells = 2
     with pytest.raises(ValueError, match="cell_minutes shorter than the cell universe"):
         bands.band_feature_collection(FakeIndex(), np.array([10.0]))

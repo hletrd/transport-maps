@@ -63,7 +63,7 @@ def test_calibration_contains_only_numbers():
             for k, v in node.items():
                 assert_scalar(v, f"{path}.{k}")
         elif isinstance(node, list):
-            raise AssertionError(f"calibration.toml{path} is a list; records are forbidden")
+            raise TypeError(f"calibration.toml{path} is a list; records are forbidden")
         else:
             assert isinstance(node, (int, float, bool, str)), f"{path} is {type(node)}"
 

@@ -1,4 +1,5 @@
 import json
+from typing import ClassVar
 
 import numpy as np
 
@@ -7,7 +8,7 @@ from transport_maps.emit import index
 
 
 class FakeIndex:
-    cells = ["8530e08ffffffff", "8530e087fffffff", "85754e63fffffff"]
+    cells: ClassVar[list[str]] = ["8530e08ffffffff", "8530e087fffffff", "85754e63fffffff"]
     n_cells = 3
 
 

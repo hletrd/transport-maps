@@ -1,10 +1,12 @@
+import itertools
+
 from transport_maps import config
 
 
 def test_band_edges_strictly_increasing():
     edges = config.BAND_EDGES_MIN
     assert len(edges) == 10
-    assert all(a < b for a, b in zip(edges, edges[1:]))
+    assert all(a < b for a, b in itertools.pairwise(edges))
 
 
 def test_unreachable_sentinel_fits_uint16_and_exceeds_all_bands():

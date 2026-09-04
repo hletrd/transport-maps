@@ -36,3 +36,31 @@ dev = [
 [tool.pytest.ini_options]
 markers = ["network: hits a live API"]
 addopts = "-m 'not network'"
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+# Ruff 0.16 jumped its default rule count from 59 to 413 with no config
+# present, so `ruff check .` used to verdict differently depending on which
+# ruff version happened to be installed (0.16+ vs. earlier), or which ambient
+# config an environment supplied. `select` REPLACES the default outright
+# (unlike `extend-select`), so pinning it here is what makes the result the
+# same on every machine from now on.
+#
+# This is pyflakes + syntax errors + import sorting + pyupgrade (an
+# unopinionated, widely-used baseline), plus BLE001 -- already relied on by
+# the noqa in sources/landmask.py -- and the specific Ruff/Pylint/Tryceratops
+# checks this project's code already satisfies. Deliberately NOT the full
+# 413-rule default: that set also includes e.g. mandatory docstring
+# formatting (D) and a blanket ban on `assert` in test files (S101), which
+# this project's existing style does not follow and was never written for.
+select = [
+    "E9", "F", "I", "UP",
+    "BLE001",   # blind `except Exception` must be justified, not silent
+    "PLR1730",  # if/else assignment replaceable by min()/max()
+    "RUF007",   # zip(xs, xs[1:]) -> itertools.pairwise(xs)
+    "RUF012",   # mutable class-level default needs typing.ClassVar
+    "RUF046",   # redundant int() around a call that already returns int
+    "TRY004",   # invalid-type branch should raise TypeError
+]

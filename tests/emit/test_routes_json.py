@@ -1,4 +1,5 @@
 import json
+from typing import ClassVar
 
 import numpy as np
 
@@ -9,7 +10,7 @@ class FakeIndex:
     # No `.stations` / `.station_index` on purpose: Task 9 (rail) has not
     # landed yet, so NodeIndex only has cells then airports.
     n_cells = 3
-    airports = ["ICN", "GMP"]
+    airports: ClassVar[list[str]] = ["ICN", "GMP"]
 
     def airport_index(self, iata: str) -> int:
         return {"ICN": 3, "GMP": 4}[iata]

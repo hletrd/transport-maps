@@ -23,7 +23,6 @@ class Calibration:
     access_min: dict[str, dict[str, float]]
     egress_min: dict[str, dict[str, float]]
     connection_min: dict[str, float]
-    calibrated: bool
 
 
 def load_calibration(path=None) -> Calibration:
@@ -41,7 +40,6 @@ def load_calibration(path=None) -> Calibration:
         access_min=raw["access_min"],
         egress_min=raw["egress_min"],
         connection_min=raw["connection_min"],
-        calibrated=raw["meta"]["calibrated"],
     )
 
 
@@ -49,7 +47,7 @@ def block_time_min(distance_km: float, dep_size: str, arr_size: str, cal: Calibr
     """Gate-to-gate time in whole minutes."""
     airborne = cal.climb_descent_penalty_min + 60.0 * distance_km / cal.cruise_kmh
     total = cal.taxi_out_min[dep_size] + airborne + cal.taxi_in_min[arr_size]
-    return int(round(total))
+    return round(total)
 
 
 def expected_wait_min(flights_per_week: float) -> int:
@@ -57,7 +55,7 @@ def expected_wait_min(flights_per_week: float) -> int:
     if flights_per_week <= 0:
         return NO_SERVICE
     headway = MINUTES_PER_WEEK / flights_per_week
-    return int(round(headway / 2.0))
+    return round(headway / 2.0)
 
 
 MIN_FLIGHTS_PER_WEEK = 0.5

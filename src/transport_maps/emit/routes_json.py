@@ -24,7 +24,7 @@ def write_routes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) 
             "id": node_id,
             "kind": kind,
             "code": code,
-            "min": int(round(float(minutes[node_id]))),
+            "min": round(float(minutes[node_id])),
             "prev": prev if prev != NO_PREDECESSOR else None,
         })
 

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import numpy as np
 
 from transport_maps import config
@@ -6,7 +8,7 @@ from transport_maps.emit import hover
 
 class FakeIndex:
     # Two res-5 cells that share a res-4 parent, plus one that does not.
-    cells = ["8530e08ffffffff", "8530e087fffffff", "85754e63fffffff"]
+    cells: ClassVar[list[str]] = ["8530e08ffffffff", "8530e087fffffff", "85754e63fffffff"]
     n_cells = 3
 
 
