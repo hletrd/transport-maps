@@ -1,7 +1,9 @@
 import argparse
+from typing import ClassVar
 
 import numpy as np
 import pytest
+from scipy.sparse import csr_matrix
 
 from transport_maps import cli
 from transport_maps.cli import _slug
@@ -30,10 +32,16 @@ def _stub_pipeline(monkeypatch, written, coverages):
     """
     class FakeIdx:
         n_cells = 1
-        cells = ["dummy"]
+        cells: ClassVar[list[str]] = ["dummy"]
+        airports: ClassVar[list[str]] = []  # check_airport_connectivity runs for real below
 
     monkeypatch.setattr(cli.nodes, "build_index", lambda: FakeIdx())
-    monkeypatch.setattr(cli.build, "build_graph", lambda idx: object())
+    # check_airport_connectivity is NOT mocked (it's a graph-level gate this
+    # stub is meant to exercise honestly), so it feeds this straight into
+    # scipy's connected_components -- a plain object() blows up there with
+    # "'object' object has no attribute 'dtype'". One node, no airports, is
+    # enough to satisfy it trivially.
+    monkeypatch.setattr(cli.build, "build_graph", lambda idx: csr_matrix((1, 1)))
     monkeypatch.setattr(
         cli.index, "load_origins",
         lambda: [
