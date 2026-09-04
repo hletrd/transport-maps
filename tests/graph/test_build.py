@@ -36,6 +36,26 @@ def test_all_weights_are_positive_and_finite(csr):
     assert (data > 0).all()
 
 
+def test_duplicate_row_col_pairs_across_edge_parts_are_rejected(monkeypatch):
+    """`coo_matrix` SUMS duplicate (row, col) entries instead of keeping the
+    cheaper edge, so two edge parts naming the same pair must be caught before
+    assembly rather than silently inflating that edge's weight. No part
+    produces a duplicate today (the real `csr` fixture proves that below --
+    it would never have built if it did), so this injects one directly.
+    """
+    class FakeIdx:
+        n = 3
+
+    dup = (np.array([0, 0], dtype=np.int64), np.array([1, 1], dtype=np.int64), np.array([5.0, 3.0]))
+    empty = (np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.float64))
+    monkeypatch.setattr(build.ground, "hex_edges", lambda idx: dup)
+    monkeypatch.setattr(build, "_air_edges", lambda *args, **kwargs: empty)
+    monkeypatch.setattr(build, "_access_edges", lambda idx: empty)
+
+    with pytest.raises(RuntimeError, match="duplicate"):
+        build.build_graph(FakeIdx())
+
+
 def test_neighbouring_land_cells_are_connected(csr, idx):
     import h3
     seoul = h3.latlng_to_cell(37.5665, 126.9780, 5)

@@ -182,5 +182,19 @@ def build_graph(
     if not np.isfinite(data).all() or (data <= 0).any():
         raise RuntimeError("graph contains non-positive or non-finite edge weights")
 
+    # coo_matrix SUMS duplicate (row, col) entries rather than taking the
+    # minimum -- two edges between the same pair of nodes would silently
+    # become one edge weighing more than either original, and Dijkstra would
+    # never see the cheaper of the two. No part builds a duplicate today, but
+    # nothing enforces that either, and Task 9's future station edges are the
+    # obvious way one could sneak in later. Encoding (row, col) as a single
+    # int64 key keeps this an O(n log n) check instead of an O(n^2) one.
+    keys = rows.astype(np.int64) * idx.n + cols.astype(np.int64)
+    if keys.size != np.unique(keys).size:
+        raise RuntimeError(
+            "graph edge list contains duplicate (row, col) pairs; coo_matrix would "
+            "silently sum their weights instead of keeping the cheaper edge"
+        )
+
     coo = sp.coo_matrix((data, (rows, cols)), shape=(idx.n, idx.n))
     return coo.tocsr()
