@@ -4,18 +4,27 @@
 # records from any provider -- only regression outputs. See the licence firewall
 # note in the design spec.
 #
-# Values below are pre-calibration defaults derived from published block times.
-# Task 13 replaces them with a fit over sampled real flights.
+# The airborne coefficients below are FITTED, from adsb.lol (ODbL-1.0) daily
+# globe history. Only regression outputs are stored here; no flight record is.
 
 [meta]
-calibrated = false
-sample_size = 0
-holdout_mae_min = 0.0
+calibrated = true
+source = "adsb.lol globe_history v2026.09.07-planes-readsb-prod-0.tar"
+licence = "ODbL-1.0"
+sample_size = 107366
+holdout_mae_min = 9.3
+# Median signed bias by distance bucket, predicted minus observed (minutes):
+#   150-400 +2   400-800 +3   800-1500 +0   1500-3000 -1   3000-6000 +6
+# VALID RANGE 150-6000 km. Beyond that the fit is EXTRAPOLATION: oceanic gaps
+# in receiver coverage trip the 900 s split rule, so a transpacific flight
+# arrives as fragments and only 2 of 107,366 legs exceed 6000 km. Long-haul
+# is also inherently +/-1 h on winds alone, which a distance-only symmetric
+# model cannot represent. Treat 10,000 km+ figures as approximate.
 
 [airborne]
 # airborne_min = climb_descent_penalty_min + 60 * distance_km / cruise_kmh
-climb_descent_penalty_min = 25.0
-cruise_kmh = 800.0
+climb_descent_penalty_min = 15.0
+cruise_kmh = 844
 
 [taxi_out_min]
 large = 17.0
