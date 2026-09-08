@@ -29,7 +29,12 @@ def write_routes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) 
         })
 
     for iata in idx.airports:
-        add(idx.airport_index(iata), "air", iata)
+        # BOTH sides. A journey's chain runs cell -> A_dep -> B_arr -> B_dep,
+        # so a file holding only departure nodes cannot be walked backwards
+        # from where the traveller actually landed -- which is exactly what
+        # the per-cell arrival ordinal in `.air.bin` names.
+        add(idx.airport_index(iata), "dep", iata)
+        add(idx.airport_arr_index(iata), "arr", iata)
     # Rail nodes are added in Task 9, once NodeIndex grows a station_index and
     # a .stations list. Until then there is nothing to emit for "rail" here.
 
@@ -37,9 +42,11 @@ def write_routes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) 
         "offsets": {
             "cells": 0,
             "airports": idx.n_cells,
-            # No rail nodes exist yet (Task 9); keep this equal to the end of
-            # the airport range so the format stays stable once they land.
-            "stations": idx.n_cells + len(idx.airports),
+            # Airports occupy TWO ranges -- departures then arrivals -- so the
+            # station range starts after both. Using one length here put the
+            # boundary in the middle of the arrival nodes and would have had
+            # the frontend read every arrival airport as a rail station.
+            "stations": idx.n_cells + 2 * len(idx.airports),
         },
         "nodes": nodes,
     }

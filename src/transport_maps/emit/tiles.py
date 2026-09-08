@@ -34,6 +34,10 @@ def write_pmtiles(feature_collection: dict, out: Path) -> None:
             "-l", LAYER,
             "-Z", str(MIN_ZOOM), "-z", str(MAX_ZOOM),
             "--simplification=4",
+            # Bands tile the land exactly, so their shared edges must simplify
+            # IDENTICALLY -- otherwise low zooms open hairline gaps along every
+            # boundary and the sea shows through the middle of a continent.
+            "--detect-shared-borders",
             "--coalesce-densest-as-needed",
             "--extend-zooms-if-still-dropping",
             str(src),

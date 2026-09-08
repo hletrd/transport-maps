@@ -5,7 +5,7 @@ import re
 
 from transport_maps import config, validate
 from transport_maps.contour import bands
-from transport_maps.emit import hover, index, routes_json, tiles
+from transport_maps.emit import hover, index, itinerary, routes_json, tiles
 from transport_maps.graph import build, ground, nodes
 from transport_maps.solve import dijkstra
 from transport_maps.sources import osm
@@ -89,11 +89,18 @@ def _build_all(limit: int | None = None) -> None:
         tiles.write_pmtiles(fc, out / f"{slug}.pmtiles")
         hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
         routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
+        itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
 
         size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
         print(f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}")
 
-    # Only reached once every origin above has succeeded.
+    # Only reached once every origin above has succeeded -- and never for a
+    # partial run. A --limit smoke test that rewrote index.json would leave
+    # dist/ advertising the handful of origins it happened to build, which is
+    # indistinguishable from a real build until the site drops to one city.
+    if limit is not None:
+        print(f"--limit {limit}: index.json left untouched (partial build)")
+        return
     index.write_index(origins, config.DIST / "index.json")
 
 

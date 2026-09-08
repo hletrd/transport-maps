@@ -78,6 +78,9 @@ def _stub_pipeline(monkeypatch, written, coverages):
     monkeypatch.setattr(
         cli.routes_json, "write_routes", lambda idx, minutes, pred, out: _fake_write(out)
     )
+    monkeypatch.setattr(
+        cli.itinerary, "write_itinerary", lambda idx, minutes, pred, out: _fake_write(out)
+    )
 
 
 def test_index_json_is_not_written_when_an_origin_aborts_partway(monkeypatch, tmp_path):
@@ -98,7 +101,7 @@ def test_index_json_is_not_written_when_an_origin_aborts_partway(monkeypatch, tm
         cli._build_all()
 
     assert index_calls == []  # never reached: aborted before the write
-    assert len(written) == 3  # "first"'s pmtiles/hover/routes did get written
+    assert len(written) == 4  # "first"'s pmtiles/hover/routes/air did get written
 
 
 def test_index_json_is_written_once_every_origin_succeeds(monkeypatch, tmp_path):
@@ -118,4 +121,26 @@ def test_index_json_is_written_once_every_origin_succeeds(monkeypatch, tmp_path)
 
     assert len(index_calls) == 1
     assert [o["slug"] for o in index_calls[0]] == ["first", "second"]
-    assert len(written) == 6  # both origins' pmtiles/hover/routes
+    assert len(written) == 8  # both origins' pmtiles/hover/routes/air
+
+
+def test_a_limited_build_does_not_rewrite_index_json(monkeypatch, tmp_path):
+    """--limit is a smoke test, not a deploy.
+
+    Rewriting index.json from a partial run leaves dist/ advertising only the
+    origins that run happened to build, which looks exactly like a real build
+    until the live site drops to one city.
+    """
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    written: list = []
+    # one origin for the limited run, then two for the full one
+    _stub_pipeline(monkeypatch, written, [1.0, 1.0, 1.0])
+    wrote_index: list = []
+    monkeypatch.setattr(cli.index, "write_index",
+                        lambda origins, out: wrote_index.append(out))
+
+    cli._build_all(limit=1)
+    assert wrote_index == [], "a partial build rewrote index.json"
+
+    cli._build_all()
+    assert wrote_index, "a full build must still write index.json"

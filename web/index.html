@@ -117,6 +117,20 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 }
 .legend-cap{margin:6px 0 0;font-size:10.5px;color:var(--text-3)}
 
+/* Route summary, under the legend. Appears only once a destination is set. */
+.legs{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;
+  max-height:34vh;overflow-y:auto;scrollbar-width:thin;
+  scrollbar-color:var(--line-2) transparent}
+.legs h2{margin:0 0 7px;font-size:11px;font-weight:500;text-transform:uppercase;
+  color:var(--text-3)}
+.leg{display:flex;gap:9px;align-items:baseline;padding:3px 0;font-size:12.5px}
+.leg .t{color:var(--text-3);font-variant-numeric:tabular-nums;width:56px;flex:none;
+  text-align:right}
+.leg .d{color:var(--text-2)}
+.leg .d b{color:var(--text);font-weight:500}
+.leg.total{border-top:1px solid var(--line);margin-top:5px;padding-top:6px}
+.leg.total .d{color:var(--text);font-weight:500}
+
 /* ---- right rail ---- */
 .rail{position:fixed;top:20px;right:20px;bottom:20px;width:264px;z-index:6;
   display:flex;flex-direction:column;gap:10px;pointer-events:none}
@@ -201,6 +215,8 @@ details[open] > summary{border-bottom:1px solid var(--line)}
     <div class="scale" id="scale"></div>
     <p class="legend-cap">Hours from the departure city, door to door.</p>
   </div>
+
+  <div class="legs" id="legs" hidden></div>
 </div>
 
 <button class="compass" id="compass" title="Reset bearing to north" aria-label="Reset bearing to north">

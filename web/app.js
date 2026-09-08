@@ -28,7 +28,10 @@ const hoverCells = new BigUint64Array(
   await (await fetch("./" + (meta.hoverCellsUrl || "hover_cells.bin"))).arrayBuffer()
 );
 let hoverTimes = null;          // Uint16Array for the active origin
+let hoverAir = null;            // arrival-airport ordinal per hover cell
+let routes = null;              // {offsets, byId} for walking the leg chain
 let active = null;
+const NO_AIRPORT = 0xFFFF;
 
 // ---- settings, remembered per viewer ----
 const store = {
@@ -163,11 +166,27 @@ function paintOrigin(o) {
       if (!r.ok) throw new Error(`${r.status} fetching ${o.slug}.bin`);
       return r.arrayBuffer();
     })
-    .then((b) => { hoverTimes = new Uint16Array(b); renderPins(); })
+    .then((b) => { hoverTimes = new Uint16Array(b); renderPins(); renderLegs(); })
     .catch((err) => {
       console.error("hover data unavailable:", err);
       $("where").textContent = `Hover data unavailable for ${o.name}.`;
     });
+
+  // The leg breakdown is a progressive extra: an origin built before these
+  // files existed still shows times, just without the itinerary.
+  hoverAir = null; routes = null;
+  fetch(`./origins/${o.slug}.air.bin`)
+    .then((r) => (r.ok ? r.arrayBuffer() : null))
+    .then((b) => { if (b) hoverAir = new Uint16Array(b); renderLegs(); })
+    .catch(() => {});
+  fetch(`./origins/${o.slug}.json`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => {
+      if (!j) return;
+      routes = { offsets: j.offsets, byId: new Map(j.nodes.map((n) => [n.id, n])) };
+      renderLegs();
+    })
+    .catch(() => {});
 
   map.flyTo({ center: [o.lon, o.lat], zoom: 1.9, speed: 0.75, curve: 1.5 });
   for (const b of document.querySelectorAll(".results button"))
@@ -189,16 +208,84 @@ function fmtTime(min) {
   return [String(Math.floor(h / 24)), `days ${h % 24}h`];
 }
 
-function lookup(lat, lon) {
-  if (!hoverTimes) return null;
+function cellIndex(lat, lon) {
   const id = BigInt("0x" + h3.latLngToCell(lat, lon, HOVER_RES));
   let lo = 0, hi = hoverCells.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1, v = hoverCells[mid];
-    if (v === id) return hoverTimes[mid];
+    if (v === id) return mid;
     if (v < id) lo = mid + 1; else hi = mid - 1;
   }
-  return null;                        // ocean, or outside the land mask
+  return -1;                          // ocean, or outside the land mask
+}
+
+function lookup(lat, lon) {
+  if (!hoverTimes) return null;
+  const i = cellIndex(lat, lon);
+  return i < 0 ? null : hoverTimes[i];
+}
+
+// Walk the shortest-path tree back from where the journey landed. The chain is
+// cell -> A_dep -> B_arr -> B_dep -> C_arr, so a connection shows up as an
+// arrival immediately followed by a departure at the same airport.
+function legsTo(lat, lon) {
+  if (!hoverAir || !routes) return null;
+  const i = cellIndex(lat, lon);
+  if (i < 0) return null;
+  const ordinal = hoverAir[i];
+  if (ordinal === NO_AIRPORT) return [];        // overland the whole way
+
+  const { cells, airports, stations } = routes.offsets;
+  const count = (stations - airports) / 2;      // departures AND arrivals
+  let node = routes.byId.get(airports + count + ordinal);
+  const chain = [];
+  while (node && chain.length < 24) {
+    chain.push(node);
+    node = node.prev == null ? null : routes.byId.get(node.prev);
+  }
+  return chain.reverse();
+}
+
+function renderLegs() {
+  const box = $("legs");
+  if (!pinB) { box.hidden = true; return; }
+
+  const total = lookup(pinB.lat, pinB.lon);
+  const chain = legsTo(pinB.lat, pinB.lon);
+  if (total == null || total >= UNREACHABLE || chain == null) { box.hidden = true; return; }
+
+  const rows = [];
+  const dur = (m) => { const [b, u] = fmtTime(m); return `${b}${u ? " " + u : ""}`; };
+
+  if (chain.length === 0) {
+    rows.push([dur(total), "Overland the whole way — no flight"]);
+  } else {
+    rows.push([dur(chain[0].min), `To <b>${chain[0].code}</b>, and through the airport`]);
+    for (let k = 1; k < chain.length; k++) {
+      const a = chain[k - 1], b = chain[k];
+      const t = dur(b.min - a.min);
+      if (b.kind === "arr") rows.push([t, `Fly <b>${a.code} → ${b.code}</b>`]);
+      else rows.push([t, `Connect at <b>${b.code}</b>`]);
+    }
+    const landed = chain[chain.length - 1];
+    if (total > landed.min)
+      rows.push([dur(total - landed.min), `From <b>${landed.code}</b> to the destination`]);
+  }
+  rows.push([dur(total), "Door to door", true]);
+
+  const frag = document.createDocumentFragment();
+  const h = document.createElement("h2");
+  h.textContent = "Route";
+  frag.append(h);
+  for (const [t, text, isTotal] of rows) {
+    const d = document.createElement("div");
+    d.className = isTotal ? "leg total" : "leg";
+    const ts = document.createElement("span"); ts.className = "t"; ts.textContent = t;
+    const ds = document.createElement("span"); ds.className = "d"; ds.innerHTML = text;
+    d.append(ts, ds); frag.append(d);
+  }
+  box.replaceChildren(frag);
+  box.hidden = false;
 }
 
 function describe(lat, lon) {
@@ -258,9 +345,10 @@ map.on("click", (e) => {
                                   : fmtCoord(lat, lng) };
   $("route").open = true;
   renderPins();
+  renderLegs();
 });
 
-$("clear-pins").addEventListener("click", () => { pinB = null; renderPins(); });
+$("clear-pins").addEventListener("click", () => { pinB = null; renderPins(); renderLegs(); });
 
 // ---- city list ----
 const cities = meta.origins.slice().sort((a, b) => a.name.localeCompare(b.name));

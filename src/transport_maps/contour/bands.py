@@ -76,9 +76,13 @@ def _land() -> "shapely.Geometry":
 # the vertices. The isochrone surface is smooth -- the hexagons are only how it
 # was sampled -- so rounding the sampling artefact is honest, not decorative.
 SMOOTH_PASSES = 2
-# Applied after smoothing: Chaikin quadruples the vertex count and most of the
-# new points are collinear. Roughly 550 m, well under the ~8 km cell.
-SMOOTH_SIMPLIFY_DEG = 0.005
+# Applied after smoothing: Chaikin quadruples the vertex count and nearly all
+# the new points are collinear. At this tolerance -- about 1.4 km, well under
+# the ~8 km cell -- the smoothed outline costs only ~1.1x the vertices of the
+# raw hexagons, so the rounding is close to free. Measured: 0.005 gives 2.08x
+# for no visible gain, and one Chaikin pass simplifies to the same count as
+# two, so the smoother two are free as well.
+SMOOTH_SIMPLIFY_DEG = 0.013
 
 
 def _chaikin(ring: np.ndarray, passes: int = SMOOTH_PASSES) -> np.ndarray:
