@@ -58,6 +58,13 @@ def _validated_json(response, *, expect_key: str, require_batchcomplete: bool) -
     return body[expect_key]
 
 
+def _umask() -> int:
+    """Read the process umask without leaving it changed."""
+    current = os.umask(0)
+    os.umask(current)
+    return current
+
+
 def _atomic_write(path: pathlib.Path, write_fn: Callable[[pathlib.Path], None]) -> None:
     """Write via a same-directory temp file, then atomically replace `path`.
 
@@ -71,6 +78,11 @@ def _atomic_write(path: pathlib.Path, write_fn: Callable[[pathlib.Path], None]) 
     tmp_path = pathlib.Path(tmp_name)
     try:
         write_fn(tmp_path)
+        # mkstemp creates 0600 and os.replace preserves it, so without this
+        # every artifact written here is unreadable by anyone but the build
+        # user -- which a web server serving dist/ answers as 403. Honour the
+        # umask rather than forcing 0644.
+        os.chmod(tmp_path, 0o666 & ~_umask())
         os.replace(tmp_path, path)
     except BaseException:
         tmp_path.unlink(missing_ok=True)

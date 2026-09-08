@@ -6,7 +6,7 @@
 <title>Isochronic Passage Chart — travel time to anywhere on Earth</title>
 <meta name="description" content="How many hours it takes to reach any point on Earth from 157 cities, by air, rail and road. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
 <link rel="canonical" href="https://worldmap.atik.kr/">
-<meta name="theme-color" content="#efe7d9">
+<meta name="theme-color" content="#0a0b0d">
 <meta name="robots" content="index,follow,max-image-preview:large">
 
 <meta property="og:type" content="website">
@@ -60,93 +60,127 @@
 <link href="./vendor/maplibre-gl.css" rel="stylesheet">
 <style>
 :root{
-  --paper:#efe7d9; --paper-2:#e9e0d0; --rule:#c3b49a; --rule-2:#d9ccb5;
-  --ink:#241a12; --ink-2:#5f4f40; --ink-3:#8b7862;
-  --b0:#6c0e00;
+  --bg:#0a0b0d; --surface:#131519; --surface-2:#1a1d22;
+  --line:#282c33; --line-2:#343941;
+  --text:#e9e7e4; --text-2:#a4a9b2; --text-3:#6f757e;
+  --accent:#e48f35;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{
-  background:var(--paper);color:var(--ink);
-  font-family:"EB Garamond",Georgia,"Times New Roman",serif;
-  font-size:16px;line-height:1.45;font-variant-numeric:oldstyle-nums;
+  background:var(--bg);color:var(--text);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  font-size:14px;line-height:1.5;
   overflow:hidden;-webkit-font-smoothing:antialiased;
 }
 #map{position:fixed;inset:0}
 .maplibregl-ctrl-attrib,.maplibregl-ctrl-logo,.maplibregl-ctrl-bottom-right{display:none!important}
 
-/* Panels are folded by default; the chart is the page. */
+/* ---- panels ---- */
 .panel{
-  position:fixed;z-index:5;background:var(--paper);
-  border:1px solid var(--rule);
+  background:var(--surface);border:1px solid var(--line);border-radius:2px;
 }
 summary{
-  list-style:none;cursor:pointer;padding:9px 15px;
-  font-size:12px;text-transform:uppercase;letter-spacing:.13em;color:var(--ink-2);
-  font-variant-numeric:lining-nums;white-space:nowrap;
-  display:flex;align-items:baseline;gap:9px;
+  list-style:none;cursor:pointer;padding:10px 14px;
+  font-size:11px;text-transform:uppercase;color:var(--text-2);font-weight:500;
+  white-space:nowrap;display:flex;align-items:center;gap:8px;
 }
 summary::-webkit-details-marker{display:none}
-summary::after{content:"+";color:var(--ink-3);font-size:14px;line-height:1}
+summary::after{content:"+";color:var(--text-3);font-size:14px;margin-left:auto}
 details[open] > summary::after{content:"−"}
-summary:hover{color:var(--ink)}
-details[open] > summary{border-bottom:1px solid var(--rule-2)}
-.body{padding:13px 15px 15px}
+summary:hover{color:var(--text)}
+details[open] > summary{border-bottom:1px solid var(--line)}
+.body{padding:12px 14px 14px}
 
-/* Masthead — quiet, top-left. */
-.mast{
-  position:fixed;top:22px;left:26px;z-index:6;max-width:23ch;
-}
-.mast h1{margin:0;font-size:23px;font-weight:400;line-height:1.15;letter-spacing:.004em}
-.mast p{margin:5px 0 0;font-size:12px;font-style:italic;color:var(--ink-2);line-height:1.45}
+/* ---- masthead ---- */
+.mast{position:fixed;top:20px;left:22px;z-index:6;max-width:30ch}
+.mast h1{margin:0;font-size:17px;font-weight:600;line-height:1.2}
+.mast p{margin:4px 0 0;font-size:11.5px;color:var(--text-2);line-height:1.45}
 
-/* Reading — the number the chart exists to give. Always visible. */
-.reading{position:fixed;left:26px;bottom:26px;z-index:6}
+/* ---- reading + legend, always visible ---- */
+.reading{position:fixed;left:22px;bottom:20px;z-index:6;width:290px}
 .reading .v{
-  margin:0;font-size:60px;line-height:.95;letter-spacing:-.015em;
-  font-variant-numeric:lining-nums tabular-nums;
+  margin:0;font-size:50px;line-height:1;font-weight:300;
+  font-variant-numeric:tabular-nums;
 }
-.reading .v small{font-size:19px;font-style:italic;color:var(--ink-2);margin-left:6px}
-.reading .at{margin:5px 0 0;font-size:12.5px;color:var(--ink-2);min-height:1.4em}
+.reading .v small{font-size:16px;color:var(--text-2);margin-left:6px;font-weight:400}
+.reading .at{margin:4px 0 0;font-size:12px;color:var(--text-2);min-height:2.6em}
+.reading .at b{color:var(--text);font-weight:500}
 
-/* Departure, folded. */
-#departure{top:22px;right:22px;width:268px}
-.results{list-style:none;margin:9px 0 0;padding:0;max-height:46vh;overflow-y:auto;
-  scrollbar-width:thin;scrollbar-color:var(--rule) transparent}
+.legend{margin-top:14px}
+.tints{display:flex;height:9px;border-radius:1px;overflow:hidden}
+.tints span{flex:1}
+.scale{position:relative;height:15px;margin-top:5px}
+.scale span{
+  position:absolute;transform:translateX(-50%);font-size:10px;color:var(--text-3);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.legend-cap{margin:6px 0 0;font-size:10.5px;color:var(--text-3)}
+
+/* ---- right rail ---- */
+.rail{position:fixed;top:20px;right:20px;bottom:20px;width:264px;z-index:6;
+  display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.rail > *{pointer-events:auto}
+.rail .spacer{flex:1}
+
+.results{list-style:none;margin:8px 0 0;padding:0;max-height:40vh;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
 .results button{
-  width:100%;text-align:left;background:none;border:0;cursor:pointer;color:var(--ink-2);
-  font:400 15.5px/1.35 "EB Garamond",Georgia,serif;padding:3px 0;
+  width:100%;text-align:left;background:none;border:0;cursor:pointer;color:var(--text-2);
+  font:400 13px/1.4 inherit;padding:4px 0;
   display:flex;justify-content:space-between;gap:10px;align-items:baseline;
 }
-.results button:hover{color:var(--ink)}
-.results button[aria-current="true"]{color:var(--b0);font-weight:600}
-.results .coord{font-size:11px;color:var(--ink-3);flex:none}
+.results button:hover{color:var(--text)}
+.results button[aria-current="true"]{color:var(--accent);font-weight:500}
+.results .coord{font-size:10.5px;color:var(--text-3);flex:none}
 #q{
-  width:100%;background:transparent;border:0;border-bottom:1px solid var(--rule);
-  color:var(--ink);font:400 15.5px/1.5 "EB Garamond",Georgia,serif;padding:3px 0 6px;outline:none;
+  width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:2px;
+  color:var(--text);font:400 13px/1.5 inherit;padding:6px 8px;outline:none;
 }
-#q:focus{border-bottom-color:var(--ink)}
-#q::placeholder{color:var(--ink-3);font-style:italic}
-.here{
-  margin:0 0 9px;font-size:11.5px;font-style:italic;color:var(--ink-3);line-height:1.45;
+#q:focus{border-color:var(--line-2)}
+#q::placeholder{color:var(--text-3)}
+.here{margin:0 0 8px;font-size:11px;color:var(--text-3);line-height:1.45}
+
+/* ---- settings ---- */
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;
+  font-size:12.5px;color:var(--text-2)}
+.row + .row{border-top:1px solid var(--line)}
+.row input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+.row label{cursor:pointer}
+.hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}
+.btn{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:2px;color:var(--text-2);
+  font:500 11px/1 inherit;text-transform:uppercase;padding:7px 9px;cursor:pointer;
 }
+.btn:hover{color:var(--text);border-color:var(--line-2)}
 
-/* Key, folded. */
-#key{right:22px;bottom:22px;width:268px}
-.tints{display:flex;height:12px;border:1px solid var(--rule)}
-.tints span{flex:1}
-.tints span+span{border-left:1px solid rgba(36,26,18,.09)}
-.marks{display:flex;justify-content:space-between;margin-top:4px;font-size:10.5px;color:var(--ink-3)}
-#key p{margin:9px 0 0;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
-#key .src{margin-top:9px;font-size:10px;color:var(--ink-3);line-height:1.55}
+/* ---- compass ---- */
+.compass{
+  position:fixed;right:296px;bottom:20px;z-index:7;width:46px;height:46px;border-radius:50%;
+  background:var(--surface);border:1px solid var(--line);cursor:pointer;padding:0;
+  display:grid;place-items:center;
+}
+.compass:hover{border-color:var(--line-2)}
+.compass svg{width:26px;height:26px;display:block}
+.compass .needle{transform-origin:12px 12px}
 
-@media (max-width:820px){
-  .mast{max-width:none;right:26px}
-  #departure{top:auto;bottom:96px;right:14px;left:14px;width:auto}
-  #key{right:14px;bottom:14px;left:14px;width:auto}
-  .reading{bottom:auto;top:104px;left:26px}
-  .reading .v{font-size:44px}
-  .results{max-height:32vh}
+/* ---- point to point ---- */
+.pins{margin:8px 0 0;font-size:12px;color:var(--text-2)}
+.pins div{display:flex;gap:8px;padding:3px 0;align-items:baseline}
+.pins .k{color:var(--text-3);width:34px;flex:none;font-size:10.5px;text-transform:uppercase}
+.pins .val{color:var(--text)}
+
+#key p{margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--text-2)}
+#key .src{margin-top:8px;font-size:10px;color:var(--text-3);line-height:1.55}
+
+@media (max-width:860px){
+  .mast{max-width:none;right:22px}
+  .rail{top:auto;bottom:14px;left:14px;right:14px;width:auto;flex-direction:column-reverse}
+  .rail .spacer{display:none}
+  .reading{position:static;width:auto;padding:14px 14px 0}
+  .compass{bottom:auto;top:16px;right:16px}
+  .results{max-height:30vh}
+  body{overflow:auto}
 }
 </style>
 </head>
@@ -160,36 +194,80 @@ details[open] > summary{border-bottom:1px solid var(--rule-2)}
 
 <div class="reading">
   <p class="v" id="time">—</p>
-  <p class="at" id="where">Trace the chart to read a passage.</p>
+  <p class="at" id="where">Move the pointer over the chart to read a passage.</p>
+
+  <div class="legend">
+    <div class="tints" id="tints"></div>
+    <div class="scale" id="scale"></div>
+    <p class="legend-cap">Hours from the departure city, door to door.</p>
+  </div>
 </div>
 
-<details class="panel" id="departure">
-  <summary>Departure<span id="origin-name" style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink)"></span></summary>
-  <div class="body">
-    <p class="here" id="here"></p>
-    <input id="q" type="search" placeholder="Search 157 cities…" autocomplete="off" spellcheck="false" aria-label="Search departure cities">
-    <ul class="results" id="results"></ul>
-  </div>
-</details>
+<button class="compass" id="compass" title="Reset bearing to north" aria-label="Reset bearing to north">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <g class="needle" id="needle">
+      <path d="M12 3 L15 13 L12 11.4 L9 13 Z" fill="#e48f35"></path>
+      <path d="M12 21 L9 11.6 L12 13.2 L15 11.6 Z" fill="#6f757e"></path>
+    </g>
+  </svg>
+</button>
 
-<details class="panel" id="key">
-  <summary>Key &amp; sources</summary>
-  <div class="body">
-    <div class="tints" id="tints"></div>
-    <div class="marks"><span>0</span><span>6</span><span>12</span><span>24</span><span>48</span><span>72+ h</span></div>
-    <p>Reckoned from a planned departure: the first service is not waited for,
-       but onward connections are.</p>
-    <p>Door to door, not gate to gate. The reckoning includes the passage to the
-       airport, check-in and security, border control where one is crossed, and
-       the journey from the arrival field into the city. A flight of two hours
-       commonly makes a passage of five.</p>
-    <p class="src" id="credits"></p>
-  </div>
-</details>
+<div class="rail">
+  <details class="panel" id="departure" open>
+    <summary>Departure<span id="origin-name" style="text-transform:none;color:var(--text);font-weight:400;font-size:12.5px"></span></summary>
+    <div class="body">
+      <p class="here" id="here"></p>
+      <input id="q" type="search" placeholder="Search 157 cities…" autocomplete="off" spellcheck="false" aria-label="Search departure cities">
+      <ul class="results" id="results"></ul>
+    </div>
+  </details>
+
+  <details class="panel" id="route">
+    <summary>Route</summary>
+    <div class="body">
+      <p class="hint" style="margin-top:0">Click the chart to drop an origin, then click again for a
+        destination. The origin snaps to the nearest charted city, because only those
+        157 have a computed surface.</p>
+      <div class="pins" id="pins"></div>
+      <button class="btn" id="clear-pins" style="margin-top:10px">Clear</button>
+    </div>
+  </details>
+
+  <div class="spacer"></div>
+
+  <details class="panel" id="settings">
+    <summary>Settings</summary>
+    <div class="body">
+      <div class="row">
+        <label for="lock-north">Lock to north</label>
+        <input type="checkbox" id="lock-north">
+      </div>
+      <div class="row">
+        <label for="show-places">Name the place under the cursor</label>
+        <input type="checkbox" id="show-places" checked>
+      </div>
+      <p class="hint">Drag to rotate the globe, scroll to zoom. Locking to north
+        disables rotation so dragging only pans.</p>
+    </div>
+  </details>
+
+  <details class="panel" id="key">
+    <summary>Sources &amp; method</summary>
+    <div class="body">
+      <p>Reckoned from a planned departure: the first service is not waited for,
+         but onward connections are.</p>
+      <p>Door to door, not gate to gate. The reckoning includes the passage to the
+         airport, check-in and security, border control where one is crossed, and
+         the journey from the arrival field into the city. A flight of two hours
+         commonly makes a passage of five.</p>
+      <p class="src" id="credits"></p>
+    </div>
+  </details>
+</div>
 
 <noscript>
-  <div style="position:fixed;inset:0;background:#efe7d9;z-index:20;padding:40px;max-width:62ch">
-    <h1 style="font-weight:400">Isochronic Passage Chart</h1>
+  <div style="position:fixed;inset:0;background:#0a0b0d;color:#e9e7e4;z-index:20;padding:40px;max-width:62ch">
+    <h1 style="font-weight:600">Isochronic Passage Chart</h1>
     <p>An interactive world map showing how many hours it takes to reach any point
     on Earth from each of 157 cities, combining scheduled flights, road speed and
     transfer times. It needs JavaScript and WebGL to draw the globe.</p>

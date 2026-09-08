@@ -110,10 +110,13 @@ def band_feature_collection(idx, cell_minutes: np.ndarray) -> dict:
     by_band: dict[int, list[str]] = {}
     for pos, cell in enumerate(idx.cells):
         band = band_of(float(cell_minutes[pos]))
-        if band == UNREACHABLE_BAND:
-            continue
         by_band.setdefault(band, []).append(cell)
 
+    # Unreachable land is emitted as its own feature rather than dropped.
+    # Dropping it left Antarctica -- which no scheduled service reaches -- with
+    # no polygon at all, so it rendered as open ocean: the land mask had it,
+    # the map did not. It carries UNREACHABLE_BAND so the style can give it a
+    # "no route" tone instead of a travel-time colour.
     features = []
     for band in sorted(by_band):
         geometry = _dissolve(by_band[band])
@@ -121,9 +124,12 @@ def band_feature_collection(idx, cell_minutes: np.ndarray) -> dict:
             "type": "Feature",
             "properties": {
                 "band": band,
+                # None for the open band AND for unreachable land: band -1
+                # would otherwise index BAND_EDGES_MIN from the end and claim
+                # the unreachable cells are inside the last edge.
                 "max_minutes": (
                     config.BAND_EDGES_MIN[band]
-                    if band < len(config.BAND_EDGES_MIN)
+                    if 0 <= band < len(config.BAND_EDGES_MIN)
                     else None
                 ),
             },

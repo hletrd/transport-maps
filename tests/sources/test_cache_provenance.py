@@ -128,3 +128,22 @@ def test_every_stamped_path_carries_a_hash(path_fn):
     """
     stem = path_fn().stem
     assert any(len(part) == 8 and part.isalnum() for part in stem.split("_"))
+
+
+def test_atomically_written_files_are_readable_by_other_users(tmp_path):
+    """mkstemp creates 0600 and os.replace preserves it.
+
+    Every artifact in dist/ goes out through this helper, and a web server
+    serving one of them as 0600 answers 403 -- which is exactly how the
+    gazetteer shipped invisible.
+    """
+    import os
+    import stat
+
+    from transport_maps.sources._utils import _atomic_write
+
+    out = tmp_path / "artifact.json"
+    _atomic_write(out, lambda p: p.write_text("{}"))
+    mode = stat.S_IMODE(os.stat(out).st_mode)
+    assert mode & stat.S_IRGRP, f"group cannot read (mode {mode:o})"
+    assert mode & stat.S_IROTH, f"others cannot read (mode {mode:o})"

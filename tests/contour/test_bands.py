@@ -119,3 +119,28 @@ def test_real_multi_band_solve_passes_the_disjoint_bands_gate(seoul_band_feature
     """
     assert len(seoul_band_feature_collection["features"]) > 5  # exercise the far bands too
     validate.check_bands_disjoint(seoul_band_feature_collection)  # must not raise
+
+
+def test_unreachable_land_is_emitted_rather_than_dropped():
+    """Antarctica is in the land mask but no scheduled service reaches it.
+
+    Dropping unreachable cells left it with no polygon at all, so it rendered
+    as open ocean -- the mask had the continent, the map did not.
+    """
+    import numpy as np
+
+    from transport_maps.contour import bands
+
+    class Idx:
+        cells = [h3.latlng_to_cell(-77.8, 166.7, 5),      # Ross Island
+                 h3.latlng_to_cell(37.5, 127.0, 5)]       # Seoul
+        n_cells = 2
+
+    fc = bands.band_feature_collection(Idx(), np.array([np.inf, 30.0]))
+    band_ids = [f["properties"]["band"] for f in fc["features"]]
+    assert bands.UNREACHABLE_BAND in band_ids, "unreachable land emitted no feature"
+
+    unreachable = next(f for f in fc["features"]
+                       if f["properties"]["band"] == bands.UNREACHABLE_BAND)
+    assert unreachable["properties"]["max_minutes"] is None, \
+        "unreachable band indexed BAND_EDGES_MIN from the end"

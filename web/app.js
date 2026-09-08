@@ -2,13 +2,17 @@ import maplibregl from "./vendor/maplibre-gl.js";
 import * as pmtiles from "./vendor/pmtiles.js";
 import * as h3 from "./vendor/h3.js";
 
-// Sequential single-hue ink on paper: dense near the origin, fading to a pale
-// tint far away. Validated monotonic in OKLCH lightness (0.342 -> 0.885), the
-// focal band at 10.1:1 on the #efe7d9 ground and the palest still separable at
-// 1.16:1. One hue deliberately: magnitude, not category.
-const BANDS = ["#6c0e00","#7a2600","#883a1b","#964d32","#a35f48","#b1725d",
-               "#be8472","#cb9787","#d8aa9c","#e4bdb2","#f1d1c8"];
-const PAPER = "#efe7d9", SEA = "#e7ddcb", UNCHARTED = "#ded2bc";
+// Sequential single hue on a dark ground: brightest where the journey is
+// shortest, fading outward. Lightness is strictly monotonic in OKLCH
+// (0.90 -> 0.46), which is the property a sequential ramp actually needs --
+// the categorical CVD checks do not apply to a ramp read as magnitude.
+const BANDS = ["#ffd6a8","#f8c58d","#f2b372","#eba156","#e48f35","#dd7c00",
+               "#cb7108","#b86616","#a55b1c","#93511f","#814720"];
+const BG = "#0a0b0d", SEA = "#0f1114";
+// Land no scheduled service reaches. A tone, not a colour: it must read as
+// "no route" rather than as the far end of the time ramp.
+const UNCHARTED = "#23262b";
+const UNREACHABLE_BAND = -1;
 
 const $ = (id) => document.getElementById(id);
 const proto = new pmtiles.Protocol();
@@ -17,6 +21,7 @@ maplibregl.addProtocol("pmtiles", proto.tile);
 const meta = await (await fetch("./index.json")).json();
 const UNREACHABLE = meta.unreachable ?? 65535;
 const HOVER_RES = meta.hoverRes ?? 4;
+const EDGES = meta.bandEdgesMin ?? [];
 
 // shared, origin-independent cell ordering — fetched once
 const hoverCells = new BigUint64Array(
@@ -25,41 +30,116 @@ const hoverCells = new BigUint64Array(
 let hoverTimes = null;          // Uint16Array for the active origin
 let active = null;
 
-// ---- legend swatches ----
+// ---- settings, remembered per viewer ----
+const store = {
+  get(k, d) {
+    try { const v = localStorage.getItem(k); return v === null ? d : v === "1"; }
+    catch { return d; }
+  },
+  set(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch { /* private mode */ } },
+};
+let lockNorth = store.get("lockNorth", false);
+let namePlaces = store.get("namePlaces", true);
+
+// ---- legend ----
 $("tints").replaceChildren(...BANDS.map((c) => {
   const s = document.createElement("span"); s.style.background = c; return s;
 }));
 
-// Attribution is read from the artifact, never hardcoded here: a copy in the
-// frontend can drift from the data it claims to describe, and this is a licence
-// obligation. emit/index.py writes [{name, licence, url, usedFor}].
+// Segments are equal width but the time scale is not linear, so a tick must sit
+// at its own band boundary. Placing evenly spaced labels under uneven bands is
+// how a legend ends up lying about the thing it explains.
+const SHOWN_HOURS = [2, 6, 12, 24, 48, 72];
+$("scale").replaceChildren(...EDGES.flatMap((mins, i) => {
+  const hours = mins / 60;
+  if (!SHOWN_HOURS.includes(hours)) return [];
+  const el = document.createElement("span");
+  el.style.left = `${((i + 1) / BANDS.length) * 100}%`;
+  el.textContent = hours === 72 ? "72+" : String(hours);
+  return [el];
+}));
+
 $("credits").textContent = (meta.attribution ?? [])
   .map((s) => `${s.name} (${s.licence})`)
   .join(" · ") || "Attribution missing from index.json.";
+
+// ---- gazetteer, so a reading can name where it is ----
+let places = null;
+fetch("./places.json")
+  .then((r) => (r.ok ? r.json() : null))
+  .then((p) => {
+    if (!p) return;
+    // Flat typed arrays: 7,000 objects would be re-read on every pointer move.
+    places = {
+      lat: Float32Array.from(p.places, (x) => x[3]),
+      lon: Float32Array.from(p.places, (x) => x[4]),
+      rows: p.places,
+    };
+  })
+  .catch(() => { /* the map is still readable without names */ });
+
+function nearestPlace(lat, lon) {
+  if (!places) return null;
+  const rad = Math.PI / 180;
+  const cosLat = Math.cos(lat * rad);
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < places.lat.length; i++) {
+    // Equirectangular is plenty to rank candidates and avoids 7,000 trig calls.
+    const dy = places.lat[i] - lat;
+    const dx = (places.lon[i] - lon) * cosLat;
+    const d = dy * dy + dx * dx;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  if (best < 0) return null;
+  const [name, region, country] = places.rows[best];
+  const km = Math.sqrt(bestD) * 111.32;
+  return { name, region, country, km };
+}
 
 // ---- globe ----
 const map = new maplibregl.Map({
   container: "map",
   style: {
     version: 8, sources: {}, layers: [
-      { id: "space", type: "background", paint: { "background-color": PAPER } }
+      { id: "space", type: "background", paint: { "background-color": BG } }
     ],
-    sky: { "sky-color": PAPER, "horizon-color": "#dccfb6", "fog-color": PAPER }
+    sky: { "sky-color": BG, "horizon-color": "#1b1f26", "fog-color": BG }
   },
-  center: [30, 22], zoom: 1.35, minZoom: 0.6, maxZoom: 6,
+  center: [30, 22], zoom: 1.35, minZoom: 0.6, maxZoom: 11,
+  // The globe projection can look at the poles; the default latitude
+  // clamp is a Mercator constraint that does not apply here.
+  maxPitch: 0, renderWorldCopies: false,
   attributionControl: false, dragRotate: true
 });
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
 await new Promise((r) => map.on("load", r));
 // MapLibre is pinned to 5.24 (see web/README.md); this is its projection API.
 map.setProjection({ type: "globe" });
 
-// faint sphere so unreachable land and ocean still read as a planet
 map.addSource("sphere", { type: "geojson", data: { type: "Feature", geometry: { type: "Polygon",
-  coordinates: [[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]] } } });
+  coordinates: [[[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]]] } } });
 map.addLayer({ id: "sphere", type: "fill", source: "sphere",
   paint: { "fill-color": SEA, "fill-opacity": 1 } });
+
+function applyLockNorth() {
+  if (lockNorth) {
+    map.setBearing(0);
+    map.setPitch(0);
+    map.dragRotate.disable();
+    map.touchZoomRotate.disableRotation();
+    map.keyboard.disableRotation();
+  } else {
+    map.dragRotate.enable();
+    map.touchZoomRotate.enableRotation();
+    map.keyboard.enable();
+  }
+  syncNeedle();
+}
+
+function syncNeedle() {
+  $("needle").setAttribute("transform", `rotate(${-map.getBearing()})`);
+}
+map.on("rotate", syncNeedle);
 
 function paintOrigin(o) {
   active = o;
@@ -71,10 +151,11 @@ function paintOrigin(o) {
     id: "bands", type: "fill", source: "bands", "source-layer": "bands",
     paint: {
       "fill-color": ["match", ["get", "band"],
+        UNREACHABLE_BAND, UNCHARTED,
         ...BANDS.flatMap((c, i) => [i, c]), UNCHARTED],
-      "fill-opacity": 0.94
+      "fill-opacity": 1
     }
-  });                                 // appended last => draws above "sphere"
+  });
 
   hoverTimes = null;
   fetch(`./origins/${o.slug}.bin`)
@@ -82,9 +163,8 @@ function paintOrigin(o) {
       if (!r.ok) throw new Error(`${r.status} fetching ${o.slug}.bin`);
       return r.arrayBuffer();
     })
-    .then((b) => { hoverTimes = new Uint16Array(b); })
+    .then((b) => { hoverTimes = new Uint16Array(b); renderPins(); })
     .catch((err) => {
-      // Without this the readout silently reports open water everywhere.
       console.error("hover data unavailable:", err);
       $("where").textContent = `Hover data unavailable for ${o.name}.`;
     });
@@ -93,6 +173,7 @@ function paintOrigin(o) {
   for (const b of document.querySelectorAll(".results button"))
     b.setAttribute("aria-current", String(b.dataset.slug === o.slug));
   $("origin-name").textContent = o.name;
+  renderPins();
 }
 
 // ---- readout ----
@@ -108,7 +189,6 @@ function fmtTime(min) {
   return [String(Math.floor(h / 24)), `days ${h % 24}h`];
 }
 
-// binary search the sorted shared cell array
 function lookup(lat, lon) {
   if (!hoverTimes) return null;
   const id = BigInt("0x" + h3.latLngToCell(lat, lon, HOVER_RES));
@@ -121,14 +201,66 @@ function lookup(lat, lon) {
   return null;                        // ocean, or outside the land mask
 }
 
+function describe(lat, lon) {
+  if (!namePlaces) return fmtCoord(lat, lon);
+  const p = nearestPlace(lat, lon);
+  if (!p) return fmtCoord(lat, lon);
+  const where = [p.region && p.region !== p.name ? p.region : null, p.country]
+    .filter(Boolean).join(", ");
+  // Beyond a couple of hundred kilometres the nearest town is not where you
+  // are, so say "near" rather than implying the cursor is on it.
+  const lead = p.km > 60 ? `near ${p.name}` : p.name;
+  return `<b>${lead}</b>${where ? ` — ${where}` : ""}`;
+}
+
+let raf = 0;
 map.on("mousemove", (e) => {
-  const t = lookup(e.lngLat.lat, e.lngLat.lng);
-  const [big, unit] = fmtTime(t);
-  $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
-  $("where").textContent = t == null
-    ? "Open water."
-    : `${fmtCoord(e.lngLat.lat, e.lngLat.lng)}${active ? " — from " + active.name : ""}`;
+  if (raf) return;
+  raf = requestAnimationFrame(() => {
+    raf = 0;
+    const { lat, lng } = e.lngLat;
+    const t = lookup(lat, lng);
+    const [big, unit] = fmtTime(t);
+    $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
+    $("where").innerHTML = t == null
+      ? "Open water."
+      : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}${active ? " · from " + active.name : ""}`;
+  });
 });
+
+// ---- point to point ----
+let pinB = null;
+
+function renderPins() {
+  const box = $("pins");
+  if (!active) { box.replaceChildren(); return; }
+  const rows = [["From", active.name]];
+  if (pinB) {
+    const t = lookup(pinB.lat, pinB.lon);
+    const [big, unit] = fmtTime(t);
+    rows.push(["To", pinB.label]);
+    rows.push(["Time", t == null ? "not on land" : `${big} ${unit}`.trim()]);
+  } else {
+    rows.push(["To", "click the chart"]);
+  }
+  box.replaceChildren(...rows.map(([k, v]) => {
+    const d = document.createElement("div");
+    const ks = document.createElement("span"); ks.className = "k"; ks.textContent = k;
+    const vs = document.createElement("span"); vs.className = "val"; vs.textContent = v;
+    d.append(ks, vs); return d;
+  }));
+}
+
+map.on("click", (e) => {
+  const { lat, lng } = e.lngLat;
+  const p = nearestPlace(lat, lng);
+  pinB = { lat, lon: lng, label: p ? (p.km > 60 ? `near ${p.name}` : p.name)
+                                  : fmtCoord(lat, lng) };
+  $("route").open = true;
+  renderPins();
+});
+
+$("clear-pins").addEventListener("click", () => { pinB = null; renderPins(); });
 
 // ---- city list ----
 const cities = meta.origins.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -159,6 +291,28 @@ $("results").addEventListener("click", (e) => {
 });
 $("q").addEventListener("input", (e) => render(e.target.value));
 render();
+
+// ---- controls ----
+$("compass").addEventListener("click", () => {
+  map.easeTo({ bearing: 0, pitch: 0, duration: 420 });
+});
+
+const lockBox = $("lock-north");
+lockBox.checked = lockNorth;
+lockBox.addEventListener("change", () => {
+  lockNorth = lockBox.checked;
+  store.set("lockNorth", lockNorth);
+  applyLockNorth();
+});
+
+const placesBox = $("show-places");
+placesBox.checked = namePlaces;
+placesBox.addEventListener("change", () => {
+  namePlaces = placesBox.checked;
+  store.set("namePlaces", namePlaces);
+});
+
+applyLockNorth();
 
 const FALLBACK = bySlug.get("seoul") ?? cities[0];
 
