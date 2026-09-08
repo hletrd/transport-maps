@@ -27,10 +27,18 @@ def write_pmtiles(feature_collection: dict, out: Path) -> None:
         json.dump(feature_collection, fh)
         src = Path(fh.name)
 
+    # Build on LOCAL disk, then move. tippecanoe writes its output through
+    # sqlite3, whose file locking is unreliable over NFS -- and this repo lives
+    # on an NFS mount. Writing straight to `out` survived 111 origins of a
+    # 157-origin build and then died with "sqlite3 map insert failed: disk I/O
+    # error", which is the intermittency that diagnosis predicts. The temp file
+    # sits next to the geojson, in the system temp directory, which is local.
+    staged = src.with_suffix(".pmtiles")
+
     try:
         subprocess.run([
             "tippecanoe",
-            "-o", str(out), "--force",
+            "-o", str(staged), "--force",
             "-l", LAYER,
             "-Z", str(MIN_ZOOM), "-z", str(MAX_ZOOM),
             # Tippecanoe simplifies in TILE space, so its tolerance scales with
@@ -46,10 +54,14 @@ def write_pmtiles(feature_collection: dict, out: Path) -> None:
             "--extend-zooms-if-still-dropping",
             str(src),
         ], check=True, capture_output=True, text=True)
+        # shutil.move handles the cross-filesystem case (local -> NFS) that
+        # os.replace cannot.
+        shutil.move(str(staged), str(out))
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(f"tippecanoe failed: {exc.stderr}") from exc
     finally:
         src.unlink(missing_ok=True)
+        staged.unlink(missing_ok=True)
 
     if not out.exists() or out.stat().st_size == 0:
         raise RuntimeError(f"tippecanoe produced no output at {out}")
