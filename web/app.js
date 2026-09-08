@@ -393,7 +393,11 @@ function render(filter = "") {
 }
 $("results").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-slug]");
-  if (b) paintOrigin(bySlug.get(b.dataset.slug));
+  if (!b) return;
+  // The geolocation line is set once and would otherwise keep claiming
+  // "showing Seoul" while the chart shows whatever was just picked.
+  $("here").textContent = "";
+  paintOrigin(bySlug.get(b.dataset.slug));
 });
 $("q").addEventListener("input", (e) => render(e.target.value));
 render();
