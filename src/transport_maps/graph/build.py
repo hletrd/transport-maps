@@ -7,9 +7,10 @@ import numpy as np
 import polars as pl
 import scipy.sparse as sp
 
+from transport_maps import config
 from transport_maps.graph import air, ground, rail, transfers
 from transport_maps.graph.nodes import NodeIndex
-from transport_maps.sources import airports, routes
+from transport_maps.sources import airports, osm, routes
 
 logger = logging.getLogger(__name__)
 
@@ -248,11 +249,56 @@ def _rail_edges(idx: NodeIndex, routes, cal) -> tuple[np.ndarray, np.ndarray, np
     return rows, cols, data
 
 
+def _ferry_edges(idx: NodeIndex, links, cal) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Ferry crossings as direct cell-to-cell edges, both ways.
+
+    Ferries get no node of their own: unlike rail you almost never chain two,
+    so there is no through-journey whose terminal time would be double-charged,
+    and a node per crossing would add tens of thousands of nodes to no end.
+    """
+    a_cells, b_cells, minutes = [], [], []
+    for row in links.iter_rows(named=True):
+        km = float(ground.haversine_km(
+            np.array([[row["from_lat"], row["from_lon"]]]),
+            np.array([[row["to_lat"], row["to_lon"]]]))[0])
+        if not (osm.MIN_FERRY_KM <= km <= osm.MAX_FERRY_KM):
+            continue
+        u = idx.try_cell_index(h3.latlng_to_cell(row["from_lat"], row["from_lon"],
+                                                 config.SOLVE_RES))
+        v = idx.try_cell_index(h3.latlng_to_cell(row["to_lat"], row["to_lon"],
+                                                 config.SOLVE_RES))
+        # Same cell means the crossing is shorter than the grid can see; a
+        # self-loop would be a zero-cost edge Dijkstra could sit on.
+        if u is None or v is None or u == v:
+            continue
+        a_cells.append(u)
+        b_cells.append(v)
+        minutes.append(60.0 * km / cal.speed_kmh + cal.terminal_min)
+
+    if not a_cells:
+        empty_i = np.array([], dtype=np.int64)
+        return empty_i, empty_i, np.array([], dtype=np.float64)
+
+    # Several ferry ways can join the same pair of cells; keep the quickest,
+    # or build_graph refuses the duplicate (row, col) pair outright.
+    best: dict[tuple[int, int], float] = {}
+    for u, v, m in zip(a_cells, b_cells, minutes):
+        for pair in ((u, v), (v, u)):
+            if m < best.get(pair, float("inf")):
+                best[pair] = m
+
+    rows = np.fromiter((p[0] for p in best), dtype=np.int64, count=len(best))
+    cols = np.fromiter((p[1] for p in best), dtype=np.int64, count=len(best))
+    data = np.fromiter(best.values(), dtype=np.float64, count=len(best))
+    return rows, cols, data
+
+
 def build_graph(
     idx: NodeIndex,
     rejected_air_pairs: list[tuple[str, str, float]] | None = None,
     unknown_airport_pairs: list[tuple[str, str]] | None = None,
     rail_routes=None,
+    ferry_links=None,
 ) -> sp.csr_matrix:
     """Assemble the graph. Pass a list as `rejected_air_pairs` to have it filled
     with the (src, dst, km) triples `is_geographically_plausible` dropped, and
@@ -275,6 +321,8 @@ def build_graph(
     ]
     if idx.has_rail:
         parts.append(_rail_edges(idx, rail_routes, rail.load_rail_calibration()))
+    if ferry_links is not None and len(ferry_links):
+        parts.append(_ferry_edges(idx, ferry_links, rail.load_ferry_calibration()))
     rows = np.concatenate([p[0] for p in parts])
     cols = np.concatenate([p[1] for p in parts])
     data = np.concatenate([p[2] for p in parts])

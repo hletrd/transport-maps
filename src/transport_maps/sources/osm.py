@@ -88,6 +88,70 @@ def _parse(path) -> list[dict]:
     return rows
 
 
+FERRY_SCHEMA = {
+    "way_id": pl.Int64, "from_lat": pl.Float64, "from_lon": pl.Float64,
+    "to_lat": pl.Float64, "to_lon": pl.Float64, "name": pl.Utf8,
+}
+# Shorter than this is a river crossing whose terminals land in one H3 cell
+# anyway; longer than this is not a scheduled ferry route.
+MIN_FERRY_KM, MAX_FERRY_KM = 1.0, 4000.0
+
+
+def _ferries(path) -> list[dict]:
+    """Ferry ways reduced to their two endpoints.
+
+    A ferry way's intermediate nodes trace the sea crossing and carry no
+    information the graph can use: what matters is which two places it joins.
+    """
+    ways, wanted = {}, set()
+    for obj in osmium.FileProcessor(str(path), osmium.osm.WAY):
+        if obj.tags.get("route") != "ferry":
+            continue
+        refs = [n.ref for n in obj.nodes]
+        if len(refs) < 2 or refs[0] == refs[-1]:
+            continue
+        ways[obj.id] = (refs[0], refs[-1], obj.tags.get("name") or "")
+        wanted.update((refs[0], refs[-1]))
+
+    coords = {}
+    if wanted:
+        for obj in osmium.FileProcessor(str(path), osmium.osm.NODE):
+            if obj.id in wanted:
+                coords[obj.id] = (obj.location.lat, obj.location.lon)
+
+    rows = []
+    for way_id, (a, b, name) in ways.items():
+        if a in coords and b in coords:
+            rows.append({"way_id": way_id,
+                         "from_lat": coords[a][0], "from_lon": coords[a][1],
+                         "to_lat": coords[b][0], "to_lon": coords[b][1],
+                         "name": name})
+    return rows
+
+
+def ferry_links(*, extracts_dir=None) -> pl.DataFrame:
+    """Every ferry crossing's two endpoints, across all filtered extracts."""
+    extracts_dir = extracts_dir or (config.CACHE / "osm")
+    paths = sorted(extracts_dir.glob("*-rail.osm.pbf"))
+    if not paths:
+        raise FileNotFoundError(
+            f"no *-rail.osm.pbf in {extracts_dir}; run scripts/osm_rail.sh first"
+        )
+    fingerprint = [(str(extracts_dir), p.name, p.stat().st_size, p.stat().st_mtime_ns)
+                   for p in paths]
+    cached = config.CACHE / f"ferry_links-{_params_hash(fingerprint)}.parquet"
+    if cached.exists():
+        return pl.read_parquet(cached)
+
+    rows = []
+    for p in paths:
+        rows.extend(_ferries(p))
+    # A crossing mapped in two regional extracts appears twice under one id.
+    df = pl.DataFrame(rows, schema=FERRY_SCHEMA).unique(subset=["way_id"], keep="first")
+    _atomic_write(cached, lambda tmp: df.write_parquet(tmp))
+    return df
+
+
 def rail_routes(*, extracts_dir=None) -> pl.DataFrame:
     """Every train route's ordered stops, across all filtered regional extracts."""
     extracts_dir = extracts_dir or (config.CACHE / "osm")

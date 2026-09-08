@@ -116,3 +116,10 @@ detour_factor = 1.2
 # through twenty intermediate stops is not taxed twenty times.
 boarding_min = 15.0
 alighting_min = 5.0
+
+# Ferries. Published-figure defaults: a typical vehicle ferry cruises about
+# 19 knots (35 km/h), and terminal time covers arriving ahead of the sailing,
+# loading and unloading. Charged once per crossing.
+[ferry]
+speed_kmh = 35.0
+terminal_min = 30.0

@@ -35,6 +35,18 @@ class RailCalibration:
     alighting_min: float
 
 
+@dataclass(frozen=True)
+class FerryCalibration:
+    speed_kmh: float
+    terminal_min: float
+
+
+def load_ferry_calibration(path=None) -> FerryCalibration:
+    path = path or (config.ROOT / "calibration.toml")
+    with open(path, "rb") as fh:
+        return FerryCalibration(**tomllib.load(fh)["ferry"])
+
+
 def load_rail_calibration(path=None) -> RailCalibration:
     path = path or (config.ROOT / "calibration.toml")
     with open(path, "rb") as fh:
