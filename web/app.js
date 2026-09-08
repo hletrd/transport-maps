@@ -258,7 +258,11 @@ function renderLegs() {
   const dur = (m) => { const [b, u] = fmtTime(m); return `${b}${u ? " " + u : ""}`; };
 
   if (chain.length === 0) {
-    rows.push([dur(total), "Overland the whole way — no flight"]);
+    // No flight was involved. Saying "overland" would be a claim we cannot
+    // support: the journey may well have gone by rail or ferry, both of which
+    // are in the graph but are not itemised here -- listing them would mean
+    // shipping 57,000 station nodes per origin to name a handful of them.
+    rows.push([dur(total), "No flight on this route — surface travel"]);
   } else {
     rows.push([dur(chain[0].min), `To <b>${chain[0].code}</b>, and through the airport`]);
     for (let k = 1; k < chain.length; k++) {
@@ -269,7 +273,8 @@ function renderLegs() {
     }
     const landed = chain[chain.length - 1];
     if (total > landed.min)
-      rows.push([dur(total - landed.min), `From <b>${landed.code}</b> to the destination`]);
+      rows.push([dur(total - landed.min),
+                 `From <b>${landed.code}</b> onward by surface transport`]);
   }
   rows.push([dur(total), "Door to door", true]);
 
