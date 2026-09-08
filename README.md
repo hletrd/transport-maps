@@ -24,7 +24,8 @@ from `dist/` must carry the same credits; `dist/index.json` ships them in its
 | [OurAirports](https://ourairports.com/data/) | Public Domain | airport locations, sizes and scheduled-service status |
 | [Natural Earth](https://www.naturalearthdata.com/) | Public Domain | 1:10m land polygons defining the H3 cell universe |
 | [GRIP4 (Global Roads Inventory Project)](https://www.globio.info/download-grip-dataset) | CC0 1.0 | road-density rasters setting per-cell ground speed |
-| [OpenStreetMap](https://www.openstreetmap.org/copyright) | ODbL 1.0 | upstream source of the GRIP4 road network |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) | ODbL 1.0 | upstream source of the GRIP4 road network; rail route relations |
+| [adsb.lol](https://adsb.lol/) | ODbL 1.0 | observed flights behind the fitted cruise speed and climb/descent penalty |
 
 GRIP4 is itself compiled from many road datasets **including OpenStreetMap**,
 which is why OSM is credited here even though this pipeline never queries OSM

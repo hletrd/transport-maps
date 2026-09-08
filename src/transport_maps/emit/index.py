@@ -54,7 +54,14 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
         "name": "OpenStreetMap",
         "licence": "ODbL 1.0",
         "url": "https://www.openstreetmap.org/copyright",
-        "usedFor": "upstream source of the GRIP4 road network",
+        "usedFor": "upstream source of the GRIP4 road network; rail route relations",
+    },
+    {
+        "name": "adsb.lol",
+        "licence": "ODbL 1.0",
+        "url": "https://adsb.lol/",
+        "usedFor": "observed flights behind the fitted cruise speed and "
+                   "climb/descent penalty",
     },
 )
 
