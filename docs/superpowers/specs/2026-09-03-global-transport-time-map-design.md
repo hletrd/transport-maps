@@ -49,6 +49,7 @@ revisited in a later iteration without re-deriving the reasoning.
 | D12 | Road speed field source | GRIP4 5-arcmin road-density rasters | Planet OSM highway parsing; Natural Earth roads | 5 arcmin (~8x8 km) matches H3 res-5 cell size almost exactly; CC-0; removes the pipeline's heaviest stage |
 | D13 | Antarctica | Excluded from the cell universe | Include with a special case | H3 cannot polyfill a pole-wrapping shape, and it has no scheduled service |
 | D14 | Route frequency | Fitted gravity model, coefficients calibrated | Ship observed frequencies; assume uniform frequency | Wikipedia gives the network but not frequency; a fitted model keeps observed data out of `dist/` |
+| D15 | Calibration data source | **adsb.lol** (free API + daily historical archives, no key, ODbL 1.0) | FR24 API ($119.95/mo min); FlightAware AeroAPI (pay-per-query); OpenSky (licence forbids) | Feeding earns free FR24/FlightAware *accounts* but not API access — those are separately priced. adsb.lol is free, keyed to nobody, and ODbL, so unlike D3 its derived data may be **redistributed with attribution and share-alike** rather than only fitted-from |
 
 ### Choices deliberately deferred
 
@@ -98,8 +99,13 @@ and testable alone:
 
 ### The redistribution rule
 
-FR24's terms prohibit persistent local copies and redistributing enriched datasets
-containing raw FR24 data; FlightAware's are comparable. Therefore:
+Superseded in part by D15: with adsb.lol's ODbL data the firewall is no longer
+strictly required, since ODbL permits redistribution under attribution and
+share-alike — the same terms this project already meets for OpenStreetMap. The
+firewall is kept anyway. It costs nothing, and it keeps the door open to
+sampling a proprietary provider later without re-auditing what may ship.
+
+The original constraint, which still applies to any FR24 or FlightAware data:
 
 **No flight record from either provider is ever written to the shipped artifact.**
 
