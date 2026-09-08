@@ -1,10 +1,14 @@
 """Hex-to-hex ground edges."""
 
+import logging
+
 import h3
 import numpy as np
 
 from transport_maps.graph.nodes import NodeIndex
-from transport_maps.sources import roads
+from transport_maps.sources import countries, roads
+
+logger = logging.getLogger(__name__)
 
 # Index by GRIP road class: 0 = roadless, 1 = highway .. 5 = local road.
 #
@@ -44,16 +48,28 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     speeds = cell_speed_kmh(idx)
     centroids = np.array([h3.cell_to_latlng(c) for c in idx.cells], dtype=np.float64)
 
+    # Adjacency alone asserts that every border on Earth can be walked across.
+    # Some cannot, and a road route through the inter-Korean border made Seoul
+    # reachable overland from Vladivostok.
+    country = countries.cell_country(idx.cells)
+
     rows: list[int] = []
     cols: list[int] = []
+    blocked = 0
     for u, cell in enumerate(idx.cells):
         for neighbour in h3.grid_disk(cell, 1):
             if neighbour == cell:  # grid_disk includes the centre cell
                 continue
             v = idx.try_cell_index(neighbour)
-            if v is not None:
-                rows.append(u)
-                cols.append(v)
+            if v is None:
+                continue
+            if countries.is_closed(country[u], country[v]):
+                blocked += 1
+                continue
+            rows.append(u)
+            cols.append(v)
+    if blocked:
+        logger.info("%d ground edge(s) cut at closed land borders", blocked)
 
     r = np.asarray(rows, dtype=np.int64)
     c = np.asarray(cols, dtype=np.int64)
