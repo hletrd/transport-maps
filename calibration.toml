@@ -103,6 +103,9 @@ small = 35.0
 # Seoul-Busan KTX is 417 km of track in 2 h 15 (185 km/h average including
 # intermediate stops); 325 km great-circle x 1.2 detour / 200 km/h = 117 min
 # against a real 135, so the model runs slightly optimistic on high-speed.
+# The conventional figure checks out against real OSM data end to end: CFL
+# Luxembourg -> Sandweiler-Contern -> Wasserbillig comes out at 29 min from
+# the parsed stop sequence, against roughly 30 min in the timetable.
 [rail]
 highspeed_kmh = 200.0
 conventional_kmh = 75.0
