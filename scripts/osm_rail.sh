@@ -26,8 +26,16 @@ for r in europe asia north-america south-america africa australia-oceania centra
   if [ -f "$out" ]; then echo "[skip] $r already filtered"; continue; fi
   if [ ! -f "$raw" ]; then
     echo "[get ] $r"
-    curl -fL -C - --no-progress-meter --limit-rate 8M --retry 5 --retry-delay 5 -o "$raw.part" \
-      "https://download.geofabrik.de/$r-latest.osm.pbf" || { echo "[FAIL] download $r"; continue; }
+    # Resolve the redirect FIRST. "$r-latest" 302s to a dated file, and a
+    # resumed request against the redirecting URL loses its Range header, so
+    # curl silently starts over -- the partial file shrinking was the only
+    # symptom. The dated URL answers 206 and resumes properly.
+    url=$(curl -fsSLI -o /dev/null -w "%{url_effective}" --max-time 60 \
+          "https://download.geofabrik.de/$r-latest.osm.pbf") \
+      || { echo "[FAIL] resolve $r"; continue; }
+    echo "[url ] $r -> $url"
+    curl -fL -C - --no-progress-meter --limit-rate 8M --retry 5 --retry-delay 5 \
+      -o "$raw.part" "$url" || { echo "[FAIL] download $r"; continue; }
     mv "$raw.part" "$raw"
   fi
   echo "[filt] $r ($(du -h "$raw" | cut -f1))"
