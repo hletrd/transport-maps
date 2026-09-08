@@ -2,197 +2,197 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Reach — global travel time</title>
-<meta name="description" content="How long it takes to reach anywhere on Earth, from 157 cities, by air, rail and ground.">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Isochronic Passage Chart — travel time to anywhere on Earth</title>
+<meta name="description" content="How many hours it takes to reach any point on Earth from 157 cities, by air, rail and road. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
+<link rel="canonical" href="https://worldmap.atik.kr/">
+<meta name="theme-color" content="#efe7d9">
+<meta name="robots" content="index,follow,max-image-preview:large">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Isochronic Passage Chart">
+<meta property="og:title" content="Isochronic Passage Chart — travel time to anywhere on Earth">
+<meta property="og:description" content="Hours required to reach any point on Earth from 157 cities, by air, rail and road. Recomputed from open data, after Galton, 1881.">
+<meta property="og:url" content="https://worldmap.atik.kr/">
+<meta property="og:image" content="https://worldmap.atik.kr/preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Isochronic Passage Chart">
+<meta name="twitter:description" content="Hours required to reach any point on Earth from 157 cities.">
+<meta name="twitter:image" content="https://worldmap.atik.kr/preview.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Dataset",
+      "@id": "https://worldmap.atik.kr/#dataset",
+      "name": "Global travel-time isochrones from 157 cities",
+      "description": "Expected door-to-door travel time from each of 157 origin cities to every land area on Earth, combining scheduled air routes, ground transport speed derived from road density, and transfer penalties. Distributed as PMTiles isochrone bands plus a per-origin binary time array on an H3 resolution-5 grid.",
+      "url": "https://worldmap.atik.kr/",
+      "keywords": ["isochrone", "travel time", "accessibility", "world map", "H3", "PMTiles", "aviation", "geography"],
+      "spatialCoverage": { "@type": "Place", "name": "Earth" },
+      "measurementTechnique": "Single-source Dijkstra over a multi-modal graph of 548,557 hexagonal land cells and 3,983 airports",
+      "creator": { "@type": "Person", "name": "Jiyong Youn" },
+      "isBasedOn": [
+        "https://ourairports.com/data/",
+        "https://www.openstreetmap.org/copyright",
+        "https://www.globio.info/download-grip-dataset",
+        "https://www.naturalearthdata.com/"
+      ],
+      "license": "https://opendatacommons.org/licenses/odbl/1-0/"
+    },
+    {
+      "@type": "WebApplication",
+      "name": "Isochronic Passage Chart",
+      "applicationCategory": "https://schema.org/TravelApplication",
+      "operatingSystem": "Any modern web browser",
+      "browserRequirements": "Requires WebGL",
+      "url": "https://worldmap.atik.kr/",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "about": { "@id": "https://worldmap.atik.kr/#dataset" }
+    }
+  ]
+}
+</script>
+
 <link href="./vendor/fonts.css" rel="stylesheet">
 <link href="./vendor/maplibre-gl.css" rel="stylesheet">
 <style>
 :root{
-  --void:#0a0c10; --void-2:#0e1118; --rule:#1c2230; --rule-hi:#2b3446;
-  --ink:#dfe6f2; --ink-2:#8d99ae; --ink-3:#5c6678;
-  --b0:#cde2fb; --b1:#b7d3f6; --b2:#9ec5f4; --b3:#86b6ef; --b4:#6da7ec; --b5:#5598e7;
-  --b6:#3987e5; --b7:#2a78d6; --b8:#256abf; --b9:#1c5cab; --b10:#184f95;
-  --rail:336px;
+  --paper:#efe7d9; --paper-2:#e9e0d0; --rule:#c3b49a; --rule-2:#d9ccb5;
+  --ink:#241a12; --ink-2:#5f4f40; --ink-3:#8b7862;
+  --b0:#6c0e00;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{
-  background:var(--void); color:var(--ink);
-  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px;
-  overflow:hidden; -webkit-font-smoothing:antialiased;
+  background:var(--paper);color:var(--ink);
+  font-family:"EB Garamond",Georgia,"Times New Roman",serif;
+  font-size:16px;line-height:1.45;font-variant-numeric:oldstyle-nums;
+  overflow:hidden;-webkit-font-smoothing:antialiased;
 }
 #map{position:fixed;inset:0}
-.maplibregl-ctrl-attrib,.maplibregl-ctrl-logo{display:none!important}
+.maplibregl-ctrl-attrib,.maplibregl-ctrl-logo,.maplibregl-ctrl-bottom-right{display:none!important}
 
-/* ---- grain + vignette over the globe ---- */
-.veil{position:fixed;inset:0;pointer-events:none;z-index:2}
-.veil::before{
-  content:"";position:absolute;inset:0;
-  background:radial-gradient(120% 90% at 62% 45%,transparent 42%,rgba(4,6,10,.72) 100%);
+/* Panels are folded by default; the chart is the page. */
+.panel{
+  position:fixed;z-index:5;background:var(--paper);
+  border:1px solid var(--rule);
 }
-.veil::after{
-  content:"";position:absolute;inset:0;opacity:.16;mix-blend-mode:overlay;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='.5'/></svg>");
+summary{
+  list-style:none;cursor:pointer;padding:9px 15px;
+  font-size:12px;text-transform:uppercase;letter-spacing:.13em;color:var(--ink-2);
+  font-variant-numeric:lining-nums;white-space:nowrap;
+  display:flex;align-items:baseline;gap:9px;
 }
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";color:var(--ink-3);font-size:14px;line-height:1}
+details[open] > summary::after{content:"−"}
+summary:hover{color:var(--ink)}
+details[open] > summary{border-bottom:1px solid var(--rule-2)}
+.body{padding:13px 15px 15px}
 
-/* ---- left rail ---- */
-.rail{
-  position:fixed;top:0;left:0;bottom:0;width:var(--rail);z-index:5;
-  background:linear-gradient(180deg,rgba(10,12,16,.97),rgba(10,12,16,.90));
-  border-right:1px solid var(--rule);
-  backdrop-filter:blur(14px);
-  display:flex;flex-direction:column;
-  animation:rail-in .8s cubic-bezier(.16,1,.3,1) both;
+/* Masthead — quiet, top-left. */
+.mast{
+  position:fixed;top:22px;left:26px;z-index:6;max-width:23ch;
 }
-@keyframes rail-in{from{transform:translateX(-14px);opacity:0}to{transform:none;opacity:1}}
+.mast h1{margin:0;font-size:23px;font-weight:400;line-height:1.15;letter-spacing:.004em}
+.mast p{margin:5px 0 0;font-size:12px;font-style:italic;color:var(--ink-2);line-height:1.45}
 
-.masthead{padding:26px 24px 18px;border-bottom:1px solid var(--rule)}
-.wordmark{
-  font-family:Fraunces,Georgia,serif; font-weight:300; font-size:40px; line-height:.92;
-  letter-spacing:-.022em; margin:0; color:var(--ink);
-  font-variation-settings:"opsz" 96,"SOFT" 0;
+/* Reading — the number the chart exists to give. Always visible. */
+.reading{position:fixed;left:26px;bottom:26px;z-index:6}
+.reading .v{
+  margin:0;font-size:60px;line-height:.95;letter-spacing:-.015em;
+  font-variant-numeric:lining-nums tabular-nums;
 }
-.wordmark em{font-style:italic;font-weight:500;color:var(--b2)}
-.tagline{
-  margin:11px 0 0; font-size:11px; line-height:1.55; color:var(--ink-2);
-  letter-spacing:.02em; max-width:30ch;
-}
+.reading .v small{font-size:19px;font-style:italic;color:var(--ink-2);margin-left:6px}
+.reading .at{margin:5px 0 0;font-size:12.5px;color:var(--ink-2);min-height:1.4em}
 
-/* ---- origin picker ---- */
-.picker{padding:18px 24px 14px;border-bottom:1px solid var(--rule)}
-.eyebrow{
-  font-size:9.5px;letter-spacing:.19em;text-transform:uppercase;color:var(--ink-3);
-  margin:0 0 9px;font-weight:500;
-}
-.field{position:relative}
-.field input{
-  width:100%;background:var(--void-2);border:1px solid var(--rule-hi);color:var(--ink);
-  font:400 13px/1 "IBM Plex Mono",monospace;padding:11px 12px 11px 30px;border-radius:2px;
-  outline:none;transition:border-color .18s,box-shadow .18s;
-}
-.field input:focus{border-color:var(--b6);box-shadow:0 0 0 3px rgba(57,135,229,.13)}
-.field input::placeholder{color:var(--ink-3)}
-.field svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.5}
-
-.results{
-  list-style:none;margin:10px 0 0;padding:0;overflow-y:auto;max-height:34vh;
-  scrollbar-width:thin;scrollbar-color:var(--rule-hi) transparent;
-}
-.results li{margin:0}
+/* Departure, folded. */
+#departure{top:22px;right:22px;width:268px}
+.results{list-style:none;margin:9px 0 0;padding:0;max-height:46vh;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--rule) transparent}
 .results button{
-  width:100%;text-align:left;background:none;border:0;color:var(--ink-2);
-  font:400 12.5px/1 "IBM Plex Mono",monospace;padding:8px 10px;border-radius:2px;
-  cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:baseline;
-  transition:background .13s,color .13s;
+  width:100%;text-align:left;background:none;border:0;cursor:pointer;color:var(--ink-2);
+  font:400 15.5px/1.35 "EB Garamond",Georgia,serif;padding:3px 0;
+  display:flex;justify-content:space-between;gap:10px;align-items:baseline;
 }
-.results button:hover{background:rgba(57,135,229,.10);color:var(--ink)}
-.results button[aria-current="true"]{background:rgba(57,135,229,.16);color:var(--b0)}
-.results .coord{font-size:10px;color:var(--ink-3);letter-spacing:.02em;flex:none}
+.results button:hover{color:var(--ink)}
+.results button[aria-current="true"]{color:var(--b0);font-weight:600}
+.results .coord{font-size:11px;color:var(--ink-3);flex:none}
+#q{
+  width:100%;background:transparent;border:0;border-bottom:1px solid var(--rule);
+  color:var(--ink);font:400 15.5px/1.5 "EB Garamond",Georgia,serif;padding:3px 0 6px;outline:none;
+}
+#q:focus{border-bottom-color:var(--ink)}
+#q::placeholder{color:var(--ink-3);font-style:italic}
+.here{
+  margin:0 0 9px;font-size:11.5px;font-style:italic;color:var(--ink-3);line-height:1.45;
+}
 
-/* ---- readout ---- */
-.readout{padding:20px 24px;border-bottom:1px solid var(--rule);min-height:132px}
-.readout .big{
-  font-family:Fraunces,Georgia,serif;font-weight:300;font-size:52px;line-height:1;
-  letter-spacing:-.03em;margin:2px 0 0;color:var(--b1);
-  font-variation-settings:"opsz" 120;
-  font-feature-settings:"tnum" 1;
-}
-.readout .big small{font-size:19px;color:var(--ink-2);margin-left:5px;letter-spacing:0}
-.readout .where{
-  margin:9px 0 0;font-size:11px;color:var(--ink-2);letter-spacing:.02em;
-  min-height:1.4em;
-}
-.readout .hint{margin:9px 0 0;font-size:10.5px;color:var(--ink-3);line-height:1.5}
-
-/* ---- legend ---- */
-.legend{padding:18px 24px;margin-top:auto}
-.scale{display:flex;height:9px;border-radius:1px;overflow:hidden;margin:0 0 8px}
-.scale span{flex:1}
-.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--ink-3);letter-spacing:.04em}
-.legend .note{margin:13px 0 0;font-size:10px;line-height:1.6;color:var(--ink-3)}
-.legend .note b{color:var(--ink-2);font-weight:500}
-
-.credits{
-  padding:13px 24px 17px;border-top:1px solid var(--rule);
-  font-size:9.5px;line-height:1.65;color:var(--ink-3);
-}
-.credits a{color:var(--ink-2);text-decoration:none;border-bottom:1px solid var(--rule-hi)}
-.credits a:hover{color:var(--b2)}
-
-/* ---- loading ---- */
-.boot{
-  position:fixed;inset:0;z-index:9;background:var(--void);
-  display:grid;place-items:center;transition:opacity .7s ease;
-}
-.boot.gone{opacity:0;pointer-events:none}
-.boot .pulse{
-  font-family:Fraunces,Georgia,serif;font-size:15px;color:var(--ink-3);letter-spacing:.05em;
-  animation:pulse 1.7s ease-in-out infinite;
-}
-@keyframes pulse{0%,100%{opacity:.32}50%{opacity:.85}}
-
-/* ---- cursor crosshair ---- */
-.cross{position:fixed;z-index:3;pointer-events:none;opacity:0;transition:opacity .18s}
-.cross.on{opacity:.55}
-.cross i{position:absolute;background:var(--b3)}
-.cross i:nth-child(1){width:13px;height:1px;left:-16px;top:0}
-.cross i:nth-child(2){width:13px;height:1px;left:4px;top:0}
-.cross i:nth-child(3){width:1px;height:13px;left:0;top:-16px}
-.cross i:nth-child(4){width:1px;height:13px;left:0;top:4px}
+/* Key, folded. */
+#key{right:22px;bottom:22px;width:268px}
+.tints{display:flex;height:12px;border:1px solid var(--rule)}
+.tints span{flex:1}
+.tints span+span{border-left:1px solid rgba(36,26,18,.09)}
+.marks{display:flex;justify-content:space-between;margin-top:4px;font-size:10.5px;color:var(--ink-3)}
+#key p{margin:9px 0 0;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+#key .src{margin-top:9px;font-size:10px;color:var(--ink-3);line-height:1.55}
 
 @media (max-width:820px){
-  :root{--rail:100%}
-  .rail{bottom:auto;height:auto;max-height:56vh;border-right:0;border-bottom:1px solid var(--rule)}
-  .results{max-height:22vh}
-  .legend{margin-top:0}
+  .mast{max-width:none;right:26px}
+  #departure{top:auto;bottom:96px;right:14px;left:14px;width:auto}
+  #key{right:14px;bottom:14px;left:14px;width:auto}
+  .reading{bottom:auto;top:104px;left:26px}
+  .reading .v{font-size:44px}
+  .results{max-height:32vh}
 }
 </style>
 </head>
 <body>
-<div id="map"></div>
-<div class="veil"></div>
-<div class="cross" id="cross"><i></i><i></i><i></i><i></i></div>
+<div id="map" role="img" aria-label="Interactive globe shaded by travel time from the selected departure city"></div>
 
-<aside class="rail">
-  <header class="masthead">
-    <h1 class="wordmark">Re<em>ach</em></h1>
-    <p class="tagline">How long it takes to get anywhere on Earth — by air, rail and ground — starting from one city.</p>
-  </header>
+<header class="mast">
+  <h1>Isochronic Passage Chart</h1>
+  <p>Hours to reach any point on Earth, by air, rail and road. After Galton, 1881.</p>
+</header>
 
-  <section class="picker">
-    <p class="eyebrow">Departing from</p>
-    <div class="field">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8d99ae" stroke-width="2.4">
-        <circle cx="11" cy="11" r="7"/><path d="M20 20l-4.5-4.5"/>
-      </svg>
-      <input id="q" type="search" placeholder="Search 157 cities…" autocomplete="off" spellcheck="false">
-    </div>
+<div class="reading">
+  <p class="v" id="time">—</p>
+  <p class="at" id="where">Trace the chart to read a passage.</p>
+</div>
+
+<details class="panel" id="departure">
+  <summary>Departure<span id="origin-name" style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink)"></span></summary>
+  <div class="body">
+    <p class="here" id="here"></p>
+    <input id="q" type="search" placeholder="Search 157 cities…" autocomplete="off" spellcheck="false" aria-label="Search departure cities">
     <ul class="results" id="results"></ul>
-  </section>
+  </div>
+</details>
 
-  <section class="readout">
-    <p class="eyebrow">Travel time</p>
-    <p class="big" id="time">—</p>
-    <p class="where" id="where">Point at the globe.</p>
-    <p class="hint" id="hint"></p>
-  </section>
+<details class="panel" id="key">
+  <summary>Key &amp; sources</summary>
+  <div class="body">
+    <div class="tints" id="tints"></div>
+    <div class="marks"><span>0</span><span>6</span><span>12</span><span>24</span><span>48</span><span>72+ h</span></div>
+    <p>Reckoned from a planned departure: the first service is not waited for,
+       but onward connections are.</p>
+    <p class="src" id="credits"></p>
+  </div>
+</details>
 
-  <section class="legend">
-    <p class="eyebrow">Hours to arrive</p>
-    <div class="scale" id="scale"></div>
-    <div class="ticks"><span>0</span><span>6</span><span>12</span><span>24</span><span>48</span><span>72+</span></div>
-    <p class="note">
-      Assumes you <b>leave at a random moment</b> — so waiting for the next
-      departure counts. A twice-daily route costs about six hours of waiting; a
-      weekly one costs days.
-    </p>
-  </section>
-
-  <footer class="credits" id="credits"></footer>
-</aside>
-
-<div class="boot" id="boot"><p class="pulse">reticulating the planet…</p></div>
+<noscript>
+  <div style="position:fixed;inset:0;background:#efe7d9;z-index:20;padding:40px;max-width:62ch">
+    <h1 style="font-weight:400">Isochronic Passage Chart</h1>
+    <p>An interactive world map showing how many hours it takes to reach any point
+    on Earth from each of 157 cities, combining scheduled flights, road speed and
+    transfer times. It needs JavaScript and WebGL to draw the globe.</p>
+    <p>Built from open data: OurAirports, Wikipedia, OpenStreetMap, GRIP4 road
+    density and Natural Earth. After Francis Galton's isochronic passage chart of 1881.</p>
+  </div>
+</noscript>
 
 <script type="module" src="./app.js"></script>
 </body>

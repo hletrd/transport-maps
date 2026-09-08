@@ -1,0 +1,45 @@
+# Isochronic Passage Chart
+
+> An interactive globe showing expected door-to-door travel time from each of 157
+> origin cities to every land area on Earth, combining scheduled air routes,
+> ground speed derived from road density, and realistic transfer penalties.
+> Named after Francis Galton's "Isochronic Passage Chart for Travellers" (1881),
+> the first published travel-time map.
+
+## What the numbers mean
+
+Times are expected door-to-door minutes, rendered in 11 bands from under 2 hours
+to over 72 hours. A departure is treated as planned, so the first service is not
+waited for; onward connections are, because a traveller cannot choose when a
+connecting service leaves. Waiting is derived from route frequency, which is why
+remote islands correctly resolve to days rather than hours.
+
+## How it is computed
+
+A single-source Dijkstra runs over one multi-modal graph per origin city:
+548,557 H3 resolution-5 land cells (about 253 km2 each), plus a departure and an
+arrival node for each of 3,983 airports with scheduled passenger service.
+Ground movement between adjacent cells is charged at a per-cell speed derived
+from GRIP4 road-density rasters. Flights connect airport pairs taken from
+Wikipedia's "Airlines and destinations" tables, resolved to IATA codes through
+Wikidata property P238, with block time modelled from great-circle distance.
+
+## Known limits
+
+- Rail and ferry are not yet in the graph.
+- Flight frequency is a fitted gravity model, not published timetables.
+- Coverage is about 98% of land; the remainder has no modelled route.
+
+## Data sources
+
+- OurAirports (public domain) — airport locations and service status
+- Wikipedia (CC BY-SA 4.0) — airline route network
+- Wikidata (CC0) — IATA code resolution
+- OpenStreetMap (ODbL) — attribution retained for derived geography
+- GRIP4 (CC0) — global road density
+- Natural Earth (public domain) — coastlines and land mask
+
+## Links
+
+- Chart: https://worldmap.atik.kr/
+- Machine-readable index: https://worldmap.atik.kr/index.json

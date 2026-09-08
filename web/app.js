@@ -2,8 +2,13 @@ import maplibregl from "./vendor/maplibre-gl.js";
 import * as pmtiles from "./vendor/pmtiles.js";
 import * as h3 from "./vendor/h3.js";
 
-const BANDS = ["#cde2fb","#b7d3f6","#9ec5f4","#86b6ef","#6da7ec","#5598e7",
-               "#3987e5","#2a78d6","#256abf","#1c5cab","#184f95"];
+// Sequential single-hue ink on paper: dense near the origin, fading to a pale
+// tint far away. Validated monotonic in OKLCH lightness (0.342 -> 0.885), the
+// focal band at 10.1:1 on the #efe7d9 ground and the palest still separable at
+// 1.16:1. One hue deliberately: magnitude, not category.
+const BANDS = ["#6c0e00","#7a2600","#883a1b","#964d32","#a35f48","#b1725d",
+               "#be8472","#cb9787","#d8aa9c","#e4bdb2","#f1d1c8"];
+const PAPER = "#efe7d9", SEA = "#e7ddcb", UNCHARTED = "#ded2bc";
 
 const $ = (id) => document.getElementById(id);
 const proto = new pmtiles.Protocol();
@@ -21,46 +26,40 @@ let hoverTimes = null;          // Uint16Array for the active origin
 let active = null;
 
 // ---- legend swatches ----
-$("scale").innerHTML = BANDS.map((c) => `<span style="background:${c}"></span>`).join("");
+$("tints").replaceChildren(...BANDS.map((c) => {
+  const s = document.createElement("span"); s.style.background = c; return s;
+}));
 
-// ---- attribution, from the artifact itself ----
-(function credits() {
-  const a = meta.attribution;
-  const parts = !a ? [] :
-    Array.isArray(a) ? a.map((x) => (typeof x === "string" ? x : `${x.source ?? x.name} (${x.licence ?? x.license ?? ""})`))
-                     : Object.entries(a).map(([k, v]) => `${k} (${v})`);
-  $("credits").innerHTML = parts.length
-    ? "Data " + parts.join(" · ")
-    : "Data: OurAirports · Wikipedia CC-BY-SA · OpenStreetMap ODbL · GRIP4 CC-0 · Natural Earth";
-})();
+// Attribution is read from the artifact, never hardcoded here: a copy in the
+// frontend can drift from the data it claims to describe, and this is a licence
+// obligation. emit/index.py writes [{name, licence, url, usedFor}].
+$("credits").textContent = (meta.attribution ?? [])
+  .map((s) => `${s.name} (${s.licence})`)
+  .join(" · ") || "Attribution missing from index.json.";
 
 // ---- globe ----
 const map = new maplibregl.Map({
   container: "map",
   style: {
     version: 8, sources: {}, layers: [
-      { id: "space", type: "background", paint: { "background-color": "#0a0c10" } }
+      { id: "space", type: "background", paint: { "background-color": PAPER } }
     ],
-    sky: { "sky-color": "#0a0c10", "horizon-color": "#141a26", "fog-color": "#0a0c10" }
+    sky: { "sky-color": PAPER, "horizon-color": "#dccfb6", "fog-color": PAPER }
   },
   center: [30, 22], zoom: 1.35, minZoom: 0.6, maxZoom: 6,
   attributionControl: false, dragRotate: true
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
-function goGlobe() {
-  try { map.setProjection({ type: "globe" }); }        // maplibre 6
-  catch { try { map.setProjection("globe"); } catch {} } // older signature
-}
-
 await new Promise((r) => map.on("load", r));
-goGlobe();
+// MapLibre is pinned to 5.24 (see web/README.md); this is its projection API.
+map.setProjection({ type: "globe" });
 
 // faint sphere so unreachable land and ocean still read as a planet
 map.addSource("sphere", { type: "geojson", data: { type: "Feature", geometry: { type: "Polygon",
   coordinates: [[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]] } } });
 map.addLayer({ id: "sphere", type: "fill", source: "sphere",
-  paint: { "fill-color": "#101623", "fill-opacity": 0.9 } });
+  paint: { "fill-color": SEA, "fill-opacity": 1 } });
 
 function paintOrigin(o) {
   active = o;
@@ -72,23 +71,28 @@ function paintOrigin(o) {
     id: "bands", type: "fill", source: "bands", "source-layer": "bands",
     paint: {
       "fill-color": ["match", ["get", "band"],
-        ...BANDS.flatMap((c, i) => [i, c]), "#141a26"],
+        ...BANDS.flatMap((c, i) => [i, c]), UNCHARTED],
       "fill-opacity": 0.94
     }
-  }, "sphere");                       // under the veil, over the sphere? see below
-  // keep bands above the sphere
-  map.moveLayer("bands");
+  });                                 // appended last => draws above "sphere"
 
   hoverTimes = null;
   fetch(`./origins/${o.slug}.bin`)
-    .then((r) => r.arrayBuffer())
+    .then((r) => {
+      if (!r.ok) throw new Error(`${r.status} fetching ${o.slug}.bin`);
+      return r.arrayBuffer();
+    })
     .then((b) => { hoverTimes = new Uint16Array(b); })
-    .catch(() => { hoverTimes = null; });
+    .catch((err) => {
+      // Without this the readout silently reports open water everywhere.
+      console.error("hover data unavailable:", err);
+      $("where").textContent = `Hover data unavailable for ${o.name}.`;
+    });
 
   map.flyTo({ center: [o.lon, o.lat], zoom: 1.9, speed: 0.75, curve: 1.5 });
   for (const b of document.querySelectorAll(".results button"))
     b.setAttribute("aria-current", String(b.dataset.slug === o.slug));
-  $("hint").textContent = `${o.name} · ${fmtCoord(o.lat, o.lon)}`;
+  $("origin-name").textContent = o.name;
 }
 
 // ---- readout ----
@@ -117,11 +121,7 @@ function lookup(lat, lon) {
   return null;                        // ocean, or outside the land mask
 }
 
-const cross = $("cross");
 map.on("mousemove", (e) => {
-  cross.style.left = e.point.x + "px";
-  cross.style.top = e.point.y + "px";
-  cross.classList.add("on");
   const t = lookup(e.lngLat.lat, e.lngLat.lng);
   const [big, unit] = fmtTime(t);
   $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
@@ -129,23 +129,67 @@ map.on("mousemove", (e) => {
     ? "Open water."
     : `${fmtCoord(e.lngLat.lat, e.lngLat.lng)}${active ? " — from " + active.name : ""}`;
 });
-map.on("mouseout", () => cross.classList.remove("on"));
 
 // ---- city list ----
 const cities = meta.origins.slice().sort((a, b) => a.name.localeCompare(b.name));
+const bySlug = new Map(cities.map((c) => [c.slug, c]));
 function render(filter = "") {
   const f = filter.trim().toLowerCase();
   const hits = f ? cities.filter((c) => c.name.toLowerCase().includes(f)) : cities;
-  $("results").innerHTML = hits.slice(0, 400).map((c) => `
-    <li><button data-slug="${c.slug}" aria-current="${active?.slug === c.slug}">
-      <span>${c.name}</span><span class="coord">${c.lat.toFixed(1)}, ${c.lon.toFixed(1)}</span>
-    </button></li>`).join("");
-  for (const b of document.querySelectorAll(".results button"))
-    b.onclick = () => paintOrigin(cities.find((c) => c.slug === b.dataset.slug));
+  const list = document.createDocumentFragment();
+  for (const c of hits) {
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.dataset.slug = c.slug;
+    b.setAttribute("aria-current", String(active?.slug === c.slug));
+    const name = document.createElement("span");
+    name.textContent = c.name;
+    const coord = document.createElement("span");
+    coord.className = "coord";
+    coord.textContent = `${c.lat.toFixed(1)}, ${c.lon.toFixed(1)}`;
+    b.append(name, coord);
+    li.append(b);
+    list.append(li);
+  }
+  $("results").replaceChildren(list);
 }
+$("results").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-slug]");
+  if (b) paintOrigin(bySlug.get(b.dataset.slug));
+});
 $("q").addEventListener("input", (e) => render(e.target.value));
 render();
 
-paintOrigin(cities.find((c) => c.slug === "seoul") || cities[0]);
-map.once("idle", () => $("boot").classList.add("gone"));
-setTimeout(() => $("boot").classList.add("gone"), 6000);
+const FALLBACK = bySlug.get("seoul") ?? cities[0];
+
+function nearest(lat, lon) {
+  const rad = Math.PI / 180;
+  let best = FALLBACK, bestD = Infinity;
+  for (const c of cities) {
+    const dLat = (c.lat - lat) * rad;
+    const dLon = (c.lon - lon) * rad;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat * rad) * Math.cos(c.lat * rad) * Math.sin(dLon / 2) ** 2;
+    const d = 2 * Math.asin(Math.sqrt(a));
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  return best;
+}
+
+// Draw at once from the fallback; geolocation may never answer, and making the
+// first frame wait on a permission prompt is exactly the initial wait we do not
+// want. If a position arrives later, quietly re-centre on the nearest city.
+paintOrigin(FALLBACK);
+$("here").textContent = "Showing Seoul. Allow location to start from the city nearest you.";
+
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const c = nearest(pos.coords.latitude, pos.coords.longitude);
+      $("here").textContent = `${c.name} is the nearest charted city to you.`;
+      if (c.slug !== active?.slug) paintOrigin(c);
+    },
+    () => { $("here").textContent = "Location unavailable — showing Seoul."; },
+    { timeout: 8000, maximumAge: 900000 }
+  );
+}
