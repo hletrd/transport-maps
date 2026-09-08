@@ -4,9 +4,10 @@ import logging
 
 import h3
 import numpy as np
+import polars as pl
 import scipy.sparse as sp
 
-from transport_maps.graph import air, ground, transfers
+from transport_maps.graph import air, ground, rail, transfers
 from transport_maps.graph.nodes import NodeIndex
 from transport_maps.sources import airports, routes
 
@@ -211,22 +212,69 @@ def _transfer_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]
     )
 
 
+def _rail_edges(idx: NodeIndex, routes, cal) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Station-to-station rides, plus the cell edges that board and alight.
+
+    Rides are symmetrised. OSM usually models the two directions of a service
+    as separate relations, but not always, and a line present in only one
+    direction would otherwise be a one-way railway. Where both directions do
+    exist the pair is collapsed to the faster of the two, which also keeps the
+    edge list free of the duplicates `build_graph` refuses.
+    """
+    e = rail.ride_edges(routes, cal)
+    known = set(idx.stations)
+    e = e.filter(pl.col("from_station").is_in(known) & pl.col("to_station").is_in(known))
+
+    lo = pl.min_horizontal("from_station", "to_station")
+    hi = pl.max_horizontal("from_station", "to_station")
+    undirected = (e.with_columns(lo.alias("a"), hi.alias("b"))
+                   .group_by("a", "b").agg(pl.col("minutes").min())
+                   .filter(pl.col("a") != pl.col("b")))
+
+    a = np.array([idx.station_index(x) for x in undirected["a"]], dtype=np.int64)
+    b = np.array([idx.station_index(x) for x in undirected["b"]], dtype=np.int64)
+    m = undirected["minutes"].to_numpy()
+
+    # Boarding is charged on the way IN to the network and alighting on the way
+    # out, so riding through an intermediate station costs only running time.
+    s = np.array([idx.station_index(x) for x in idx.stations], dtype=np.int64)
+    c = np.array([idx.station_cell_index(x) for x in idx.stations], dtype=np.int64)
+
+    rows = np.concatenate([a, b, c, s])
+    cols = np.concatenate([b, a, s, c])
+    data = np.concatenate([m, m,
+                           np.full(s.size, cal.boarding_min, dtype=float),
+                           np.full(s.size, cal.alighting_min, dtype=float)])
+    return rows, cols, data
+
+
 def build_graph(
     idx: NodeIndex,
     rejected_air_pairs: list[tuple[str, str, float]] | None = None,
     unknown_airport_pairs: list[tuple[str, str]] | None = None,
+    rail_routes=None,
 ) -> sp.csr_matrix:
     """Assemble the graph. Pass a list as `rejected_air_pairs` to have it filled
     with the (src, dst, km) triples `is_geographically_plausible` dropped, and
     one as `unknown_airport_pairs` for those naming an airport the node index
     does not hold.
     """
+    # Checked before any edge is assembled: this is a caller mistake, and
+    # discovering it after several minutes of graph building helps nobody.
+    if idx.has_rail and rail_routes is None:
+        raise ValueError(
+            "the node index holds stations but no rail_routes frame was passed; "
+            "the station nodes would sit unreachable in the graph"
+        )
+
     parts = [
         ground.hex_edges(idx),
         _air_edges(idx, rejected_air_pairs, unknown_airport_pairs),
         _access_edges(idx),
         _transfer_edges(idx),
     ]
+    if idx.has_rail:
+        parts.append(_rail_edges(idx, rail_routes, rail.load_rail_calibration()))
     rows = np.concatenate([p[0] for p in parts])
     cols = np.concatenate([p[1] for p in parts])
     data = np.concatenate([p[2] for p in parts])

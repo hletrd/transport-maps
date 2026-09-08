@@ -45,6 +45,7 @@ def test_duplicate_row_col_pairs_across_edge_parts_are_rejected(monkeypatch):
     """
     class FakeIdx:
         n = 3
+        has_rail = False
 
     dup = (np.array([0, 0], dtype=np.int64), np.array([1, 1], dtype=np.int64), np.array([5.0, 3.0]))
     empty = (np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.float64))

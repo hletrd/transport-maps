@@ -1,8 +1,10 @@
 """Stable integer indices for every node in the multi-modal graph.
 
 Layout: land cells occupy [0, n_cells), then one DEPARTURE node per airport,
-then one ARRIVAL node per airport. Keeping cells first means the per-cell time
-surface is still simply `distances[:n_cells]`.
+then one ARRIVAL node per airport, then one node per rail station. Keeping
+cells first means the per-cell time surface is still simply
+`distances[:n_cells]`, and appending stations last means adding rail does not
+move any airport index.
 
 Airports are split because a single node cannot tell a journey's first flight
 from a connecting one. With one node, the minimum-connection-time had to be
@@ -17,7 +19,7 @@ one-flight trip. Splitting makes the distinction structural:
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import h3
 
@@ -46,6 +48,12 @@ class NodeIndex:
     # than merely logged so a caller (or a test) can inspect exactly what was
     # dropped, the same way build_graph exposes its rejected long-haul pairs.
     dropped_airports: tuple[str, ...] = ()
+    # Rail is optional: the OSM extracts are tens of gigabytes and may not be
+    # present. Empty stations means a road-and-air graph, which is a valid
+    # build -- but callers are told which they got rather than left to guess.
+    stations: tuple[str, ...] = ()
+    _station_pos: dict[str, int] = field(default_factory=dict)
+    _station_cell: dict[str, int] = field(default_factory=dict)
 
     @property
     def n_cells(self) -> int:
@@ -53,7 +61,11 @@ class NodeIndex:
 
     @property
     def n(self) -> int:
-        return len(self.cells) + 2 * len(self.airports)
+        return len(self.cells) + 2 * len(self.airports) + len(self.stations)
+
+    @property
+    def has_rail(self) -> bool:
+        return bool(self.stations)
 
     def cell_index(self, cell: str) -> int:
         return self._cell_pos[cell]
@@ -73,8 +85,17 @@ class NodeIndex:
     def airport_cell_index(self, iata: str) -> int:
         return self._airport_cell[iata]
 
+    def station_index(self, station: str) -> int:
+        return self._station_pos[station]
 
-def build_index() -> NodeIndex:
+    def station_cell_index(self, station: str) -> int:
+        """The land cell a station sits in, which is how you reach it."""
+        return self._station_cell[station]
+
+
+def build_index(rail_routes=None) -> NodeIndex:
+    """Build the node index. `rail_routes` is an osm.rail_routes() frame, or
+    None to build a road-and-air graph."""
     cells = landmask.land_cells(config.SOLVE_RES)
     cell_pos = {c: i for i, c in enumerate(cells)}
 
@@ -111,4 +132,26 @@ def build_index() -> NodeIndex:
         )
 
     airport_pos = {code: len(cells) + i for i, code in enumerate(codes)}
-    return NodeIndex(cells, codes, cell_pos, airport_pos, airport_cell, tuple(dropped))
+
+    station_keys: list[str] = []
+    station_pos: dict[str, int] = {}
+    station_cell: dict[str, int] = {}
+    if rail_routes is not None:
+        from . import rail as rail_mod
+
+        base = len(cells) + 2 * len(codes)
+        dropped_stations = 0
+        for row in rail_mod.stations(rail_routes).iter_rows(named=True):
+            pos = cell_pos.get(row["cell"])
+            if pos is None:
+                # Station on a cell the land mask lacks -- coastal or islet.
+                dropped_stations += 1
+                continue
+            station_pos[row["station"]] = base + len(station_keys)
+            station_cell[row["station"]] = pos
+            station_keys.append(row["station"])
+        logger.info("%d rail station(s) indexed, %d dropped for want of a land cell",
+                    len(station_keys), dropped_stations)
+
+    return NodeIndex(cells, codes, cell_pos, airport_pos, airport_cell, tuple(dropped),
+                     tuple(station_keys), station_pos, station_cell)
