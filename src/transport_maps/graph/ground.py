@@ -7,6 +7,22 @@ from transport_maps.graph.nodes import NodeIndex
 from transport_maps.sources import roads
 
 # Index by GRIP road class: 0 = roadless, 1 = highway .. 5 = local road.
+#
+# KNOWN ERROR, measured not guessed: against six real city-to-airport journeys
+# this model is about 2.1x too fast (1.4x Tokyo to 4.4x Paris) -- run
+# scripts/ground_check.py to reproduce. Two causes, both structural:
+#
+#   1. These are FREE-FLOW speeds. A dense urban cell contains a motorway, so
+#      it is classified 1 and charged 85 km/h -- the motorway's speed, not a
+#      city's door-to-door average through signals and congestion.
+#   2. hex_edges measures straight lines between cell centroids. Real road
+#      distance runs about 1.2-1.3x that, the same circuity the rail model
+#      corrects for explicitly.
+#
+# The table is deliberately NOT tuned to those six journeys: six hand-picked
+# routes are far too thin to fit six speeds against, and doing so would trade a
+# visible error for a hidden one. Task 13 fits this properly against sampled
+# Google Routes journeys, which is what GOOGLE_ROUTES_API_KEY is for.
 SPEED_BY_ROAD_CLASS_KMH = np.array([5.0, 85.0, 60.0, 40.0, 30.0, 25.0], dtype=np.float64)
 
 
