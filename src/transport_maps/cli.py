@@ -8,6 +8,7 @@ from transport_maps.contour import bands
 from transport_maps.emit import hover, index, routes_json, tiles
 from transport_maps.graph import build, ground, nodes
 from transport_maps.solve import dijkstra
+from transport_maps.sources import osm
 
 # Origin slugs become filenames under config.DIST, so reject anything that
 # could escape that directory (path separators, "..", leading dots/dashes).
@@ -22,14 +23,32 @@ def _slug(name: str) -> str:
     return name
 
 
+def _load_rail():
+    """Rail routes if the OSM extracts are present, else None.
+
+    Absence is reported rather than assumed: a build that quietly drops rail
+    looks identical to one that included it, and the difference is hours of
+    travel time across Europe and Japan.
+    """
+    try:
+        routes = osm.rail_routes()
+    except FileNotFoundError as exc:
+        print(f"rail:     EXCLUDED -- {exc}")
+        return None
+    print(f"rail:     included -- {routes['route_id'].n_unique():,} routes, "
+          f"{len(routes):,} stops")
+    return routes
+
+
 def _build_all(limit: int | None = None) -> None:
     """Build the graph once, then solve, validate and emit every origin.
 
     Aborts on the first failing gate -- a partially written dist/ is worse
     than none. `limit` restricts to the first N origins, for smoke-testing.
     """
-    idx = nodes.build_index()
-    csr = build.build_graph(idx)
+    rail_routes = _load_rail()
+    idx = nodes.build_index(rail_routes=rail_routes)
+    csr = build.build_graph(idx, rail_routes=rail_routes)
     # Graph-level gate: runs once, before any origin is solved, because a
     # disconnected airport is a property of the network rather than of a
     # particular origin -- and per-origin coverage cannot see it.
@@ -109,8 +128,9 @@ def main() -> None:
     config.ensure_dirs()
 
     if args.command == "solve":
-        idx = nodes.build_index()
-        csr = build.build_graph(idx)
+        rail_routes = _load_rail()
+        idx = nodes.build_index(rail_routes=rail_routes)
+        csr = build.build_graph(idx, rail_routes=rail_routes)
         source = dijkstra.origin_node(idx, args.lat, args.lon)
         minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
 
