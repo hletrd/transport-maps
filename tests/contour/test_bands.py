@@ -144,3 +144,55 @@ def test_unreachable_land_is_emitted_rather_than_dropped():
                        if f["properties"]["band"] == bands.UNREACHABLE_BAND)
     assert unreachable["properties"]["max_minutes"] is None, \
         "unreachable band indexed BAND_EDGES_MIN from the end"
+
+
+def _turn_angles(geom):
+    """Absolute heading change at each boundary vertex, in degrees."""
+    import numpy as np
+    import shapely
+
+    out = []
+    parts = shapely.get_parts(geom) if geom.geom_type == "MultiPolygon" else [geom]
+    for poly in parts:
+        if poly.geom_type != "Polygon":
+            continue
+        p = np.asarray(poly.exterior.coords)[:-1]
+        if len(p) < 3:
+            continue
+        v = np.roll(p, -1, axis=0) - p
+        a = np.arctan2(v[:, 1], v[:, 0])
+        out.append(np.abs(np.degrees((np.roll(a, -1) - a + np.pi) % (2 * np.pi) - np.pi)))
+    return np.concatenate(out) if out else np.array([])
+
+
+def test_smoothing_actually_removes_the_hexagon_signature():
+    """A hex tiling turns 60 degrees at every corner; smoothing must reduce that.
+
+    This is not a formality. An earlier simplification tolerance (0.013) pulled
+    the cut corners straight back onto the vertices they came from and left the
+    boundary MORE hexagonal than the raw union -- 16.5% of turns near 60 deg
+    against 10.4% -- while every other test still passed, because the code did
+    run and did produce valid geometry. Only the shape was wrong.
+    """
+    import numpy as np
+    import shapely
+    from shapely.ops import unary_union
+
+    from transport_maps.contour import bands
+
+    centre = h3.latlng_to_cell(37.5, 127.0, 5)
+    cells = list(h3.grid_disk(centre, 6))
+    raw = shapely.make_valid(unary_union(
+        [Polygon([(lng, lat) for lat, lng in h3.cell_to_boundary(c)]) for c in cells]))
+    smoothed = bands._smooth(raw)
+
+    def near60(g):
+        t = _turn_angles(g)
+        return float(((t > 45) & (t < 75)).mean())
+
+    raw_share, smooth_share = near60(raw), near60(smoothed)
+    assert smooth_share < raw_share * 0.8, (
+        f"smoothing left {smooth_share:.1%} of turns near 60 deg against "
+        f"{raw_share:.1%} raw -- the hexagon corners survived"
+    )
+    assert np.median(_turn_angles(smoothed)) < np.median(_turn_angles(raw))

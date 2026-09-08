@@ -33,7 +33,11 @@ def write_pmtiles(feature_collection: dict, out: Path) -> None:
             "-o", str(out), "--force",
             "-l", LAYER,
             "-Z", str(MIN_ZOOM), "-z", str(MAX_ZOOM),
-            "--simplification=4",
+            # Tippecanoe simplifies in TILE space, so its tolerance scales with
+            # zoom and cannot pull a rounded corner back onto a hex vertex the
+            # way a fixed degree tolerance does. This is the right knob for
+            # size; the geometry handed to it stays smooth.
+            "--simplification=8",
             # Bands tile the land exactly, so their shared edges must simplify
             # IDENTICALLY -- otherwise low zooms open hairline gaps along every
             # boundary and the sea shows through the middle of a continent.

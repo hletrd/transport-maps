@@ -76,13 +76,20 @@ def _land() -> "shapely.Geometry":
 # the vertices. The isochrone surface is smooth -- the hexagons are only how it
 # was sampled -- so rounding the sampling artefact is honest, not decorative.
 SMOOTH_PASSES = 2
-# Applied after smoothing: Chaikin quadruples the vertex count and nearly all
-# the new points are collinear. At this tolerance -- about 1.4 km, well under
-# the ~8 km cell -- the smoothed outline costs only ~1.1x the vertices of the
-# raw hexagons, so the rounding is close to free. Measured: 0.005 gives 2.08x
-# for no visible gain, and one Chaikin pass simplifies to the same count as
-# two, so the smoother two are free as well.
-SMOOTH_SIMPLIFY_DEG = 0.013
+# Applied after smoothing, and deliberately LIGHT. Simplification pulls the
+# rounded corners back onto the hexagon vertices they were cut from, so too
+# much of it undoes the smoothing entirely. Measured on 20k cells, share of
+# boundary turns near the hexagon's 60 degrees:
+#
+#   raw hexagons        10.4%   (median turn 37.9deg)
+#   simplify 0.013      16.5%   (23.4deg)  <- WORSE than raw; the corners return
+#   simplify 0.006      14.3%   (17.8deg)
+#   simplify 0.003       6.8%   (11.2deg)  <- genuinely smooth
+#   no simplification    5.5%   ( 8.2deg)
+#
+# tippecanoe simplifies again per zoom level, so trading smoothness for
+# vertices here buys little: the tile it emits is re-simplified regardless.
+SMOOTH_SIMPLIFY_DEG = 0.003
 
 
 def _chaikin(ring: np.ndarray, passes: int = SMOOTH_PASSES) -> np.ndarray:
@@ -95,6 +102,23 @@ def _chaikin(ring: np.ndarray, passes: int = SMOOTH_PASSES) -> np.ndarray:
         cut[1::2] = 0.25 * p + 0.75 * q
         ring = np.vstack([cut, cut[:1]])
     return ring
+
+
+def _polygonal(geom):
+    """Keep only the areal parts of a geometry.
+
+    `make_valid` on a self-touching ring returns a GeometryCollection: the
+    polygons plus the zero-width spurs it had to cut out as bare LineStrings.
+    Passing that on emits a GeoJSON GeometryCollection for a band -- a shape
+    with dangling lines in it -- so the non-areal debris is dropped here.
+    """
+    if geom.geom_type in ("Polygon", "MultiPolygon"):
+        return geom
+    parts = [g for g in shapely.get_parts(geom)
+             if g.geom_type in ("Polygon", "MultiPolygon") and not g.is_empty]
+    if not parts:
+        return shapely.Polygon()
+    return shapely.make_valid(shapely.union_all(parts))
 
 
 def _smooth(geom):
@@ -114,8 +138,8 @@ def _smooth(geom):
         ))
     if not parts:
         return geom
-    out = shapely.make_valid(shapely.union_all(parts))
-    return shapely.make_valid(shapely.simplify(out, SMOOTH_SIMPLIFY_DEG))
+    out = _polygonal(shapely.make_valid(shapely.union_all(parts)))
+    return _polygonal(shapely.make_valid(shapely.simplify(out, SMOOTH_SIMPLIFY_DEG)))
 
 
 def _dissolve(cells: list[str]):
@@ -142,7 +166,7 @@ def _dissolve(cells: list[str]):
     merged = shapely.make_valid(unary_union(geoms))
     # Smooth BEFORE clipping, so the coastline stays exact: rounding a band and
     # the shore together would eat headlands and round off every island.
-    return shapely.make_valid(shapely.intersection(_smooth(merged), _land()))
+    return _polygonal(shapely.make_valid(shapely.intersection(_smooth(merged), _land())))
 
 
 def band_feature_collection(idx, cell_minutes: np.ndarray) -> dict:
