@@ -1,7 +1,19 @@
 """Stable integer indices for every node in the multi-modal graph.
 
-Layout: land cells occupy [0, n_cells), then airports. Keeping cells first means
-the per-cell time surface is simply `distances[:n_cells]`.
+Layout: land cells occupy [0, n_cells), then one DEPARTURE node per airport,
+then one ARRIVAL node per airport. Keeping cells first means the per-cell time
+surface is still simply `distances[:n_cells]`.
+
+Airports are split because a single node cannot tell a journey's first flight
+from a connecting one. With one node, the minimum-connection-time had to be
+charged on every flight edge, so every journey paid a connection penalty for a
+leg that was never a connection -- about 75 minutes of pure error on a
+one-flight trip. Splitting makes the distinction structural:
+
+    cell -> A_dep     access: reach the airport, check in, board
+    A_dep -> B_arr    the flight itself
+    B_arr -> B_dep    a connection, and only ever a connection
+    B_arr -> cell     egress: disembark and leave the airport
 """
 
 import logging
@@ -41,7 +53,7 @@ class NodeIndex:
 
     @property
     def n(self) -> int:
-        return len(self.cells) + len(self.airports)
+        return len(self.cells) + 2 * len(self.airports)
 
     def cell_index(self, cell: str) -> int:
         return self._cell_pos[cell]
@@ -51,7 +63,12 @@ class NodeIndex:
         return self._cell_pos.get(cell)
 
     def airport_index(self, iata: str) -> int:
+        """Departure-side node: where you board."""
         return self._airport_pos[iata]
+
+    def airport_arr_index(self, iata: str) -> int:
+        """Arrival-side node: where you land, before connecting or leaving."""
+        return self._airport_pos[iata] + len(self.airports)
 
     def airport_cell_index(self, iata: str) -> int:
         return self._airport_cell[iata]

@@ -51,6 +51,7 @@ def test_duplicate_row_col_pairs_across_edge_parts_are_rejected(monkeypatch):
     monkeypatch.setattr(build.ground, "hex_edges", lambda idx: dup)
     monkeypatch.setattr(build, "_air_edges", lambda *args, **kwargs: empty)
     monkeypatch.setattr(build, "_access_edges", lambda idx: empty)
+    monkeypatch.setattr(build, "_transfer_edges", lambda idx: empty)
 
     with pytest.raises(RuntimeError, match="duplicate"):
         build.build_graph(FakeIdx())
@@ -64,8 +65,11 @@ def test_neighbouring_land_cells_are_connected(csr, idx):
 
 
 def test_incheon_reaches_narita_directly(csr, idx):
-    u, v = idx.airport_index("ICN"), idx.airport_index("NRT")
-    assert csr[u, v] > 0
+    # A flight lands on the arrival node, never the departure node: that split
+    # is what stops a journey's first flight paying a connection penalty.
+    u = idx.airport_index("ICN")
+    assert csr[u, idx.airport_arr_index("NRT")] > 0
+    assert csr[u, idx.airport_index("NRT")] == 0
 
 
 def test_implausible_longhaul_pair_between_small_airports_is_rejected():

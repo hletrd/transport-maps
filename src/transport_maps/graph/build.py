@@ -78,25 +78,14 @@ def _air_edges(
             rejected.append((src, dst, d))
             continue
         block = air.block_time_min(d, size1, size2, cal)
-        wait = air.expected_wait_min(air.frequency_model(size1, size2, d, cal))
-        # Minimum connection time at the departure airport. This double-counts
-        # slightly against access_min on a journey's very first hop (that leg
-        # was never a connection), but a per-edge model can't distinguish "first
-        # hop" from "connecting hop" without knowing the full path, so the brief
-        # accepts the small overcount everywhere in exchange for realistic
-        # connections on every later hop.
-        conn = transfers.connection_min(size1, cal)
-        # The design spec charges the air->air TRANSFER as max(MCT, headway/2),
-        # not their sum: if flights are frequent, the wait is short and MCT
-        # dominates; if flights are rare, the headway/2 wait already exceeds
-        # MCT on its own, and adding MCT on top of it double-charges time
-        # already spent waiting. The two forms agree on busy routes (wait is
-        # small either way) and diverge on low-frequency ones, where a sum
-        # overcounts by up to the smaller of the two terms.
-        transfer = max(wait, conn)
+        # The flight edge carries block time ONLY. Waiting is charged on the
+        # connection edge instead (see _transfer_edges), because a traveller
+        # plans their first departure but cannot choose when a connecting
+        # service leaves. That also removes the connection penalty this edge
+        # used to add to every journey's first flight.
         rows.append(idx.airport_index(src))
-        cols.append(idx.airport_index(dst))
-        minutes.append(float(block + transfer))
+        cols.append(idx.airport_arr_index(dst))
+        minutes.append(float(block))
 
     if rejected:
         detail = ", ".join(f"{s}->{d} ({km:.0f} km)" for s, d, km in rejected)
@@ -151,8 +140,62 @@ def _access_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         # long-haul international connections.
         access = transfers.access_min(size, True, cal)
         egress = transfers.egress_min(size, True, cal)
+        # Enter on the departure side, leave from the arrival side.
         rows.append(cell); cols.append(node); minutes.append(access)
-        rows.append(node); cols.append(cell); minutes.append(egress)
+        rows.append(idx.airport_arr_index(iata)); cols.append(cell); minutes.append(egress)
+    return (
+        np.asarray(rows, dtype=np.int64),
+        np.asarray(cols, dtype=np.int64),
+        np.asarray(minutes, dtype=np.float64),
+    )
+
+
+def _transfer_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Arrival -> departure within one airport: the cost of connecting.
+
+    This edge is the only place a connection is charged, so a journey's first
+    flight never pays one. It is also where waiting lives: a traveller times
+    their own first departure, but must take whatever onward service exists,
+    so the wait is the expected headway of THIS airport's outbound routes.
+
+    Cost is max(MCT, wait), not their sum -- when services are frequent the
+    minimum connection time dominates, and when they are rare the wait already
+    exceeds it, so adding both would charge the same minutes twice.
+    """
+    cal = air.load_calibration()
+    apts = airports.scheduled_airports()
+    meta = {
+        iata: (lat, lon, size)
+        for iata, lat, lon, size in zip(apts["iata"], apts["lat"], apts["lon"], apts["size"])
+    }
+    known = set(idx.airports)
+
+    waits: dict[str, list[float]] = {}
+    net = routes.route_network()
+    for src, dst in zip(net["src"], net["dst"]):
+        if src not in known or dst not in known:
+            continue
+        (lat1, lon1, size1) = meta[src]
+        (lat2, lon2, size2) = meta[dst]
+        d = h3.great_circle_distance((lat1, lon1), (lat2, lon2), unit="km")
+        if not is_geographically_plausible(d, size1, size2):
+            continue
+        waits.setdefault(src, []).append(
+            float(air.expected_wait_min(air.frequency_model(size1, size2, d, cal)))
+        )
+
+    rows: list[int] = []
+    cols: list[int] = []
+    minutes: list[float] = []
+    for iata in idx.airports:
+        onward = waits.get(iata)
+        if not onward:
+            continue  # nothing departs here, so no connection is possible
+        typical = float(np.median(onward))
+        conn = transfers.connection_min(meta[iata][2], cal)
+        rows.append(idx.airport_arr_index(iata))
+        cols.append(idx.airport_index(iata))
+        minutes.append(max(conn, typical))
     return (
         np.asarray(rows, dtype=np.int64),
         np.asarray(cols, dtype=np.int64),
@@ -174,6 +217,7 @@ def build_graph(
         ground.hex_edges(idx),
         _air_edges(idx, rejected_air_pairs, unknown_airport_pairs),
         _access_edges(idx),
+        _transfer_edges(idx),
     ]
     rows = np.concatenate([p[0] for p in parts])
     cols = np.concatenate([p[1] for p in parts])
