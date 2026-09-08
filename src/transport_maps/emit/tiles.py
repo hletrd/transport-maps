@@ -11,7 +11,10 @@ from pathlib import Path
 # dominant size lever. The source is H3 res-5 hexes (~8.5 km edge), and at
 # zoom 6 that is already ~3.5 px, so zoom 7 spends bytes on detail finer than
 # the underlying data. Do not raise this without re-measuring.
-MIN_ZOOM, MAX_ZOOM = 0, 6
+# z7 measured ~38% larger than z6 and keeps band edges crisp a zoom level
+# further in; MapLibre overzooms past the source maximum, so the map still
+# zooms to 11 without storing tiles for it.
+MIN_ZOOM, MAX_ZOOM = 0, 7
 LAYER = "bands"
 
 

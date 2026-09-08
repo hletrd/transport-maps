@@ -71,6 +71,49 @@ def _land() -> "shapely.Geometry":
     return _land_cache
 
 
+# Chaikin corner-cutting. Two passes round a hexagon's 120-degree corners into
+# something that reads as a contour rather than as tiling; a third is not worth
+# the vertices. The isochrone surface is smooth -- the hexagons are only how it
+# was sampled -- so rounding the sampling artefact is honest, not decorative.
+SMOOTH_PASSES = 2
+# Applied after smoothing: Chaikin quadruples the vertex count and most of the
+# new points are collinear. Roughly 550 m, well under the ~8 km cell.
+SMOOTH_SIMPLIFY_DEG = 0.005
+
+
+def _chaikin(ring: np.ndarray, passes: int = SMOOTH_PASSES) -> np.ndarray:
+    """Corner-cut a closed ring, keeping it closed."""
+    for _ in range(passes):
+        p = ring[:-1]                      # drop the repeated last point
+        q = np.roll(p, -1, axis=0)
+        cut = np.empty((len(p) * 2, 2))
+        cut[0::2] = 0.75 * p + 0.25 * q
+        cut[1::2] = 0.25 * p + 0.75 * q
+        ring = np.vstack([cut, cut[:1]])
+    return ring
+
+
+def _smooth(geom):
+    """Round the hexagon corners off a dissolved band."""
+    def ring(coords):
+        a = np.asarray(coords)
+        # Fewer than four distinct points is a sliver; smoothing collapses it.
+        return a if len(a) < 5 else _chaikin(a)
+
+    parts = []
+    for poly in shapely.get_parts(geom) if geom.geom_type == "MultiPolygon" else [geom]:
+        if poly.is_empty or poly.geom_type != "Polygon":
+            continue
+        parts.append(shapely.Polygon(
+            ring(poly.exterior.coords),
+            [ring(i.coords) for i in poly.interiors],
+        ))
+    if not parts:
+        return geom
+    out = shapely.make_valid(shapely.union_all(parts))
+    return shapely.make_valid(shapely.simplify(out, SMOOTH_SIMPLIFY_DEG))
+
+
 def _dissolve(cells: list[str]):
     """Dissolve one band's cells, handling the antimeridian.
 
@@ -93,7 +136,9 @@ def _dissolve(cells: list[str]):
     if not geoms:
         return None
     merged = shapely.make_valid(unary_union(geoms))
-    return shapely.make_valid(shapely.intersection(merged, _land()))
+    # Smooth BEFORE clipping, so the coastline stays exact: rounding a band and
+    # the shore together would eat headlands and round off every island.
+    return shapely.make_valid(shapely.intersection(_smooth(merged), _land()))
 
 
 def band_feature_collection(idx, cell_minutes: np.ndarray) -> dict:
@@ -117,9 +162,26 @@ def band_feature_collection(idx, cell_minutes: np.ndarray) -> dict:
     # no polygon at all, so it rendered as open ocean: the land mask had it,
     # the map did not. It carries UNREACHABLE_BAND so the style can give it a
     # "no route" tone instead of a travel-time colour.
+    # Bands share boundaries, and smoothing each one on its own moves those
+    # boundaries in different directions, so neighbours overlap. Subtracting
+    # everything already emitted makes disjointness structural instead of
+    # something the gate has to hope for. Reachable bands go first, ascending,
+    # so a nearer band always wins the contested sliver; unreachable land is
+    # emitted last and takes only what is left.
+    order = sorted(b for b in by_band if b != UNREACHABLE_BAND)
+    if UNREACHABLE_BAND in by_band:
+        order.append(UNREACHABLE_BAND)
+
     features = []
-    for band in sorted(by_band):
+    claimed = None
+    for band in order:
         geometry = _dissolve(by_band[band])
+        if claimed is not None:
+            geometry = shapely.make_valid(shapely.difference(geometry, claimed))
+        if geometry.is_empty:
+            continue
+        claimed = (geometry if claimed is None
+                   else shapely.make_valid(shapely.union_all([claimed, geometry])))
         features.append({
             "type": "Feature",
             "properties": {
