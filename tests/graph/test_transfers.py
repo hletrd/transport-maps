@@ -1,6 +1,22 @@
+"""Airport time, split by what it actually depends on.
+
+The previous model lumped check-in, security, boarding, emigration, baggage and
+immigration into one "access"/"egress" pair with a domestic and an international
+variant, and — because the graph is built before any journey is known — applied
+the international variant everywhere. That charged a Frankfurt-Munich hop for a
+border it never crosses and an Amsterdam-Milan flight for a passport desk that
+does not exist.
+
+Now: processing and disembark are properties of the AIRPORT and stay on the
+cell<->airport edges; border control is a property of the ROUTE and is charged
+on the flight edge, only when the flight leaves its immigration zone.
+"""
+
 import pytest
 
 from transport_maps.graph import air, transfers
+
+SIZES = ("large", "medium", "small")
 
 
 @pytest.fixture(scope="module")
@@ -8,78 +24,69 @@ def cal():
     return air.load_calibration()
 
 
-def test_international_access_exceeds_domestic(cal):
-    assert transfers.access_min("large", True, cal) > transfers.access_min("large", False, cal)
+# --- immigration zones -------------------------------------------------------
+
+@pytest.mark.parametrize("dep,arr", [("KR", "JP"), ("KR", "US"), ("GB", "FR"), ("US", "MX")])
+def test_flights_leaving_the_immigration_zone_cross_a_border(dep, arr):
+    assert transfers.crosses_border(dep, arr)
 
 
-def test_international_egress_exceeds_domestic_egress(cal):
-    # Pins the domestic/international direction on egress independently of
-    # access -- a bug that swaps the two keys only inside egress_min would
-    # slip past test_egress_is_shorter_than_access below, since a swapped
-    # egress value can still happen to be smaller than access.
-    assert transfers.egress_min("large", True, cal) > transfers.egress_min("large", False, cal)
+@pytest.mark.parametrize("dep,arr,why", [
+    ("DE", "DE", "same country"),
+    ("NL", "IT", "both Schengen"),
+    ("FR", "ES", "both Schengen"),
+    ("IE", "GB", "Common Travel Area"),
+])
+def test_flights_inside_one_immigration_zone_do_not(dep, arr, why):
+    assert not transfers.crosses_border(dep, arr), why
 
 
-def test_large_hubs_have_longer_connections_than_small_airports(cal):
-    assert transfers.connection_min("large", cal) > transfers.connection_min("small", cal)
+def test_schengen_is_one_zone_but_not_the_whole_world():
+    """Guards against a zone table so broad it makes every border vanish."""
+    assert transfers.immigration_zone("NL") == transfers.immigration_zone("IT")
+    assert transfers.immigration_zone("NL") != transfers.immigration_zone("US")
+    assert transfers.immigration_zone("JP") == "JP"
 
 
-def test_access_min_size_ordering_domestic(cal):
-    # A bigger airport takes longer to get through -- large > medium > small.
-    # This single relational test catches a medium/small transposition in
-    # either direction, on top of the large/small check connection_min
-    # already had.
-    large = transfers.access_min("large", False, cal)
-    medium = transfers.access_min("medium", False, cal)
-    small = transfers.access_min("small", False, cal)
+# --- component magnitudes ----------------------------------------------------
+
+def test_processing_exceeds_disembark_at_every_size(cal):
+    """Getting onto an aircraft takes longer than getting off one: check-in and
+    security have no counterpart on arrival once border control is separated out.
+    """
+    for size in SIZES:
+        assert transfers.processing_min(size, cal) > transfers.disembark_min(size, cal)
+
+
+@pytest.mark.parametrize("fn", ["processing_min", "disembark_min", "border_min", "connection_min"])
+def test_every_component_decreases_with_airport_size(fn, cal):
+    """Terminal size is the proxy for queue length, so all four must order the
+    same way. A swapped pair of entries in any one table would pass a test that
+    only checked large vs small on a single component.
+    """
+    f = getattr(transfers, fn)
+    large, medium, small = (f(s, cal) for s in SIZES)
     assert large > medium > small
 
 
-def test_access_min_size_ordering_international(cal):
-    large = transfers.access_min("large", True, cal)
-    medium = transfers.access_min("medium", True, cal)
-    small = transfers.access_min("small", True, cal)
-    assert large > medium > small
+def test_components_match_the_calibration_file(cal):
+    """Pins the middle tier too: a medium/small swap changes no other assertion."""
+    assert transfers.processing_min("large", cal) == 70.0
+    assert transfers.processing_min("medium", cal) == 55.0
+    assert transfers.disembark_min("large", cal) == 30.0
+    assert transfers.disembark_min("medium", cal) == 22.0
+    assert transfers.border_min("large", cal) == 45.0
+    assert transfers.border_min("medium", cal) == 35.0
 
 
-def test_egress_min_size_ordering_domestic(cal):
-    large = transfers.egress_min("large", False, cal)
-    medium = transfers.egress_min("medium", False, cal)
-    small = transfers.egress_min("small", False, cal)
-    assert large > medium > small
+def test_border_is_a_real_cost_not_a_rounding_error(cal):
+    """If border time were negligible the split would buy nothing; it should be
+    a material share of the airport overhead it was carved out of.
+    """
+    for size in SIZES:
+        assert transfers.border_min(size, cal) >= 0.3 * transfers.processing_min(size, cal)
 
 
-def test_egress_min_size_ordering_international(cal):
-    large = transfers.egress_min("large", True, cal)
-    medium = transfers.egress_min("medium", True, cal)
-    small = transfers.egress_min("small", True, cal)
-    assert large > medium > small
-
-
-def test_egress_is_shorter_than_access(cal):
-    # Leaving an airport is faster than entering one: no check-in, no security.
-    assert transfers.egress_min("large", True, cal) < transfers.access_min("large", True, cal)
-
-
-def test_access_min_matches_calibrated_values(cal):
-    # Pins exact values so a transposition between the domestic/international
-    # tables (or between access_min and egress_min) that happens to preserve
-    # the relational asserts above is still caught. The medium tier is pinned
-    # too, in both variants -- otherwise it is never referenced by value and a
-    # medium/small swap could pass every other test in this file.
-    assert transfers.access_min("large", False, cal) == pytest.approx(70.0)
-    assert transfers.access_min("medium", False, cal) == pytest.approx(55.0)
-    assert transfers.access_min("large", True, cal) == pytest.approx(100.0)
-    assert transfers.access_min("medium", True, cal) == pytest.approx(80.0)
-
-
-def test_egress_min_matches_calibrated_values(cal):
-    assert transfers.egress_min("large", False, cal) == pytest.approx(30.0)
-    assert transfers.egress_min("medium", False, cal) == pytest.approx(22.0)
-    assert transfers.egress_min("large", True, cal) == pytest.approx(55.0)
-    assert transfers.egress_min("medium", True, cal) == pytest.approx(45.0)
-
-
-def test_connection_min_matches_calibrated_values(cal):
-    assert transfers.connection_min("large", cal) == pytest.approx(75.0)
-    assert transfers.connection_min("small", cal) == pytest.approx(35.0)
+def test_station_constants_exist_for_task_9(cal):
+    """Defined but deliberately unwired until rail lands."""
+    assert transfers.STATION_ACCESS_MIN > transfers.STATION_EGRESS_MIN > 0

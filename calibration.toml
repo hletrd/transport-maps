@@ -49,14 +49,38 @@ large = 1.0
 medium = 0.55
 small = 0.25
 
-[access_min]
-# Arrive, check in, clear security. International adds passport control.
-domestic = { large = 70.0, medium = 55.0, small = 40.0 }
-international = { large = 100.0, medium = 80.0, small = 65.0 }
+# Airport time is split into what depends on the AIRPORT and what depends on the
+# ROUTE, because the two are charged in different places.
+#
+# Processing and disembark sit on the cell<->airport edges, which are built
+# before any journey is known, so they must hold only trip-independent time.
+# Border control depends on whether a particular flight crosses an immigration
+# zone, which IS knowable per flight edge -- so it is charged there instead.
+# Previously all of it was lumped together and the international figure applied
+# everywhere, which taxed a Gimpo-Haneda shuttle and a Frankfurt-Munich hop
+# alike for a border one barely notices and the other never crosses.
 
-[egress_min]
-domestic = { large = 30.0, medium = 22.0, small = 15.0 }
-international = { large = 55.0, medium = 45.0, small = 35.0 }
+# Check-in, bag drop, security, walk to gate, boarding. Scales with terminal
+# size, which is the usable proxy for queue length.
+[processing_min]
+large = 70.0
+medium = 55.0
+small = 40.0
+
+# Deplane, walk, and wait at the belt. No border component.
+[disembark_min]
+large = 30.0
+medium = 22.0
+small = 15.0
+
+# Emigration on departure plus immigration on arrival, charged ONCE on a flight
+# edge and only when it leaves the departure airport's immigration zone.
+# Schengen counts as a single zone: an Amsterdam-Milan flight crosses a national
+# border but no immigration desk.
+[border_min]
+large = 45.0
+medium = 35.0
+small = 25.0
 
 [connection_min]
 # Minimum connection time, refitted in Task 12 from observed connections.

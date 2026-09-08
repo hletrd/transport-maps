@@ -12,6 +12,9 @@ from transport_maps.sources import airports, routes
 
 logger = logging.getLogger(__name__)
 
+# Border time scales with the larger terminal of the pair.
+_SIZE_RANK = {"small": 0, "medium": 1, "large": 2}
+
 # The longest real nonstop flight is about 15,300 km (e.g. Singapore-New York
 # JFK), and no scheduled route beyond this distance is flown without a large
 # hub at one end -- small/medium equipment can't cover it. This catches
@@ -56,8 +59,10 @@ def _air_edges(
     cal = air.load_calibration()
     apts = airports.scheduled_airports()
     meta = {
-        iata: (lat, lon, size)
-        for iata, lat, lon, size in zip(apts["iata"], apts["lat"], apts["lon"], apts["size"])
+        iata: (lat, lon, size, country)
+        for iata, lat, lon, size, country in zip(
+            apts["iata"], apts["lat"], apts["lon"], apts["size"], apts["country"]
+        )
     }
     known = set(idx.airports)
 
@@ -71,13 +76,19 @@ def _air_edges(
         if src not in known or dst not in known:
             unknown.append((src, dst))
             continue
-        (lat1, lon1, size1) = meta[src]
-        (lat2, lon2, size2) = meta[dst]
+        (lat1, lon1, size1, country1) = meta[src]
+        (lat2, lon2, size2, country2) = meta[dst]
         d = h3.great_circle_distance((lat1, lon1), (lat2, lon2), unit="km")
         if not is_geographically_plausible(d, size1, size2):
             rejected.append((src, dst, d))
             continue
         block = air.block_time_min(d, size1, size2, cal)
+        # Border control is a property of the ROUTE, not of either airport, so
+        # it is charged here where both countries are known. Schengen and the
+        # Ireland/UK Common Travel Area count as single zones: those flights
+        # cross a national border but no passport desk.
+        if transfers.crosses_border(country1, country2):
+            block += transfers.border_min(max(size1, size2, key=_SIZE_RANK.get), cal)
         # The flight edge carries block time ONLY. Waiting is charged on the
         # connection edge instead (see _transfer_edges), because a traveller
         # plans their first departure but cannot choose when a connecting
@@ -132,14 +143,11 @@ def _access_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         cell = idx.airport_cell_index(iata)
         node = idx.airport_index(iata)
         size = size_by_iata[iata]
-        # The graph is built once, before any particular origin is known, so
-        # whether a given trip through this airport is domestic or
-        # international can't be decided here. Use the international
-        # variant unconditionally: it is the conservative (longer) choice,
-        # and correct for the majority of hops on a global map, which are
-        # long-haul international connections.
-        access = transfers.access_min(size, True, cal)
-        egress = transfers.egress_min(size, True, cal)
+        # Only trip-independent time belongs here. Border control depends on
+        # where the flight goes, which this edge cannot know, so it is charged
+        # on the flight edge instead -- see _air_edges.
+        access = transfers.processing_min(size, cal)
+        egress = transfers.disembark_min(size, cal)
         # Enter on the departure side, leave from the arrival side.
         rows.append(cell); cols.append(node); minutes.append(access)
         rows.append(idx.airport_arr_index(iata)); cols.append(cell); minutes.append(egress)
