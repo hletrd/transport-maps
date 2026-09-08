@@ -110,3 +110,24 @@ def test_replacing_an_extract_of_the_same_name_is_a_cache_miss(tmp_path):
               [(7, [("n", 1, "stop"), ("n", 2, "stop")], TRAIN)])
     assert osm.rail_routes(extracts_dir=tmp_path)["name"].to_list() == ["X", "Y"], \
         "served a stale cache for a replaced extract"
+
+
+def test_a_ferry_clipped_at_the_antimeridian_is_dropped(tmp_path):
+    """An endpoint at exactly +/-180 is where the extract cut the way.
+
+    Measuring to it turned one Pacific route into a pair of 4,800 km crossings
+    -- the two longest "ferries" on Earth, both unnamed.
+    """
+    nodes = [(1, -36.8, -180.0, {}), (2, -25.1, -130.1, {}),
+             (3, 35.9, -5.5, {}), (4, 44.4, 8.9, {})]
+    ways = [(10, [1, 2], {"route": "ferry"}),          # clipped -> dropped
+            (11, [3, 4], {"route": "ferry", "name": "Tanger-Genova"})]
+    w = osmium.SimpleWriter(str(tmp_path / "f-rail.osm.pbf"))
+    for nid, lat, lon, tags in nodes:
+        w.add_node(osmium.osm.mutable.Node(id=nid, location=(lon, lat), tags=tags))
+    for wid, refs, tags in ways:
+        w.add_way(osmium.osm.mutable.Way(id=wid, nodes=refs, tags=tags))
+    w.close()
+
+    df = osm.ferry_links(extracts_dir=tmp_path)
+    assert df["way_id"].to_list() == [11], "kept a way clipped at the antimeridian"

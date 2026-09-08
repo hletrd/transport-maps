@@ -95,6 +95,11 @@ FERRY_SCHEMA = {
 # Shorter than this is a river crossing whose terminals land in one H3 cell
 # anyway; longer than this is not a scheduled ferry route.
 MIN_FERRY_KM, MAX_FERRY_KM = 1.0, 4000.0
+# A node sitting exactly on the antimeridian is where the extract cut the way,
+# not where the ferry calls. Measuring to it invented two 4,800 km crossings
+# out of one Pacific route. Real terminals do not land on the line to six
+# decimal places.
+ANTIMERIDIAN_EPS_DEG = 1e-6
 
 
 def _ferries(path) -> list[dict]:
@@ -122,6 +127,8 @@ def _ferries(path) -> list[dict]:
     rows = []
     for way_id, (a, b, name) in ways.items():
         if a in coords and b in coords:
+            if any(abs(abs(coords[n][1]) - 180.0) < ANTIMERIDIAN_EPS_DEG for n in (a, b)):
+                continue
             rows.append({"way_id": way_id,
                          "from_lat": coords[a][0], "from_lon": coords[a][1],
                          "to_lat": coords[b][0], "to_lon": coords[b][1],
