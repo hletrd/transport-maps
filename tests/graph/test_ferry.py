@@ -73,3 +73,27 @@ def test_a_crossing_to_a_cell_outside_the_land_mask_is_dropped():
     idx = _index([HEL])                     # Tallinn's cell is absent
     r, _, _ = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
     assert len(r) == 0
+
+
+def test_a_ferry_between_adjacent_cells_is_skipped():
+    """The ground network already joins neighbouring cells.
+
+    Emitting the crossing too duplicates a (row, col) pair, and coo_matrix SUMS
+    duplicates -- so the shared edge would cost the road time PLUS the sailing
+    instead of the cheaper of the two. build_graph refuses such a list outright,
+    which is how this was caught: the first full rail build aborted on it.
+    """
+    centre = h3.latlng_to_cell(60.15, 24.95, config.SOLVE_RES)
+    neighbour = [c for c in h3.grid_disk(centre, 1) if c != centre][0]
+    a = h3.cell_to_latlng(centre)
+    b = h3.cell_to_latlng(neighbour)
+    idx = _index([a, b])
+    links = _links([_link(1, a, b, "river ferry")])
+    r, _, _ = build._ferry_edges(idx, links, CAL)
+    assert len(r) == 0
+
+
+def test_a_ferry_between_distant_cells_is_still_kept():
+    idx = _index([HEL, TLL])
+    r, _, _ = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
+    assert len(r) == 2

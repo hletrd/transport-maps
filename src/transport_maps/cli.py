@@ -40,6 +40,22 @@ def _load_rail():
     return routes
 
 
+def _load_ferries():
+    """Ferry crossings if the OSM extracts are present, else None.
+
+    Reported the same way rail is: a build that quietly dropped ferries would
+    leave every island without an airport unreachable, and look identical to
+    one that included them.
+    """
+    try:
+        links = osm.ferry_links()
+    except FileNotFoundError as exc:
+        print(f"ferries:  EXCLUDED -- {exc}")
+        return None
+    print(f"ferries:  included -- {len(links):,} crossings parsed")
+    return links
+
+
 def _build_all(limit: int | None = None) -> None:
     """Build the graph once, then solve, validate and emit every origin.
 
@@ -47,8 +63,9 @@ def _build_all(limit: int | None = None) -> None:
     than none. `limit` restricts to the first N origins, for smoke-testing.
     """
     rail_routes = _load_rail()
+    ferry_links = _load_ferries()
     idx = nodes.build_index(rail_routes=rail_routes)
-    csr = build.build_graph(idx, rail_routes=rail_routes)
+    csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links)
     # Graph-level gate: runs once, before any origin is solved, because a
     # disconnected airport is a property of the network rather than of a
     # particular origin -- and per-origin coverage cannot see it.
@@ -136,8 +153,9 @@ def main() -> None:
 
     if args.command == "solve":
         rail_routes = _load_rail()
+        ferry_links = _load_ferries()
         idx = nodes.build_index(rail_routes=rail_routes)
-        csr = build.build_graph(idx, rail_routes=rail_routes)
+        csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links)
         source = dijkstra.origin_node(idx, args.lat, args.lon)
         minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
 

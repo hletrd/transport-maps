@@ -271,6 +271,13 @@ def _ferry_edges(idx: NodeIndex, links, cal) -> tuple[np.ndarray, np.ndarray, np
         # self-loop would be a zero-cost edge Dijkstra could sit on.
         if u is None or v is None or u == v:
             continue
+        # Cells the ground network already joins are skipped. At resolution 5 a
+        # crossing between neighbours is a river ferry spanning ~8 km, which you
+        # can also drive around, and emitting it duplicates a (row, col) pair
+        # that coo_matrix would silently SUM -- making the shared edge cost the
+        # road time PLUS the sailing rather than the cheaper of the two.
+        if idx.cells[v] in h3.grid_disk(idx.cells[u], 1):
+            continue
         a_cells.append(u)
         b_cells.append(v)
         minutes.append(60.0 * km / cal.speed_kmh + cal.terminal_min)

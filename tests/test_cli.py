@@ -144,3 +144,22 @@ def test_a_limited_build_does_not_rewrite_index_json(monkeypatch, tmp_path):
 
     cli._build_all()
     assert wrote_index, "a full build must still write index.json"
+
+
+def test_the_build_reports_whether_rail_and_ferries_are_included(monkeypatch, tmp_path, capsys):
+    """A build that silently drops rail or ferries looks exactly like one that
+    included them, and the difference is hours across Europe and every island
+    without an airport. Both must announce which graph was produced.
+    """
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    written: list = []
+    _stub_pipeline(monkeypatch, written, [1.0, 1.0])
+    monkeypatch.setattr(cli.osm, "rail_routes",
+                        lambda **kw: (_ for _ in ()).throw(FileNotFoundError("no extracts")))
+    monkeypatch.setattr(cli.osm, "ferry_links",
+                        lambda **kw: (_ for _ in ()).throw(FileNotFoundError("no extracts")))
+
+    cli._build_all()
+    out = capsys.readouterr().out
+    assert "rail:" in out and "EXCLUDED" in out
+    assert "ferries:" in out
