@@ -12,6 +12,8 @@ def test_coverage_is_the_reachable_fraction():
 
     class Idx:
         n_cells = 4
+        # Non-Antarctic cells, so none are allowlisted out.
+        cells = [h3.latlng_to_cell(10.0 + i, 0.0, 5) for i in range(4)]
     assert validate.check_coverage(minutes, Idx()) == 0.5
 
 
@@ -25,6 +27,8 @@ def test_low_coverage_trips_the_publish_threshold():
 
     class Idx:
         n_cells = 100
+        # Non-Antarctic cells, so none are allowlisted out.
+        cells = [h3.latlng_to_cell(10.0 + i, 0.0, 5) for i in range(100)]
     assert validate.check_coverage(minutes, Idx()) < validate.MIN_COVERAGE
 
 
@@ -108,7 +112,9 @@ class _TinyGraphIdx:
 
     def __init__(self, n_cells: int = 2):
         self.n_cells = n_cells
-        self.cells = [f"c{i}" for i in range(n_cells)]
+        # Real H3 ids, not placeholders: check_coverage reads each cell's
+        # latitude to allowlist Antarctica. All temperate, so none are excluded.
+        self.cells = [h3.latlng_to_cell(10.0 + i, 0.0, 5) for i in range(n_cells)]
         self.airports = ["AAA", "BBB"]
         self.n = n_cells + 2
 
@@ -153,6 +159,9 @@ def test_coverage_alone_would_not_have_caught_it():
 
     class _Big:
         n_cells = 548_557
+        # check_coverage only reads each cell's latitude, so one temperate cell
+        # repeated is both faithful and cheap.
+        cells = [h3.latlng_to_cell(10.0, 0.0, 5)] * 548_557
 
     assert validate.check_coverage(minutes, idx) == 0.5
     assert validate.check_coverage(big, _Big()) > validate.MIN_COVERAGE
@@ -176,3 +185,25 @@ def test_the_gate_keys_on_the_largest_component_not_the_first_airport():
     with pytest.raises(ValueError, match="disconnected"):
         validate.check_airport_connectivity(idx, csr, isolated)
     assert isolated == ["AAA"]
+
+
+def test_antarctic_cells_are_excluded_from_the_coverage_denominator():
+    """Antarctica is charted but has no scheduled service, so every one of its
+    cells is unreachable by construction. Counting them would drag a perfect
+    build to about 92% -- two points from the gate -- and make the gate mostly a
+    measure of how much Antarctica we drew rather than of route coverage.
+    """
+    class Idx:
+        # Two reachable temperate cells, two unreachable Antarctic ones.
+        cells = [
+            h3.latlng_to_cell(10.0, 0.0, 5),
+            h3.latlng_to_cell(11.0, 0.0, 5),
+            h3.latlng_to_cell(-75.0, 0.0, 5),
+            h3.latlng_to_cell(-76.0, 0.0, 5),
+        ]
+        n_cells = 4
+
+    minutes = np.array([10.0, 20.0, np.inf, np.inf])
+    # Counting Antarctica this would be 0.5; allowlisting it, the two temperate
+    # cells are both reachable, so it is 1.0.
+    assert validate.check_coverage(minutes, Idx()) == 1.0
