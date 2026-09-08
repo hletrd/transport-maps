@@ -288,6 +288,22 @@ function renderLegs() {
   box.hidden = false;
 }
 
+// The painted band comes from the res-5 polygon actually under the cursor,
+// while the time array is res-4 and takes the FASTEST of each cell's children.
+// So the number can be optimistic against the colour it sits on. Reading the
+// band from the rendered geometry costs nothing and lets the readout say which
+// band you are in rather than quietly contradicting it.
+function bandRangeAt(point) {
+  if (!map.getLayer("bands")) return null;
+  const hit = map.queryRenderedFeatures(point, { layers: ["bands"] });
+  if (!hit.length) return null;
+  const b = hit[0].properties.band;
+  if (b === UNREACHABLE_BAND) return "no scheduled route";
+  const lo = b === 0 ? 0 : EDGES[b - 1] / 60;
+  const hi = b < EDGES.length ? EDGES[b] / 60 : null;
+  return hi == null ? `over ${lo} h` : `${lo}–${hi} h band`;
+}
+
 function describe(lat, lon) {
   if (!namePlaces) return fmtCoord(lat, lon);
   const p = nearestPlace(lat, lon);
@@ -309,9 +325,11 @@ map.on("mousemove", (e) => {
     const t = lookup(lat, lng);
     const [big, unit] = fmtTime(t);
     $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
+    const band = bandRangeAt(e.point);
     $("where").innerHTML = t == null
       ? "Open water."
-      : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}${active ? " · from " + active.name : ""}`;
+      : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}`
+        + `${band ? " · " + band : ""}${active ? " · from " + active.name : ""}`;
   });
 });
 
