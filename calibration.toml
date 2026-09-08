@@ -96,3 +96,20 @@ small = 25.0
 large = 75.0
 medium = 50.0
 small = 35.0
+
+# Rail. Pre-calibration defaults from published timetables, NOT fitted: OSM
+# route relations carry the stop sequence but no journey times, so there is
+# nothing here to regress against. Anchor used for the high-speed figure:
+# Seoul-Busan KTX is 417 km of track in 2 h 15 (185 km/h average including
+# intermediate stops); 325 km great-circle x 1.2 detour / 200 km/h = 117 min
+# against a real 135, so the model runs slightly optimistic on high-speed.
+[rail]
+highspeed_kmh = 200.0
+conventional_kmh = 75.0
+# Track is never a great circle: curves, valleys and junctions. Applied to the
+# straight-line distance between consecutive stops.
+detour_factor = 1.2
+# Charged ONCE per journey on the cell -> station edge, not per hop, so riding
+# through twenty intermediate stops is not taxed twenty times.
+boarding_min = 15.0
+alighting_min = 5.0
