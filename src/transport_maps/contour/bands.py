@@ -4,6 +4,7 @@ import bisect
 
 import h3
 import numpy as np
+import shapely
 from shapely import affinity
 from shapely.geometry import Polygon, box, mapping, shape
 from shapely.ops import unary_union
@@ -11,6 +12,8 @@ from shapely.ops import unary_union
 from transport_maps import config
 
 UNREACHABLE_BAND = -1
+# ~1.1 km; see _land() for why.
+LAND_SIMPLIFY_DEG = 0.01
 
 
 def band_of(minutes: float) -> int:
@@ -49,6 +52,25 @@ def _split_at_antimeridian(cell: str) -> list:
     return [part for part in (left, right) if not part.is_empty]
 
 
+_land_cache = None
+
+
+def _land() -> "shapely.Geometry":
+    """Simplified land outline used to clip band edges to real coastlines.
+
+    Without this, every coastline is drawn as H3 hex edges: 9.9 km segments
+    against Natural Earth's ~0.1 km detail, which reads as a hexagonal world.
+    Simplifying to ~1.1 km keeps the outline 9x finer than the hex grid while
+    cutting 422k vertices to 151k. Clipping costs about 0.9 s per origin.
+    """
+    global _land_cache
+    if _land_cache is None:
+        from transport_maps.sources import landmask
+        merged = shapely.union_all(landmask._land_parts())
+        _land_cache = shapely.make_valid(shapely.simplify(merged, LAND_SIMPLIFY_DEG))
+    return _land_cache
+
+
 def _dissolve(cells: list[str]):
     """Dissolve one band's cells, handling the antimeridian.
 
@@ -68,7 +90,10 @@ def _dissolve(cells: list[str]):
     for cell in wrapping:
         geoms.extend(_split_at_antimeridian(cell))
 
-    return unary_union(geoms) if geoms else None
+    if not geoms:
+        return None
+    merged = shapely.make_valid(unary_union(geoms))
+    return shapely.make_valid(shapely.intersection(merged, _land()))
 
 
 def band_feature_collection(idx, cell_minutes: np.ndarray) -> dict:

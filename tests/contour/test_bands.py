@@ -3,6 +3,7 @@ from typing import ClassVar
 import h3
 import numpy as np
 import pytest
+import shapely
 from shapely.geometry import Polygon
 
 from transport_maps import config, validate
@@ -88,7 +89,11 @@ def test_antimeridian_cell_splits_into_a_valid_geometry_at_its_true_area():
     """The fix: dissolving the same cell must produce a VALID geometry whose
     area matches its true unwrapped size, not the globe-spanning naive one.
     """
-    geometry = bands._dissolve([ANTIMERIDIAN_CELL])
+    # Tests the splitter directly: _dissolve now also clips bands to the real
+    # coastline, which legitimately trims an ocean-side cell like this one, so
+    # going through it would no longer isolate the antimeridian behaviour.
+    parts = bands._split_at_antimeridian(ANTIMERIDIAN_CELL)
+    geometry = shapely.union_all(parts)
     assert geometry.is_valid
     assert geometry.area == pytest.approx(0.020117758657720624, rel=1e-9)
     # Nowhere near the 27+ deg^2 the naive (buggy) reading produced.
