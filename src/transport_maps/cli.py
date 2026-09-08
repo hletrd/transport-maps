@@ -140,3 +140,10 @@ def main() -> None:
 
     elif args.command == "build-all":
         _build_all(limit=args.limit)
+
+
+# Without this, `python -m transport_maps.cli build-all` imports the module,
+# runs nothing and exits 0 -- a build that silently does no work and still
+# reports success. Only the `transport-maps` console script has an entry point.
+if __name__ == "__main__":
+    main()
