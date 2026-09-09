@@ -93,12 +93,25 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .body{padding:12px 14px 14px}
 
 /* ---- masthead ---- */
-.mast{position:fixed;top:20px;left:22px;z-index:6;max-width:30ch}
+.mast{
+  position:fixed;top:14px;left:14px;z-index:6;max-width:32ch;
+  padding:10px 14px 12px;border-radius:3px;
+  /* The globe runs bright under this corner, and light text on a cream band is
+     unreadable. A scrim rather than a card: no border, no shadow, just enough
+     to hold the type. */
+  background:color-mix(in srgb, var(--bg) 74%, transparent);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
 .mast h1{margin:0;font-size:17px;font-weight:600;line-height:1.2}
 .mast p{margin:4px 0 0;font-size:11.5px;color:var(--text-2);line-height:1.45}
 
 /* ---- reading + legend, always visible ---- */
-.reading{position:fixed;left:22px;bottom:20px;z-index:6;width:290px}
+.reading{
+  position:fixed;left:14px;bottom:14px;z-index:6;width:306px;
+  padding:14px 16px 15px;border-radius:3px;
+  background:color-mix(in srgb, var(--bg) 74%, transparent);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
 .reading .v{
   margin:0;font-size:50px;line-height:1;font-weight:300;
 }
@@ -132,9 +145,13 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 
 /* ---- right rail ---- */
 .rail{position:fixed;top:20px;right:20px;bottom:20px;width:264px;z-index:6;
-  display:flex;flex-direction:column;gap:10px;pointer-events:none}
-.rail > *{pointer-events:auto}
-.rail .spacer{flex:1}
+  display:flex;flex-direction:column;gap:10px;pointer-events:none;
+  /* Open every panel at once and the rail outgrows a short window; without
+     this the bottom ones are simply unreachable. */
+  overflow-y:auto;overscroll-behavior:contain;
+  scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+.rail > *{pointer-events:auto;flex:none}
+.rail .spacer{flex:1 1 auto;min-height:0}
 
 .results{list-style:none;margin:8px 0 0;padding:0;max-height:40vh;overflow-y:auto;
   scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
@@ -159,6 +176,10 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   font-size:12.5px;color:var(--text-2)}
 .row + .row{border-top:1px solid var(--line)}
 .row input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+.row select{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:2px;
+  color:var(--text);font:400 12.5px/1.3 inherit;padding:3px 6px;cursor:pointer;
+}
 .row label{cursor:pointer}
 .hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}
 .btn{
@@ -260,6 +281,14 @@ details[open] > summary{border-bottom:1px solid var(--line)}
       <div class="row">
         <label for="show-places">Name the place under the cursor</label>
         <input type="checkbox" id="show-places" checked>
+      </div>
+      <div class="row">
+        <label for="ramp">Colour scheme</label>
+        <select id="ramp">
+          <option value="muted">Muted</option>
+          <option value="vivid">Vivid</option>
+          <option value="warm">Warm</option>
+        </select>
       </div>
       <p class="hint">Drag to rotate the globe, scroll to zoom. Locking to north
         disables rotation so dragging only pans.</p>

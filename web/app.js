@@ -2,21 +2,27 @@ import maplibregl from "./vendor/maplibre-gl.js";
 import * as pmtiles from "./vendor/pmtiles.js";
 import * as h3 from "./vendor/h3.js";
 
-// Sequential ramp, brightest where the journey is shortest. Multi-hue on
+// Sequential ramps, brightest where the journey is shortest. Multi-hue on
 // purpose: a SINGLE hue cannot separate eleven bands on a dark ground.
-// Measured adjacent-pair separation in OKLab (x100) -- below about 8 two
-// bands are hard to tell apart at all:
-//
-//   earlier single-hue amber   every pair 4.4-4.8, so China and Siberia
-//                              rendered as one flat orange mass
-//   this ramp                  min 6.4, median 7.2
-//
-// A vivid inferno-style ramp measured better still (median 10.0) but read as
-// a neon heatmap rather than a chart; this is the deliberate trade. Lightness
-// stays strictly monotonic (0.95 -> 0.32), which is what a sequential ramp
-// actually requires.
-const BANDS = ["#faefc5","#f6d49c","#f5b77b","#ef9a69","#e27e65","#cd686a",
-               "#b0586f","#8f4d6e","#6d4464","#503955","#392b49"];
+// Measured adjacent-pair separation in OKLab (x100) -- below about 8 two bands
+// are hard to tell apart at all. The earlier single-hue amber sat at 4.4-4.8
+// throughout, which is why China and Siberia read as one flat mass.
+// Lightness is strictly monotonic in all three, which is what a sequential
+// ramp actually requires; hue rotation supplies the separation lightness
+// alone cannot.
+const RAMPS = {
+  // min dE 6.4, median 7.2 -- restrained, the default
+  muted: ["#faefc5","#f6d49c","#f5b77b","#ef9a69","#e27e65","#cd686a",
+          "#b0586f","#8f4d6e","#6d4464","#503955","#392b49"],
+  // min dE 7.5, median 10.0 -- most legible, reads as a heatmap
+  vivid: ["#fff7a8","#ffd453","#ffa600","#ff7100","#ff3833","#fd0066",
+          "#d10885","#9f268f","#6e3283","#46316c","#26245e"],
+  // min dE 6.2, median 6.8 -- quietest, closest to an atlas plate
+  warm:  ["#fbeec9","#f4d59d","#eebc74","#e6a153","#da883c","#c87134",
+          "#b15e36","#95503b","#77443c","#5b3837","#49282b"],
+};
+let rampName = "muted";
+let BANDS = RAMPS[rampName];
 const BG = "#0a0b0d", SEA = "#0f1114";
 // Land no scheduled service reaches. A tone, not a colour: it must read as
 // "no route" rather than as the far end of the time ramp.
@@ -50,13 +56,18 @@ const store = {
   },
   set(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch { /* private mode */ } },
 };
+try { const r = localStorage.getItem("ramp"); if (r && RAMPS[r]) { rampName = r; BANDS = RAMPS[r]; } }
+catch { /* private mode */ }
 let lockNorth = store.get("lockNorth", false);
 let namePlaces = store.get("namePlaces", true);
 
 // ---- legend ----
-$("tints").replaceChildren(...BANDS.map((c) => {
-  const s = document.createElement("span"); s.style.background = c; return s;
-}));
+function paintLegend() {
+  $("tints").replaceChildren(...BANDS.map((c) => {
+    const s = document.createElement("span"); s.style.background = c; return s;
+  }));
+}
+paintLegend();
 
 // Segments are equal width but the time scale is not linear, so a tick must sit
 // at its own band boundary. Placing evenly spaced labels under uneven bands is
@@ -153,6 +164,12 @@ function syncNeedle() {
 }
 map.on("rotate", syncNeedle);
 
+function bandColourExpression() {
+  return ["match", ["get", "band"],
+    UNREACHABLE_BAND, UNCHARTED,
+    ...BANDS.flatMap((c, i) => [i, c]), UNCHARTED];
+}
+
 function paintOrigin(o) {
   active = o;
   if (map.getLayer("bands")) map.removeLayer("bands");
@@ -162,9 +179,7 @@ function paintOrigin(o) {
   map.addLayer({
     id: "bands", type: "fill", source: "bands", "source-layer": "bands",
     paint: {
-      "fill-color": ["match", ["get", "band"],
-        UNREACHABLE_BAND, UNCHARTED,
-        ...BANDS.flatMap((c, i) => [i, c]), UNCHARTED],
+      "fill-color": bandColourExpression(),
       "fill-opacity": 1
     }
   });
@@ -426,7 +441,19 @@ lockBox.checked = lockNorth;
 lockBox.addEventListener("change", () => {
   lockNorth = lockBox.checked;
   store.set("lockNorth", lockNorth);
-  applyLockNorth();
+  const rampBox = $("ramp");
+rampBox.value = rampName;
+rampBox.addEventListener("change", () => {
+  rampName = rampBox.value;
+  BANDS = RAMPS[rampName];
+  try { localStorage.setItem("ramp", rampName); } catch { /* private mode */ }
+  paintLegend();
+  // Repaint in place rather than reloading the tiles, which are already there.
+  if (map.getLayer("bands"))
+    map.setPaintProperty("bands", "fill-color", bandColourExpression());
+});
+
+applyLockNorth();
 });
 
 const placesBox = $("show-places");
@@ -434,6 +461,18 @@ placesBox.checked = namePlaces;
 placesBox.addEventListener("change", () => {
   namePlaces = placesBox.checked;
   store.set("namePlaces", namePlaces);
+});
+
+const rampBox = $("ramp");
+rampBox.value = rampName;
+rampBox.addEventListener("change", () => {
+  rampName = rampBox.value;
+  BANDS = RAMPS[rampName];
+  try { localStorage.setItem("ramp", rampName); } catch { /* private mode */ }
+  paintLegend();
+  // Repaint in place rather than reloading the tiles, which are already there.
+  if (map.getLayer("bands"))
+    map.setPaintProperty("bands", "fill-color", bandColourExpression());
 });
 
 applyLockNorth();
