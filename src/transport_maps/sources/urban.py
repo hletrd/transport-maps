@@ -13,7 +13,10 @@ is a flat factor over a radius rather than anything scaled by size.
 
 from __future__ import annotations
 
+import pathlib
+
 import h3
+import httpx
 import numpy as np
 import polars as pl
 import pyogrio
@@ -28,16 +31,36 @@ URBAN_POP_MIN = 200_000.0
 URBAN_RADIUS_KM = 40.0
 URBAN_CONGESTION_FACTOR = 2.0
 
-PLACES_ZIP = "ne_10m_populated_places_simple.zip"
+# Natural Earth populated places, for the urban mask only. The page's
+# gazetteer (emit/places.py) moved to GeoNames; this stays on Natural Earth
+# because the fitted radius and threshold above were measured against its
+# pop_max column.
+PLACES_URL = ("https://naturalearth.s3.amazonaws.com/10m_cultural/"
+              "ne_10m_populated_places_simple.zip")
+PLACES_ZIP = PLACES_URL.rsplit("/", 1)[-1]
+
+
+def _download() -> pathlib.Path:
+    """The populated-places archive, fetched once into the cache.
+
+    Its own download, in this layer. This used to call emit.places._download,
+    which had since grown a required `url` argument and fetches GeoNames, so
+    a fresh cache raised TypeError in the index preamble -- and passing a URL
+    would still have fetched the wrong dataset. The only reason a build ever
+    got past here was an archive already sitting in data/cache.
+    """
+    config.ensure_dirs()
+    cached = config.CACHE / PLACES_ZIP
+    if not cached.exists():
+        r = httpx.get(PLACES_URL, follow_redirects=True, timeout=180)
+        r.raise_for_status()
+        _atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
+    return cached
 
 
 def _places() -> tuple[np.ndarray, np.ndarray]:
     """Coordinates of places above the population threshold."""
-    path = (config.CACHE / PLACES_ZIP).resolve()
-    if not path.exists():
-        from ..emit import places as places_mod
-
-        places_mod._download()
+    path = _download().resolve()
     _meta, table = pyogrio.read_arrow(f"/vsizip/{path}")
     lat = np.array(table.column("latitude").to_pylist(), dtype=float)
     lon = np.array(table.column("longitude").to_pylist(), dtype=float)
@@ -48,7 +71,9 @@ def _places() -> tuple[np.ndarray, np.ndarray]:
 
 def urban_mask(cells: list[str]) -> np.ndarray:
     """True where a cell lies within `URBAN_RADIUS_KM` of a sizeable city."""
-    key = _params_hash(URBAN_POP_MIN, URBAN_RADIUS_KM, len(cells),
+    # The source archive is part of what the mask is derived from: a different
+    # gazetteer must miss the cache, not be read back through it.
+    key = _params_hash(URBAN_POP_MIN, URBAN_RADIUS_KM, PLACES_URL, len(cells),
                        cells[0] if cells else "", cells[-1] if cells else "")
     cached = config.CACHE / f"urban_mask-{key}.parquet"
     if cached.exists():

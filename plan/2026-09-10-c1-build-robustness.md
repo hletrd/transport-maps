@@ -21,7 +21,7 @@ orchestrator are running; do not start/stop them, do not rewrite `dist/` or
       (`cli.py:83-88,109-112,187-191`). Test: forked pool with two origins,
       one failing → `main()` raises `SystemExit` within a timeout. Mutation:
       restore `raise SystemExit` in the worker → test times out/fails.
-- [ ] **A5** `sources/urban.py:34-46` downloads its own Natural Earth populated
+- [x] **A5** `sources/urban.py:34-46` downloads its own Natural Earth populated
       places zip through `sources/_utils` (URL constant in `urban.py`) instead
       of calling `emit.places._download()` with the wrong signature and
       dataset; the cache key includes the URL. Test: with an empty cache dir

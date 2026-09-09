@@ -62,3 +62,77 @@ def test_roadless_terrain_is_never_slowed_by_traffic():
             assert speeds[i] == ground.SPEED_BY_ROAD_CLASS_KMH[0], \
                 "traffic was applied to roadless terrain"
     assert speeds.min() >= ground.SPEED_BY_ROAD_CLASS_KMH.min()
+
+
+def _places_archive(tmp_path) -> bytes:
+    """A Natural Earth-shaped populated-places shapefile, zipped: one place
+    above URBAN_POP_MIN at (10, 20) and one below it at (30, 40)."""
+    import io
+    import zipfile
+
+    import pyarrow as pa
+    import pyogrio
+    import shapely
+
+    rows = [(10.0, 20.0, urban.URBAN_POP_MIN + 1.0), (30.0, 40.0, urban.URBAN_POP_MIN - 1.0)]
+    table = pa.table({
+        "latitude": [r[0] for r in rows],
+        "longitude": [r[1] for r in rows],
+        "pop_max": [r[2] for r in rows],
+        "geometry": [shapely.to_wkb(shapely.Point(r[1], r[0])) for r in rows],
+    })
+    shp = tmp_path / "shp"
+    shp.mkdir()
+    pyogrio.write_arrow(table, shp / "ne_10m_populated_places_simple.shp",
+                        driver="ESRI Shapefile", geometry_name="geometry",
+                        geometry_type="Point", crs="EPSG:4326")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for part in sorted(shp.iterdir()):
+            z.write(part, part.name)
+    return buf.getvalue()
+
+
+def test_places_reads_the_archive_it_downloaded(tmp_path, monkeypatch):
+    """A fresh cache must be able to fetch the archive itself.
+
+    This used to call emit.places._download(), whose signature had changed
+    to take a URL (and which fetches GeoNames, not this archive), so every
+    fresh clone died with TypeError in the index preamble; it only worked
+    here because the zip happened to be in data/cache already.
+    """
+    payload = _places_archive(tmp_path)
+    monkeypatch.setattr(config, "CACHE", tmp_path / "cache")   # does not exist yet
+    fetched: list[str] = []
+
+    class Response:
+        content = payload
+
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, **kwargs):
+        fetched.append(url)
+        return Response()
+    monkeypatch.setattr(urban.httpx, "get", fake_get)
+
+    lat, lon = urban._places()
+    assert fetched == [urban.PLACES_URL]
+    assert (tmp_path / "cache" / urban.PLACES_ZIP).read_bytes() == payload
+    # Only the place above the threshold, read back from the fetched archive.
+    assert lat.tolist() == [10.0] and lon.tolist() == [20.0]
+    # The second call is served from the archive it just wrote.
+    urban._places()
+    assert fetched == [urban.PLACES_URL]
+
+
+def test_urban_mask_cache_key_includes_the_source_archive(tmp_path, monkeypatch):
+    """Changing the gazetteer must miss the cache rather than read back the
+    mask built from the old one."""
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    monkeypatch.setattr(urban, "_places", lambda: (np.array([51.5]), np.array([-0.1])))
+    cells = [h3.latlng_to_cell(51.5074, -0.1278, config.SOLVE_RES)]
+    urban.urban_mask(cells)
+    monkeypatch.setattr(urban, "PLACES_URL", "https://example.invalid/other_places.zip")
+    urban.urban_mask(cells)
+    assert len(list(tmp_path.glob("urban_mask-*.parquet"))) == 2, "a different archive hit the cache"
