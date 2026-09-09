@@ -45,3 +45,19 @@ arrays; a static page renders them on a globe.
   outlive a signature change); assume a new test is vacuous until shown otherwise.
 - Derived caches key on `_params_hash` of the constants **and inputs** that
   govern them, never on a bare `.exists()`.
+
+## Deploy rules
+
+- **No deploy is done until it has been opened in a browser.** Twice in this
+  project a deploy went out unverified and the live site was blank: once from
+  mismatched cached assets, once from a module-load ordering error that threw
+  before the map was created -- with no console error visible after the fact.
+  `curl` returning 200 proves nothing about whether the page runs. After every
+  deploy: open it, confirm the canvas exists and the city list is populated,
+  and check the console. For layout changes, check 1280x800, 820x1180,
+  390x844 and 844x390.
+- **Close browser sessions and kill agent-browser's own Chrome tree afterwards**
+  (`~/.agent-browser/browsers/`), never the user's Google Chrome. `agent-browser
+  close` ends the page but leaves the daemon and browser running.
+- **Never deploy a partial `dist/`.** The per-origin arrays and `hover_cells.bin`
+  must come from the same build; mixing them renders a blank globe with no error.
