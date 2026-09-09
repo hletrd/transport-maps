@@ -40,3 +40,16 @@ def test_base_values_carry_down_to_children():
     assert len(out) == len(cells)
     assert (out[fine] == 0).all()
     assert out[0] == values[base_index[0]]
+
+
+def test_a_fine_cell_and_the_base_cell_beyond_its_ring_count_as_ground_adjacent():
+    from transport_maps.graph.build import _ground_adjacent
+    base = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    neighbour = h3.grid_ring(base, 1)[0]
+    # a child of `base` on the side facing `neighbour`
+    kids = h3.cell_to_children(base, config.FINE_RES)
+    edge_kid = min(kids, key=lambda k: h3.great_circle_distance(h3.cell_to_latlng(k), h3.cell_to_latlng(neighbour), unit="km"))
+    assert _ground_adjacent(edge_kid, neighbour)
+    assert _ground_adjacent(neighbour, edge_kid)
+    far = h3.grid_ring(base, 3)[0]
+    assert not _ground_adjacent(edge_kid, far)

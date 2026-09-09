@@ -276,6 +276,16 @@ def _rail_edges(idx: NodeIndex, routes, cal) -> tuple[np.ndarray, np.ndarray, np
     return rows, cols, data
 
 
+def _ground_adjacent(a: str, b: str) -> bool:
+    """Whether the ground network joins two cells: same-resolution neighbours,
+    or a fine cell and the base cell beyond its ring (base parents equal or
+    neighbouring)."""
+    from .refine import base_parent
+
+    pa, pb = base_parent(a), base_parent(b)
+    return pa == pb or pb in h3.grid_ring(pa, 1)
+
+
 def _ferry_edges(idx: NodeIndex, links, cal) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Ferry crossings as direct cell-to-cell edges, both ways.
 
@@ -303,7 +313,10 @@ def _ferry_edges(idx: NodeIndex, links, cal) -> tuple[np.ndarray, np.ndarray, np
         # can also drive around, and emitting it duplicates a (row, col) pair
         # that coo_matrix would silently SUM -- making the shared edge cost the
         # road time PLUS the sailing rather than the cheaper of the two.
-        if idx.cells[v] in h3.grid_disk(idx.cells[u], 1):
+        # ...and "joins" must be judged the way ground.hex_edges joins cells:
+        # a fine cell and the unsplit base cell beyond its ring are adjacent
+        # too, so the test goes through base parents (modes._ground_adjacent).
+        if _ground_adjacent(idx.cells[u], idx.cells[v]):
             continue
         # A sailing into a sealed country is no more open than a road.
         if is_closed(country[u], country[v]):
