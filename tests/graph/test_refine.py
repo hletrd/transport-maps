@@ -28,18 +28,26 @@ def test_split_cells_become_their_seven_children_and_keep_their_base_index():
 
 
 def test_base_values_carry_down_to_children():
+    """Every child of a split cell carries its parent's value -- not zero.
+
+    The old fixture split cell 0, whose value was 0, so carry-down and a
+    zero-fill of the children were indistinguishable and the test asserted
+    the zero.
+    """
     base = sorted(h3.grid_disk(h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES), 1))
-    split = np.zeros(len(base), dtype=bool); split[0] = True
+    split = np.zeros(len(base), dtype=bool); split[2] = True
     cells, base_index, fine = refine.refine(base, split)
 
     class Idx:
         pass
     idx = Idx(); idx.base_index = base_index
-    values = np.arange(len(base)) * 10
+    values = np.arange(len(base)) * 10 + 7
     out = refine.expand(values, idx)
     assert len(out) == len(cells)
-    assert (out[fine] == 0).all()
-    assert out[0] == values[base_index[0]]
+    assert out[fine].size == 7 and (out[fine] == values[2]).all(), "children did not inherit the parent's value"
+    for i, (c, f) in enumerate(zip(cells, fine)):
+        if not f:
+            assert out[i] == values[base.index(c)]
 
 
 def test_ground_adjacency_is_judged_the_way_hex_edges_joins_cells():
