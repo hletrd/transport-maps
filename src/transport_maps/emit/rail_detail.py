@@ -52,7 +52,7 @@ def _line_between(routes: pl.DataFrame) -> dict[tuple[str, str], str]:
     for _rid, g in df.group_by("route_id", maintain_order=True):
         st = g["station"].to_list()
         name = g["route_name"][0] if "route_name" in g.columns else ""
-        for a, b in zip(st, st[1:]):
+        for a, b in pairwise(st):
             out.setdefault((a, b), name)
             out.setdefault((b, a), name)
     return out
