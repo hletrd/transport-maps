@@ -13,6 +13,7 @@ is a flat factor over a radius rather than anything scaled by size.
 
 from __future__ import annotations
 
+import hashlib
 import pathlib
 
 import h3
@@ -69,13 +70,17 @@ def _places() -> tuple[np.ndarray, np.ndarray]:
     return lat[keep], lon[keep]
 
 
+def _mask_cache_path(cells: list[str]) -> pathlib.Path:
+    """Keyed on the constants, the source archive AND every cell: two universes
+    of the same length and ends (a re-refined grid) must not share an entry."""
+    key = _params_hash(URBAN_POP_MIN, URBAN_RADIUS_KM, PLACES_URL,
+                       hashlib.sha256("".join(cells).encode()).hexdigest())
+    return config.CACHE / f"urban_mask-{key}.parquet"
+
+
 def urban_mask(cells: list[str]) -> np.ndarray:
     """True where a cell lies within `URBAN_RADIUS_KM` of a sizeable city."""
-    # The source archive is part of what the mask is derived from: a different
-    # gazetteer must miss the cache, not be read back through it.
-    key = _params_hash(URBAN_POP_MIN, URBAN_RADIUS_KM, PLACES_URL, len(cells),
-                       cells[0] if cells else "", cells[-1] if cells else "")
-    cached = config.CACHE / f"urban_mask-{key}.parquet"
+    cached = _mask_cache_path(cells)
     if cached.exists():
         return pl.read_parquet(cached)["urban"].to_numpy()
 

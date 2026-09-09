@@ -13,6 +13,7 @@ from transport_maps import config
 from transport_maps.sources import airports, wikidata
 from transport_maps.sources._utils import (
     _atomic_write,
+    _params_hash,
     _refuse_partial,
     _retry_after_seconds,
     _validated_json,
@@ -20,7 +21,7 @@ from transport_maps.sources._utils import (
 
 ACTION_API = "https://en.wikipedia.org/w/api.php"
 TITLES_PER_REQUEST = 50
-HEADERS = {"User-Agent": "transport-maps/0.1 (open-data isochrone build)"}
+HEADERS = {"User-Agent": "transport-maps/0.1 (open-data isochrone build; https://worldmap.atik.kr/)"}
 MAX_RETRIES = 6
 
 _SECTION_RE = re.compile(r"^==+\s*Airlines and destinations\s*==+\s*$", re.IGNORECASE | re.MULTILINE)
@@ -166,6 +167,14 @@ def _fetch_wikitext_with_retry(
     raise RuntimeError("exhausted retries fetching a wikitext batch (HTTP 429)")
 
 
+# Bump when parse_destinations, _SKIP_PREFIXES, _CARGO_RE or _SECTION_RE
+# change: the per-airport cache below stores PARSED destinations, so a parser
+# fix never reaches an airport that is already cached unless the cache is
+# rebuilt. A version mismatch empties it (a deliberate re-crawl); a cache
+# written before versioning is adopted as version 1.
+PARSER_VERSION = 1
+
+
 def _destination_cache_path():
     return config.CACHE / "airline_destinations.json"
 
@@ -179,12 +188,20 @@ def _load_destination_cache() -> dict[str, list[str] | None]:
     path = _destination_cache_path()
     if not path.exists():
         return {}
-    return json.loads(path.read_text())
+    raw = json.loads(path.read_text())
+    if "_parser_version" not in raw:
+        return raw                                   # legacy flat format == version 1
+    if raw["_parser_version"] != PARSER_VERSION:
+        print(f"routes: destination cache was parsed by version {raw['_parser_version']}, "
+              f"parser is {PARSER_VERSION}; re-crawling", flush=True)
+        return {}
+    return raw["airports"]
 
 
 def _save_destination_cache(cache: dict[str, list[str] | None]) -> None:
     path = _destination_cache_path()
-    _atomic_write(path, lambda tmp: tmp.write_text(json.dumps(cache)))
+    payload = {"_parser_version": PARSER_VERSION, "airports": cache}
+    _atomic_write(path, lambda tmp: tmp.write_text(json.dumps(payload)))
 
 
 def _crawl_destinations(
@@ -237,11 +254,30 @@ def _crawl_destinations(
     return cache, unresolved
 
 
+def _network_cache_path():
+    """Stamped with everything that shapes the pair set: the airport table it
+    was crawled for (its own stamped name), the parser version and the sanity
+    pairs. The bare routes.parquet it replaces was keyed on `.exists()` and,
+    on disk today, predates the airport table it is used with."""
+    stamp = _params_hash(airports._table_cache_path().stem, PARSER_VERSION, _SANITY_PAIRS,
+                         _SKIP_PREFIXES, _SECTION_RE.pattern, _CARGO_RE.pattern)
+    return config.BUILD / f"routes_{stamp}.parquet"
+
+
 def route_network() -> pl.DataFrame:
     """Directed airport pairs with scheduled service. Cached to parquet."""
-    out = config.BUILD / "routes.parquet"
+    out = _network_cache_path()
     if out.exists():
         return pl.read_parquet(out)
+    legacy = config.BUILD / "routes.parquet"
+    if legacy.exists():
+        # A re-crawl of Wikipedia is hours of network work the build must not
+        # start on its own; use the unstamped file and say so, so the error is
+        # documented and reproducible rather than hidden (CLAUDE.md).
+        print(f"routes: WARNING using legacy {legacy.name} whose inputs are unknown "
+              f"(it may predate the airport table); delete it to re-crawl into "
+              f"{out.name}", flush=True)
+        return pl.read_parquet(legacy)
 
     apts = airports.scheduled_airports()
     valid = set(apts["iata"].to_list())

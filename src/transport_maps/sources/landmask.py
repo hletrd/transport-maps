@@ -42,6 +42,8 @@ ANTARCTICA_MAX_LAT = -60.0
 # explicitly.
 POLE_CLIP_LAT = -89.9
 WEDGE_COUNT = 12
+# Part of the land-cell cache stamp: which polyfill produced the universe.
+POLYFILL_METHOD = "pole-cells+shelves-lakes; h3shape_to_cells_experimental(overlap)"
 
 _MULTIPOLYGON_TYPE_ID = 6
 
@@ -174,41 +176,21 @@ def _cells_cache_path(res: int):
     from the file built under the old value.
     """
     stamp = _params_hash(LAND_URL, ICE_URL, LAKES_URL, ANTARCTICA_MAX_LAT,
-                         POLE_CLIP_LAT, WEDGE_COUNT, "pole-cells+shelves-lakes")
+                         POLE_CLIP_LAT, WEDGE_COUNT, POLYFILL_METHOD)
     return config.BUILD / f"land_cells_r{res}_{stamp}.parquet"
 
 
-def _cells_touching(poly, res: int) -> set[str]:
-    """Every cell at `res` that a polygon touches: the cells whose centre is
-    inside it, plus the cells along each edge of its rings.
-
-    h3's own overlap-containment polyfill tests every candidate cell against
-    the whole ring; on Eurasia at resolution 6 (hundreds of thousands of
-    vertices, millions of cells) it did not finish in an hour. Centre
-    containment is a fast grid walk, and the boundary cells it misses are
-    exactly the cells the ring's segments pass through, which
-    grid_path_cells enumerates segment by segment -- Natural Earth's vertices
-    are about a kilometre apart, so each segment crosses one or two cells.
-    """
-    shp = h3.geo_to_h3shape(poly)
-    cells = set(h3.h3shape_to_cells(shp, res))
-    for ring in [poly.exterior, *poly.interiors]:
-        coords = list(ring.coords)
-        prev = h3.latlng_to_cell(coords[0][1], coords[0][0], res)
-        cells.add(prev)
-        for x, y in coords[1:]:
-            c = h3.latlng_to_cell(y, x, res)
-            if c != prev:
-                try:
-                    cells.update(h3.grid_path_cells(prev, c))
-                except Exception:  # noqa: BLE001 -- across a pentagon; the endpoints still count
-                    cells.add(c)
-            prev = c
-    return cells
-
-
 def land_cells(res: int) -> list[str]:
-    """H3 cells at `res` overlapping land. Cached to parquet."""
+    """H3 cells at `res` overlapping land. Cached to parquet.
+
+    The polyfill is h3's `h3shape_to_cells_experimental(contain="overlap")`:
+    every cell that touches a land polygon, not only those whose centre is
+    inside it, so islands and coastal spits smaller than a cell keep their
+    cell. The function carries no API-stability promise in h3 4.x (its name
+    says so); `tests/sources/test_landmask.py` pins the overlap behaviour on
+    a cache-free run, and POLYFILL_METHOD names the method in the cache stamp
+    so a change of method is a cache miss, not a silent reuse.
+    """
     config.ensure_dirs()
     out = _cells_cache_path(res)
     if out.exists():

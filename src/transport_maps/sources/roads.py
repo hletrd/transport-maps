@@ -56,7 +56,9 @@ def _grid_cache_path():
     reads back the grid built under the old threshold, so the change silently
     no-ops and every test still passes against the stale file.
     """
-    stamp = _params_hash(DENSITY_THRESHOLD, GRID_ROWS, GRID_COLS, N_TYPES)
+    # GRIP4_URL too: a new host or dataset version must miss, not read back
+    # the grid built from the old rasters.
+    stamp = _params_hash(GRIP4_URL, DENSITY_THRESHOLD, GRID_ROWS, GRID_COLS, N_TYPES)
     return config.BUILD / f"road_class_grid_{stamp}.npy"
 
 

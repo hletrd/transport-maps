@@ -17,7 +17,7 @@ WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 IATA_PROPERTY = "P238"
 BATCH = 50
-HEADERS = {"User-Agent": "transport-maps/0.1 (open-data isochrone build)"}
+HEADERS = {"User-Agent": "transport-maps/0.1 (open-data isochrone build; https://worldmap.atik.kr/)"}
 MAX_RETRIES = 6
 # Flush the cache this often (in batches), not just at the end: route_network()
 # resolves thousands of distinct destination titles in one bulk pass, which is
@@ -157,12 +157,31 @@ def _resolve_batch(client: httpx.Client, titles: list[str]) -> dict[str, str]:
     return result
 
 
+# Bump when the title -> IATA resolution rules change; see routes.PARSER_VERSION.
+RESOLVER_VERSION = 1
+
+
 def _cache_path():
     return config.CACHE / "wikidata_iata.json"
 
 
+def _load_cache() -> dict[str, str]:
+    path = _cache_path()
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text())
+    if "_resolver_version" not in raw:
+        return raw                                   # legacy flat format == version 1
+    if raw["_resolver_version"] != RESOLVER_VERSION:
+        print(f"wikidata: title cache was resolved by version {raw['_resolver_version']}, "
+              f"resolver is {RESOLVER_VERSION}; re-resolving", flush=True)
+        return {}
+    return raw["titles"]
+
+
 def _save_cache(cache: dict[str, str]) -> None:
-    _atomic_write(_cache_path(), lambda tmp: tmp.write_text(json.dumps(cache, sort_keys=True)))
+    payload = {"_resolver_version": RESOLVER_VERSION, "titles": cache}
+    _atomic_write(_cache_path(), lambda tmp: tmp.write_text(json.dumps(payload, sort_keys=True)))
 
 
 def iata_for_titles(titles: list[str]) -> dict[str, str]:
@@ -183,7 +202,7 @@ def iata_for_titles(titles: list[str]) -> dict[str, str]:
     first, so the re-run this forces is cheap.
     """
     config.ensure_dirs()
-    cache: dict[str, str] = json.loads(_cache_path().read_text()) if _cache_path().exists() else {}
+    cache: dict[str, str] = _load_cache()
 
     unknown = [t for t in titles if t not in cache]
     if unknown:

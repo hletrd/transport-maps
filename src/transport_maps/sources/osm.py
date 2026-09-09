@@ -13,6 +13,8 @@ until after the node block has already streamed past.
 
 from __future__ import annotations
 
+import pathlib
+
 import osmium
 import polars as pl
 
@@ -140,6 +142,19 @@ def _ferries(path) -> list[dict]:
     return rows
 
 
+def _ferry_cache_path(fingerprint) -> pathlib.Path:
+    """The parse drops ways at the antimeridian and the graph filters by
+    length, so both constants govern the parquet's content."""
+    key = _params_hash(fingerprint, ANTIMERIDIAN_EPS_DEG, MIN_FERRY_KM, MAX_FERRY_KM,
+                       sorted(FERRY_SCHEMA))
+    return config.CACHE / f"ferry_links-{key}.parquet"
+
+
+def _rail_cache_path(fingerprint) -> pathlib.Path:
+    key = _params_hash(fingerprint, STOP_ROLES, PLATFORM_ROLES, MIN_STOPS, sorted(SCHEMA))
+    return config.CACHE / f"rail_routes-{key}.parquet"
+
+
 def ferry_links(*, extracts_dir=None) -> pl.DataFrame:
     """Every ferry crossing's two endpoints, across all filtered extracts."""
     extracts_dir = extracts_dir or (config.CACHE / "osm")
@@ -150,7 +165,7 @@ def ferry_links(*, extracts_dir=None) -> pl.DataFrame:
         )
     fingerprint = [(str(extracts_dir), p.name, p.stat().st_size, p.stat().st_mtime_ns)
                    for p in paths]
-    cached = config.CACHE / f"ferry_links-{_params_hash(fingerprint)}.parquet"
+    cached = _ferry_cache_path(fingerprint)
     if cached.exists():
         return pl.read_parquet(cached)
 
@@ -179,8 +194,7 @@ def rail_routes(*, extracts_dir=None) -> pl.DataFrame:
     # results. Size and mtime are what change when a file is replaced.
     fingerprint = [(str(extracts_dir), p.name, p.stat().st_size, p.stat().st_mtime_ns)
                    for p in paths]
-    key = _params_hash(fingerprint, STOP_ROLES, PLATFORM_ROLES, MIN_STOPS, sorted(SCHEMA))
-    cached = config.CACHE / f"rail_routes-{key}.parquet"
+    cached = _rail_cache_path(fingerprint)
     if cached.exists():
         return pl.read_parquet(cached)
 
