@@ -60,14 +60,12 @@ def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Pat
     last = arrival_airport_per_node(idx, minutes, predecessors)
     first_arrival = idx.n_cells + len(idx.airports)
 
-    best = np.full(len(parents), np.inf, dtype=np.float64)
+    from .hover import _representative_children
+
     chosen = np.full(len(parents), NO_AIRPORT, dtype=np.int64)
-    for pos, cell in enumerate(idx.cells):
-        p = position[h3.cell_to_parent(cell, config.HOVER_RES)]
-        if minutes[pos] < best[p]:
-            best[p] = minutes[pos]
-            node = last[pos]
-            chosen[p] = NO_AIRPORT if node < 0 else node - first_arrival
+    for p, pos in _representative_children(idx, parents, minutes[: idx.n_cells]).items():
+        node = last[pos]
+        chosen[p] = NO_AIRPORT if node < 0 else node - first_arrival
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(chosen.astype("<u2").tobytes())

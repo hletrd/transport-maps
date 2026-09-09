@@ -4,14 +4,11 @@ Layout contract with the frontend: little-endian uint16 minutes, one entry per
 res-4 cell, ordered by the sorted res-4 cell id list that `hover_cells` returns.
 The frontend fetches that ordering once from index.json.
 
-Each res-4 entry is the MINIMUM over its (up to seven) res-5 children, not an
-average or a representative sample -- deliberately: a hover value is meant to
-answer "is anywhere in here reachable within X", and a mean would hide a
-reachable corner behind a slow one. The cost is that the readout is
-systematically optimistic against the band actually painted under the
-cursor -- the pmtiles bands are drawn per res-5 cell, so a res-4 tile can show
-a faster hover time than the band colour underneath it whenever its children's
-times spread across a band edge.
+Each res-4 entry is the value of its CENTRE res-5 child (the fastest child
+only where the centre is water). An earlier version took the minimum over all
+seven children, which made the readout systematically optimistic and, worse,
+let it borrow across borders: South Korean times ten kilometres inside the
+North, the Singapore side of the strait for Johor Bahru.
 """
 
 from pathlib import Path
@@ -30,14 +27,38 @@ def hover_cells(idx) -> list[str]:
     return sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
 
 
+def _representative_children(idx, parents: list[str], cell_minutes: np.ndarray) -> dict[int, int]:
+    """For each res-4 parent, the res-5 child the readout should report.
+
+    The CENTRE child where it is on land, else the fastest child. Taking the
+    minimum everywhere made the readout "the best time anywhere within ~22 km",
+    which read South Korean times ten kilometres inside North Korea and put
+    Johor Bahru at 21 minutes from Singapore by borrowing the Singapore side
+    of the strait. The centre child is what a pointer at that spot means.
+    """
+    position = {cell: i for i, cell in enumerate(parents)}
+    cell_pos = {c: i for i, c in enumerate(idx.cells)}
+    picked: dict[int, int] = {}
+    # fastest child as the fallback for parents whose centre is water
+    best_pos: dict[int, int] = {}
+    for pos, cell in enumerate(idx.cells):
+        p = position[h3.cell_to_parent(cell, config.HOVER_RES)]
+        if p not in best_pos or cell_minutes[pos] < cell_minutes[best_pos[p]]:
+            best_pos[p] = pos
+    for p, parent in enumerate(parents):
+        centre = h3.cell_to_center_child(parent, config.SOLVE_RES)
+        picked[p] = cell_pos.get(centre, best_pos[p])
+    return picked
+
+
 def write_hover(idx, cell_minutes: np.ndarray, out: Path) -> None:
     parents = hover_cells(idx)
     position = {cell: i for i, cell in enumerate(parents)}
 
     best = np.full(len(parents), np.inf, dtype=np.float64)
-    for pos, cell in enumerate(idx.cells):
-        p = position[h3.cell_to_parent(cell, config.HOVER_RES)]
-        best[p] = min(best[p], cell_minutes[pos])
+    picked = _representative_children(idx, parents, cell_minutes)
+    for p, pos in picked.items():
+        best[p] = cell_minutes[pos]
 
     encoded = np.where(
         np.isfinite(best), np.minimum(best, MAX_MINUTES), config.UNREACHABLE

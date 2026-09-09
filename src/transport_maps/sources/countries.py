@@ -93,7 +93,7 @@ def cell_country(cells: list[str]) -> np.ndarray:
     # Hash every cell, not just the count and the ends: two different cell
     # universes of the same length would otherwise share a cache entry, which
     # is the exact failure this helper exists to prevent elsewhere.
-    key = _params_hash(COUNTRIES_URL, hashlib.sha256("".join(cells).encode()).hexdigest())
+    key = _params_hash(COUNTRIES_URL, "filled-blanks-nearest", hashlib.sha256("".join(cells).encode()).hexdigest())
     cached = config.CACHE / f"cell_country-{key}.parquet"
     if cached.exists():
         return pl.read_parquet(cached)["country"].to_numpy()
@@ -114,9 +114,57 @@ def cell_country(cells: list[str]) -> np.ndarray:
         if out[gi] == UNKNOWN:
             out[gi] = codes[pi]
 
+    out = _fill_blanks(cells, out)
     df = pl.DataFrame({"country": out.astype(str)})
     _atomic_write(cached, lambda tmp: df.write_parquet(tmp))
     return df["country"].to_numpy()
+
+
+def _fill_blanks(cells: list[str], out: np.ndarray, passes: int = 3) -> np.ndarray:
+    """Give a country to every cell whose centroid fell in the sea.
+
+    31,022 coastal cells -- 5.2% of land -- had no country, and a cell with
+    none is a bridge across every closed border: the inter-Korean cut held on
+    the DMZ itself yet Kaesong was reachable from Seoul in 2.5 h by stepping
+    onto a blank Han-estuary cell and off it into the North. Each blank takes
+    the commonest country among its assigned neighbours; a few passes reach
+    the blanks that only touch other blanks. Whichever side a blank inherits,
+    one of its edges then crosses the closed pair and is cut.
+    """
+    import h3
+    from collections import Counter
+
+    pos = {c: i for i, c in enumerate(cells)}
+    out = out.copy()
+    for _ in range(passes):
+        blanks = np.where(out == UNKNOWN)[0]
+        if len(blanks) == 0:
+            break
+        fill = {}
+        for i in blanks:
+            votes = Counter(out[pos[n]] for n in h3.grid_disk(cells[i], 1)
+                            if n in pos and out[pos[n]] != UNKNOWN)
+            if votes:
+                fill[i] = votes.most_common(1)[0][0]
+        if not fill:
+            break
+        for i, c in fill.items():
+            out[i] = c
+    # Whatever is left has no assigned neighbour at all -- isolated atolls and
+    # islets whose every neighbour is water. Take the nearest assigned cell.
+    blanks = np.where(out == UNKNOWN)[0]
+    if len(blanks):
+        from scipy.spatial import cKDTree
+
+        latlng = np.array([h3.cell_to_latlng(c) for c in cells])
+        assigned = np.where(out != UNKNOWN)[0]
+        xyz = lambda ll: np.column_stack([
+            np.cos(np.radians(ll[:, 0])) * np.cos(np.radians(ll[:, 1])),
+            np.cos(np.radians(ll[:, 0])) * np.sin(np.radians(ll[:, 1])),
+            np.sin(np.radians(ll[:, 0]))])
+        _, nearest = cKDTree(xyz(latlng[assigned])).query(xyz(latlng[blanks]))
+        out[blanks] = out[assigned[nearest]]
+    return out
 
 
 def iso2(a3: str) -> str:

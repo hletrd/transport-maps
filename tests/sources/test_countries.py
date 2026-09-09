@@ -81,3 +81,31 @@ def test_a_schengen_border_costs_nothing_extra():
         dist = ground.haversine_km(
             np.array([h3.cell_to_latlng(de)]), np.array([h3.cell_to_latlng(fr)]))[0]
         assert d.max() < dist / 20 * 60 + 5, "a Schengen-internal edge was charged a crossing"
+
+
+def test_no_land_cell_is_left_without_a_country():
+    """A blank cell is a bridge across every closed border.
+
+    Kaesong was reachable from Seoul in 2.5 h by stepping onto a blank
+    Han-estuary cell and off it into the North; the KOR/PRK cut never fired
+    because neither KOR->'' nor ''->PRK is a closed pair.
+    """
+    from transport_maps.sources import landmask
+    cells = landmask.land_cells(config.SOLVE_RES)
+    codes = countries.cell_country(cells)
+    blank = int((codes == countries.UNKNOWN).sum())
+    assert blank == 0, f"{blank} cells still have no country"
+
+
+def test_the_western_dmz_is_cut_too():
+    """The first DMZ test ran at longitude 127.6; the bridge was at 126.3."""
+    lats = np.arange(37.5, 38.3, 0.04)
+    cells = list(dict.fromkeys(h3.latlng_to_cell(la, 126.45, config.SOLVE_RES) for la in lats))
+    idx = NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, ())
+    codes = countries.cell_country(cells)
+    assert "KOR" in codes and "PRK" in codes
+    assert countries.UNKNOWN not in codes, "a blank cell survives on the western DMZ"
+    r, c, d = ground.hex_edges(idx)
+    csr = sp.coo_matrix((d, (r, c)), shape=(idx.n, idx.n)).tocsr()
+    south = int(np.where(codes == "KOR")[0][0]); north = int(np.where(codes == "PRK")[0][-1])
+    assert not np.isfinite(sp.csgraph.dijkstra(csr, indices=[south])[0][north])

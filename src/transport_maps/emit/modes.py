@@ -89,13 +89,11 @@ def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path,
     position = {cell: i for i, cell in enumerate(parents)}
 
     acc = mode_minutes_per_node(idx, minutes, predecessors, cell_class=cell_class)
-    best = np.full(len(parents), np.inf)
+    from .hover import _representative_children
+
     picked = np.zeros((len(parents), len(CHANNELS)), dtype=np.float64)
-    for pos, cell in enumerate(idx.cells):
-        p = position[h3.cell_to_parent(cell, config.HOVER_RES)]
-        if minutes[pos] < best[p]:
-            best[p] = minutes[pos]
-            picked[p] = acc[pos]
+    for p, pos in _representative_children(idx, parents, minutes[: idx.n_cells]).items():
+        picked[p] = acc[pos]
 
     encoded = np.clip(np.nan_to_num(picked, posinf=0.0), 0, MAX_MINUTES).astype("<u2")
     out.parent.mkdir(parents=True, exist_ok=True)
