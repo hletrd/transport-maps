@@ -107,6 +107,12 @@ def test_replacing_an_extract_of_the_same_name_is_a_cache_miss(tmp_path):
     p.unlink()
     write_pbf(p, [(1, 40.0, 1.0, {"name": "X"}), (2, 41.0, 2.0, {"name": "Y"})],
               [(7, [("n", 1, "stop"), ("n", 2, "stop")], TRAIN)])
+    # The two extracts are the same size, so the fingerprint's moving part is
+    # the mtime; on a coarse-mtime filesystem a rewrite within one tick would
+    # look unchanged. Make the miss by construction.
+    import os
+    t_ns = os.stat(p).st_mtime_ns + 1_000_000_000
+    os.utime(p, ns=(t_ns, t_ns))
     assert osm.rail_routes(extracts_dir=tmp_path)["name"].to_list() == ["X", "Y"], \
         "served a stale cache for a replaced extract"
 

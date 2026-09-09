@@ -143,7 +143,13 @@ def test_atomically_written_files_are_readable_by_other_users(tmp_path):
     from transport_maps.sources._utils import _atomic_write
 
     out = tmp_path / "artifact.json"
-    _atomic_write(out, lambda p: p.write_text("{}"))
+    # The helper honours the umask, so under `umask 077` a 0600 result is
+    # correct; pin the umask so the verdict is about the chmod, not the shell.
+    previous = os.umask(0o022)
+    try:
+        _atomic_write(out, lambda p: p.write_text("{}"))
+    finally:
+        os.umask(previous)
     mode = stat.S_IMODE(os.stat(out).st_mode)
     assert mode & stat.S_IRGRP, f"group cannot read (mode {mode:o})"
     assert mode & stat.S_IROTH, f"others cannot read (mode {mode:o})"

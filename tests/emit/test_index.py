@@ -33,6 +33,8 @@ REQUIRED_ATTRIBUTION = {
     "GRIP4": None,
     "OurAirports": None,
     "Natural Earth": None,
+    "GeoNames": "CC BY",
+    "HydroLAKES": "CC BY",
     # The fitted cruise speed and climb/descent penalty are derived from their
     # data, so the ODbL attribution obligation applies to us too.
     "adsb.lol": "ODbL",
