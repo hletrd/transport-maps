@@ -61,3 +61,23 @@ def base_parent(cell: str) -> str:
 def expand(base_values: np.ndarray, idx) -> np.ndarray:
     """Per-base-cell values carried down to every cell of the index."""
     return np.asarray(base_values)[idx.base_index]
+
+
+def ground_adjacent(a: str, b: str) -> bool:
+    """Whether graph/ground.hex_edges joins two cells of the mixed grid.
+
+    Neighbours at the same resolution; or a fine cell and the unsplit base
+    cell that one of its ring-1 neighbours falls in -- exactly the pair
+    hex_edges adds across a split boundary. Judged the same way so that a
+    ferry between such a pair is the duplicate of a ground edge (which
+    build_graph refuses) and a ferry between any other pair is a real
+    crossing, both here and when emit/modes books the leg. An earlier
+    version compared base parents (equal or neighbouring), which called fine
+    cells up to two base cells apart "adjacent" and silently dropped the
+    ferries between them.
+    """
+    ra, rb = h3.get_resolution(a), h3.get_resolution(b)
+    if ra == rb:
+        return h3.are_neighbor_cells(a, b)
+    fine, base = (a, b) if ra > rb else (b, a)
+    return any(h3.cell_to_parent(n, min(ra, rb)) == base for n in h3.grid_ring(fine, 1))

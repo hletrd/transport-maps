@@ -31,7 +31,7 @@ orchestrator are running; do not start/stop them, do not rewrite `dist/` or
       coverage 0.0 (fails the gate) rather than NaN (`validate.py:33-39`).
       Test: all-excluded universe → gate raises. Mutation: drop the guard →
       NaN passes.
-- [ ] **A4** `_ferry_edges` recognises a fine cell and its adjacent unsplit base
+- [x] **A4** `_ferry_edges` recognises a fine cell and its adjacent unsplit base
       cell as ground-adjacent (compare at the base resolution:
       `cell_to_parent(fine, SOLVE_RES)` adjacency, and fine-to-fine across a
       split boundary) so the ferry does not duplicate the `hex_edges` cross

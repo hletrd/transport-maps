@@ -1,6 +1,7 @@
 """Ferry crossings as cell-to-cell edges."""
 
 import h3
+import numpy as np
 import polars as pl
 import pytest
 
@@ -128,3 +129,66 @@ def test_a_ferry_between_immigration_zones_pays_the_crossing():
     km_eu = 80.0
     assert d_eu.min() < 60.0 * km_eu / CAL.speed_kmh + CAL.terminal_min + 5, \
         "a Schengen-internal ferry was charged a crossing"
+
+
+def _mixed_index(centre_latlng):
+    """The tracer's fixture: one base cell split into its seven fine children
+    amid six unsplit neighbours, the shape of every harbour at the edge of a
+    built-up area."""
+    from transport_maps.graph import refine
+    centre = h3.latlng_to_cell(*centre_latlng, config.SOLVE_RES)
+    base = sorted(h3.grid_disk(centre, 1))
+    cells, base_index, fine = refine.refine(base, np.array([c == centre for c in base]))
+    idx = NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, (),
+                    base_cells=base, base_index=base_index, fine=fine, _split=frozenset({centre}))
+    neighbour = next(c for c in base if c != centre)
+    kids = [c for c, f in zip(cells, fine) if f]
+
+    def km(k):
+        return h3.great_circle_distance(h3.cell_to_latlng(k), h3.cell_to_latlng(neighbour), unit="km")
+    return idx, neighbour, min(kids, key=km), max(kids, key=km)
+
+
+def _no_air(monkeypatch):
+    empty = (np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.float64))
+    monkeypatch.setattr(build, "_air_edges", lambda *a, **k: empty)
+    monkeypatch.setattr(build, "_access_edges", lambda idx: empty)
+    monkeypatch.setattr(build, "_transfer_edges", lambda idx: empty)
+
+
+def test_a_ferry_between_a_fine_cell_and_its_adjacent_base_cell_is_skipped(monkeypatch):
+    """Mixed resolution. ground.hex_edges joins an edge child of the split cell
+    to the unsplit base cell beyond its ring, so a short ferry between the two
+    duplicates that (row, col) pair and build_graph refuses the whole graph.
+    Adjacency judged by grid_disk at one resolution cannot see the pair at
+    all: a res-6 id is never in a res-7 cell's disk.
+    """
+    from transport_maps.graph import ground
+    idx, neighbour, edge_kid, _ = _mixed_index(HEL)
+    u, v = idx.cell_index(edge_kid), idx.cell_index(neighbour)
+    r, c, _ = ground.hex_edges(idx)
+    assert (u, v) in set(zip(r.tolist(), c.tolist())), "fixture: the ground network does not join the pair"
+
+    links = _links([_link(1, h3.cell_to_latlng(edge_kid), h3.cell_to_latlng(neighbour), "harbour ferry")])
+    fr, _, _ = build._ferry_edges(idx, links, CAL)
+    assert len(fr) == 0, "the ferry duplicated a cross-resolution ground edge"
+    _no_air(monkeypatch)
+    build.build_graph(idx, ferry_links=links)   # must not refuse a duplicate pair
+
+
+def test_a_ferry_the_ground_network_does_not_duplicate_is_kept_on_the_mixed_grid(monkeypatch):
+    """The far child of the split cell does not touch the neighbouring base
+    cell, so hex_edges never joins them and a ferry between them is a real
+    crossing. Comparing base parents instead called them adjacent and dropped
+    it -- a harbour ferry a few kilometres long, silently gone."""
+    from transport_maps.graph import ground
+    idx, neighbour, _, far_kid = _mixed_index(HEL)
+    u, v = idx.cell_index(far_kid), idx.cell_index(neighbour)
+    r, c, _ = ground.hex_edges(idx)
+    assert (u, v) not in set(zip(r.tolist(), c.tolist())), "fixture: the ground network joins the pair"
+
+    links = _links([_link(1, h3.cell_to_latlng(far_kid), h3.cell_to_latlng(neighbour), "harbour ferry")])
+    fr, fc, _ = build._ferry_edges(idx, links, CAL)
+    assert set(zip(fr, fc)) == {(u, v), (v, u)}, "a crossing the ground network does not cover was dropped"
+    _no_air(monkeypatch)
+    build.build_graph(idx, ferry_links=links)   # both edge sets, no duplicate pair

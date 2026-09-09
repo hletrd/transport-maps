@@ -16,6 +16,7 @@ import h3
 import numpy as np
 
 from transport_maps import config
+from transport_maps.graph.refine import ground_adjacent
 
 # Order of the uint16 channels in the emitted file. Road is split by grade
 # because "road" covers both a motorway and a dirt track, which is exactly the
@@ -27,17 +28,6 @@ ROAD_CHANNEL = {0: 5, 1: 2, 2: 3, 3: 3, 4: 4, 5: 4}
 MAX_MINUTES = 65534
 
 
-def _ground_adjacent(a: str, b: str) -> bool:
-    """Whether two cells touch, at the same resolution or across the base and
-    fine grids: fine cells are adjacent to a base cell when their base
-    parents are neighbours (or the same), which is how graph/ground.py joins
-    them. A ferry joins cells whose parents are apart."""
-    from transport_maps.graph.refine import base_parent
-
-    pa, pb = base_parent(a), base_parent(b)
-    return pa == pb or pb in h3.grid_ring(pa, 1)
-
-
 def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
                           cell_class: np.ndarray | None = None) -> np.ndarray:
     """(n_nodes, len(CHANNELS)) array of minutes spent in each surface mode.
@@ -45,8 +35,10 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
     Accumulated down the shortest-path tree in one pass ordered by distance, so
     every node's predecessor is already resolved. The mode of an edge is read
     off the node kinds it joins; the one ambiguous case is cell -> cell, which
-    is road when the cells are H3 neighbours and a ferry when they are not,
-    since only a crossing can join two cells that do not touch.
+    is road when the ground network joins the cells (refine.ground_adjacent,
+    the same test graph/build uses to drop a ferry that would duplicate a
+    ground edge) and a ferry when it does not, since only a crossing can join
+    two cells the ground network keeps apart.
     """
     n_cells = idx.n_cells
     n_air = len(idx.airports)
@@ -74,7 +66,7 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
         prev_stn, node_stn = prev >= first_stn, node >= first_stn
 
         if prev_cell and node_cell:
-            if _ground_adjacent(idx.cells[prev], idx.cells[node]):
+            if ground_adjacent(idx.cells[prev], idx.cells[node]):
                 acc[node][ROAD_CHANNEL[int(cell_class[node])]] += cost
             else:
                 acc[node][1] += cost          # only a crossing joins distant cells

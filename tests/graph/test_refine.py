@@ -42,14 +42,25 @@ def test_base_values_carry_down_to_children():
     assert out[0] == values[base_index[0]]
 
 
-def test_a_fine_cell_and_the_base_cell_beyond_its_ring_count_as_ground_adjacent():
-    from transport_maps.graph.build import _ground_adjacent
+def test_ground_adjacency_is_judged_the_way_hex_edges_joins_cells():
+    """A fine cell touches the unsplit base cell beyond its ring, and nothing
+    further: not the base cell on the far side of its parent (which a
+    base-parent comparison called adjacent), and not a sibling it does not
+    touch."""
     base = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
     neighbour = h3.grid_ring(base, 1)[0]
-    # a child of `base` on the side facing `neighbour`
     kids = h3.cell_to_children(base, config.FINE_RES)
-    edge_kid = min(kids, key=lambda k: h3.great_circle_distance(h3.cell_to_latlng(k), h3.cell_to_latlng(neighbour), unit="km"))
-    assert _ground_adjacent(edge_kid, neighbour)
-    assert _ground_adjacent(neighbour, edge_kid)
-    far = h3.grid_ring(base, 3)[0]
-    assert not _ground_adjacent(edge_kid, far)
+
+    def km(k):
+        return h3.great_circle_distance(h3.cell_to_latlng(k), h3.cell_to_latlng(neighbour), unit="km")
+    edge_kid, far_kid = min(kids, key=km), max(kids, key=km)
+    assert refine.ground_adjacent(edge_kid, neighbour)
+    assert refine.ground_adjacent(neighbour, edge_kid)
+    assert not refine.ground_adjacent(far_kid, neighbour), "the far child does not touch the neighbour"
+    assert not refine.ground_adjacent(edge_kid, h3.grid_ring(base, 3)[0])
+    # Same resolution: neighbours and only neighbours.
+    centre_kid = h3.cell_to_center_child(base, config.FINE_RES)
+    assert refine.ground_adjacent(centre_kid, edge_kid)
+    assert not refine.ground_adjacent(edge_kid, far_kid), "opposite children of one parent do not touch"
+    assert refine.ground_adjacent(base, neighbour)
+    assert not refine.ground_adjacent(base, h3.grid_ring(base, 2)[0])
