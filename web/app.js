@@ -38,20 +38,23 @@ const hoverCells = new BigUint64Array(
 const RAMPS = {
   // Adjacent-pair separation measured in OKLab (x100); below about 8 two bands
   // are hard to tell apart. Lightness is strictly monotonic in every ramp,
-  // which is what a sequential scale actually requires.
-  muted:  { name: "Muted",  sea: "#0a0b0d", c: ["#faefc5","#f6d49c","#f5b77b","#ef9a69","#e27e65","#cd686a",
-                                "#b0586f","#8f4d6e","#6d4464","#503955","#392b49"] },
-  vivid:  { name: "Vivid",  sea: "#0a0916", c: ["#fff7a8","#ffd453","#ffa600","#ff7100","#ff3833","#fd0066",
-                                "#d10885","#9f268f","#6e3283","#46316c","#26245e"] },
-  warm:   { name: "Warm",   sea: "#100b08", c: ["#fbeec9","#f4d59d","#eebc74","#e6a153","#da883c","#c87134",
-                                "#b15e36","#95503b","#77443c","#5b3837","#49282b"] },
-  ice:    { name: "Ice",    sea: "#060b14", c: ["#eaf6fb","#c9e7f5","#a4d6ee","#7cc2e5","#55acd9","#3792c7",
-                                "#2477ad","#1d5d8f","#1a4570","#182f51","#141d33"] },
-  forest: { name: "Forest", sea: "#070d0a", c: ["#f2f6da","#dcecb4","#bfdd90","#9ccb72","#77b75d","#549f52",
-                                "#3a8549","#2c6a40","#245036","#1d3829","#16231c"] },
-  mono:   { name: "Mono",   sea: "#0a0a0a", c: ["#f4f4f4","#dcdcdc","#c4c4c4","#ababab","#939393","#7b7b7b",
-                                "#646464","#4e4e4e","#3a3a3a","#282828","#191919"] },
+  // which is what a sequential scale actually requires. `sea` is the scheme's
+  // own water: darker than its darkest band, lighter than space, so the globe
+  // stands off the page. scripts/check_ramps.py measures all of this.
+  muted:    { name: "Muted",    sea: "#171a22", c: ["#faefc5","#f6d59d","#f5b87c","#ef9b6a","#e38065","#cf6a6a","#b35a6f","#934e6e","#724566","#543b57","#3a2c4b"] },
+  vivid:    { name: "Vivid",    sea: "#15122c", c: ["#fff7a8","#ffd557","#ffad19","#ff8200","#ff5327","#fe1d59","#df0a7c","#b3218b","#842f88","#563275","#2b2764"] },
+  warm:     { name: "Warm",     sea: "#1e1512", c: ["#fbeec9","#f5d7a0","#efbe78","#e7a457","#db8b3f","#ca7335","#b46036","#99523b","#7c463c","#613a38","#4b2b2e"] },
+  ice:      { name: "Ice",      sea: "#0f172b", c: ["#eaf6fb","#c3e4f4","#9cd2ec","#76bee3","#52a9d7","#3893c7","#277cb2","#1f6699","#1e5080","#203d62","#212a46"] },
+  forest:   { name: "Forest",   sea: "#101c15", c: ["#f2f6da","#d7e9ae","#b8d98a","#96c76e","#73b45c","#549f52","#3e894a","#317244","#2b5c3c","#274630","#233126"] },
+  mono:     { name: "Mono",     sea: "#17181b", c: ["#f4f4f4","#dddddd","#c6c6c6","#b0b0b0","#9a9a9a","#858585","#717171","#5d5d5d","#4a4a4a","#373737","#262626"] },
+  ember:    { name: "Ember",    sea: "#1d1414", c: ["#fff3c4","#ffd787","#ffb556","#ff9031","#fa691d","#e64415","#c52d19","#a0201d","#7c1b22","#571a28","#331a2b"] },
+  rose:     { name: "Rose",     sea: "#1c141b", c: ["#fde9ef","#f9cad9","#f5abc5","#ed8cb3","#df6da1","#cb5190","#af3c80","#902d70","#70255f","#50214d","#31203a"] },
+  sand:     { name: "Sand",     sea: "#1b1711", c: ["#fbf3e2","#eedfb8","#e1c991","#d3b270","#c29a56","#b08443","#9b7035","#845d2d","#6c4c2b","#553d27","#3d2e23"] },
+  twilight: { name: "Twilight", sea: "#131629", c: ["#fdf5a6","#d8e48d","#abd48c","#7fc391","#5aaf98","#44989c","#38809b","#346794","#364e84","#34366c","#2c264a"] },
+  copper:   { name: "Copper",   sea: "#1c1512", c: ["#fff0e0","#f8d6bd","#efbc9b","#e4a27c","#d68960","#c47148","#ae5c37","#95492b","#7a3b2a","#5d3026","#422523"] },
+  lavender: { name: "Lavender", sea: "#161426", c: ["#f5f0fb","#e2d7f5","#cfbfee","#bba7e5","#a690d9","#9179ca","#7c64b8","#6750a3","#523f89","#3f316b","#2e264c"] },
 };
+
 let rampName = "muted";
 
 // Bands are as many as index.json says (37 now, on a geometric ladder), and
@@ -477,6 +480,17 @@ function renderLegs() {
 
   const rows = [];
   const dur = (m) => { const [b, u] = fmtTime(m); return `${b}${u ? " " + u : ""}`; };
+  // A code like SHE or FNJ means nothing to most readers: hovering it names
+  // the airport and its country. Modes explain how they were modelled.
+  const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const ap = (code) => {
+    const a = airports.find((x) => x[0] === code);
+    return a ? `<span class="ap" tabindex="0" data-tip="${esc(a[1])}, ${esc(a[2])}">${code}</span>` : code;
+  };
+  const mode = (name) => {
+    const tip = meta.modeDetail?.[name];
+    return tip ? `<span class="mode" tabindex="0" data-tip="${esc(tip)}">${name}</span>` : name;
+  };
 
   // "Surface transport, 5 h" says nothing useful. Rail, road and ferry differ
   // enormously in what they imply, and the surface leg is a large share of most
@@ -490,7 +504,7 @@ function renderLegs() {
     return names.map((name, k) => [name, hoverModes[i * n + k]])
       .filter(([, m]) => m >= 1)
       .sort((a, b) => b[1] - a[1])
-      .map(([name, m]) => [dur(m), `by <b>${name}</b>`]);
+      .map(([name, m]) => [dur(m), `by <b>${mode(name)}</b>`]);
   };
 
   if (chain.length === 0) {
@@ -502,22 +516,22 @@ function renderLegs() {
     if (parts.length) rows.push(...parts);
     else rows.push([dur(total), "No flight on this route — surface travel"]);
   } else {
-    rows.push([dur(chain[0].min), `To <b>${chain[0].code}</b>, and through the airport`]);
+    rows.push([dur(chain[0].min), `To <b>${ap(chain[0].code)}</b>, and through the airport`]);
     for (let k = 1; k < chain.length; k++) {
       const a = chain[k - 1], b = chain[k];
       const t = dur(b.min - a.min);
-      if (b.kind === "arr") rows.push([t, `Fly <b>${a.code} → ${b.code}</b>`]);
-      else rows.push([t, `Connect at <b>${b.code}</b>`]);
+      if (b.kind === "arr") rows.push([t, `Fly <b>${ap(a.code)} → ${ap(b.code)}</b>`]);
+      else rows.push([t, `Connect at <b>${ap(b.code)}</b>`]);
     }
     const landed = chain[chain.length - 1];
     if (total > landed.min) {
       const parts = surface();
       if (parts.length) {
-        rows.push([dur(total - landed.min), `Onward from <b>${landed.code}</b>, of which:`]);
+        rows.push([dur(total - landed.min), `Onward from <b>${ap(landed.code)}</b>, of which:`]);
         rows.push(...parts);
       } else {
         rows.push([dur(total - landed.min),
-                   `From <b>${landed.code}</b> onward by surface transport`]);
+                   `From <b>${ap(landed.code)}</b> onward by surface transport`]);
       }
     }
   }
