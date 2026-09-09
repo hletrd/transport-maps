@@ -126,8 +126,20 @@ fetch("./places.json")
       // the map thins itself rather than piling names on top of each other.
       const placed = [];
       const gapX = 70, gapY = 16;
+      // A DOM marker does not know the globe hides its far side: project()
+      // happily returns on-disc coordinates for Lima while the view faces
+      // Beijing. Anything more than ~85 degrees of arc from the view centre
+      // is behind the horizon and must not be drawn.
+      const ctr = map.getCenter();
+      const rad = Math.PI / 180;
+      const sinC = Math.sin(ctr.lat * rad), cosC = Math.cos(ctr.lat * rad);
+      const onNearSide = (ll) => {
+        const cosArc = sinC * Math.sin(ll.lat * rad)
+          + cosC * Math.cos(ll.lat * rad) * Math.cos((ll.lng - ctr.lng) * rad);
+        return cosArc > Math.cos(85 * rad);
+      };
       for (const l of labelPool) {
-        let want = l.rank < n;
+        let want = l.rank < n && onNearSide(l.m.getLngLat());
         if (want) {
           const pt = map.project(l.m.getLngLat());
           want = pt.x > -50 && pt.y > -20 && pt.x < window.innerWidth + 50
