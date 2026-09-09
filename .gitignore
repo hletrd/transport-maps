@@ -14,3 +14,6 @@ __pycache__/
 # Local fixtures used to validate parsers against real extracts. Large, and
 # reproducible from scripts/osm_rail.sh.
 data/validation/
+
+# oh-my-claudecode session state (ralph prd/progress); never source.
+.omc/
