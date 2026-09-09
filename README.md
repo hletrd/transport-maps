@@ -1,4 +1,25 @@
-# Transport Maps
+<div align="center">
+
+# Isochronic Passage Chart
+
+**How long it takes to reach anywhere on Earth from 550+ cities, door to door.**
+
+[![Live site](https://img.shields.io/badge/live-worldmap.atik.kr-1f6feb)](https://worldmap.atik.kr/)
+![Python 3.14](https://img.shields.io/badge/python-3.14-3776ab)
+![MapLibre GL JS 5](https://img.shields.io/badge/MapLibre_GL_JS-5.24-396cb2)
+![PMTiles](https://img.shields.io/badge/tiles-PMTiles-6b4fbb)
+![H3](https://img.shields.io/badge/grid-H3_res_6%2F7-e8802b)
+![Open data](https://img.shields.io/badge/data-OpenStreetMap_%C2%B7_Natural_Earth_%C2%B7_GeoNames-2e8b57)
+![No liability](https://img.shields.io/badge/for_reference_only-no_liability-777)
+
+`isochrone` `travel-time` `globe` `maplibre` `pmtiles` `h3` `openstreetmap` `dijkstra` `air-routes` `rail` `ferries` `door-to-door`
+
+[**Open the map**](https://worldmap.atik.kr/) · [How it is built](#development) · [Data sources](#data-sources-and-attribution)
+
+<img src="web/preview.png" alt="The globe, seen from above East Asia, painted in travel-time bands from Seoul" width="720">
+
+</div>
+
 
 A pipeline for building global travel-time isochrone maps from open geodata.
 
