@@ -39,15 +39,14 @@ function fatal(msg) {
   $("where").textContent = msg;
   throw new Error(msg);
 }
-async function loadJSON(url) {
+async function fetchOk(url) {
   const r = await fetch(url).catch((e) => fatal(`Could not reach ${url} (${e.message}).`));
   if (!r.ok) fatal(`Could not load ${url} (HTTP ${r.status}).`);
-  return r.json().catch(() => fatal(`${url} is not valid JSON.`));
+  return r;
 }
+const loadJSON = (url) => fetchOk(url).then((r) => r.json().catch(() => fatal(`${url} is not valid JSON.`)));
 async function loadCells(url) {
-  const r = await fetch(url).catch((e) => fatal(`Could not reach ${url} (${e.message}).`));
-  if (!r.ok) fatal(`Could not load ${url} (HTTP ${r.status}).`);
-  const b = await r.arrayBuffer();
+  const b = await (await fetchOk(url)).arrayBuffer();
   if (!b.byteLength || b.byteLength % 8) fatal(`${url} is ${b.byteLength} bytes, not whole 8-byte cells.`);
   return new BigUint64Array(b);
 }
@@ -1081,15 +1080,10 @@ if (window.matchMedia("(pointer: coarse)").matches)
 const FALLBACK = bySlug.get("seoul") ?? cities[0];
 
 function nearest(lat, lon) {
-  const rad = Math.PI / 180;
-  let best = FALLBACK, bestD = Infinity;
+  let best = FALLBACK, bestKm = Infinity;
   for (const c of cities) {
-    const dLat = (c.lat - lat) * rad;
-    const dLon = (c.lon - lon) * rad;
-    const a = Math.sin(dLat / 2) ** 2 +
-      Math.cos(lat * rad) * Math.cos(c.lat * rad) * Math.sin(dLon / 2) ** 2;
-    const d = 2 * Math.asin(Math.sqrt(a));
-    if (d < bestD) { bestD = d; best = c; }
+    const km = haversineKm(lat, lon, c.lat, c.lon);
+    if (km < bestKm) { bestKm = km; best = c; }
   }
   return best;
 }
