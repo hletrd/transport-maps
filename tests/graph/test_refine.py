@@ -1,5 +1,6 @@
 import h3
 import numpy as np
+import pytest
 
 from transport_maps import config
 from transport_maps.graph import refine
@@ -117,3 +118,32 @@ def test_the_snap_sees_a_split_neighbour_through_its_fine_children():
     assert pos < len(kids), "snapped to the far unsplit cell instead of the adjacent dense cell"
     expected = min(kids, key=lambda k: h3.great_circle_distance((la, lo), h3.cell_to_latlng(k), unit="km"))
     assert kids[pos] == expected, "not the nearest child"
+
+
+def _seven_cell_index():
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    cells = [centre, *h3.grid_ring(centre, 1)]
+    return cells, {c: i for i, c in enumerate(cells)}
+
+
+def test_airports_are_placed_snapped_or_dropped_and_the_snapped_share_is_bounded(monkeypatch):
+    import polars as pl
+
+    from transport_maps.graph import nodes
+    cells, cell_pos = _seven_cell_index()
+    centre_lat, centre_lon = h3.cell_to_latlng(cells[0])
+    # one airport on the mask, one a ring-2 cell off it (snaps), one mid-ocean (dropped)
+    off = h3.grid_ring(cells[0], 2)[0]
+    apts = pl.DataFrame({"iata": ["AAA", "BBB", "CCC"],
+                         "lat": [centre_lat, h3.cell_to_latlng(off)[0], 0.0],
+                         "lon": [centre_lon, h3.cell_to_latlng(off)[1], -160.0]})
+    monkeypatch.setattr(nodes, "MAX_DROPPED_AIRPORT_FRACTION", 1.0)
+    monkeypatch.setattr(nodes, "MAX_SNAPPED_AIRPORT_FRACTION", 1.0)
+    codes, airport_cell, dropped = nodes._place_airports(apts, cell_pos, frozenset())
+    assert codes == ["AAA", "BBB"] and dropped == ["CCC"]
+    assert airport_cell["AAA"] == 0 and airport_cell["BBB"] in range(1, 7)
+
+    # The snapped bound is a gate: a mask that lost its coast snaps everything.
+    monkeypatch.setattr(nodes, "MAX_SNAPPED_AIRPORT_FRACTION", 0.05)
+    with pytest.raises(RuntimeError, match="lost its coast"):
+        nodes._place_airports(apts, cell_pos, frozenset())

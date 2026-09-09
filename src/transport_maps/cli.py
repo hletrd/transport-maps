@@ -9,6 +9,7 @@ import os
 os.environ.setdefault("POLARS_MAX_THREADS", "1")
 
 import argparse
+import logging
 import multiprocessing
 import re
 
@@ -232,6 +233,11 @@ def _build_all(limit: int | None = None) -> None:
 
 
 def main() -> None:
+    # Without a handler Python prints WARNING and above only, so every
+    # logger.info the build relies on for "reported, not assumed" -- how many
+    # cells were split, stations dropped, airports snapped, borders cut --
+    # was discarded. Workers inherit this through fork.
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(prog="transport-maps")
     sub = parser.add_subparsers(dest="command", required=True)
 

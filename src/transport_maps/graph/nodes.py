@@ -36,6 +36,10 @@ from transport_maps.sources import airports, landmask
 # publication gate measures land CELLS, not airports, and would still pass
 # with every airport on Earth gone.
 MAX_DROPPED_AIRPORT_FRACTION = 0.02
+# The snap makes the dropped bound blind to a mask that lost its coast: every
+# coastal airport would be snapped one cell inland and the build would pass.
+# Bound the snapped share too.
+MAX_SNAPPED_AIRPORT_FRACTION = 0.05
 
 logger = logging.getLogger(__name__)
 
@@ -148,25 +152,15 @@ def _nearest_land(cell: str, cell_pos: dict[str, int], lat: float, lon: float,
     return best
 
 
-def build_index(rail_routes=None) -> NodeIndex:
-    """Build the node index. `rail_routes` is an osm.rail_routes() frame, or
-    None to build a road-and-air graph."""
-    base_cells = landmask.land_cells(config.SOLVE_RES)
-    from transport_maps.sources import roads, urban
-
-    from . import refine
-    split = refine.dense_mask(roads.cell_class(base_cells), urban.urban_mask(base_cells))
-    cells, base_index, fine = refine.refine(base_cells, split)
-    logger.info("%d of %d base cells split into %d fine cells; %d cells in all",
-                int(split.sum()), len(base_cells), int(fine.sum()), len(cells))
-    cell_pos = {c: i for i, c in enumerate(cells)}
-    split_set = {base_cells[i] for i in np.flatnonzero(split)}
-
+def _place_airports(apts, cell_pos: dict[str, int], split_set: set | frozenset
+                    ) -> tuple[list[str], dict[str, int], list[str]]:
+    """Each airport's land cell: its own, the nearest within two rings, or
+    dropped. Returns (kept codes, code -> cell position, dropped codes) and
+    enforces the dropped and snapped bounds."""
     def cell_at(lat, lon):
         base = h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
         return h3.latlng_to_cell(lat, lon, config.FINE_RES) if base in split_set else base
 
-    apts = airports.scheduled_airports()
     codes: list[str] = []
     dropped: list[str] = []
     snapped: list[tuple[str, float]] = []
@@ -195,13 +189,15 @@ def build_index(rail_routes=None) -> NodeIndex:
 
     if snapped:
         worst = sorted(snapped, key=lambda s: -s[1])
-        logger.info("%d airport(s) snapped to the nearest land cell within two rings (%s%s)",
-                    len(snapped), ", ".join(f"{i} {km:.1f} km" for i, km in worst[:8]),
-                    ", ..." if len(snapped) > 8 else "")
+        # WARNING, not INFO: this is the line that says where an airport was
+        # moved to, and it must be visible in the build log.
+        logger.warning("%d airport(s) snapped to the nearest land cell within two rings (%s%s)",
+                       len(snapped), ", ".join(f"{i} {km:.1f} km" for i, km in worst[:8]),
+                       ", ..." if len(snapped) > 8 else "")
     if dropped:
         logger.warning(
-            "%d of %d scheduled-service airport(s) dropped: no land cell at their "
-            "location (%s%s)",
+            "%d of %d scheduled-service airport(s) dropped: no land cell within two "
+            "rings of their location (%s%s)",
             len(dropped), len(apts), ", ".join(dropped[:10]),
             ", ..." if len(dropped) > 10 else "",
         )
@@ -213,6 +209,35 @@ def build_index(rail_routes=None) -> NodeIndex:
             "the land mask has regressed -- note the coverage gate would NOT catch "
             "this, as it measures land cells rather than airports"
         )
+    snap_limit = MAX_SNAPPED_AIRPORT_FRACTION * len(apts)
+    if len(snapped) > snap_limit:
+        raise RuntimeError(
+            f"{len(snapped)} of {len(apts)} scheduled-service airports had to be snapped "
+            f"to a neighbouring cell, above the {MAX_SNAPPED_AIRPORT_FRACTION:.0%} bound "
+            f"({snap_limit:.0f}); the land mask has lost its coast"
+        )
+    return codes, airport_cell, dropped
+
+
+def build_index(rail_routes=None) -> NodeIndex:
+    """Build the node index. `rail_routes` is an osm.rail_routes() frame, or
+    None to build a road-and-air graph."""
+    base_cells = landmask.land_cells(config.SOLVE_RES)
+    from transport_maps.sources import roads, urban
+
+    from . import refine
+    split = refine.dense_mask(roads.cell_class(base_cells), urban.urban_mask(base_cells))
+    cells, base_index, fine = refine.refine(base_cells, split)
+    logger.info("%d of %d base cells split into %d fine cells; %d cells in all",
+                int(split.sum()), len(base_cells), int(fine.sum()), len(cells))
+    cell_pos = {c: i for i, c in enumerate(cells)}
+    split_set = {base_cells[i] for i in np.flatnonzero(split)}
+
+    def cell_at(lat, lon):
+        base = h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
+        return h3.latlng_to_cell(lat, lon, config.FINE_RES) if base in split_set else base
+
+    codes, airport_cell, dropped = _place_airports(airports.scheduled_airports(), cell_pos, split_set)
 
     airport_pos = {code: len(cells) + i for i, code in enumerate(codes)}
 
