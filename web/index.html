@@ -202,6 +202,8 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 #q:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 #q::placeholder{color:var(--text-3)}
 .here{margin:0 0 8px;font-size:11px;color:var(--text-3);line-height:1.45}
+.qrow{display:flex;gap:8px;align-items:center;margin-top:7px}
+.qhint{font-size:10.5px;color:var(--text-3);line-height:1.35}
 
 /* ---- settings ---- */
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;
@@ -381,7 +383,11 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
     <summary>Departure<span id="origin-name" style="color:var(--text);font-weight:400;font-size:12.5px"></span></summary>
     <div class="body">
       <p class="here" id="here"></p>
-      <input id="q" type="search" placeholder="City or airport code…" autocomplete="off" spellcheck="false" aria-label="Search departure cities">
+      <input id="q" type="search" placeholder="City, airport code or address…" autocomplete="off" spellcheck="false" aria-label="Search departure cities, airports or addresses">
+      <div class="qrow">
+        <button class="btn" id="find-address" type="button">Search address</button>
+        <span class="qhint">Enter departs from the first city match.</span>
+      </div>
       <ul class="results" id="results"></ul>
     </div>
   </details>

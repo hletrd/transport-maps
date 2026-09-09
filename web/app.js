@@ -783,41 +783,38 @@ function render(filter = "") {
   }
   if (!(f.length === 3 && apHits.some((a) => a[0].toLowerCase() === f))) list.append(...airportRows);
   $("results").replaceChildren(list);
-  scheduleAddressSearch(filter.trim());
 }
 
 // ---- address search ----
 // Anything the local lists cannot answer goes to OpenStreetMap's Nominatim:
-// a street, a landmark, a village. One request per pause in typing, never
-// more than one a second, which is what its usage policy asks.
+// a street, a landmark, a village. Only on an explicit search -- Enter with
+// no city match, or the button -- never per keystroke: Nominatim's usage
+// policy forbids autocomplete, and the typed query is the one a person meant.
 const NOMINATIM = "https://nominatim.openstreetmap.org";
-let addressTimer = null, addressSeq = 0;
-function scheduleAddressSearch(q) {
-  clearTimeout(addressTimer);
-  const old = $("results").querySelector(".addresses");
-  if (old) old.remove();
-  if (q.length < 4) return;
-  addressTimer = setTimeout(() => searchAddress(q), 900);
-}
+let addressSeq = 0;
 async function searchAddress(q) {
-  const seq = ++addressSeq;
-  let hits = [];
-  try {
-    const r = await fetch(`${NOMINATIM}/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`,
-                          { headers: { "Accept-Language": navigator.language || "en" } });
-    if (r.ok) hits = await r.json();
-  } catch { return; }
-  if (seq !== addressSeq || $("q").value.trim() !== q) return;   // stale
   const box = $("results");
-  const old = box.querySelector(".addresses");
-  if (old) old.remove();
-  if (!hits.length) return;
+  box.querySelector(".addresses")?.remove();
+  if (q.length < 3) return;
+  const seq = ++addressSeq;
   const ul = document.createElement("ul");
   ul.className = "addresses";
   const head = document.createElement("li");
   head.className = "head";
-  head.textContent = "Addresses";
+  head.textContent = "Searching addresses…";
   ul.append(head);
+  box.append(ul);
+  let hits = [], failed = false;
+  try {
+    const r = await fetch(`${NOMINATIM}/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`,
+                          { headers: { "Accept-Language": navigator.language || "en" } });
+    if (r.ok) hits = await r.json(); else failed = true;
+  } catch { failed = true; }
+  if (seq !== addressSeq) return;           // a newer search superseded this one
+  ul.replaceChildren(head);
+  // Silence here read as "nothing happened"; say what did.
+  head.textContent = failed ? "Address search is unavailable right now."
+    : hits.length ? "Addresses" : `No address found for “${q}”.`;
   for (const h of hits) {
     const li = document.createElement("li");
     const b = document.createElement("button");
@@ -885,6 +882,31 @@ $("results").addEventListener("click", (e) => {
   paintOrigin(bySlug.get(b.dataset.slug));
 });
 $("q").addEventListener("input", (e) => render(e.target.value));
+// Enter departs from the first city (or airport) that matches; with no local
+// match it searches the address. Arrows walk the list; Escape clears.
+$("q").addEventListener("keydown", (e) => {
+  const q = e.target.value.trim();
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const first = q ? $("results").querySelector("button[data-slug], button[data-airport]") : null;
+    if (first) first.click(); else searchAddress(q);
+  } else if (e.key === "ArrowDown") {
+    e.preventDefault();
+    $("results").querySelector("button")?.focus();
+  } else if (e.key === "Escape" && q) {
+    e.target.value = ""; render();
+  }
+});
+$("results").addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const items = [...$("results").querySelectorAll("button")];
+  const i = items.indexOf(document.activeElement);
+  if (i < 0) return;
+  e.preventDefault();
+  if (e.key === "ArrowDown") items[Math.min(i + 1, items.length - 1)].focus();
+  else if (i === 0) $("q").focus(); else items[i - 1].focus();
+});
+$("find-address").addEventListener("click", () => searchAddress($("q").value.trim()));
 render();
 
 // ---- controls ----
