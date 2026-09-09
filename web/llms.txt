@@ -1,45 +1,66 @@
 # Isochronic Passage Chart
 
-> An interactive globe showing expected door-to-door travel time from each of 553
-> origin cities to every land area on Earth, combining scheduled air routes,
-> rail from OpenStreetMap route relations, ferry crossings, and a road-speed model
-> calibrated against 2,998 real driving journeys, with check-in, border-control
-> and transfer penalties. Air times are fitted to 107,366 ADS-B flight legs.
-> Named after Francis Galton's "Isochronic Passage Chart for Travellers" (1881),
-> the first published travel-time map.
+> An interactive globe showing expected door-to-door travel time from each of
+> its departure cities (the list is `origins` in index.json) to every land area
+> on Earth, combining scheduled air routes, rail from OpenStreetMap route
+> relations, ferry crossings, and a road-speed model calibrated against 2,998
+> real driving journeys, with check-in, border-control and transfer penalties.
+> Air times are fitted to 107,366 ADS-B flight legs. Named after Francis
+> Galton's "Isochronic Passage Chart for Travellers" (1881), the first
+> published travel-time map.
 
 ## What the numbers mean
 
-Times are expected door-to-door minutes, rendered in 11 bands from under 2 hours
-to over 72 hours. A departure is treated as planned, so the first service is not
-waited for; onward connections are, because a traveller cannot choose when a
-connecting service leaves. Waiting is derived from route frequency, which is why
-remote islands correctly resolve to days rather than hours.
+Times are expected door-to-door minutes: the way to the airport or station,
+check-in and security, border control where a zone is crossed, and the journey
+out of the arrival airport are all in the figure. They are drawn in 37 bands on
+a geometric ladder from under 30 minutes to over 72 hours; the band edges are
+`bandEdgesMin` in index.json. A departure is treated as planned, so the first
+service is not waited for; onward flight connections are charged an expected
+wait at the connecting airport. Rail and ferry legs are charged running time
+plus boarding or terminal time, without a headway model yet.
 
 ## How it is computed
 
-A single-source Dijkstra runs over one multi-modal graph per origin city:
-548,557 H3 resolution-5 land cells (about 253 km2 each), plus a departure and an
-arrival node for each of 3,983 airports with scheduled passenger service.
-Ground movement between adjacent cells is charged at a per-cell speed derived
-from GRIP4 road-density rasters. Flights connect airport pairs taken from
-Wikipedia's "Airlines and destinations" tables, resolved to IATA codes through
-Wikidata property P238, with block time modelled from great-circle distance.
+A single-source Dijkstra runs over one multi-modal graph per departure city.
+The ground is 4,091,715 H3 resolution-6 land cells (about 36 km2, 6.5 km
+across), refined to resolution 7 (5.2 km2, 2.4 km across) wherever the road
+network reaches secondary grade or a metropolitan area lies. Ground movement
+between adjacent cells is charged at a per-cell speed derived from GRIP4
+road-density rasters, halved inside cities. Flights connect airport pairs taken
+from Wikipedia's "Airlines and destinations" tables, resolved to IATA codes
+through Wikidata property P238, with block time modelled from great-circle
+distance. Rail runs stop to stop along OpenStreetMap route relations; ferries
+along OpenStreetMap ferry routes. The per-cell result is dissolved into bands
+and shipped as PMTiles at four levels of detail, plus per-origin binary arrays
+of time, arrival airport, surface mode and rail station on a resolution-4 hover
+grid.
 
 ## Known limits
 
-- Rail and ferry are not yet in the graph.
 - Flight frequency is a fitted gravity model, not published timetables.
-- Coverage is about 98% of land; the remainder has no modelled route.
+- Rail and ferry legs carry no waiting time.
+- Coverage is about 98% of land; the remainder has no modelled route and is
+  drawn in a neutral grey the legend names.
+- The build that is live may lag the code: `solveRes`, `origins` and
+  `modeDetail` in index.json describe what is actually served.
 
 ## Data sources
 
-- OurAirports (public domain) — airport locations and service status
-- Wikipedia (CC BY-SA 4.0) — airline route network
-- Wikidata (CC0) — IATA code resolution
-- OpenStreetMap (ODbL) — coastlines drawn on the map; rail route relations
-- GRIP4 (CC0) — global road density
-- Natural Earth (public domain) — land mask, lakes, borders, place names
+- OurAirports (public domain) - airport locations and service status
+- Wikipedia (CC BY-SA 4.0) - airline route network
+- Wikidata (CC0) - IATA code resolution
+- OpenStreetMap (ODbL) - coastlines drawn on the map; rail and ferry route relations
+- GRIP4 (CC0) - global road density; itself built partly from OpenStreetMap
+- Natural Earth (public domain) - land mask, country borders, populated places behind the urban mask
+- GeoNames (CC BY 4.0) - departure cities and the place names under the cursor (cities15000)
+- HydroLAKES (CC BY 4.0) - lake outlines drawn on the map
+- adsb.lol (ODbL) - observed flights behind the fitted cruise speed and climb/descent penalty
+
+At runtime the page calls two external services: OpenStreetMap's Nominatim
+for address search and click-to-address (only when a search is submitted or a
+point is clicked), and Google Analytics for page-view counting. Everything else
+is computed in the browser from files on this site.
 
 ## Links
 
@@ -49,11 +70,3 @@ Wikidata property P238, with block time modelled from great-circle distance.
 ## Disclaimer
 
 For reference only. All figures are estimates computed from open data and a simplified model. They carry no warranty of accuracy, are not travel advice, and must not be relied on for any journey, booking, or decision. The author accepts no liability for any use.
-
-## Grid and geometry (2026-09-10)
-
-- H3 resolution 6 (5.6 km across) everywhere, refined to resolution 7 (2.1 km) where roads reach secondary grade or a metropolitan area lies (East Asia, South Asia, Europe, North America and every other built-up region).
-- Hexagons are drawn unrounded; bands are emitted at four levels of detail so no gap can open at any zoom.
-- Coastlines: OpenStreetMap water polygons at zoom 12 (~10 m). Lakes: HydroLAKES (CC BY 4.0).
-- Place names under the cursor: GeoNames cities15000 (CC BY 4.0). Address search and click-to-address: OpenStreetMap Nominatim; queries are sent to nominatim.openstreetmap.org only when typed or clicked.
-- Rail legs name the station and line (OpenStreetMap route relations).

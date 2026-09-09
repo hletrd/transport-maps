@@ -3,11 +3,13 @@ import * as pmtiles from "./vendor/pmtiles.js";
 import * as h3 from "./vendor/h3.js";
 
 // Sequential ramps, brightest where the journey is shortest. Multi-hue on
-// purpose: a SINGLE hue cannot separate eleven bands on a dark ground.
-// Measured adjacent-pair separation in OKLab (x100) -- below about 8 two bands
-// are hard to tell apart at all. The earlier single-hue amber sat at 4.4-4.8
-// throughout, which is why China and Siberia read as one flat mass.
-// Lightness is strictly monotonic in all three, which is what a sequential
+// purpose: a SINGLE hue cannot separate this many bands on a dark ground.
+// scripts/check_ramps.py measures adjacent-anchor separation in OKLab (x100):
+// the floor is 6, the target 8; the earlier single-hue amber sat at 4.4-4.8
+// throughout, which is why China and Siberia read as one flat mass. The 37
+// bands interpolated between anchors are necessarily closer (about 2 apart);
+// the legend ticks and the readout's band range carry that finer distinction.
+// Lightness is strictly monotonic in every scheme, which is what a sequential
 // ramp actually requires; hue rotation supplies the separation lightness
 // alone cannot.
 
@@ -53,18 +55,20 @@ async function loadCells(url) {
 const meta = await loadJSON("./index.json");
 const UNREACHABLE = meta.unreachable ?? 65535;
 const HOVER_RES = meta.hoverRes ?? 4;
-// The surface is solved per res-5 cell (~8 km); the readout array is res 4
-// (~22 km, the min of seven children) to stay small. The highlight must show
-// the SOLVED cell -- outlining the readout parent drew a hexagon seven times
-// the size of anything the map was actually computed from.
-const SOLVE_RES = meta.solveRes ?? 5;
+// The surface is solved per res-6 cell (~6.5 km across), refined to res 7
+// (2.4 km) in dense regions; the readout array is res 4 (~45 km) and holds
+// each parent's CENTRE child's value, to stay small. The highlight shows the
+// solved base cell -- outlining the readout parent drew a hexagon seven times
+// the size of anything the map was computed from. (Where the surface was
+// refined, the outline is still the res-6 parent: finding C3, cycle 3.)
+const SOLVE_RES = meta.solveRes ?? 6;
 const EDGES = meta.bandEdgesMin ?? [];
 
 // shared, origin-independent cell ordering — fetched once
 const hoverCells = await loadCells("./" + (meta.hoverCellsUrl || "hover_cells.bin"));
 const RAMPS = {
-  // Adjacent-pair separation measured in OKLab (x100); below about 8 two bands
-  // are hard to tell apart. Lightness is strictly monotonic in every ramp,
+  // Eleven anchors per scheme; adjacent-anchor separation in OKLab (x100) is
+  // at least 6 and aimed at 8. Lightness is strictly monotonic in every ramp,
   // which is what a sequential scale actually requires. `sea` is the scheme's
   // own water: darker than its darkest band, lighter than space, so the globe
   // stands off the page. scripts/check_ramps.py measures all of this.
@@ -453,7 +457,7 @@ function bandColorExpression() {
 
 function paintOrigin(o) {
   active = o;
-  for (const id of ["band-seams", "bands"]) if (map.getLayer(id)) map.removeLayer(id);
+  if (map.getLayer("bands")) map.removeLayer("bands");
   if (map.getSource("bands")) map.removeSource("bands");
 
   map.addSource("bands", { type: "vector", url: `pmtiles://./origins/${o.slug}.pmtiles` });
@@ -658,11 +662,11 @@ function renderLegs() {
   box.hidden = false;
 }
 
-// The painted band comes from the res-5 polygon actually under the cursor,
-// while the time array is res-4 and takes the FASTEST of each cell's children.
-// So the number can be optimistic against the colour it sits on. Reading the
-// band from the rendered geometry costs nothing and lets the readout say which
-// band you are in rather than quietly contradicting it.
+// The painted band comes from the polygon actually under the cursor (a res-6
+// or res-7 cell), while the time array is res 4 and holds the CENTRE child's
+// value, so the number can differ from the colour it sits on. Reading the band
+// from the rendered geometry costs nothing and lets the readout say which band
+// you are in rather than quietly contradicting it.
 function bandRangeAt(point) {
   if (!map.getLayer("bands")) return null;
   const hit = map.queryRenderedFeatures(point, { layers: ["bands"] });
@@ -1032,8 +1036,6 @@ $("ramps").addEventListener("click", (e) => {
   if (map.getLayer("bands"))
     map.setPaintProperty("bands", "fill-color", bandColorExpression());
   paintSea();
-  if (map.getLayer("band-seams"))
-    map.setPaintProperty("band-seams", "line-color", bandColorExpression());
 });
 
 applyLockNorth();
