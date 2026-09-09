@@ -2,6 +2,9 @@
 """Measure every colour scheme in web/app.js: OKLab lightness must fall
 strictly from the first anchor to the last, and adjacent anchors must be at
 least MIN_DELTA_E apart (OKLab distance x100), or two bands read as one.
+Each scheme's "no scheduled route" grey must be at least MIN_GREY_DELTA_E
+from every one of the 37 painted bands (one shared grey sat 0.9 from a Mono
+band), and its sea must lie between space and its darkest band.
 
     uv run python scripts/check_ramps.py
 """
@@ -18,6 +21,10 @@ from pathlib import Path
 # ramps sit at 6-7 and are then interpolated to 37 bands. Below 6 two
 # anchors read as one.
 MIN_DELTA_E = 6.0
+# Between the grey and ANY painted band: the grey must never read as a band.
+MIN_GREY_DELTA_E = 8.0
+# Sea lightness: above space by this much, below the darkest band by this much.
+SEA_ABOVE_SPACE, SEA_BELOW_BAND = 0.05, 0.04
 APP = Path(__file__).resolve().parents[1] / "web" / "app.js"
 
 
@@ -38,9 +45,52 @@ def ramps(source: str = None) -> dict[str, dict]:
     block = src[src.index("const RAMPS = {"):]
     block = block[: block.index("\n};") + 3]
     out = {}
-    for m in re.finditer(r'(\w+):\s*\{\s*name:\s*"([^"]+)",\s*sea:\s*"(#[0-9a-fA-F]{6})",\s*c:\s*\[([^\]]+)\]', block):
-        out[m.group(1)] = {"name": m.group(2), "sea": m.group(3),
-                           "c": re.findall(r'"(#[0-9a-fA-F]{6})"', m.group(4))}
+    for m in re.finditer(r'(\w+):\s*\{\s*name:\s*"([^"]+)",\s*sea:\s*"(#[0-9a-fA-F]{6})",\s*grey:\s*"(#[0-9a-fA-F]{6})",\s*c:\s*\[([^\]]+)\]', block):
+        out[m.group(1)] = {"name": m.group(2), "sea": m.group(3), "grey": m.group(4),
+                           "c": re.findall(r'"(#[0-9a-fA-F]{6})"', m.group(5))}
+    return out
+
+
+def constant(name: str, source: str = None) -> str:
+    """A hex colour constant from app.js, e.g. SPACE or BG."""
+    src = source if source is not None else APP.read_text(encoding="utf-8")
+    m = re.search(rf'const {name} = "(#[0-9a-fA-F]{{6}})"', src) or re.search(rf'{name} = "(#[0-9a-fA-F]{{6}})"', src)
+    if not m:
+        raise ValueError(f"{name} not found in app.js")
+    return m.group(1)
+
+
+def expand(control: list[str], n: int = 37) -> list[tuple[float, float, float]]:
+    """The 37 painted bands, interpolated between the anchors in OKLab the
+    way app.js's expandRamp does."""
+    import math
+    lab = [srgb_to_oklab(c) for c in control]
+    out = []
+    for i in range(n):
+        t = (i / (n - 1)) * (len(lab) - 1)
+        k = min(math.floor(t), len(lab) - 2)
+        f = t - k
+        out.append(tuple(v + (lab[k + 1][j] - v) * f for j, v in enumerate(lab[k])))
+    return out
+
+
+def delta_e(p, q) -> float:
+    return 100 * sum((a - b) ** 2 for a, b in zip(p, q)) ** 0.5
+
+
+def scheme_problems(r: dict, space: str, n_bands: int = 37) -> list[str]:
+    """The grey and the sea, measured against the scheme's own bands."""
+    out = []
+    bands = expand(r["c"], n_bands)
+    grey = srgb_to_oklab(r["grey"])
+    d = min(delta_e(grey, b) for b in bands)
+    if d < MIN_GREY_DELTA_E:
+        out.append(f"grey {r['grey']} is only {d:.1f} from a band (need {MIN_GREY_DELTA_E:.0f})")
+    sea_l = srgb_to_oklab(r["sea"])[0]
+    if sea_l <= srgb_to_oklab(space)[0] + SEA_ABOVE_SPACE:
+        out.append(f"sea {r['sea']} is not lighter than space")
+    if sea_l >= srgb_to_oklab(r["c"][-1])[0] - SEA_BELOW_BAND:
+        out.append(f"sea {r['sea']} is not darker than the darkest band")
     return out
 
 
@@ -111,11 +161,14 @@ if __name__ == "__main__":
         APP.write_text(src, encoding="utf-8")
         print("respaced every ramp in app.js")
     bad = 0
+    space = constant("SPACE")
     for key, r in ramps().items():
         lightness, delta = measure(r["c"])
         sea_l = srgb_to_oklab(r["sea"])[0]
-        issues = problems(r["c"])
+        grey_d = min(delta_e(srgb_to_oklab(r["grey"]), b) for b in expand(r["c"]))
+        issues = problems(r["c"]) + scheme_problems(r, space)
         bad += bool(issues)
         print(f"{key:9} {len(r['c'])} anchors  L {lightness[0]:.2f}->{lightness[-1]:.2f}  "
-              f"min dE {min(delta):5.1f}  sea L {sea_l:.2f}  {'OK' if not issues else 'FAIL: ' + '; '.join(issues)}")
+              f"min dE {min(delta):5.1f}  grey dE {grey_d:5.1f}  sea L {sea_l:.2f}  "
+              f"{'OK' if not issues else 'FAIL: ' + '; '.join(issues)}")
     sys.exit(1 if bad else 0)

@@ -14,9 +14,6 @@ import * as h3 from "./vendor/h3.js";
 // alone cannot.
 
 const BG = "#0a0b0d", SEA = "#0f1114";
-// Land no scheduled service reaches. A tone, not a colour: it must read as
-// "no route" rather than as the far end of the time ramp.
-const UNCHARTED = "#4a4d50";
 // Space behind the globe: darker than every scheme's sea (measured by
 // scripts/check_ramps.py), which is what lets the globe's edge be seen.
 const SPACE = "#050609";
@@ -33,8 +30,10 @@ const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;")
 
 // A blank globe with no message is the failure mode this page has shipped
 // twice. If the two files everything depends on cannot be read, say so where
-// the reading would have been, then stop.
+// the reading would have been, then stop. On a phone the readout sits under
+// the bottom sheet until the layout runs, so the sheet is hidden as well.
 function fatal(msg) {
+  document.body.classList.add("fatal");
   $("time").textContent = "—";
   $("where").textContent = msg;
   throw new Error(msg);
@@ -52,7 +51,14 @@ async function loadCells(url) {
 }
 
 const meta = await loadJSON("./index.json");
+// A valid JSON body is not yet a valid index: an index.json written by
+// another tool, or truncated to {}, threw on cities[0] with no message.
+if (!Array.isArray(meta.origins) || !meta.origins.length || !Array.isArray(meta.bandEdgesMin))
+  fatal("index.json lists no departure cities or band edges.");
 const UNREACHABLE = meta.unreachable ?? 65535;
+// The emitter writes the sentinel for anything at or beyond 65,534 minutes
+// (45 days); read it the same way, so an old array never prints a duration.
+const MAX_MINUTES = UNREACHABLE - 1;
 const HOVER_RES = meta.hoverRes ?? 4;
 // The surface is solved per res-6 cell (~6.5 km across), refined to res 7
 // (2.4 km) in dense regions; the readout array is res 4 (~45 km) and holds
@@ -61,31 +67,37 @@ const HOVER_RES = meta.hoverRes ?? 4;
 // the size of anything the map was computed from. (Where the surface was
 // refined, the outline is still the res-6 parent: finding C3, cycle 3.)
 const SOLVE_RES = meta.solveRes ?? 6;
-const EDGES = meta.bandEdgesMin ?? [];
+const EDGES = meta.bandEdgesMin;
+// Channel order of .modes.bin, from the emitter when index.json carries it.
+const MODE_NAMES = meta.modeChannels ?? ["rail", "ferry", "highway", "major road", "minor road", "track"];
 
 // shared, origin-independent cell ordering — fetched once
 const hoverCells = await loadCells("./" + (meta.hoverCellsUrl || "hover_cells.bin"));
+if (meta.hoverCellCount != null && meta.hoverCellCount !== hoverCells.length)
+  fatal(`index.json expects ${meta.hoverCellCount} hover cells but hover_cells.bin has ${hoverCells.length}: the two files come from different builds.`);
+
 const RAMPS = {
   // Eleven anchors per scheme; adjacent-anchor separation in OKLab (x100) is
   // at least 6 and aimed at 8. Lightness is strictly monotonic in every ramp,
   // which is what a sequential scale actually requires. `sea` is the scheme's
   // own water: darker than its darkest band, lighter than space, so the globe
-  // stands off the page. scripts/check_ramps.py measures all of this.
-  muted:    { name: "Muted",    sea: "#171a22", c: ["#faefc5","#f6d59d","#f5b87c","#ef9b6a","#e38065","#cf6a6a","#b35a6f","#934e6e","#724566","#543b57","#3a2c4b"] },
-  vivid:    { name: "Vivid",    sea: "#15122c", c: ["#fff7a8","#ffd557","#ffad19","#ff8200","#ff5327","#fe1d59","#df0a7c","#b3218b","#842f88","#563275","#2b2764"] },
-  warm:     { name: "Warm",     sea: "#1e1512", c: ["#fbeec9","#f5d7a0","#efbe78","#e7a457","#db8b3f","#ca7335","#b46036","#99523b","#7c463c","#613a38","#4b2b2e"] },
-  ice:      { name: "Ice",      sea: "#0f172b", c: ["#eaf6fb","#c3e4f4","#9cd2ec","#76bee3","#52a9d7","#3893c7","#277cb2","#1f6699","#1e5080","#203d62","#212a46"] },
-  forest:   { name: "Forest",   sea: "#101c15", c: ["#f2f6da","#d7e9ae","#b8d98a","#96c76e","#73b45c","#549f52","#3e894a","#317244","#2b5c3c","#274630","#233126"] },
-  mono:     { name: "Mono",     sea: "#17181b", c: ["#f4f4f4","#dddddd","#c6c6c6","#b0b0b0","#9a9a9a","#858585","#717171","#5d5d5d","#4a4a4a","#373737","#262626"] },
-  ember:    { name: "Ember",    sea: "#1d1414", c: ["#fff3c4","#ffd787","#ffb556","#ff9031","#fa691d","#e64415","#c52d19","#a0201d","#7c1b22","#571a28","#331a2b"] },
-  rose:     { name: "Rose",     sea: "#1c141b", c: ["#fde9ef","#f9cad9","#f5abc5","#ed8cb3","#df6da1","#cb5190","#af3c80","#902d70","#70255f","#50214d","#31203a"] },
-  sand:     { name: "Sand",     sea: "#1b1711", c: ["#fbf3e2","#eedfb8","#e1c991","#d3b270","#c29a56","#b08443","#9b7035","#845d2d","#6c4c2b","#553d27","#3d2e23"] },
-  twilight: { name: "Twilight", sea: "#131629", c: ["#fdf5a6","#d8e48d","#abd48c","#7fc391","#5aaf98","#44989c","#38809b","#346794","#364e84","#34366c","#2c264a"] },
-  copper:   { name: "Copper",   sea: "#1c1512", c: ["#fff0e0","#f8d6bd","#efbc9b","#e4a27c","#d68960","#c47148","#ae5c37","#95492b","#7a3b2a","#5d3026","#422523"] },
-  lavender: { name: "Lavender", sea: "#161426", c: ["#f5f0fb","#e2d7f5","#cfbfee","#bba7e5","#a690d9","#9179ca","#7c64b8","#6750a3","#523f89","#3f316b","#2e264c"] },
+  // stands off the page. `grey` is the scheme's "no scheduled route" tone,
+  // chosen so it is at least 8 from every one of the 37 painted bands -- one
+  // shared grey sat 0.9 from a Mono band. scripts/check_ramps.py measures all
+  // of this.
+  muted:    { name: "Muted",    sea: "#171a22", grey: "#5d5d5d", c: ["#faefc5","#f6d59d","#f5b87c","#ef9b6a","#e38065","#cf6a6a","#b35a6f","#934e6e","#724566","#543b57","#3a2c4b"] },
+  vivid:    { name: "Vivid",    sea: "#15122c", grey: "#484848", c: ["#fff7a8","#ffd557","#ffad19","#ff8200","#ff5327","#fe1d59","#df0a7c","#b3218b","#842f88","#563275","#2b2764"] },
+  warm:     { name: "Warm",     sea: "#1e1512", grey: "#606060", c: ["#fbeec9","#f5d7a0","#efbe78","#e7a457","#db8b3f","#ca7335","#b46036","#99523b","#7c463c","#613a38","#4b2b2e"] },
+  ice:      { name: "Ice",      sea: "#0f172b", grey: "#484848", c: ["#eaf6fb","#c3e4f4","#9cd2ec","#76bee3","#52a9d7","#3893c7","#277cb2","#1f6699","#1e5080","#203d62","#212a46"] },
+  forest:   { name: "Forest",   sea: "#101c15", grey: "#585858", c: ["#f2f6da","#d7e9ae","#b8d98a","#96c76e","#73b45c","#549f52","#3e894a","#317244","#2b5c3c","#274630","#233126"] },
+  mono:     { name: "Mono",     sea: "#17181b", grey: "#473f70", c: ["#f4f4f4","#dddddd","#c6c6c6","#b0b0b0","#9a9a9a","#858585","#717171","#5d5d5d","#4a4a4a","#373737","#262626"] },
+  ember:    { name: "Ember",    sea: "#1d1414", grey: "#484848", c: ["#fff3c4","#ffd787","#ffb556","#ff9031","#fa691d","#e64415","#c52d19","#a0201d","#7c1b22","#571a28","#331a2b"] },
+  rose:     { name: "Rose",     sea: "#1c141b", grey: "#484848", c: ["#fde9ef","#f9cad9","#f5abc5","#ed8cb3","#df6da1","#cb5190","#af3c80","#902d70","#70255f","#50214d","#31203a"] },
+  sand:     { name: "Sand",     sea: "#1b1711", grey: "#595e63", c: ["#fbf3e2","#eedfb8","#e1c991","#d3b270","#c29a56","#b08443","#9b7035","#845d2d","#6c4c2b","#553d27","#3d2e23"] },
+  twilight: { name: "Twilight", sea: "#131629", grey: "#484848", c: ["#fdf5a6","#d8e48d","#abd48c","#7fc391","#5aaf98","#44989c","#38809b","#346794","#364e84","#34366c","#2c264a"] },
+  copper:   { name: "Copper",   sea: "#1c1512", grey: "#4d4d4d", c: ["#fff0e0","#f8d6bd","#efbc9b","#e4a27c","#d68960","#c47148","#ae5c37","#95492b","#7a3b2a","#5d3026","#422523"] },
+  lavender: { name: "Lavender", sea: "#161426", grey: "#484848", c: ["#f5f0fb","#e2d7f5","#cfbfee","#bba7e5","#a690d9","#9179ca","#7c64b8","#6750a3","#523f89","#3f316b","#2e264c"] },
 };
-
-let rampName = "muted";
 
 // Bands are as many as index.json says (37 now, on a geometric ladder), and
 // each scheme is eleven control points. Colors are interpolated in OKLab so
@@ -122,27 +134,49 @@ function expandRamp(control, n) {
     return oklabToHex(lab[k].map((v, j) => v + (lab[k + 1][j] - v) * f));
   });
 }
-const N_BANDS = (meta.bandEdgesMin?.length ?? 10) + 1;
-let BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
+const N_BANDS = EDGES.length + 1;
 
 // How each surface mode is modelled, when index.json predates the emitter
 // that ships the calibrated sentence (builds before modeDetail existed).
 const MODE_FALLBACK = {
   "rail": "Scheduled trains from OpenStreetMap route relations, stop to stop, plus boarding time.",
   "ferry": "Scheduled ferry routes from OpenStreetMap, sailing time plus time at the terminals.",
-  "highway": "Motorways and expressways (GRIP4 class 1) at a fitted free-flow speed, halved inside cities.",
-  "major road": "Primary and secondary roads (GRIP4 classes 2-3) at fitted speeds, halved inside cities.",
-  "minor road": "Tertiary and local roads (GRIP4 classes 4-5) at fitted speeds, halved inside cities.",
+  "highway": "Motorways and expressways at a fitted free-flow speed, halved inside cities.",
+  "major road": "Primary and secondary roads at fitted speeds, halved inside cities.",
+  "minor road": "Tertiary and local roads at fitted speeds, halved inside cities.",
   "track": "No mapped road: walking pace.",
 };
-
-let hoverTimes = null;          // Uint16Array for the active origin
-let hoverFailed = null;         // the origin whose .bin fetch failed, if any
-let hoverAir = null;            // arrival-airport ordinal per hover cell
-let hoverModes = null;          // rail / ferry / road minutes per hover cell
-let routes = null;              // {offsets, byId} for walking the leg chain
-let active = null;
 const NO_AIRPORT = 0xFFFF;
+const NO_RAIL = 0xFFFF;
+
+// ---- module state, declared before any function that assigns it ----
+// Every `let` the handlers write lives here, above the code that runs them.
+// They used to be declared mid-file, after paintOrigin and renderLegs, and
+// worked only because the first call sat at the very end of the module; the
+// planned reordering of start-up would have thrown a ReferenceError after the
+// map existed -- a blank page with no useful error.
+let rampName = "muted";
+let BANDS;
+let lockNorth, namePlaces;
+let places = null;              // gazetteer: flat typed arrays plus the rows
+let hoveredCell = null;
+let raf = 0;
+let pinB = null;                // the destination, once one is set
+let airports = [];              // OurAirports rows, for search and the route
+let addressSeq = 0, reverseSeq = 0;
+let active = null;              // the departure city
+// Everything fetched per departure. One object, replaced on every switch and
+// guarded by a generation counter: a slow earlier origin's response can no
+// longer land on top of the newer one's arrays (it used to, for four of the
+// five files, and the pins then printed the new city's name with the old
+// city's number).
+let originGen = 0, originAbort = null;
+const origin = { times: null, failed: null, air: null, modes: null, routes: null, rail: null };
+let lastPointer = null;         // {lat, lng, point} of the last reading, re-run when data lands
+// The readout's resting copy; a phone has no pointer.
+const IDLE_PROMPT = window.matchMedia("(pointer: coarse)").matches
+  ? "Tap the map to read a travel time. Tap a city name to depart from it."
+  : $("where").textContent;
 
 // ---- settings, remembered per viewer ----
 const store = {
@@ -152,10 +186,31 @@ const store = {
   },
   set(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch { /* private mode */ } },
 };
-try { const r = localStorage.getItem("ramp"); if (r && RAMPS[r]) { rampName = r; BANDS = expandRamp(RAMPS[r].c, N_BANDS); } }
+try { const r = localStorage.getItem("ramp"); if (r && RAMPS[r]) rampName = r; }
 catch { /* private mode */ }
-let lockNorth = store.get("lockNorth", false);
-let namePlaces = store.get("namePlaces", true);
+BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
+lockNorth = store.get("lockNorth", false);
+namePlaces = store.get("namePlaces", true);
+const greyOf = () => RAMPS[rampName]?.grey ?? "#4a4d50";
+
+// ---- one time notation for the whole page ----
+// Under an hour in minutes, otherwise hours and minutes; hours keep counting
+// past 48 (the legend runs to 72 h). Four notations used to coexist: "5h
+// 11m", "5 h 11m", "2 days 2h" and "48–72 h".
+function fmtTime(min) {
+  if (min == null) return ["—", ""];
+  if (min >= MAX_MINUTES) return ["∞", "no scheduled route"];
+  const total = Math.round(min);             // round once, so 119.6 is 2 h, not "1 h 60 min"
+  const h = Math.floor(total / 60), m = total % 60;
+  if (h < 1) return [String(m), "min"];
+  return [String(h), m ? `h ${m} min` : "h"];
+}
+const fmtDur = (m) => { const [b, u] = fmtTime(m); return u ? `${b} ${u}` : b; };
+// Compact form for the legend ticks and band ranges: "3 h 45", "16 h".
+function fmtTick(min) {
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  return m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
+}
 
 // ---- legend ----
 function paintLegend() {
@@ -164,7 +219,7 @@ function paintLegend() {
   }));
   // The two tones outside the ramp, so the grey of Antarctica or Siberia and
   // the scheme's sea are named rather than left for the reader to guess.
-  $("sw-uncharted").style.background = UNCHARTED;
+  $("sw-uncharted").style.background = greyOf();
   $("sw-sea").style.background = RAMPS[rampName]?.sea ?? SEA;
 }
 paintLegend();
@@ -173,34 +228,48 @@ paintLegend();
 // at its own band boundary AND say that boundary's value. The edges are a
 // geometric ladder, so most round hours do not fall on one; labelling the
 // nearest edge with the round hour put "72+" on the 67 h edge and "4" on
-// 3 h 45. Now: aim at a doubling ladder, snap to the nearest edge, and print
-// that edge's own hours.
-const TICK_TARGETS_MIN = [60, 120, 240, 480, 960, 1440, 2880, 4320];
+// 3 h 45, and printing the edge as a decimal ("3.8") misstated it by three
+// minutes the other way. Now: aim at a spread of targets, snap to the nearest
+// edge (an exact hour wins when it is about as close), print that edge's own
+// hours and minutes, and drop any label that would overprint its neighbour
+// once measured on screen.
+const TICK_TARGETS_MIN = [60, 300, 1440, 4320];
 function paintScale() {
-  const fmtH = (m) => { const h = m / 60; return Number.isInteger(h) ? String(h) : h.toFixed(1); };
   const picked = new Set();
   for (const t of TICK_TARGETS_MIN) {
     let best = -1, bestErr = Infinity;
-    EDGES.forEach((e, i) => { const err = Math.abs(Math.log(e / t)); if (err < bestErr) { bestErr = err; best = i; } });
+    EDGES.forEach((e, i) => {
+      let err = Math.abs(Math.log(e / t));
+      if (e % 60 === 0) err *= 0.6;             // prefer an exact hour when it is nearly as close
+      if (err < bestErr) { bestErr = err; best = i; }
+    });
     if (best >= 0) picked.add(best);
   }
-  // Two labels closer than three band widths would overprint; keep the earlier.
-  const kept = []; let last = -Infinity;
-  for (const i of [...picked].sort((a, b) => a - b)) if (i - last >= 3) { kept.push(i); last = i; }
-  $("scale").replaceChildren(...kept.map((i) => {
+  const scale = $("scale");
+  scale.replaceChildren(...[...picked].sort((a, b) => a - b).map((i) => {
     const el = document.createElement("span");
     el.style.left = `${((i + 1) / N_BANDS) * 100}%`;
     el.dataset.min = String(EDGES[i]);
-    el.textContent = fmtH(EDGES[i]) + (i === EDGES.length - 1 ? "+" : "");
-    el.title = `${EDGES[i]} minutes`;
+    el.textContent = fmtTick(EDGES[i]) + (i === EDGES.length - 1 ? "+" : "");
+    el.title = `${EDGES[i]} minutes from the departure city, door to door`;
+    if (i === EDGES.length - 1) el.classList.add("last");   // right-anchored, never overhangs
     return el;
   }));
+  // Measured, not assumed: two labels closer than 8 px would read as one number.
+  let prevRight = -Infinity;
+  for (const el of scale.children) {
+    const r = el.getBoundingClientRect();
+    if (r.left < prevRight + 8) { el.remove(); continue; }
+    prevRight = r.right;
+  }
 }
 paintScale();
 
 // Credits: the pipeline's list from index.json, plus what the PAGE itself
-// adds (the gazetteer, the lakes and the address search), so a build whose
-// index.json predates those sources still credits them.
+// adds (the address search), so a build whose index.json predates a source
+// still credits it. GeoNames and HydroLAKES are listed here too for the
+// build that predates their rows; tests/emit/test_index.py keeps the licence
+// strings in step with the emitter's.
 const PAGE_CREDITS = [
   { name: "GeoNames", licence: "CC BY 4.0", url: "https://www.geonames.org/" },
   { name: "HydroLAKES", licence: "CC BY 4.0", url: "https://www.hydrosheds.org/products/hydrolakes" },
@@ -223,109 +292,11 @@ const PAGE_CREDITS = [
   if (first) el.textContent = "Attribution missing from index.json.";
 }
 $("n-cities").textContent = String(meta.origins.length);
-
-// ---- gazetteer, so a reading can name where it is ----
-let places = null;
-fetch("./places.json")
-  .then((r) => (r.ok ? r.json() : null))
-  .then((p) => {
-    if (!p) return;
-    // Flat typed arrays: 7,000 objects would be re-read on every pointer move.
-    places = {
-      lat: Float32Array.from(p.places, (x) => x[3]),
-      lon: Float32Array.from(p.places, (x) => x[4]),
-      rows: p.places,
-    };
-    // Labels, so a zoomed view says roughly where it is. DOM markers rather
-    // than a symbol layer: MapLibre text needs a glyph server, which the CSP
-    // blocks, and markers render in the page's own typeface. The gazetteer is
-    // ordered largest-first, so rank is the row index; more labels appear as
-    // the zoom rises.
-    const labelPool = p.places.slice(0, 900).map((r, i) => {
-      // A label that names one of the departure cities is a button: clicking
-      // it departs from there. Matched by distance, since the gazetteer and
-      // origins.toml spell a few names differently.
-      const origin = originNear(r[3], r[4]);
-      const el = document.createElement(origin ? "button" : "div");
-      el.className = origin ? "lbl origin" : "lbl";
-      el.textContent = r[0];
-      if (origin) {
-        el.type = "button";
-        el.title = `Depart from ${origin.name}`;
-        el.addEventListener("click", (ev) => {
-          ev.stopPropagation();            // not a destination pin
-          $("here").textContent = "";
-          if (origin.slug !== active?.slug) paintOrigin(origin);
-        });
-      }
-      const m = new maplibregl.Marker({ element: el, anchor: "top" })
-        .setLngLat([r[4], r[3]]);
-      return { m, rank: i, on: false };
-    });
-    const showLabels = () => {
-      const z = map.getZoom();
-      // The opening view (zoom 1.9) must show some names: the first line of
-      // copy says to click one. Eighteen is the largest cities, no clutter.
-      const n = z < 1.2 ? 0 : z < 2.2 ? 18 : z < 3 ? 40 : z < 4 ? 120 : z < 5.5 ? 350 : 900;
-      // Largest cities claim their screen space first; a smaller one whose
-      // label would land within the gap of one already placed is skipped, so
-      // the map thins itself rather than piling names on top of each other.
-      const placed = [];
-      const gapX = 70, gapY = 16;
-      // A DOM marker does not know the globe hides its far side: project()
-      // happily returns on-disc coordinates for Lima while the view faces
-      // Beijing. Anything more than ~85 degrees of arc from the view centre
-      // is behind the horizon and must not be drawn.
-      const ctr = map.getCenter();
-      const rad = Math.PI / 180;
-      const sinC = Math.sin(ctr.lat * rad), cosC = Math.cos(ctr.lat * rad);
-      const onNearSide = (ll) => {
-        const cosArc = sinC * Math.sin(ll.lat * rad)
-          + cosC * Math.cos(ll.lat * rad) * Math.cos((ll.lng - ctr.lng) * rad);
-        return cosArc > Math.cos(85 * rad);
-      };
-      for (const l of labelPool) {
-        let want = l.rank < n && onNearSide(l.m.getLngLat());
-        if (want) {
-          const pt = map.project(l.m.getLngLat());
-          want = pt.x > -50 && pt.y > -20 && pt.x < window.innerWidth + 50
-              && pt.y < window.innerHeight + 20
-              && !placed.some((q) => Math.abs(q.x - pt.x) < gapX && Math.abs(q.y - pt.y) < gapY);
-          if (want) placed.push(pt);
-        }
-        if (want && !l.on) { l.m.addTo(map); l.on = true; }
-        else if (!want && l.on) { l.m.remove(); l.on = false; }
-      }
-    };
-    // On every frame of a move, not only at rest: otherwise nothing appears
-    // during a zoom-in until it stops, and a rotation can drag far-side
-    // labels into view before the moveend filter removes them.
-    let pending = 0;
-    const onMove = () => {
-      if (pending) return;
-      pending = requestAnimationFrame(() => { pending = 0; showLabels(); });
-    };
-    map.on("move", onMove);
-    showLabels();
-  })
-  .catch(() => { /* the map is still readable without names */ });
-
-function nearestPlace(lat, lon) {
-  if (!places) return null;
-  const rad = Math.PI / 180;
-  const cosLat = Math.cos(lat * rad);
-  let best = -1, bestD = Infinity;
-  for (let i = 0; i < places.lat.length; i++) {
-    // Equirectangular is plenty to rank candidates and avoids 7,000 trig calls.
-    const dy = places.lat[i] - lat;
-    const dx = (places.lon[i] - lon) * cosLat;
-    const d = dy * dy + dx * dx;
-    if (d < bestD) { bestD = d; best = i; }
-  }
-  if (best < 0) return null;
-  const [name, region, country] = places.rows[best];
-  const km = Math.sqrt(bestD) * 111.32;
-  return { name, region, country, km };
+// When the data was built, once index.json says so.
+if (meta.builtAt) {
+  const d = new Date(meta.builtAt);
+  if (!Number.isNaN(d.getTime()))
+    $("built").textContent = `Data built on ${d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}.`;
 }
 
 // ---- globe ----
@@ -351,8 +322,9 @@ window.__map = map;
 // MapLibre is pinned to 5.24 (see web/README.md); this is its projection API.
 map.setProjection({ type: "globe" });
 // A faint atmosphere at the limb, so the globe's edge reads against space
-// even where the sea is nearly as dark. Fades out once the horizon leaves
-// the screen.
+// even where the sea is nearly as dark. Under the globe projection only
+// atmosphere-blend acts (MapLibre 5 disables the sky there); the other keys
+// take effect if the projection ever changes back to Mercator.
 map.setSky({
   "sky-color": SPACE, "horizon-color": "#2a3346", "fog-color": SPACE,
   "fog-ground-blend": 0, "horizon-fog-blend": 0.8, "sky-horizon-blend": 0.9,
@@ -414,7 +386,15 @@ fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 function moveTo(opts) { if (REDUCED_MOTION.matches) map.jumpTo(opts); else map.flyTo(opts); }
 
-let hoveredCell = null;
+// Whether a point is on the visible face of the globe: project() happily
+// returns on-disc coordinates for Lima while the view faces Beijing.
+function onNearSide(lat, lng) {
+  const ctr = map.getCenter(), rad = Math.PI / 180;
+  const cosArc = Math.sin(ctr.lat * rad) * Math.sin(lat * rad)
+    + Math.cos(ctr.lat * rad) * Math.cos(lat * rad) * Math.cos((lng - ctr.lng) * rad);
+  return cosArc > Math.cos(85 * rad);
+}
+
 function highlight(lat, lon) {
   const cell = h3.latLngToCell(lat, lon, SOLVE_RES);
   if (cell === hoveredCell) return;
@@ -450,16 +430,145 @@ function syncNeedle() {
 map.on("rotate", syncNeedle);
 
 function bandColorExpression() {
+  const grey = greyOf();
   return ["match", ["get", "band"],
-    UNREACHABLE_BAND, UNCHARTED,
-    ...BANDS.flatMap((c, i) => [i, c]), UNCHARTED];
+    UNREACHABLE_BAND, grey,
+    ...BANDS.flatMap((c, i) => [i, c]), grey];
 }
 
-function paintOrigin(o) {
+// ---- gazetteer, so a reading can name where it is ----
+// The departure city always carries its own label: it is what the visitor is
+// looking at, and the gazetteer ranks Seoul 22nd, Tokyo 24th and Paris 201st,
+// far outside the opening view's budget of eighteen.
+const originLabel = document.createElement("button");
+originLabel.type = "button";
+originLabel.className = "lbl origin";
+originLabel.setAttribute("aria-current", "true");
+originLabel.tabIndex = -1;
+originLabel.addEventListener("click", (ev) => ev.stopPropagation());
+const originMarker = new maplibregl.Marker({ element: originLabel, anchor: "top" });
+let originMarkerOn = false;
+let showLabels = () => {};
+
+fetch("./places.json")
+  .then((r) => (r.ok ? r.json() : null))
+  .then((p) => {
+    if (!p) return;
+    // Flat typed arrays: 34,000 objects would be re-read on every pointer move.
+    places = {
+      lat: Float32Array.from(p.places, (x) => x[3]),
+      lon: Float32Array.from(p.places, (x) => x[4]),
+      rows: p.places,
+    };
+    // Labels, so a zoomed view says roughly where it is. DOM markers rather
+    // than a symbol layer: MapLibre text needs a glyph server, which the CSP
+    // blocks, and markers render in the page's own typeface. The gazetteer is
+    // ordered largest-first, so rank is the row index; more labels appear as
+    // the zoom rises.
+    const labelPool = p.places.slice(0, 900).map((r, i) => {
+      // A label that names one of the departure cities is a button: clicking
+      // it departs from there. Matched by distance (15 km: the same city under
+      // a spelling that differs between the gazetteer and origins.toml, not the
+      // next town over -- "Incheon" used to be a button that departed from
+      // Seoul). Any other label swallows its click: it is not a destination.
+      const origin = originNear(r[3], r[4], 15);
+      const el = document.createElement(origin ? "button" : "div");
+      el.className = origin ? "lbl origin" : "lbl";
+      el.textContent = r[0];
+      if (origin) {
+        el.type = "button";
+        el.tabIndex = -1;                  // the city list is the keyboard path
+        el.title = `Depart from ${origin.name}`;
+        el.dataset.slug = origin.slug;
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();            // not a destination pin
+          $("here").textContent = "";
+          if (origin.slug !== active?.slug) paintOrigin(origin, { keepZoom: true });
+        });
+      } else {
+        el.addEventListener("click", (ev) => ev.stopPropagation());
+      }
+      const m = new maplibregl.Marker({ element: el, anchor: "top" })
+        .setLngLat([r[4], r[3]]);
+      return { m, rank: i, on: false, lat: r[3], lon: r[4], slug: origin?.slug };
+    });
+    showLabels = () => {
+      const z = map.getZoom();
+      // The opening view (zoom 1.9) must show some names: the first line of
+      // copy says to click one. Eighteen is the largest cities, no clutter.
+      const n = z < 1.2 ? 0 : z < 2.2 ? 18 : z < 3 ? 40 : z < 4 ? 120 : z < 5.5 ? 350 : 900;
+      // Largest cities claim their screen space first; a smaller one whose
+      // label would land within the gap of one already placed is skipped, so
+      // the map thins itself rather than piling names on top of each other.
+      const placed = [];
+      const gapX = 70, gapY = 16;
+      const collides = (pt) => placed.some((q) => Math.abs(q.x - pt.x) < gapX && Math.abs(q.y - pt.y) < gapY);
+      // The departure city first, so everything else yields to it.
+      if (active && onNearSide(active.lat, active.lon)) {
+        const pt = map.project([active.lon, active.lat]);
+        placed.push(pt);
+        if (!originMarkerOn) { originMarker.addTo(map); originMarkerOn = true; }
+      } else if (originMarkerOn) { originMarker.remove(); originMarkerOn = false; }
+      for (const l of labelPool) {
+        let want = l.rank < n && onNearSide(l.lat, l.lon);
+        if (want) {
+          const pt = map.project(l.m.getLngLat());
+          want = pt.x > -50 && pt.y > -20 && pt.x < window.innerWidth + 50
+              && pt.y < window.innerHeight + 20 && !collides(pt);
+          if (want) placed.push(pt);
+        }
+        if (want && !l.on) { l.m.addTo(map); l.on = true; }
+        else if (!want && l.on) { l.m.remove(); l.on = false; }
+      }
+    };
+    // On every frame of a move, not only at rest: otherwise nothing appears
+    // during a zoom-in until it stops, and a rotation can drag far-side
+    // labels into view before the moveend filter removes them.
+    let pending = 0;
+    const onMove = () => {
+      if (pending) return;
+      pending = requestAnimationFrame(() => { pending = 0; showLabels(); });
+    };
+    map.on("move", onMove);
+    showLabels();
+  })
+  .catch(() => { /* the map is still readable without names */ });
+
+function nearestPlace(lat, lon) {
+  if (!places) return null;
+  const rad = Math.PI / 180;
+  const cosLat = Math.cos(lat * rad);
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < places.lat.length; i++) {
+    // Equirectangular is plenty to rank candidates and avoids 34,000 trig calls.
+    const dy = places.lat[i] - lat;
+    const dx = (places.lon[i] - lon) * cosLat;
+    const d = dy * dy + dx * dx;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  if (best < 0) return null;
+  const [name, region, country] = places.rows[best];
+  const km = Math.sqrt(bestD) * 111.32;
+  return { name, region, country, km };
+}
+// Up to 60 km the place is where you are; up to 250 km it is "near"; beyond
+// that the nearest town says nothing about the spot (Antarctica read "near
+// Port-aux-Français", 3,000 km away) and only the coordinates are honest.
+function placeLead(p) {
+  if (!p || p.km > 250) return null;
+  return p.km > 60 ? `near ${p.name}` : p.name;
+}
+
+// ---- the departure city ----
+function paintOrigin(o, { keepZoom = false } = {}) {
   active = o;
+  const gen = ++originGen;
+  originAbort?.abort();
+  const ctl = originAbort = new AbortController();
+  const sig = ctl.signal;
+
   if (map.getLayer("bands")) map.removeLayer("bands");
   if (map.getSource("bands")) map.removeSource("bands");
-
   map.addSource("bands", { type: "vector", url: `pmtiles://./origins/${o.slug}.pmtiles` });
   map.addLayer({
     id: "bands", type: "fill", source: "bands", "source-layer": "bands",
@@ -475,68 +584,99 @@ function paintOrigin(o) {
     }
   }, "water");
 
-  hoverTimes = null;
-  hoverFailed = null;
-  railDetail = null;
+  // Nothing of the previous origin survives the switch: the arrays are nulled
+  // in one synchronous pass, and every response below is applied only while
+  // this switch is still the latest one.
+  origin.times = null; origin.failed = null; origin.air = null;
+  origin.modes = null; origin.routes = null; origin.rail = null;
+  const current = () => gen === originGen;
+  const settle = () => {
+    if (!current()) return;
+    renderPins(); renderLegs();
+    // The reading under the pointer (or the last tap) is redone once the
+    // times land; with no pointer yet, the idle prompt replaces "loading".
+    if (lastPointer) rereadPointer();
+    else if (origin.times && $("where").textContent.startsWith("Loading")) $("where").textContent = IDLE_PROMPT;
+  };
+  // An array from another build has another cell ordering: it would render
+  // plausible, silently wrong times for every cell, which dist/ does during
+  // every rebuild.
+  const checked = (b, width, name) => {
+    if (b.byteLength !== hoverCells.length * width)
+      throw new Error(`${name} has ${Math.floor(b.byteLength / width)} entries but hover_cells.bin has ${hoverCells.length}: the files come from different builds`);
+    return new Uint16Array(b);
+  };
+  const get = (url) => fetch(url, { signal: sig });
+
   // Station naming exists only in builds whose index.json says so; asking an
   // older build for it was two 404s per origin switch.
   if (meta.railDetail) Promise.all([
-    fetch(`./origins/${o.slug}.rail.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)),
-    fetch(`./origins/${o.slug}.rail.json`).then((r) => (r.ok ? r.json() : null)),
+    get(`./origins/${o.slug}.rail.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)),
+    get(`./origins/${o.slug}.rail.json`).then((r) => (r.ok ? r.json() : null)),
   ]).then(([b, j]) => {
-    if (b && j && active === o) { railDetail = { idx: new Uint16Array(b), table: j.stations }; renderLegs(); }
-  }).catch(() => {});
-  fetch(`./origins/${o.slug}.bin`)
+    if (!current() || !b || !j) return;
+    origin.rail = { idx: checked(b, 2, `${o.slug}.rail.bin`), table: j.stations };
+    settle();
+  }).catch((err) => { if (current() && !sig.aborted) console.warn("rail detail unavailable:", err.message); });
+  get(`./origins/${o.slug}.bin`)
     .then((r) => {
-      if (!r.ok) throw new Error(`${r.status} fetching ${o.slug}.bin`);
+      if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${o.slug}.bin`);
       return r.arrayBuffer();
     })
-    .then((b) => { hoverTimes = new Uint16Array(b); renderPins(); renderLegs(); })
+    .then((b) => { if (!current()) return; origin.times = checked(b, 2, `${o.slug}.bin`); settle(); })
     .catch((err) => {
+      if (!current() || sig.aborted) return;
       console.error("hover data unavailable:", err);
-      hoverFailed = o;                 // so the readout says "unavailable", not "loading"
+      origin.failed = err.message;       // so the readout says "unavailable", not "loading"
       $("where").textContent = `Times unavailable for ${o.name}: ${err.message}.`;
+      renderPins();
     });
-
   // The leg breakdown is a progressive extra: an origin built before these
   // files existed still shows times, just without the itinerary.
-  hoverAir = null; routes = null; hoverModes = null;
-  fetch(`./origins/${o.slug}.modes.bin`)
+  get(`./origins/${o.slug}.modes.bin`)
     .then((r) => (r.ok ? r.arrayBuffer() : null))
-    .then((b) => { if (b) hoverModes = new Uint16Array(b); renderLegs(); })
-    .catch(() => {});
-  fetch(`./origins/${o.slug}.air.bin`)
+    .then((b) => { if (!current() || !b) return; origin.modes = checked(b, 2 * MODE_NAMES.length, `${o.slug}.modes.bin`); settle(); })
+    .catch((err) => { if (current() && !sig.aborted) console.warn("mode breakdown unavailable:", err.message); });
+  get(`./origins/${o.slug}.air.bin`)
     .then((r) => (r.ok ? r.arrayBuffer() : null))
-    .then((b) => { if (b) hoverAir = new Uint16Array(b); renderLegs(); })
-    .catch(() => {});
-  fetch(`./origins/${o.slug}.json`)
+    .then((b) => { if (!current() || !b) return; origin.air = checked(b, 2, `${o.slug}.air.bin`); settle(); })
+    .catch((err) => { if (current() && !sig.aborted) console.warn("arrival airports unavailable:", err.message); });
+  get(`./origins/${o.slug}.json`)
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => {
-      if (!j) return;
-      routes = { offsets: j.offsets, byId: new Map(j.nodes.map((n) => [n.id, n])) };
-      renderLegs();
+      if (!current() || !j) return;
+      origin.routes = { offsets: j.offsets, byId: new Map(j.nodes.map((n) => [n.id, n])) };
+      settle();
     })
-    .catch(() => {});
+    .catch((err) => { if (current() && !sig.aborted) console.warn("routes unavailable:", err.message); });
 
-  moveTo({ center: [o.lon, o.lat], zoom: 1.9, speed: 0.75, curve: 1.5 });
-  for (const b of document.querySelectorAll(".results button"))
+  // Keep the visitor's zoom when they chose the city from the globe (they
+  // were reading a region); the list and the permalink open the world view.
+  const zoom = keepZoom ? Math.min(Math.max(map.getZoom(), 1.9), 6) : 1.9;
+  moveTo({ center: [o.lon, o.lat], zoom, speed: 0.75, curve: 1.5 });
+  for (const b of document.querySelectorAll(".results button[data-slug]"))
     b.setAttribute("aria-current", String(b.dataset.slug === o.slug));
   $("origin-name").textContent = o.name;
+  originLabel.textContent = o.name;
+  originLabel.title = `Departure city: ${o.name}`;
+  originMarker.setLngLat([o.lon, o.lat]);
+  showLabels();
+  // The readout belongs to the departure it names: say the new one is
+  // loading rather than keep the old figure beside the new header.
+  $("time").textContent = "—";
+  $("where").textContent = `Loading the times from ${o.name}…`;
+  // The address bar follows the departure, so the view can be shared.
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set("from", o.slug);
+    history.replaceState(null, "", url);
+  } catch { /* file:// or a sandbox without history */ }
   renderPins();
 }
 
 // ---- readout ----
 const fmtCoord = (lat, lon) =>
   `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? "N" : "S"} ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? "E" : "W"}`;
-
-function fmtTime(min) {
-  if (min == null) return ["—", ""];
-  if (min >= UNREACHABLE) return ["∞", "no route"];
-  const h = Math.floor(min / 60), m = Math.round(min % 60);
-  if (h < 1) return [String(m), "min"];
-  if (h < 48) return [String(h), m ? `h ${String(m).padStart(2,"0")}m` : "h"];
-  return [String(Math.floor(h / 24)), `days ${h % 24}h`];
-}
 
 function cellIndex(lat, lon) {
   const id = BigInt("0x" + h3.latLngToCell(lat, lon, HOVER_RES));
@@ -549,34 +689,43 @@ function cellIndex(lat, lon) {
   return -1;                          // ocean, or outside the land mask
 }
 
-// undefined: the origin's times have not arrived (or failed); null: not land.
-// The two used to share null, so land read "Open water." until the fetch
-// landed, and for ever after a failed fetch.
+// null: not land (known from hover_cells.bin alone, so the sea never reads
+// "loading"); undefined: land whose times have not arrived, or failed.
 function lookup(lat, lon) {
-  if (!hoverTimes) return undefined;
   const i = cellIndex(lat, lon);
-  return i < 0 ? null : hoverTimes[i];
+  if (i < 0) return null;
+  return origin.times ? origin.times[i] : undefined;
 }
 
 // Walk the shortest-path tree back from where the journey landed. The chain is
 // cell -> A_dep -> B_arr -> B_dep -> C_arr, so a connection shows up as an
 // arrival immediately followed by a departure at the same airport.
 function legsTo(lat, lon) {
-  if (!hoverAir || !routes) return null;
+  if (!origin.air || !origin.routes) return null;
   const i = cellIndex(lat, lon);
   if (i < 0) return null;
-  const ordinal = hoverAir[i];
+  const ordinal = origin.air[i];
   if (ordinal === NO_AIRPORT) return [];        // overland the whole way
 
-  const { cells, airports, stations } = routes.offsets;
-  const count = (stations - airports) / 2;      // departures AND arrivals
-  let node = routes.byId.get(airports + count + ordinal);
+  const { airports: airOff, stations } = origin.routes.offsets;
+  const count = (stations - airOff) / 2;        // departures AND arrivals
+  let node = origin.routes.byId.get(airOff + count + ordinal);
   const chain = [];
   while (node && chain.length < 24) {
     chain.push(node);
-    node = node.prev == null ? null : routes.byId.get(node.prev);
+    node = node.prev == null ? null : origin.routes.byId.get(node.prev);
   }
   return chain.reverse();
+}
+
+function railVia(i) {
+  const rail = origin.rail;
+  if (!rail || i < 0) return "";
+  const k = rail.idx[i];
+  if (k === NO_RAIL || !rail.table[k]) return "";
+  const [station, line] = rail.table[k];
+  if (!station && !line) return "";
+  return ` via ${station || "a station"}${line ? ` (${line})` : ""}`;
 }
 
 function renderLegs() {
@@ -585,10 +734,9 @@ function renderLegs() {
 
   const total = lookup(pinB.lat, pinB.lon);
   const chain = legsTo(pinB.lat, pinB.lon);
-  if (total == null || total >= UNREACHABLE || chain == null) { box.hidden = true; return; }
+  if (total == null || total >= MAX_MINUTES || chain == null) { box.hidden = true; return; }
 
   const rows = [];
-  const dur = (m) => { const [b, u] = fmtTime(m); return `${b}${u ? " " + u : ""}`; };
   // A code like SHE or FNJ means nothing to most readers: hovering it names
   // the airport and its country. Modes explain how they were modelled.
   const ap = (code) => {
@@ -597,37 +745,34 @@ function renderLegs() {
   };
   const mode = (name) => {
     const tip = meta.modeDetail?.[name] ?? MODE_FALLBACK[name];
-    return tip ? `<span class="mode" tabindex="0" data-tip="${esc(tip)}">${name}</span>` : name;
+    return tip ? `<span class="mode" tabindex="0" data-tip="${esc(tip)}">${esc(name)}</span>` : esc(name);
   };
 
   // "Surface transport, 5 h" says nothing useful. Rail, road and ferry differ
   // enormously in what they imply, and the surface leg is a large share of most
   // journeys, so name the three separately when the data is there.
   const surface = () => {
-    if (!hoverModes) return [];
+    if (!origin.modes) return [];
     const i = cellIndex(pinB.lat, pinB.lon);
     if (i < 0) return [];
-    const names = ["rail", "ferry", "highway", "major road", "minor road", "track"];
-    const n = names.length;
-    return names.map((name, k) => [name, hoverModes[i * n + k]])
+    const n = MODE_NAMES.length;
+    return MODE_NAMES.map((name, k) => [name, origin.modes[i * n + k]])
       .filter(([, m]) => m >= 1)
       .sort((a, b) => b[1] - a[1])
-      .map(([name, m]) => [dur(m), `by <b>${mode(name)}</b>${name === "rail" ? esc(railVia(i)) : ""}`]);
+      .map(([name, m]) => [fmtDur(m), `by <b>${mode(name)}</b>${name === "rail" ? esc(railVia(i)) : ""}`]);
   };
 
   if (chain.length === 0) {
-    // No flight was involved. Saying "overland" would be a claim we cannot
-    // support: the journey may well have gone by rail or ferry, both of which
-    // are in the graph but are not itemised here -- listing them would mean
-    // shipping 57,000 station nodes per origin to name a handful of them.
+    // No flight was involved: itemise the surface modes when the data is
+    // there, otherwise say only what is known.
     const parts = surface();
     if (parts.length) rows.push(...parts);
-    else rows.push([dur(total), "No flight on this route — surface travel"]);
+    else rows.push([fmtDur(total), "No flight on this journey: surface travel"]);
   } else {
-    rows.push([dur(chain[0].min), `To <b>${ap(chain[0].code)}</b>, and through the airport`]);
+    rows.push([fmtDur(chain[0].min), `To <b>${ap(chain[0].code)}</b>, and through the airport`]);
     for (let k = 1; k < chain.length; k++) {
       const a = chain[k - 1], b = chain[k];
-      const t = dur(b.min - a.min);
+      const t = fmtDur(b.min - a.min);
       if (b.kind === "arr") rows.push([t, `Fly <b>${ap(a.code)} → ${ap(b.code)}</b>`]);
       else rows.push([t, `Connect at <b>${ap(b.code)}</b>`]);
     }
@@ -635,23 +780,23 @@ function renderLegs() {
     if (total > landed.min) {
       const parts = surface();
       if (parts.length) {
-        rows.push([dur(total - landed.min), `Onward from <b>${ap(landed.code)}</b>`]);
+        rows.push([fmtDur(total - landed.min), `Onward from <b>${ap(landed.code)}</b>`]);
         // modes.bin sums surface minutes over the WHOLE journey, the access leg
         // to the first airport included, so these rows are not a breakdown of
         // the onward figure and must not be headed as one.
         rows.push(["", "Surface travel over the whole journey:"]);
         rows.push(...parts);
       } else {
-        rows.push([dur(total - landed.min),
+        rows.push([fmtDur(total - landed.min),
                    `From <b>${ap(landed.code)}</b> onward by surface transport`]);
       }
     }
   }
-  rows.push([dur(total), "Door to door", true]);
+  rows.push([fmtDur(total), "Door to door", true]);
 
   const frag = document.createDocumentFragment();
   const h = document.createElement("h2");
-  h.textContent = "Route";
+  h.textContent = `Journey to ${pinB.label}`;
   frag.append(h);
   for (const [t, text, isTotal] of rows) {
     const d = document.createElement("div");
@@ -682,84 +827,83 @@ function bandRangeAt(point) {
   }
   if (b == null) b = hit[0].properties.band;
   if (b === UNREACHABLE_BAND) return "no scheduled route";
-  const lo = b === 0 ? 0 : EDGES[b - 1] / 60;
-  const hi = b < EDGES.length ? EDGES[b] / 60 : null;
-  const f = (h) => (h < 10 ? h.toFixed(1).replace(/\.0$/, "") : Math.round(h));
-  return hi == null ? `over ${f(lo)} h` : `${f(lo)}–${f(hi)} h`;
+  const lo = b === 0 ? 0 : EDGES[b - 1];
+  const hi = b < EDGES.length ? EDGES[b] : null;
+  return hi == null ? `over ${fmtTick(lo)}` : `${fmtTick(lo)} – ${fmtTick(hi)}`;
 }
 
 function describe(lat, lon) {
   if (!namePlaces) return fmtCoord(lat, lon);
   const p = nearestPlace(lat, lon);
-  if (!p) return fmtCoord(lat, lon);
+  const lead = placeLead(p);
+  if (!lead) return fmtCoord(lat, lon);
   const where = [p.region && p.region !== p.name ? p.region : null, p.country]
     .filter(Boolean).join(", ");
-  // Beyond a couple of hundred kilometres the nearest town is not where you
-  // are, so say "near" rather than implying the cursor is on it.
-  const lead = p.km > 60 ? `near ${p.name}` : p.name;
   return `<b>${esc(lead)}</b>${where ? ` — ${esc(where)}` : ""}`;
 }
 
-let raf = 0;
+// The reading for a point: the big number and the line under it. Shared by
+// the pointer and by a tap, which used to update only the pins and left the
+// last pointer reading -- a different continent -- above them.
+function showReading(lat, lng, point) {
+  lastPointer = { lat, lng, point };
+  const t = lookup(lat, lng);
+  const [big, unit] = fmtTime(t);
+  $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
+  const band = point ? bandRangeAt(point) : null;
+  $("where").innerHTML = t === undefined
+    ? (origin.failed
+        ? `Times unavailable for ${esc(active.name)}.`
+        : `Loading the times from ${esc(active?.name ?? "the departure city")}…`)
+    : t === null ? "Open water."
+    : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}`
+      + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`;
+  return t;
+}
+// Once an origin's times land, the reading under the pointer (or the last
+// tap) is redone, so it never keeps saying "loading".
+function rereadPointer() {
+  if (lastPointer) showReading(lastPointer.lat, lastPointer.lng, lastPointer.point);
+}
+
 map.on("mouseout", () => { $("tip").hidden = true; clearHighlight(); });
 map.on("mousemove", (e) => {
   if (raf) return;
   raf = requestAnimationFrame(() => {
     raf = 0;
     const { lat, lng } = e.lngLat;
-    const t = lookup(lat, lng);
-    const [big, unit] = fmtTime(t);
-    $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
-    const band = bandRangeAt(e.point);
-    $("where").innerHTML = t === undefined
-      ? (hoverFailed === active
-          ? `Times unavailable for ${esc(active.name)}.`
-          : `Loading the times from ${esc(active?.name ?? "the departure city")}…`)
-      : t === null ? "Open water."
-      : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}`
-        + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`;
-
+    const t = showReading(lat, lng, e.point);
     const tip = $("tip");
     if (t == null) { tip.hidden = true; clearHighlight(); return; }
     highlight(lat, lng);
     const p = nearestPlace(lat, lng);
-    const where = p ? (p.km > 60 ? `near ${p.name}` : p.name) + (p.country ? `, ${p.country}` : "")
-                    : fmtCoord(lat, lng);
-    tip.innerHTML = `<b>${big}${unit ? " " + unit : ""}</b> <i>door to door · ${esc(where)}</i>`;
+    const lead = placeLead(p);
+    const where = lead ? lead + (p.country ? `, ${p.country}` : "") : fmtCoord(lat, lng);
+    const [big, unit] = fmtTime(t);
+    tip.innerHTML = t >= MAX_MINUTES
+      ? `<b>No scheduled route</b> <i>· ${esc(where)}</i>`
+      : `<b>${big}${unit ? " " + unit : ""}</b> <i>door to door · ${esc(where)}</i>`;
     tip.hidden = false;
-    // Offset so the pointer never covers it; flip when near the right edge.
+    // Offset so the pointer never covers it; flip when near an edge.
     const x = e.originalEvent.clientX, y = e.originalEvent.clientY;
-    const w = tip.offsetWidth;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
     tip.style.left = `${x + 16 + w > window.innerWidth ? x - w - 12 : x + 16}px`;
-    tip.style.top = `${y + 14}px`;
+    tip.style.top = `${y + 14 + h > window.innerHeight ? y - h - 12 : y + 14}px`;
   });
 });
 
 // ---- point to point ----
-let pinB = null;
-// Per hover cell, the last rail station and line the journey used.
-let railDetail = null;
-const NO_RAIL = 0xFFFF;
-function railVia(i) {
-  if (!railDetail || i < 0) return "";
-  const k = railDetail.idx[i];
-  if (k === NO_RAIL || !railDetail.table[k]) return "";
-  const [station, line] = railDetail.table[k];
-  if (!station && !line) return "";
-  return ` via ${station || "a station"}${line ? ` (${line})` : ""}`;
-}
-
 function renderPins() {
   const box = $("pins");
   if (!active) { box.replaceChildren(); return; }
   const rows = [["From", active.name]];
   if (pinB) {
     const t = lookup(pinB.lat, pinB.lon);
-    const [big, unit] = fmtTime(t);
     rows.push(["To", pinB.label]);
-    rows.push(["Door to door", t === undefined ? "loading…" : t === null ? "not on land" : `${big} ${unit}`.trim()]);
+    rows.push(["Time", t === undefined ? (origin.failed ? "unavailable" : "loading…")
+      : t === null ? "open water" : t >= MAX_MINUTES ? "no scheduled route" : `${fmtDur(t)}, door to door`]);
   } else {
-    rows.push(["To", "click the chart"]);
+    rows.push(["To", "click anywhere on the map"]);
   }
   box.replaceChildren(...rows.map(([k, v]) => {
     const d = document.createElement("div");
@@ -767,28 +911,45 @@ function renderPins() {
     const vs = document.createElement("span"); vs.className = "val"; vs.textContent = v;
     d.append(ks, vs); return d;
   }));
+  if (pinB?.geocoded) {
+    const c = document.createElement("div");
+    c.className = "credit";
+    c.textContent = "address by Nominatim © OpenStreetMap contributors";
+    box.append(c);
+  }
   // The clicked point can also become the departure, when a departure city
-  // is near it. This is how you pick a city by clicking the chart.
+  // is near it. This is how you pick a city by clicking the map.
   const near = pinB && originNear(pinB.lat, pinB.lon);
   if (near && near.slug !== active.slug) {
     const b = document.createElement("button");
-    b.type = "button"; b.className = "depart";
+    b.type = "button"; b.className = "btn depart";
     b.textContent = `Depart from ${near.name}`;
     b.addEventListener("click", () => {
       $("here").textContent = "";
       pinB = null;
-      paintOrigin(near);
+      paintOrigin(near, { keepZoom: true });
     });
     box.append(b);
   }
 }
 
+function unfoldSheet() {
+  const rail = document.querySelector(".rail");
+  if (!rail.classList.contains("folded")) return;
+  rail.classList.remove("folded");
+  $("sheet-toggle")?.setAttribute("aria-expanded", "true");
+}
+
 map.on("click", (e) => {
   const { lat, lng } = e.lngLat;
+  const t = showReading(lat, lng, e.point);
+  // Open water and unreached land are not destinations: no pin, no panel,
+  // and no request to Nominatim for a point with nothing to say.
+  if (t === null || (t != null && t >= MAX_MINUTES)) return;
   const p = nearestPlace(lat, lng);
-  pinB = { lat, lon: lng, label: p ? (p.km > 60 ? `near ${p.name}` : p.name)
-                                  : fmtCoord(lat, lng) };
+  pinB = { lat, lon: lng, label: placeLead(p) ?? fmtCoord(lat, lng), geocoded: false };
   $("route").open = true;
+  unfoldSheet();
   renderPins();
   renderLegs();
   reverseGeocode(lat, lng);
@@ -810,32 +971,36 @@ function originNear(lat, lon, maxKm = 80) {
   return best;
 }
 
-$("clear-pins").addEventListener("click", () => { pinB = null; renderPins(); renderLegs(); });
+function clearRoute() { pinB = null; renderPins(); renderLegs(); }
+$("clear-pins").addEventListener("click", clearRoute);
 
 // ---- city and airport list ----
+// Accents are folded on both sides, so "Sao Paulo", "Zurich" and "Bogota"
+// match the cities spelt São Paulo, Zürich and Bogotá.
+const fold = (s) => String(s).normalize("NFD").replace(/\p{M}/gu, "").replace(/ı/g, "i").toLowerCase();
 const cities = meta.origins.slice().sort((a, b) => a.name.localeCompare(b.name));
+for (const c of cities) c.key = fold(c.name);
 const bySlug = new Map(cities.map((c) => [c.slug, c]));
 // Airports are searchable by code ("JFK") or name. Picking one drops it as the
 // DESTINATION -- only the departure cities in index.json have a computed surface.
-let airports = [];
 fetch("./airports.json")
   .then((r) => (r.ok ? r.json() : null))
-  .then((a) => { if (a) airports = a.airports; })
+  .then((a) => { if (a) airports = a.airports.map((row) => Object.assign(row, { key: fold(row[1]) })); })
   .catch(() => {});
 function render(filter = "") {
-  const f = filter.trim().toLowerCase();
-  const hits = f ? cities.filter((c) => c.name.toLowerCase().includes(f)) : cities;
+  const f = fold(filter.trim());
+  const hits = f ? cities.filter((c) => c.key.includes(f)) : cities;
   const list = document.createDocumentFragment();
+  const row = (b) => { const li = document.createElement("li"); li.setAttribute("role", "none"); li.append(b); return li; };
 
   // Airports first when the query looks like a code, so "jfk" is one keystroke
   // from the answer; otherwise after the cities.
   const apHits = f.length >= 2
-    ? airports.filter((a) => a[0].toLowerCase() === f || a[1].toLowerCase().includes(f))
-               .slice(0, 12)
+    ? airports.filter((a) => a[0].toLowerCase() === f || a.key.includes(f)).slice(0, 12)
     : [];
   const airportRows = apHits.map((a) => {
-    const li = document.createElement("li");
     const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "option"); b.tabIndex = -1;
     b.dataset.airport = a[0];
     const name = document.createElement("span");
     const code = document.createElement("b"); code.textContent = a[0];
@@ -843,14 +1008,15 @@ function render(filter = "") {
     const coord = document.createElement("span");
     coord.className = "coord";
     coord.textContent = `${a[2]} · destination`;
-    b.append(name, coord); li.append(b);
-    return li;
+    b.append(name, coord);
+    return row(b);
   });
-  if (f.length === 3 && apHits.some((a) => a[0].toLowerCase() === f)) list.append(...airportRows);
+  const codeFirst = f.length === 3 && apHits.some((a) => a[0].toLowerCase() === f);
+  if (codeFirst) list.append(...airportRows);
 
   for (const c of hits) {
-    const li = document.createElement("li");
     const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "option"); b.tabIndex = -1;
     b.dataset.slug = c.slug;
     b.setAttribute("aria-current", String(active?.slug === c.slug));
     const name = document.createElement("span");
@@ -859,11 +1025,24 @@ function render(filter = "") {
     coord.className = "coord";
     coord.textContent = `${c.lat.toFixed(1)}, ${c.lon.toFixed(1)}`;
     b.append(name, coord);
-    li.append(b);
+    list.append(row(b));
+  }
+  if (!codeFirst) list.append(...airportRows);
+  // Silence read as "nothing happened"; say what the list did not find and
+  // where to look next.
+  if (f && !hits.length && !apHits.length) {
+    const li = document.createElement("li");
+    li.className = "empty"; li.setAttribute("role", "none");
+    li.textContent = `No departure city or airport matches “${filter.trim()}”. Press Enter or “Search address” to look it up.`;
     list.append(li);
   }
-  if (!(f.length === 3 && apHits.some((a) => a[0].toLowerCase() === f))) list.append(...airportRows);
-  $("results").replaceChildren(list);
+  const box = $("results");
+  box.replaceChildren(list);
+  // Roving tabindex: one stop in the tab order (the first row), the arrow
+  // keys walk the rest. 157 rows used to be 157 tab stops between the search
+  // box and the next panel.
+  const first = box.querySelector("button");
+  if (first) first.tabIndex = 0;
 }
 
 // ---- address search ----
@@ -871,67 +1050,94 @@ function render(filter = "") {
 // a street, a landmark, a village. Only on an explicit search -- Enter with
 // no city match, or the button -- never per keystroke: Nominatim's usage
 // policy forbids autocomplete, and the typed query is the one a person meant.
+// The policy also caps the whole site at one request per second, so search
+// and reverse lookups share one queue with the latest request winning.
 const NOMINATIM = "https://nominatim.openstreetmap.org";
-let addressSeq = 0;
+const NOMINATIM_GAP_MS = 1100;
+let nominatimNext = 0;
+let nominatimQueue = Promise.resolve();
+function nominatim(path, isStale) {
+  const run = async () => {
+    if (isStale()) return null;
+    const wait = nominatimNext - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    if (isStale()) return null;
+    nominatimNext = Date.now() + NOMINATIM_GAP_MS;
+    const r = await fetch(`${NOMINATIM}${path}`, { headers: { "Accept-Language": navigator.language || "en" } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  };
+  const p = nominatimQueue.then(run);
+  nominatimQueue = p.catch(() => {});
+  return p;
+}
 async function searchAddress(q) {
   const box = $("results");
   box.querySelector(".addresses")?.remove();
-  if (q.length < 3) return;
   const seq = ++addressSeq;
   const ul = document.createElement("ul");
   ul.className = "addresses";
+  ul.setAttribute("role", "none");
   const head = document.createElement("li");
-  head.className = "head";
-  head.textContent = "Searching addresses…";
+  head.className = "head"; head.setAttribute("role", "none");
   ul.append(head);
   box.append(ul);
+  if (q.length < 3) { head.textContent = "Type at least three characters to search an address."; return; }
+  head.textContent = "Searching addresses…";
   let hits = [], failed = false;
   try {
-    const r = await fetch(`${NOMINATIM}/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`,
-                          { headers: { "Accept-Language": navigator.language || "en" } });
-    if (r.ok) hits = await r.json(); else failed = true;
+    const j = await nominatim(`/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`, () => seq !== addressSeq);
+    if (j === null) return;
+    if (Array.isArray(j)) hits = j; else failed = true;   // an error body arrives as an object
   } catch { failed = true; }
-  if (seq !== addressSeq) return;           // a newer search superseded this one
+  // A newer search, or a changed query, supersedes this one: its results
+  // must not reappear under a different filter.
+  if (seq !== addressSeq || $("q").value.trim() !== q) return;
   ul.replaceChildren(head);
-  // Silence here read as "nothing happened"; say what did.
   head.textContent = failed ? "Address search is unavailable right now."
-    : hits.length ? "Addresses" : `No address found for “${q}”.`;
+    : hits.length ? "Addresses (each becomes the destination)" : `No address found for “${q}”.`;
   for (const h of hits) {
     const li = document.createElement("li");
+    li.setAttribute("role", "none");
     const b = document.createElement("button");
-    b.type = "button";
+    b.type = "button"; b.setAttribute("role", "option"); b.tabIndex = -1;
     b.dataset.geo = `${h.lat},${h.lon}`;
     b.dataset.label = h.display_name;
     const name = document.createElement("span");
     name.textContent = h.display_name.split(",").slice(0, 3).join(",");
     const coord = document.createElement("span");
     coord.className = "coord";
-    coord.textContent = h.display_name.split(",").slice(3).join(",").trim() || h.type;
+    coord.textContent = `${h.display_name.split(",").slice(3).join(",").trim() || h.type} · destination`;
     b.append(name, coord); li.append(b); ul.append(li);
   }
   const credit = document.createElement("li");
-  credit.className = "credit";
+  credit.className = "credit"; credit.setAttribute("role", "none");
   credit.textContent = "Search by Nominatim © OpenStreetMap contributors";
   ul.append(credit);
-  box.append(ul);
 }
 
-// A clicked point gets a proper address, one request per click.
-let reverseSeq = 0;
+// A clicked point gets a proper address. Cached by rounded coordinate, so
+// repeated clicks near one place cost nothing; the latest click wins.
+const reverseCache = new Map();
 async function reverseGeocode(lat, lon) {
   const seq = ++reverseSeq;
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
   try {
-    const r = await fetch(`${NOMINATIM}/reverse?format=jsonv2&zoom=14&lat=${lat}&lon=${lon}`,
-                          { headers: { "Accept-Language": navigator.language || "en" } });
-    if (!r.ok) return;
-    const j = await r.json();
+    let j = reverseCache.get(key);
+    if (!j) {
+      j = await nominatim(`/reverse?format=jsonv2&zoom=14&lat=${lat}&lon=${lon}`, () => seq !== reverseSeq);
+      if (j === null) return;
+      if (reverseCache.size > 200) reverseCache.clear();
+      reverseCache.set(key, j);
+    }
     if (seq !== reverseSeq || !pinB || pinB.lat !== lat) return;
     if (j.display_name) {
       const a = j.address || {};
       const short = [a.road || a.neighbourhood || a.suburb, a.city || a.town || a.village || a.county, a.state, a.country]
         .filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i).join(", ");
       pinB.label = short || j.display_name;
-      renderPins();
+      pinB.geocoded = true;
+      renderPins(); renderLegs();
     }
   } catch { /* offline or rate-limited: the gazetteer name stays */ }
 }
@@ -939,7 +1145,7 @@ $("results").addEventListener("click", (e) => {
   const gb = e.target.closest("button[data-geo]");
   if (gb) {
     const [lat, lon] = gb.dataset.geo.split(",").map(Number);
-    pinB = { lat, lon, label: gb.dataset.label.split(",").slice(0, 3).join(",") };
+    pinB = { lat, lon, label: gb.dataset.label.split(",").slice(0, 3).join(","), geocoded: true };
     moveTo({ center: [lon, lat], zoom: 8, speed: 0.9 });
     $("route").open = true;
     renderPins(); renderLegs();
@@ -949,7 +1155,7 @@ $("results").addEventListener("click", (e) => {
   if (ab) {
     const a = airports.find((x) => x[0] === ab.dataset.airport);
     if (!a) return;
-    pinB = { lat: a[3], lon: a[4], label: `${a[0]} — ${a[1]}` };
+    pinB = { lat: a[3], lon: a[4], label: `${a[0]} — ${a[1]}`, geocoded: false };
     moveTo({ center: [a[4], a[3]], zoom: 5, speed: 0.9 });
     $("route").open = true;
     renderPins(); renderLegs();
@@ -958,13 +1164,14 @@ $("results").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-slug]");
   if (!b) return;
   // The geolocation line is set once and would otherwise keep claiming
-  // "showing Seoul" while the chart shows whatever was just picked.
+  // "showing Seoul" while the map shows whatever was just picked.
   $("here").textContent = "";
   paintOrigin(bySlug.get(b.dataset.slug));
 });
 $("q").addEventListener("input", (e) => render(e.target.value));
-// Enter departs from the first city (or airport) that matches; with no local
-// match it searches the address. Arrows walk the list; Escape clears.
+// Enter picks the first match: a city departs, an airport becomes the
+// destination; with no local match it searches the address. Arrows walk the
+// list; Escape clears the filter, then the route.
 $("q").addEventListener("keydown", (e) => {
   const q = e.target.value.trim();
   if (e.key === "Enter") {
@@ -974,8 +1181,8 @@ $("q").addEventListener("keydown", (e) => {
   } else if (e.key === "ArrowDown") {
     e.preventDefault();
     $("results").querySelector("button")?.focus();
-  } else if (e.key === "Escape" && q) {
-    e.target.value = ""; render();
+  } else if (e.key === "Escape") {
+    if (q) { e.target.value = ""; render(); } else if (pinB) clearRoute();
   }
 });
 $("results").addEventListener("keydown", (e) => {
@@ -984,10 +1191,16 @@ $("results").addEventListener("keydown", (e) => {
   const i = items.indexOf(document.activeElement);
   if (i < 0) return;
   e.preventDefault();
-  if (e.key === "ArrowDown") items[Math.min(i + 1, items.length - 1)].focus();
-  else if (i === 0) $("q").focus(); else items[i - 1].focus();
+  const next = e.key === "ArrowDown" ? items[Math.min(i + 1, items.length - 1)] : (i === 0 ? $("q") : items[i - 1]);
+  for (const it of items) it.tabIndex = -1;
+  if (next !== $("q")) next.tabIndex = 0;
+  next.focus();
 });
 $("find-address").addEventListener("click", () => searchAddress($("q").value.trim()));
+document.addEventListener("keydown", (e) => {
+  // Escape anywhere with a route open clears it, unless a field is using it.
+  if (e.key === "Escape" && pinB && document.activeElement !== $("q")) clearRoute();
+});
 render();
 
 // ---- controls ----
@@ -1013,8 +1226,12 @@ placesBox.addEventListener("change", () => {
 function paintRampPicker() {
   $("ramps").replaceChildren(...Object.entries(RAMPS).map(([key, r]) => {
     const b = document.createElement("button");
+    b.type = "button";
     b.dataset.ramp = key;
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", String(key === rampName));
     b.setAttribute("aria-current", String(key === rampName));
+    b.tabIndex = key === rampName ? 0 : -1;
     const nm = document.createElement("span");
     nm.className = "nm"; nm.textContent = r.name;
     const strip = document.createElement("span");
@@ -1028,10 +1245,8 @@ function paintRampPicker() {
 }
 paintRampPicker();
 
-$("ramps").addEventListener("click", (e) => {
-  const b = e.target.closest("button[data-ramp]");
-  if (!b) return;
-  rampName = b.dataset.ramp;
+function pickRamp(key) {
+  rampName = key;
   BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
   try { localStorage.setItem("ramp", rampName); } catch { /* private mode */ }
   paintLegend();
@@ -1040,23 +1255,39 @@ $("ramps").addEventListener("click", (e) => {
   if (map.getLayer("bands"))
     map.setPaintProperty("bands", "fill-color", bandColorExpression());
   paintSea();
+}
+$("ramps").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-ramp]");
+  if (b) pickRamp(b.dataset.ramp);
+});
+$("ramps").addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const keys = Object.keys(RAMPS), i = keys.indexOf(rampName);
+  e.preventDefault();
+  pickRamp(keys[(i + (e.key === "ArrowDown" ? 1 : keys.length - 1)) % keys.length]);
+  $("ramps").querySelector(`button[data-ramp="${rampName}"]`)?.focus();
 });
 
 applyLockNorth();
 
 // Small screens: the readout joins the bottom sheet and the panels start
-// closed, so the globe gets the screen. Re-evaluated on rotation.
+// closed, so the globe gets the screen. Re-evaluated on rotation; the panels
+// are closed only on the first entry into the small layout, not on every
+// rotation of a phone (which used to fold the route being read).
 const SMALL = window.matchMedia("(max-width: 860px)");
+let smallEntered = false;
 function layoutForSize() {
   const reading = document.querySelector(".reading");
   const rail = document.querySelector(".rail");
   if (SMALL.matches) {
     if (!document.getElementById("sheet-toggle")) {
-      // A grab handle that folds the whole sheet down to one strip, so the
-      // globe can have the entire phone when you want it to.
+      // A grab handle that folds the sheet down to the handle and the legend
+      // strip, so the globe can have the phone when you want it to. The
+      // legend never folds away.
       const t = document.createElement("button");
       t.id = "sheet-toggle"; t.className = "sheet-toggle"; t.type = "button";
       t.setAttribute("aria-label", "Collapse or expand the panel");
+      t.setAttribute("aria-expanded", "true");
       t.innerHTML = "<span></span>";
       t.addEventListener("click", () => {
         const folded = rail.classList.toggle("folded");
@@ -1065,19 +1296,23 @@ function layoutForSize() {
       rail.prepend(t);
     }
     if (reading.parentElement !== rail) rail.insertBefore(reading, document.getElementById("sheet-toggle").nextSibling);
-    for (const d of rail.querySelectorAll("details")) d.open = false;
+    if (!smallEntered) { for (const d of rail.querySelectorAll("details")) d.open = false; smallEntered = true; }
   } else if (reading.parentElement === rail) {
     document.body.insertBefore(reading, document.getElementById("tip"));
+    rail.classList.remove("folded");
     $("departure").open = true;
   }
 }
 layoutForSize();
 SMALL.addEventListener("change", layoutForSize);
 // There is no pointer on a phone.
-if (window.matchMedia("(pointer: coarse)").matches)
-  $("where").textContent = "Tap the chart to read a passage.";
+$("where").textContent = IDLE_PROMPT;
 
+// The departure named in the address (?from=slug) wins over the default; an
+// unknown slug is ignored rather than a blank globe.
 const FALLBACK = bySlug.get("seoul") ?? cities[0];
+let requested = null;
+try { requested = bySlug.get(new URL(location.href).searchParams.get("from") ?? "") ?? null; } catch { /* no URL API */ }
 
 function nearest(lat, lon) {
   let best = FALLBACK, bestKm = Infinity;
@@ -1091,8 +1326,8 @@ function nearest(lat, lon) {
 // Draw at once from the fallback; geolocation may never answer, and making the
 // first frame wait on a permission prompt is exactly the initial wait we do not
 // want. If a position arrives later, quietly re-centre on the nearest city.
-paintOrigin(FALLBACK);
-$("here").textContent = `Showing ${FALLBACK.name}.`;
+paintOrigin(requested ?? FALLBACK);
+$("here").textContent = `Showing ${(requested ?? FALLBACK).name}.`;
 
 // Location only on request. A permission prompt on load, before the page has
 // said what it is for, is the one thing every browser now warns about, and
@@ -1102,12 +1337,15 @@ if (!navigator.geolocation) locate.hidden = true;
 locate.addEventListener("click", () => {
   locate.disabled = true;
   $("here").textContent = "Locating…";
+  // A dismissed permission prompt fires neither callback; do not stay disabled.
+  const release = setTimeout(() => { locate.disabled = false; }, 10000);
   navigator.geolocation.getCurrentPosition(
     (pos) => {
+      clearTimeout(release);
       locate.disabled = false;
       const { latitude: la, longitude: lo } = pos.coords;
       const c = nearest(la, lo);
-      $("here").textContent = `${c.name} is the nearest charted city to you.`;
+      $("here").textContent = `${c.name} is the nearest departure city to you.`;
       map.getSource("me").setData({ type: "FeatureCollection", features: [
         { type: "Feature", geometry: { type: "Point", coordinates: [lo, la] } }] });
       // The surface is the nearest city's, but the view opens on where you
@@ -1120,7 +1358,7 @@ locate.addEventListener("click", () => {
       if (c.slug !== active?.slug && !REDUCED_MOTION.matches) { paintOrigin(c); map.once("moveend", () => moveTo(view)); }
       else { if (c.slug !== active?.slug) paintOrigin(c); moveTo(view); }
     },
-    () => { locate.disabled = false; $("here").textContent = `Location unavailable — showing ${active?.name ?? FALLBACK.name}.`; },
+    () => { clearTimeout(release); locate.disabled = false; $("here").textContent = `Location unavailable — showing ${active?.name ?? FALLBACK.name}.`; },
     { timeout: 8000, maximumAge: 900000 }
   );
 });

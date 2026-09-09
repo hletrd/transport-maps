@@ -1,6 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-2NYW09JSK2"></script>
 <script>
@@ -9,10 +11,8 @@
   gtag('js', new Date());
   gtag('config', 'G-2NYW09JSK2');
 </script>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Isochronic Passage Chart — travel time to anywhere on Earth</title>
-<meta name="description" content="How many hours it takes to reach any point on Earth from hundreds of cities, by air, rail and road. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
+<meta name="description" content="How many hours it takes, door to door, to reach any point on Earth from more than a hundred cities, by air, rail, road and ferry. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
 <link rel="canonical" href="https://worldmap.atik.kr/">
 <meta name="theme-color" content="#0a0b0d">
 <meta name="robots" content="index,follow,max-image-preview:large">
@@ -20,7 +20,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Isochronic Passage Chart">
 <meta property="og:title" content="Isochronic Passage Chart — travel time to anywhere on Earth">
-<meta property="og:description" content="Hours required to reach any point on Earth from hundreds of cities, by air, rail and road. Recomputed from open data, after Galton, 1881.">
+<meta property="og:description" content="Hours required, door to door, to reach any point on Earth from more than a hundred cities, by air, rail, road and ferry. Recomputed from open data, after Galton, 1881.">
 <meta property="og:url" content="https://worldmap.atik.kr/">
 <meta property="og:image" content="https://worldmap.atik.kr/preview.png">
 <meta property="og:image:width" content="1200">
@@ -28,7 +28,7 @@
 <meta property="og:image:alt" content="A dark globe shaded by travel time from Seoul, brightest nearby and fading to violet at three days">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Isochronic Passage Chart">
-<meta name="twitter:description" content="Hours required to reach any point on Earth from hundreds of cities.">
+<meta name="twitter:description" content="Hours required, door to door, to reach any point on Earth from more than a hundred cities.">
 <meta name="twitter:image" content="https://worldmap.atik.kr/preview.png">
 
 <script type="application/ld+json">
@@ -38,12 +38,12 @@
     {
       "@type": "Dataset",
       "@id": "https://worldmap.atik.kr/#dataset",
-      "name": "Global travel-time isochrones from hundreds of cities",
+      "name": "Global travel-time isochrones from more than a hundred cities",
       "description": "Expected door-to-door travel time from each of its origin cities to every land area on Earth, combining scheduled air routes, rail from OpenStreetMap route relations, ferry crossings, and a road-speed model calibrated against 2,998 real driving journeys, with check-in, border-control and transfer penalties. Distributed as PMTiles isochrone bands (37 continuous bands at four levels of detail) plus per-origin binary arrays of time, arrival airport, surface mode and rail station on an H3 grid, with coastlines from OpenStreetMap and lakes from HydroLAKES.",
       "url": "https://worldmap.atik.kr/",
       "keywords": ["isochrone", "travel time", "accessibility", "world map", "H3", "PMTiles", "aviation", "geography"],
       "spatialCoverage": { "@type": "Place", "name": "Earth" },
-      "measurementTechnique": "Single-source Dijkstra over a multi-modal graph of H3 hexagonal land cells at resolution 6 (5.6 km across), refined to resolution 7 (2.1 km) wherever the road network reaches secondary grade or a metropolitan area lies, joined to 3,983 airports, 57,286 rail stations and 5,672 ferry crossings; air times fitted to 107,366 ADS-B flight legs, road speeds to 2,998 sampled driving journeys",
+      "measurementTechnique": "Single-source Dijkstra over a multi-modal graph of H3 hexagonal land cells at resolution 6 (about 36 km², 6.5 km across), refined to resolution 7 (about 5 km², 2.4 km across) wherever the road network reaches secondary grade or a metropolitan area lies, joined to the scheduled-service airports, rail stations and ferry crossings listed in index.json; air times fitted to 107,366 ADS-B flight legs, road speeds to 2,998 sampled driving journeys",
       "creator": { "@type": "Person", "name": "Jiyong Youn" },
       "isBasedOn": [
         "https://ourairports.com/data/",
@@ -81,6 +81,9 @@
 <link rel="modulepreload" href="./vendor/maplibre-gl.js">
 <link rel="modulepreload" href="./vendor/pmtiles.js">
 <link rel="modulepreload" href="./vendor/h3.js">
+<link rel="modulepreload" href="./vendor/fflate.js">
+<link rel="preload" href="./vendor/ibm-plex-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%230a0b0d'/%3E%3Cpath d='M12 3 L15 13 L12 11.4 L9 13 Z' fill='%23e48f35'/%3E%3Cpath d='M12 21 L9 11.6 L12 13.2 L15 11.6 Z' fill='%238f96a0'/%3E%3C/svg%3E">
 <link href="./vendor/fonts.css" rel="stylesheet">
 <link href="./vendor/maplibre-gl.css" rel="stylesheet">
 <style>
@@ -92,6 +95,7 @@
      (WCAG 2.2 AA is 4.5:1); the old #6f757e sat at 3.9:1 and 2.0:1. */
   --text-3:#8f96a0;
   --accent:#e48f35;
+  --r:2px;                       /* one corner radius for every control */
   --font:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
   color-scheme:dark;
 }
@@ -108,8 +112,11 @@ body{
 
 /* ---- panels ---- */
 .panel{
-  background:var(--surface);border:1px solid var(--line);border-radius:2px;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
 }
+/* If the page cannot start, the message in the readout must be visible: on a
+   phone the bottom sheet would otherwise cover it. */
+body.fatal .rail{display:none}
 summary{
   list-style:none;cursor:pointer;padding:10px 14px;
   font-size:12.5px;color:var(--text-2);font-weight:500;
@@ -125,7 +132,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 /* ---- masthead ---- */
 .mast{
   position:fixed;top:14px;left:14px;z-index:6;max-width:32ch;
-  padding:10px 14px 12px;border-radius:3px;
+  padding:10px 14px 12px;border-radius:var(--r);
   /* The globe runs bright under this corner, and light text on a cream band is
      unreadable. A scrim rather than a card: no border, no shadow, just enough
      to hold the type. */
@@ -138,7 +145,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 /* ---- reading + legend, always visible ---- */
 .reading{
   position:fixed;left:14px;bottom:14px;z-index:6;width:306px;
-  padding:14px 16px 15px;border-radius:3px;
+  padding:14px 16px 15px;border-radius:var(--r);
   background:color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
 }
@@ -155,14 +162,17 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .tints span{flex:1}
 .scale{position:relative;height:15px;margin-top:5px}
 .scale span{
-  position:absolute;transform:translateX(-50%);font-size:10px;color:var(--text-3);
+  position:absolute;transform:translateX(-50%);font-size:11px;color:var(--text-3);
   white-space:nowrap;
 }
-.legend-cap{margin:6px 0 0;font-size:10.5px;color:var(--text-3)}
-.reading .disclaimer{margin:4px 0 0;font-size:10px;color:var(--text-3);line-height:1.4}
+/* The last tick sits on the strip's end and would overhang it. */
+.scale span.last{transform:translateX(-100%)}
+.legend-cap{margin:6px 0 0;font-size:11px;color:var(--text-3)}
+.reading .disclaimer{margin:4px 0 0;font-size:11px;color:var(--text-3);line-height:1.4}
+.reading .built{margin:2px 0 0;font-size:11px;color:var(--text-3)}
 /* The two tones the ramp does not cover: land no scheduled service reaches, and
    the sea. Without them a tenth of the land is a grey the legend never names. */
-.keys{display:flex;gap:14px;margin-top:7px;font-size:10.5px;color:var(--text-3)}
+.keys{display:flex;gap:14px;margin-top:7px;font-size:11px;color:var(--text-3)}
 .key{display:inline-flex;align-items:center;gap:5px}
 .keys .sw{width:14px;height:9px;border-radius:1px;display:inline-block;border:1px solid var(--line)}
 
@@ -194,14 +204,18 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
 .results button{
   width:100%;text-align:left;background:none;border:0;cursor:pointer;color:var(--text-2);
-  font-family:inherit;font-weight:400;font-size:13px;line-height:1.4;padding:4px 0;
+  font-family:inherit;font-weight:400;font-size:13px;line-height:1.4;padding:4px 2px;
   display:flex;justify-content:space-between;gap:10px;align-items:baseline;
 }
+/* The ring is drawn INSIDE the row: the list is a scroll box whose edges meet
+   the buttons', so an outset ring was clipped to a one-pixel underline. */
+.results button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.results .empty{font-size:11.5px;color:var(--text-3);padding:6px 0;line-height:1.45}
 .results button:hover{color:var(--text)}
 .results button[aria-current="true"]{color:var(--accent);font-weight:500}
 .results .coord{font-size:10.5px;color:var(--text-3);flex:none}
 #q{
-  width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:2px;
+  width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);
   color:var(--text);font-family:inherit;font-weight:400;font-size:13px;line-height:1.5;padding:6px 8px;
 }
 #q:focus{border-color:var(--line-2)}
@@ -209,7 +223,8 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 #q::placeholder{color:var(--text-3)}
 .here{margin:0 0 8px;font-size:11px;color:var(--text-3);line-height:1.45}
 .qrow{display:flex;gap:8px;align-items:center;margin-top:7px}
-.qhint{font-size:10.5px;color:var(--text-3);line-height:1.35}
+.qrow .btn{flex:none;white-space:nowrap}       /* the hint yields, the button never wraps */
+.qhint{flex:1 1 auto;min-width:0;font-size:10.5px;color:var(--text-3);line-height:1.35}
 
 /* ---- settings ---- */
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;
@@ -219,11 +234,11 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 /* A color scheme cannot be judged from its name, so each option shows the
    actual ramp it will paint. */
 .rampwrap{padding:7px 0 2px;border-top:1px solid var(--line)}
-.rowlabel{font-size:12.5px;color:var(--text-2);padding-bottom:6px}
 .ramps{display:flex;flex-direction:column;gap:5px}
+.rowlabel{font-size:12.5px;color:var(--text-2);padding-bottom:6px}
 .ramps button{
   display:flex;align-items:center;gap:9px;width:100%;cursor:pointer;
-  background:none;border:1px solid transparent;border-radius:2px;padding:3px;
+  background:none;border:1px solid transparent;border-radius:var(--r);padding:5px 4px;  /* 24 px tall */
   font-family:inherit;font-weight:400;font-size:12px;line-height:1.2;color:var(--text-3);text-align:left;
 }
 .ramps button:hover{color:var(--text-2)}
@@ -234,7 +249,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 
 /* Follows the pointer, so the reading is where the eye already is. */
 .tip{
-  position:fixed;z-index:8;pointer-events:none;padding:5px 8px;border-radius:2px;
+  position:fixed;z-index:8;pointer-events:none;padding:5px 8px;border-radius:var(--r);
   background:color-mix(in srgb, var(--bg) 86%, transparent);
   border:1px solid var(--line);backdrop-filter:blur(6px);
   font-size:12px;color:var(--text);white-space:nowrap;
@@ -244,14 +259,21 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 /* Place labels: DOM markers in the page's own typeface. */
 .lbl{font-family:var(--font);font-size:11px;line-height:1.3;color:var(--text-2);white-space:nowrap;pointer-events:none;
   text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 0 3px var(--bg),0 1px 2px var(--bg)}
-/* A label that names a departure city is a button. */
-.lbl.origin{pointer-events:auto;cursor:pointer;background:none;border:0;padding:0;margin:0;
+/* Every label swallows its click (it is not a destination); a label that
+   names a departure city is a button, marked with a dot so it can be told
+   from a place name, and the active departure is in the accent. The padding
+   and negative margin give a 24 px hit area without moving the text. */
+.lbl{pointer-events:auto}
+.lbl.origin{cursor:pointer;background:none;border:0;padding:5px 6px;margin:-5px -6px;
   font-weight:500;color:var(--text)}
+.lbl.origin::before{content:"";display:inline-block;width:4px;height:4px;border-radius:50%;
+  background:currentColor;margin:0 4px 2px 0;vertical-align:middle}
 .lbl.origin:hover{text-decoration:underline}
-.lbl.origin:focus-visible{text-decoration:underline;outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
-.pins .depart{margin-top:8px;padding:5px 10px;font:inherit;font-size:12px;color:var(--text);
-  background:var(--surface-2);border:1px solid var(--line, #2a2e36);border-radius:6px;cursor:pointer}
-.pins .depart:hover{background:var(--surface)}
+.lbl.origin[aria-current="true"]{color:var(--accent);cursor:default}
+.lbl.origin[aria-current="true"]:hover{text-decoration:none}
+.lbl.origin:focus-visible{text-decoration:underline;outline:2px solid var(--accent);outline-offset:0;border-radius:var(--r)}
+.pins .depart{margin-top:8px}
+.pins .credit{font-size:10.5px;color:var(--text-3);padding:2px 0 0}
 .results .addresses{list-style:none;margin:6px 0 0;padding:6px 0 0;border-top:1px solid var(--line)}
 .results .addresses .head{font-size:11px;color:var(--text-3);padding:2px 0 4px}
 .results .addresses .credit{font-size:10.5px;color:var(--text-3);padding:6px 0 0}
@@ -268,10 +290,11 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .row label{cursor:pointer}
 .hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}
 .btn{
-  background:var(--surface-2);border:1px solid var(--line);border-radius:2px;color:var(--text-2);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);color:var(--text-2);
   font-family:inherit;font-weight:500;font-size:12px;line-height:1;padding:7px 10px;cursor:pointer;
 }
 .btn:hover{color:var(--text);border-color:var(--line-2)}
+.btn:disabled{color:var(--text-3);cursor:progress}
 
 /* ---- compass ---- */
 .compass{
@@ -280,7 +303,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   display:grid;place-items:center;
 }
 .compass:hover{border-color:var(--line-2)}
-.compass:focus-visible,.btn:focus-visible,.results button:focus-visible,.ramps button:focus-visible,
+.compass:focus-visible,.btn:focus-visible,.ramps button:focus-visible,
 summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .compass svg{width:26px;height:26px;display:block}
 .compass .needle{transform-origin:12px 12px}
@@ -330,13 +353,18 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   .legs{max-height:20vh}
   .results{max-height:26vh}
   .lbl{font-size:10px}
-  /* grab handle; the sheet folds to just this strip */
+  /* grab handle; the sheet folds to this strip plus the legend, which is
+     always visible (a standing rule): the readout's number, the keys and
+     the route fold away, the band strip and its ticks stay. */
   .sheet-toggle{
-    display:block;width:100%;height:22px;flex:none;cursor:pointer;
+    display:block;width:100%;height:28px;flex:none;cursor:pointer;
     background:var(--surface);border:0;border-bottom:1px solid var(--line);padding:0;
   }
-  .sheet-toggle span{display:block;width:38px;height:4px;margin:9px auto;border-radius:2px;background:var(--line-2)}
-  .rail.folded > :not(.sheet-toggle){display:none}
+  .sheet-toggle span{display:block;width:38px;height:4px;margin:12px auto;border-radius:2px;background:var(--line-2)}
+  .rail.folded > :not(.sheet-toggle):not(.reading){display:none}
+  .rail.folded > .reading{padding:6px 14px 8px;border-bottom:0}
+  .rail.folded .reading > :not(.legend),.rail.folded .legend > :not(.tints):not(.scale){display:none}
+  .rail.folded .legend{margin-top:0}
   .rail.folded{max-height:none}
 }
 /* phones on their side: too short for a bottom sheet; use a narrow right rail */
@@ -349,16 +377,16 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 </style>
 </head>
 <body>
-<div id="map" role="img" aria-label="Interactive globe shaded by travel time from the selected departure city"></div>
+<div id="map" role="application" aria-roledescription="globe" aria-label="Interactive globe shaded by travel time from the selected departure city; drag to rotate, scroll to zoom, click to set a destination"></div>
 
 <header class="mast">
   <h1>Isochronic Passage Chart</h1>
-  <p>Hours to reach any point on Earth, by air, rail and road. After Galton, 1881.</p>
+  <p>Hours to reach any point on Earth, door to door, by air, rail, road and ferry. After Galton, 1881.</p>
 </header>
 
 <div class="reading">
   <p class="v" id="time">—</p>
-  <p class="at" id="where">Move the pointer over the chart to read a passage. Click a city name to depart from it.</p>
+  <p class="at" id="where" aria-live="polite">Move the pointer over the map to read a travel time. Click a city name to depart from it, or click anywhere for the route.</p>
 
   <div class="legend">
     <div class="tints" id="tints"></div>
@@ -369,6 +397,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
     </div>
     <p class="legend-cap">Hours from the departure city, door to door.</p>
     <p class="disclaimer" id="disclaimer">For reference only: estimates from open data and a simplified model, with no warranty.</p>
+    <p class="built" id="built"></p>
   </div>
 
   <div class="legs" id="legs" hidden></div>
@@ -380,7 +409,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <g class="needle" id="needle">
       <path d="M12 3 L15 13 L12 11.4 L9 13 Z" fill="#e48f35"></path>
-      <path d="M12 21 L9 11.6 L12 13.2 L15 11.6 Z" fill="#6f757e"></path>
+      <path d="M12 21 L9 11.6 L12 13.2 L15 11.6 Z" fill="#8f96a0"></path>
     </g>
   </svg>
 </button>
@@ -393,24 +422,25 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
         <button class="btn" id="locate" type="button">Start from the city nearest me</button>
       </div>
       <p class="here" id="here"></p>
-      <input id="q" type="search" placeholder="City, airport code or address…" autocomplete="off" spellcheck="false" aria-label="Search departure cities, airports or addresses">
+      <input id="q" type="search" placeholder="City, airport code or address…" autocomplete="off" spellcheck="false" aria-label="Search departure cities, airports or addresses" aria-controls="results">
       <div class="qrow">
         <button class="btn" id="find-address" type="button">Search address</button>
-        <span class="qhint">Enter departs from the first city match.</span>
+        <span class="qhint">Enter picks the first match: a city departs; an airport or address is the destination.</span>
       </div>
-      <ul class="results" id="results"></ul>
+      <ul class="results" id="results" role="listbox" aria-label="Departure cities, airports and addresses"></ul>
     </div>
   </details>
 
   <details class="panel" id="route">
     <summary>Route</summary>
     <div class="body">
-      <p class="hint" style="margin-top:0">Click anywhere on the chart to set a destination; the
-        route from the departure city appears here. To change the departure, pick a city
-        in the list above, click a city name on the globe, or click near a city and press
-        “Depart from”. Only the <span id="n-cities">…</span> charted cities have a computed
-        surface, so a departure snaps to the nearest of them.</p>
-      <div class="pins" id="pins"></div>
+      <p class="hint" style="margin-top:0">Click anywhere on the map to set a destination; the
+        journey from the departure city is itemised under the legend. To change the
+        departure, pick a city in the list above, click a city name marked with a dot on
+        the map, or click near a city and press “Depart from”. Only the
+        <span id="n-cities">…</span> departure cities have a computed surface, so a
+        departure snaps to the nearest of them.</p>
+      <div class="pins" id="pins" aria-live="polite"></div>
       <button class="btn" id="clear-pins" style="margin-top:10px">Clear</button>
     </div>
   </details>
@@ -429,10 +459,10 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
         <input type="checkbox" id="show-places" checked>
       </div>
       <div class="rampwrap">
-        <div class="rowlabel">Color scheme</div>
-        <div id="ramps" class="ramps"></div>
+        <div class="rowlabel" id="ramps-label">Colour scheme</div>
+        <div id="ramps" class="ramps" role="radiogroup" aria-labelledby="ramps-label"></div>
       </div>
-      <p class="hint">Drag to rotate the globe, scroll to zoom. Locking to north
+      <p class="hint">Drag to rotate the map, scroll to zoom. Locking to north
         disables rotation so dragging only pans.</p>
     </div>
   </details>
@@ -440,14 +470,18 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <details class="panel" id="key">
     <summary>Sources and method</summary>
     <div class="body">
-      <p>Reckoned from a planned departure: the first service is not waited for,
-         but onward connections are.</p>
-      <p>Door to door, not gate to gate. The reckoning includes the passage to the
+      <p>Times assume you leave when you choose: the first service is not waited
+         for. A flight connection is charged the minimum connection time or the
+         expected wait for the next departure, whichever is longer, capped at the
+         cost of leaving the terminal and re-entering it (about an hour to an hour
+         and a half); rail and ferry legs carry no wait.</p>
+      <p>Door to door, not gate to gate. The time includes the trip to the
          airport, check-in and security, border control where one is crossed, and
-         the journey from the arrival field into the city. A flight of two hours
-         commonly makes a passage of five.</p>
+         the trip from the arrival airport into the city. A flight of two hours
+         commonly makes a journey of five.</p>
       <p>Address search and click-to-address send the typed text or the clicked
-         coordinates to OpenStreetMap’s Nominatim service. Page views are counted
+         coordinates to OpenStreetMap’s Nominatim service (no more than one request
+         a second, and never as you type). Page views are counted
          by Google Analytics. Everything else is computed in the browser from
          files on this site.</p>
       <p class="src" id="credits"></p>
@@ -463,7 +497,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <div style="position:fixed;inset:0;background:#0a0b0d;color:#e9e7e4;z-index:20;padding:40px;max-width:62ch">
     <h1 style="font-weight:600">Isochronic Passage Chart</h1>
     <p>An interactive world map showing how many hours it takes to reach any point
-    on Earth from hundreds of cities, combining scheduled flights, rail, ferries,
+    on Earth from more than a hundred cities, combining scheduled flights, rail, ferries,
     road speed and transfer times. It needs JavaScript and WebGL to draw the globe.</p>
     <p>Built from open data: OurAirports, Wikipedia (CC BY-SA 4.0), Wikidata,
     OpenStreetMap (ODbL), GRIP4 road density, Natural Earth, GeoNames (CC BY 4.0),

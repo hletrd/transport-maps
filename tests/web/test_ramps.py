@@ -26,11 +26,29 @@ def test_two_near_identical_anchors_are_caught(check_ramps):
 
 
 def test_every_sea_is_darker_than_the_darkest_band_and_lighter_than_space(check_ramps):
-    """The globe must stand off the page: sea above the ground's lightness,
-    and below every band so the darkest band still reads as land."""
-    space_l = check_ramps.srgb_to_oklab("#0a0b0d")[0]
+    """The globe must stand off the page: sea above SPACE (the ground behind
+    the globe, not the page background), and below every band so the darkest
+    band still reads as land. Measured by the script itself, as the README
+    and CLAUDE.md say it is."""
+    space = check_ramps.constant("SPACE")
     for key, r in check_ramps.ramps().items():
-        sea_l = check_ramps.srgb_to_oklab(r["sea"])[0]
-        darkest = check_ramps.srgb_to_oklab(r["c"][-1])[0]
-        assert sea_l > space_l + 0.05, f"{key}: sea {sea_l:.2f} too close to space {space_l:.2f}"
-        assert sea_l < darkest - 0.04, f"{key}: sea {sea_l:.2f} not darker than last band {darkest:.2f}"
+        assert not [p for p in check_ramps.scheme_problems(r, space) if "sea" in p], \
+            f"{key}: {check_ramps.scheme_problems(r, space)}"
+
+
+def test_every_schemes_grey_is_separable_from_all_37_bands(check_ramps):
+    """One shared grey sat 0.9 from a Mono band and 6.1 from a Muted one; the
+    legend entry for 'no scheduled route' is only useful if the swatch is
+    visibly not a band."""
+    space = check_ramps.constant("SPACE")
+    for key, r in check_ramps.ramps().items():
+        bands = check_ramps.expand(r["c"])
+        d = min(check_ramps.delta_e(check_ramps.srgb_to_oklab(r["grey"]), b) for b in bands)
+        assert d >= check_ramps.MIN_GREY_DELTA_E, f"{key}: grey {r['grey']} is {d:.1f} from a band"
+        assert not [p for p in check_ramps.scheme_problems(r, space) if "grey" in p]
+
+
+def test_a_grey_that_matches_a_band_is_caught(check_ramps):
+    r = dict(check_ramps.ramps()["mono"])
+    r["grey"] = "#4a4d50"                      # the old shared grey, 0.9 from band 28
+    assert any("grey" in p for p in check_ramps.scheme_problems(r, check_ramps.constant("SPACE")))
