@@ -205,15 +205,19 @@ def band_feature_collection(idx, cell_minutes: np.ndarray) -> dict:
         order.append(UNREACHABLE_BAND)
 
     features = []
-    claimed = None
+    # Smoothing moves a boundary by well under one cell, so a band can only
+    # overlap its immediate neighbours. Subtracting only the previously emitted
+    # band -- not the union of everything so far -- keeps this linear in the
+    # band count. With 37 bands the accumulated-union version took 23 minutes
+    # per origin; the disjoint-bands gate still verifies the result.
+    previous = None
     for band in order:
         geometry = _dissolve(by_band[band])
-        if claimed is not None:
-            geometry = shapely.make_valid(shapely.difference(geometry, claimed))
+        if previous is not None:
+            geometry = _polygonal(shapely.make_valid(shapely.difference(geometry, previous)))
         if geometry.is_empty:
             continue
-        claimed = (geometry if claimed is None
-                   else shapely.make_valid(shapely.union_all([claimed, geometry])))
+        previous = geometry
         features.append({
             "type": "Feature",
             "properties": {
