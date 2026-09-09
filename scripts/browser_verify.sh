@@ -9,7 +9,7 @@ echo "=== data-level checks (desktop) ==="
 R=$(agent-browser eval '(()=>{const q=s=>document.querySelector(s);return JSON.stringify({
   canvas:!!q("#map canvas"), cities:document.querySelectorAll(".results button").length,
   tints:document.querySelectorAll(".tints span").length, ramps:document.querySelectorAll("#ramps button").length,
-  borders:!!q(".maplibregl-canvas"), disclaimer:document.body.innerText.includes("For reference only")})})()' 2>&1 | tail -1)
+  borders:!!q(".maplibregl-canvas"), disclaimer:document.body.textContent.includes("For reference only")})})()' 2>&1 | tail -1)
 echo "  $R"
 echo "$R" | grep -q '"canvas":true' || fail=1
 echo "$R" | grep -q '"tints":37' || { echo "  !! expected 37 legend swatches"; fail=1; }
