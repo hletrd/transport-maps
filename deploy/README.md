@@ -18,6 +18,16 @@ the canvas, the city list and legend counts (read from the deployed
 and tooltips, address search, click-to-depart, zoom 3, the console, and four
 viewports. **A deploy is not done until that has passed** (CLAUDE.md).
 
+## Before deploying
+
+- Run `uvx pip-audit` (not installed in the venv; run it ad hoc) and
+  `uv run pytest tests/test_licence_firewall.py`.
+- The CSP has never been rehearsed against the page on a server (SEC-19).
+  That rehearsal is owed before the first install: serve `dist/` behind
+  `deploy/worldmap-security-headers.conf`, open the page and confirm the map,
+  the address search and the Google tag all load with no CSP report in the
+  console.
+
 ## Caching is load-bearing, not an optimisation
 
 Every artifact except the fonts is rewritten by a rebuild, and they must change
@@ -29,10 +39,16 @@ Every artifact except the fonts is rewritten by a rebuild, and they must change
 A browser holding one old file and one new one renders a blank globe with no
 console error. That shipped once: after a redesign, visitors got new HTML with a
 cached old `app.js`, which threw on a missing element and killed the map before
-it was created. Hence `no-cache` on html/js/json/txt/xml/bin/pmtiles — ETags
-make the revalidation a 304, so the cost is a round trip, not a re-download.
+it was created. Hence `no-cache` on html/js/json/txt/xml/css/png/bin/pmtiles —
+ETags make the revalidation a 304, so the cost is a round trip, not a
+re-download. `css` and `png` were missing from that list once: they matched no
+location, fell through to `location /` with no `Cache-Control` at all, and a
+revalidated `maplibre-gl.js` beside a heuristically cached old
+`maplibre-gl.css` is exactly the mismatch above.
 
-`.woff2` is the one genuinely immutable asset and is cached for a year.
+`.woff2` is the one asset cached for a year. The font files are named by
+family/subset/weight, not by content — bump the filename when Plex is
+refreshed, or the old face is served for a year.
 
 ## Security headers: the `add_header` inheritance trap
 
@@ -59,7 +75,9 @@ search, only on request) and the Google tag (loader by host, inline bootstrap by
 hash, collection endpoints in `connect-src`/`img-src`) — plus `blob:` for
 MapLibre's workers. Changing the inline gtag snippet in `web/index.html` changes
 its hash; recompute it (`sha256` of the exact script text, base64) and update
-the snippet, or the tag stops loading silently.
+the snippet, or the tag stops loading silently. Google signals are off; enabling
+them would need the extra hosts `https://*.g.doubleclick.net
+https://*.google.com` in the CSP, which does not list them.
 
 ## Range requests
 

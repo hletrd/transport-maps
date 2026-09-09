@@ -16,9 +16,11 @@ check-in and security, border control where a zone is crossed, and the journey
 out of the arrival airport are all in the figure. They are drawn in 37 bands on
 a geometric ladder from under 30 minutes to over 72 hours; the band edges are
 `bandEdgesMin` in index.json. A departure is treated as planned, so the first
-service is not waited for; onward flight connections are charged an expected
-wait at the connecting airport. Rail and ferry legs are charged running time
-plus boarding or terminal time, without a headway model yet.
+service is not waited for. An onward flight connection is charged the minimum
+connection time or the expected wait for the next service, whichever is
+longer, capped at the cost of leaving and re-entering the terminal (about an
+hour to an hour and a half). Rail and ferry legs carry no wait: they are
+charged running time plus boarding or terminal time.
 
 ## How it is computed
 
@@ -31,17 +33,22 @@ road-density rasters, halved inside cities. Flights connect airport pairs taken
 from Wikipedia's "Airlines and destinations" tables, resolved to IATA codes
 through Wikidata property P238, with block time modelled from great-circle
 distance. Rail runs stop to stop along OpenStreetMap route relations; ferries
-along OpenStreetMap ferry routes. The per-cell result is dissolved into bands
+along OpenStreetMap ferry ways. The per-cell result is dissolved into bands
 and shipped as PMTiles at four levels of detail, plus per-origin binary arrays
 of time, arrival airport, surface mode and rail station on a resolution-4 hover
-grid.
+grid. The arrays are little-endian uint16, one value per hover cell: `.bin`
+(time, 181 KB), `.air.bin` (arrival airport, 181 KB), `.rail.bin` (rail
+station, 181 KB) and `.modes.bin` (1.09 MB, six channels per cell).
+`hover_cells.bin` (726 KB) gives their ordering: the sorted resolution-4 cell
+ids as little-endian uint64.
 
 ## Known limits
 
-- Flight frequency is a fitted gravity model, not published timetables.
+- Flight frequency is a gravity model hand-fitted to two anchor routes, not
+  published timetables.
 - Rail and ferry legs carry no waiting time.
-- Coverage is about 98% of land; the remainder has no modelled route and is
-  drawn in a neutral grey the legend names.
+- Every departure reaches at least 90 % of non-Antarctic land (a build gate);
+  land with no modelled route is drawn in the grey the legend names.
 - The build that is live may lag the code: `solveRes`, `origins` and
   `modeDetail` in index.json describe what is actually served.
 
@@ -50,7 +57,7 @@ grid.
 - OurAirports (public domain) - airport locations and service status
 - Wikipedia (CC BY-SA 4.0) - airline route network
 - Wikidata (CC0) - IATA code resolution
-- OpenStreetMap (ODbL) - coastlines drawn on the map; rail and ferry route relations
+- OpenStreetMap (ODbL) - coastlines drawn on the map; rail route relations and ferry ways
 - GRIP4 (CC0) - global road density; itself built partly from OpenStreetMap
 - Natural Earth (public domain) - land mask, country borders, populated places behind the urban mask
 - GeoNames (CC BY 4.0) - departure cities and the place names under the cursor (cities15000)
