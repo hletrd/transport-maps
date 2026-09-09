@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from transport_maps import _io
 from transport_maps.emit.hover import MAX_MINUTES
 
 # scipy marks "no predecessor" with -9999.
@@ -58,5 +59,4 @@ def write_routes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) 
         },
         "nodes": nodes,
     }
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    _io.write_text(out, json.dumps(payload, separators=(",", ":")))

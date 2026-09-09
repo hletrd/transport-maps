@@ -7,7 +7,7 @@ from pathlib import Path
 import h3
 import numpy as np
 
-from transport_maps import config
+from transport_maps import _io, config
 from transport_maps.emit import hover
 
 # Redistribution obligations of the open datasets this artifact is derived from.
@@ -99,8 +99,7 @@ def write_hover_cells(idx, out: Path) -> None:
     form, and binary-searches this array to get the index into each origin's .bin.
     """
     ids = np.array([h3.str_to_int(c) for c in hover.hover_cells(idx)], dtype="<u8")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(ids.tobytes())
+    _io.write_bytes(out, ids.tobytes())
 
 
 def mode_detail() -> dict[str, str]:
@@ -140,5 +139,4 @@ def write_index(origins: list[dict], out: Path) -> None:
             for o in origins
         ],
     }
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    _io.write_text(out, json.dumps(payload, separators=(",", ":")))

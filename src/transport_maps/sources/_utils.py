@@ -1,13 +1,9 @@
 """Shared utilities for sources modules."""
 
-import hashlib
-import json
-import os
-import pathlib
-import tempfile
-from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+
+from transport_maps._io import atomic_write, params_hash
 
 
 def _retry_after_seconds(value: str | None, attempt: int) -> float:
@@ -58,37 +54,10 @@ def _validated_json(response, *, expect_key: str, require_batchcomplete: bool) -
     return body[expect_key]
 
 
-def _umask() -> int:
-    """Read the process umask without leaving it changed."""
-    current = os.umask(0)
-    os.umask(current)
-    return current
-
-
-def _atomic_write(path: pathlib.Path, write_fn: Callable[[pathlib.Path], None]) -> None:
-    """Write via a same-directory temp file, then atomically replace `path`.
-
-    `write_fn` receives the temp file's path and must write the full content
-    to it. Same-directory rename is atomic on POSIX, so a process killed
-    mid-write can never leave a truncated file at `path` for the next run's
-    `.exists()` check to mistake for a complete, valid cache entry.
-    """
-    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-    os.close(fd)
-    tmp_path = pathlib.Path(tmp_name)
-    try:
-        write_fn(tmp_path)
-        # mkstemp creates 0600 and os.replace preserves it, so without this
-        # every artifact written here is unreadable by anyone but the build
-        # user -- which a web server serving dist/ answers as 403. Honour the
-        # umask rather than forcing 0644.
-        os.chmod(tmp_path, 0o666 & ~_umask())
-        os.replace(tmp_path, path)
-    except BaseException:
-        tmp_path.unlink(missing_ok=True)
-        raise
-
-
+# The atomic writer and the cache-key hash moved to transport_maps._io so the
+# emit and contour layers stop importing a private helper from sources; these
+# names stay for the callers in this package.
+_atomic_write = atomic_write
 def _refuse_partial(what: str, unresolved: list[str], remedy: str) -> None:
     """Abort rather than let a partially-crawled result become the cached one.
 
@@ -109,17 +78,4 @@ def _refuse_partial(what: str, unresolved: list[str], remedy: str) -> None:
     )
 
 
-def _params_hash(*values, length: int = 8) -> str:
-    """Short stable digest of the constants that govern a derived cache.
-
-    Derived caches key on a bare `.exists()`, so lowering (say)
-    DENSITY_THRESHOLD and re-running would short-circuit on the file built
-    under the OLD value: the change silently never takes effect, and every test
-    still passes because they all read the same stale artifact. Stamping this
-    into the filename turns that into a cache MISS instead.
-
-    Values are serialised with `json.dumps(..., sort_keys=True)`, so dict order
-    does not affect the digest but any change of value does.
-    """
-    payload = json.dumps(values, sort_keys=True, default=repr)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:length]
+_params_hash = params_hash

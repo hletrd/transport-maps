@@ -17,7 +17,7 @@ from pathlib import Path
 import h3
 import numpy as np
 
-from transport_maps import config
+from transport_maps import _io, config
 
 # uint16 holds 65,535, the sentinel. Anything at or beyond 65,534 minutes (45
 # days) is emitted AS the sentinel: a journey that long is "no route" on the
@@ -70,5 +70,4 @@ def write_hover(idx, cell_minutes: np.ndarray, out: Path) -> None:
         np.isfinite(best) & (best < MAX_MINUTES), best, config.UNREACHABLE
     ).astype("<u2")
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(encoded.tobytes())
+    _io.write_bytes(out, encoded.tobytes())

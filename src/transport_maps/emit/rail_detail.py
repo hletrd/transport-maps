@@ -16,7 +16,7 @@ import h3
 import numpy as np
 import polars as pl
 
-from transport_maps import config
+from transport_maps import _io, config
 
 NO_RAIL = 0xFFFF
 
@@ -108,7 +108,6 @@ def write_rail_detail(idx, minutes: np.ndarray, predecessors: np.ndarray,
         # np.minimum used to fold any index past the sentinel into "no rail"
         # silently; a table that large is a bug, not a build.
         raise ValueError(f"rail table has {len(table):,} rows; uint16 holds {NO_RAIL - 1:,}")
-    out_bin.parent.mkdir(parents=True, exist_ok=True)
-    out_bin.write_bytes(chosen.astype("<u2").tobytes())
-    out_json.write_text(json.dumps({"fields": ["station", "line"], "stations": table},
-                                   ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    _io.write_bytes(out_bin, chosen.astype("<u2").tobytes())
+    _io.write_text(out_json, json.dumps({"fields": ["station", "line"], "stations": table},
+                                        ensure_ascii=False, separators=(",", ":")))

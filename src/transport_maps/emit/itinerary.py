@@ -12,7 +12,7 @@ from pathlib import Path
 import h3
 import numpy as np
 
-from transport_maps import config
+from transport_maps import _io, config
 
 # No airport was involved -- the journey was entirely overland.
 NO_AIRPORT = 0xFFFF
@@ -67,5 +67,4 @@ def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Pat
         node = last[pos]
         chosen[p] = NO_AIRPORT if node < 0 else node - first_arrival
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(chosen.astype("<u2").tobytes())
+    _io.write_bytes(out, chosen.astype("<u2").tobytes())

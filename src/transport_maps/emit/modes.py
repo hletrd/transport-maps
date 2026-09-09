@@ -15,7 +15,7 @@ from pathlib import Path
 import h3
 import numpy as np
 
-from transport_maps import config
+from transport_maps import _io, config
 from transport_maps.graph.refine import ground_adjacent
 
 # Order of the uint16 channels in the emitted file. Road is split by grade
@@ -97,5 +97,4 @@ def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path,
         picked[p] = acc[pos]
 
     encoded = np.clip(np.nan_to_num(picked, posinf=0.0), 0, MAX_MINUTES).astype("<u2")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(encoded.tobytes())
+    _io.write_bytes(out, encoded.tobytes())
