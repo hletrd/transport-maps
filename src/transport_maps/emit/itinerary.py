@@ -49,10 +49,11 @@ def arrival_airport_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray)
 def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) -> None:
     """One uint16 airport ordinal per hover cell, in `hover_cells` order.
 
-    The ordinal identifies the SAME res-5 child the hover time came from: the
-    hover value is a minimum over children, and naming the airport of a
-    different child would caption the number with a route that did not produce
-    it.
+    The ordinal identifies the SAME solver cell the hover time came from
+    (hover._representative_children: the centre child at SOLVE_RES, or the
+    fastest child where the centre is water); naming the airport of a
+    different child would caption the number with a route that did not
+    produce it.
     """
     parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
 

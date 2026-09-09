@@ -35,8 +35,11 @@ def write_routes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) 
         # the per-cell arrival ordinal in `.air.bin` names.
         add(idx.airport_index(iata), "dep", iata)
         add(idx.airport_arr_index(iata), "arr", iata)
-    # Rail nodes are added in Task 9, once NodeIndex grows a station_index and
-    # a .stations list. Until then there is nothing to emit for "rail" here.
+    # Airport nodes only. Cells are never listed: the page reads a hover
+    # cell's time, arrival airport and surface modes from the per-origin
+    # arrays (.bin, .air.bin, .modes.bin), enters this file at that arrival
+    # node and walks `prev` while it lands on airport nodes. Stations are not
+    # listed either; the rail leg is itemised from .rail.bin/.rail.json.
 
     payload = {
         "offsets": {

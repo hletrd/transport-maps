@@ -83,8 +83,9 @@ def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path,
                 cell_class: np.ndarray | None = None) -> None:
     """One uint16 channel per mode per hover cell, in `hover_cells` order.
 
-    Taken from the same res-5 child the hover time came from, so the breakdown
-    describes the journey the number refers to rather than a different one.
+    Taken from the same solver cell the hover time came from
+    (hover._representative_children), so the breakdown describes the journey
+    the number refers to rather than a different one.
     """
     parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
 

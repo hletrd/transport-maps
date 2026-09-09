@@ -24,7 +24,8 @@ detail: `document-specialist.md` (DOC-*), `critic.md`, `verifier.md`,
       child; `solveRes ?? 5` → 6), `app.js:376,923-924` (`band-seams` never
       added), `transfers.py:5-9,53-54` (duplicate unused `STATION_*` and the
       test that pins them), `src/transport_maps/__init__.py` stub `main`,
-      `routes_json.py` "Task 9" comment.
+      `routes_json.py` "Task 9" comment. (Python half done in the cycle-1
+      `docs(pipeline)` commit; the `app.js` half is the web agent's.)
 - [ ] **E12** README factual claims (lakes source, coast zoom, band count,
       grid resolution) brought in line with the code.
 - [ ] **D20** State one separation threshold: CLAUDE.md says ~8, `check_ramps.py`

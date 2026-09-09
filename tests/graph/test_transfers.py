@@ -86,7 +86,3 @@ def test_border_is_a_real_cost_not_a_rounding_error(cal):
     for size in SIZES:
         assert transfers.border_min(size, cal) >= 0.3 * transfers.processing_min(size, cal)
 
-
-def test_station_constants_exist_for_task_9(cal):
-    """Defined but deliberately unwired until rail lands."""
-    assert transfers.STATION_ACCESS_MIN > transfers.STATION_EGRESS_MIN > 0

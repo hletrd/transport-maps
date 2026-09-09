@@ -4,9 +4,10 @@ Layout contract with the frontend: little-endian uint16 minutes, one entry per
 res-4 cell, ordered by the sorted res-4 cell id list that `hover_cells` returns.
 The frontend fetches that ordering once from index.json.
 
-Each res-4 entry is the value of its CENTRE res-5 child (the fastest child
-only where the centre is water). An earlier version took the minimum over all
-seven children, which made the readout systematically optimistic and, worse,
+Each res-4 entry is the value of its CENTRE child at SOLVE_RES -- or, where
+that base cell was split, of the FINE_RES centre child -- and of the fastest
+child only where the centre is water. An earlier version took the minimum over
+all the children, which made the readout systematically optimistic and, worse,
 let it borrow across borders: South Korean times ten kilometres inside the
 North, the Singapore side of the strait for Johor Bahru.
 """
@@ -28,7 +29,7 @@ def hover_cells(idx) -> list[str]:
 
 
 def _representative_children(idx, parents: list[str], cell_minutes: np.ndarray) -> dict[int, int]:
-    """For each res-4 parent, the res-5 child the readout should report.
+    """For each res-4 parent, the solver cell the readout should report.
 
     The CENTRE child where it is on land, else the fastest child. Taking the
     minimum everywhere made the readout "the best time anywhere within ~22 km",

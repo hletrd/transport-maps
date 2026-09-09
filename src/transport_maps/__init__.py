@@ -1,2 +1,4 @@
-def main() -> None:
-    print("Hello from transport-maps!")
+"""Global travel-time isochrone map: the build pipeline.
+
+The console entry point is transport_maps.cli:main (see pyproject.toml).
+"""
