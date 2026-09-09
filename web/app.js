@@ -121,13 +121,25 @@ fetch("./places.json")
     const showLabels = () => {
       const z = map.getZoom();
       const n = z < 2.2 ? 0 : z < 3 ? 40 : z < 4 ? 120 : z < 5.5 ? 350 : 900;
+      // Largest cities claim their screen space first; a smaller one whose
+      // label would land within the gap of one already placed is skipped, so
+      // the map thins itself rather than piling names on top of each other.
+      const placed = [];
+      const gapX = 70, gapY = 16;
       for (const l of labelPool) {
-        const want = l.rank < n;
+        let want = l.rank < n;
+        if (want) {
+          const pt = map.project(l.m.getLngLat());
+          want = pt.x > -50 && pt.y > -20 && pt.x < window.innerWidth + 50
+              && pt.y < window.innerHeight + 20
+              && !placed.some((q) => Math.abs(q.x - pt.x) < gapX && Math.abs(q.y - pt.y) < gapY);
+          if (want) placed.push(pt);
+        }
         if (want && !l.on) { l.m.addTo(map); l.on = true; }
         else if (!want && l.on) { l.m.remove(); l.on = false; }
       }
     };
-    map.on("zoomend", showLabels);
+    map.on("moveend", showLabels);
     showLabels();
   })
   .catch(() => { /* the map is still readable without names */ });
