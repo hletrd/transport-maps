@@ -945,3 +945,2381 @@ name = "Port Moresby"
 lat = -9.4438
 lon = 147.1803
 
+
+# Added by scripts/expand_origins.py: population >= 1,000,000, or a national capital >= 250,000 (GeoNames cities15000, CC BY 4.0).
+
+[[origin]]
+slug = "kinshasa"
+name = "Kinshasa"
+lat = -4.3276
+lon = 15.3136
+
+[[origin]]
+slug = "tianjin"
+name = "Tianjin"
+lat = 39.1422
+lon = 117.1767
+
+[[origin]]
+slug = "wuhan"
+name = "Wuhan"
+lat = 30.5833
+lon = 114.2667
+
+[[origin]]
+slug = "harbin"
+name = "Harbin"
+lat = 45.75
+lon = 126.65
+
+[[origin]]
+slug = "dongguan"
+name = "Dongguan"
+lat = 23.018
+lon = 113.7487
+
+[[origin]]
+slug = "hefei"
+name = "Hefei"
+lat = 31.8639
+lon = 117.2808
+
+[[origin]]
+slug = "weifang"
+name = "Weifang"
+lat = 36.71
+lon = 119.1019
+
+[[origin]]
+slug = "nanjing"
+name = "Nanjing"
+lat = 32.0617
+lon = 118.7778
+
+[[origin]]
+slug = "shenyang"
+name = "Shenyang"
+lat = 41.7922
+lon = 123.4328
+
+[[origin]]
+slug = "jinan"
+name = "Jinan"
+lat = 36.6683
+lon = 116.9972
+
+[[origin]]
+slug = "dalian"
+name = "Dalian"
+lat = 38.9122
+lon = 121.6022
+
+[[origin]]
+slug = "wuzhong"
+name = "Wuzhong"
+lat = 37.9867
+lon = 106.201
+
+[[origin]]
+slug = "qingdao"
+name = "Qingdao"
+lat = 36.0649
+lon = 120.3804
+
+[[origin]]
+slug = "tehran"
+name = "Tehran"
+lat = 35.6944
+lon = 51.4215
+
+[[origin]]
+slug = "yantai"
+name = "Yantai"
+lat = 37.4765
+lon = 121.4408
+
+[[origin]]
+slug = "suzhou"
+name = "Suzhou"
+lat = 31.3041
+lon = 120.5954
+
+[[origin]]
+slug = "zhengzhou"
+name = "Zhengzhou"
+lat = 34.7578
+lon = 113.6486
+
+[[origin]]
+slug = "abidjan"
+name = "Abidjan"
+lat = 5.3544
+lon = -4.0017
+
+[[origin]]
+slug = "nanning"
+name = "Nanning"
+lat = 22.8167
+lon = 108.3167
+
+[[origin]]
+slug = "kunming"
+name = "Kunming"
+lat = 25.0389
+lon = 102.7183
+
+[[origin]]
+slug = "shijiazhuang"
+name = "Shijiazhuang"
+lat = 38.0414
+lon = 114.4786
+
+[[origin]]
+slug = "changchun"
+name = "Changchun"
+lat = 43.88
+lon = 125.3228
+
+[[origin]]
+slug = "taiyuan"
+name = "Taiyuan"
+lat = 37.8694
+lon = 112.5603
+
+[[origin]]
+slug = "alexandria"
+name = "Alexandria"
+lat = 31.2018
+lon = 29.9158
+
+[[origin]]
+slug = "kano"
+name = "Kano"
+lat = 12.0001
+lon = 8.5167
+
+[[origin]]
+slug = "peshawar"
+name = "Peshawar"
+lat = 34.008
+lon = 71.5785
+
+[[origin]]
+slug = "zibo"
+name = "Zibo"
+lat = 36.7906
+lon = 118.0633
+
+[[origin]]
+slug = "xiamen"
+name = "Xiamen"
+lat = 24.4798
+lon = 118.0819
+
+[[origin]]
+slug = "surat"
+name = "Surat"
+lat = 21.1959
+lon = 72.8302
+
+[[origin]]
+slug = "yangzhou"
+name = "Yangzhou"
+lat = 32.3972
+lon = 119.4358
+
+[[origin]]
+slug = "huai-an"
+name = "Huai'an"
+lat = 33.5886
+lon = 119.0192
+
+[[origin]]
+slug = "guiyang"
+name = "Guiyang"
+lat = 26.5833
+lon = 106.7167
+
+[[origin]]
+slug = "kabul"
+name = "Kabul"
+lat = 34.5281
+lon = 69.1723
+
+[[origin]]
+slug = "wuxi"
+name = "Wuxi"
+lat = 31.5689
+lon = 120.2886
+
+[[origin]]
+slug = "lanzhou"
+name = "Lanzhou"
+lat = 36.057
+lon = 103.8399
+
+[[origin]]
+slug = "bamako"
+name = "Bamako"
+lat = 12.6091
+lon = -7.9752
+
+[[origin]]
+slug = "fuzhou"
+name = "Fuzhou"
+lat = 26.0614
+lon = 119.3061
+
+[[origin]]
+slug = "ueruemqi"
+name = "Ürümqi"
+lat = 43.801
+lon = 87.6005
+
+[[origin]]
+slug = "chattogram"
+name = "Chattogram"
+lat = 22.3384
+lon = 91.8317
+
+[[origin]]
+slug = "zaozhuang"
+name = "Zaozhuang"
+lat = 34.8647
+lon = 117.5542
+
+[[origin]]
+slug = "shantou"
+name = "Shantou"
+lat = 23.3549
+lon = 116.6788
+
+[[origin]]
+slug = "faisalabad"
+name = "Faisalabad"
+lat = 31.4155
+lon = 73.0897
+
+[[origin]]
+slug = "ningbo"
+name = "Ningbo"
+lat = 29.8782
+lon = 121.5494
+
+[[origin]]
+slug = "ibadan"
+name = "Ibadan"
+lat = 7.3776
+lon = 3.9059
+
+[[origin]]
+slug = "puyang"
+name = "Puyang"
+lat = 29.4568
+lon = 119.8887
+
+[[origin]]
+slug = "shiyan"
+name = "Shiyan"
+lat = 32.6475
+lon = 110.7781
+
+[[origin]]
+slug = "hohhot"
+name = "Hohhot"
+lat = 40.8106
+lon = 111.6522
+
+[[origin]]
+slug = "tangshan"
+name = "Tangshan"
+lat = 39.6438
+lon = 118.1832
+
+[[origin]]
+slug = "lueliang"
+name = "Lüliang"
+lat = 37.5192
+lon = 111.1444
+
+[[origin]]
+slug = "durban"
+name = "Durban"
+lat = -29.8579
+lon = 31.0292
+
+[[origin]]
+slug = "anshan"
+name = "Anshan"
+lat = 41.1236
+lon = 122.99
+
+[[origin]]
+slug = "busan"
+name = "Busan"
+lat = 35.1017
+lon = 129.03
+
+[[origin]]
+slug = "pyongyang"
+name = "Pyongyang"
+lat = 39.0339
+lon = 125.7543
+
+[[origin]]
+slug = "datong"
+name = "Datong"
+lat = 40.0936
+lon = 113.2914
+
+[[origin]]
+slug = "bursa"
+name = "Bursa"
+lat = 40.1956
+lon = 29.0601
+
+[[origin]]
+slug = "changsha"
+name = "Changsha"
+lat = 28.1987
+lon = 112.9709
+
+[[origin]]
+slug = "jaipur"
+name = "Jaipur"
+lat = 26.9196
+lon = 75.7878
+
+[[origin]]
+slug = "huainan"
+name = "Huainan"
+lat = 32.6264
+lon = 116.9969
+
+[[origin]]
+slug = "haikou"
+name = "Haikou"
+lat = 20.0342
+lon = 110.3465
+
+[[origin]]
+slug = "izmir"
+name = "İzmir"
+lat = 38.4127
+lon = 27.1384
+
+[[origin]]
+slug = "huizhou"
+name = "Huizhou"
+lat = 23.1115
+lon = 114.4152
+
+[[origin]]
+slug = "yinchuan"
+name = "Yinchuan"
+lat = 38.4681
+lon = 106.2731
+
+[[origin]]
+slug = "taichung"
+name = "Taichung"
+lat = 24.1469
+lon = 120.6839
+
+[[origin]]
+slug = "kanpur"
+name = "Kanpur"
+lat = 26.4652
+lon = 80.3498
+
+[[origin]]
+slug = "luanda"
+name = "Luanda"
+lat = -8.8368
+lon = 13.2343
+
+[[origin]]
+slug = "baotou"
+name = "Baotou"
+lat = 40.6516
+lon = 109.8439
+
+[[origin]]
+slug = "linyi"
+name = "Linyi"
+lat = 35.0631
+lon = 118.3428
+
+[[origin]]
+slug = "baoding"
+name = "Baoding"
+lat = 38.8729
+lon = 115.4625
+
+[[origin]]
+slug = "guayaquil"
+name = "Guayaquil"
+lat = -2.1962
+lon = -79.8862
+
+[[origin]]
+slug = "belo-horizonte"
+name = "Belo Horizonte"
+lat = -19.9208
+lon = -43.9378
+
+[[origin]]
+slug = "bazhong"
+name = "Bazhong"
+lat = 31.8694
+lon = 106.7443
+
+[[origin]]
+slug = "salvador"
+name = "Salvador"
+lat = -12.9756
+lon = -38.491
+
+[[origin]]
+slug = "wenzhou"
+name = "Wenzhou"
+lat = 27.9994
+lon = 120.6668
+
+[[origin]]
+slug = "haiphong"
+name = "Haiphong"
+lat = 20.8648
+lon = 106.6834
+
+[[origin]]
+slug = "yunfu"
+name = "Yunfu"
+lat = 22.9279
+lon = 112.0381
+
+[[origin]]
+slug = "mogadishu"
+name = "Mogadishu"
+lat = 2.0371
+lon = 45.3438
+
+[[origin]]
+slug = "kumasi"
+name = "Kumasi"
+lat = 6.6885
+lon = -1.6244
+
+[[origin]]
+slug = "bandung"
+name = "Bandung"
+lat = -6.9222
+lon = 107.6069
+
+[[origin]]
+slug = "gujranwala"
+name = "Gujranwala"
+lat = 32.1557
+lon = 74.187
+
+[[origin]]
+slug = "medan"
+name = "Medan"
+lat = 3.5833
+lon = 98.6667
+
+[[origin]]
+slug = "lucknow"
+name = "Lucknow"
+lat = 26.8393
+lon = 80.9231
+
+[[origin]]
+slug = "xining"
+name = "Xining"
+lat = 36.6255
+lon = 101.7574
+
+[[origin]]
+slug = "ouagadougou"
+name = "Ouagadougou"
+lat = 12.3657
+lon = -1.5339
+
+[[origin]]
+slug = "nagpur"
+name = "Nagpur"
+lat = 21.1463
+lon = 79.0849
+
+[[origin]]
+slug = "fortaleza"
+name = "Fortaleza"
+lat = -3.7172
+lon = -38.5431
+
+[[origin]]
+slug = "cali"
+name = "Cali"
+lat = 3.4305
+lon = -76.5199
+
+[[origin]]
+slug = "daegu"
+name = "Daegu"
+lat = 35.8703
+lon = 128.5911
+
+[[origin]]
+slug = "nanchang"
+name = "Nanchang"
+lat = 28.684
+lon = 115.8531
+
+[[origin]]
+slug = "mashhad"
+name = "Mashhad"
+lat = 36.2981
+lon = 59.6057
+
+[[origin]]
+slug = "shaoxing"
+name = "Shaoxing"
+lat = 30.0024
+lon = 120.5786
+
+[[origin]]
+slug = "nantong"
+name = "Nantong"
+lat = 32.0303
+lon = 120.8747
+
+[[origin]]
+slug = "gaziantep"
+name = "Gaziantep"
+lat = 37.0594
+lon = 37.3825
+
+[[origin]]
+slug = "lubumbashi"
+name = "Lubumbashi"
+lat = -11.6609
+lon = 27.4794
+
+[[origin]]
+slug = "manaus"
+name = "Manaus"
+lat = -3.1019
+lon = -60.025
+
+[[origin]]
+slug = "lusaka"
+name = "Lusaka"
+lat = -15.4067
+lon = 28.2871
+
+[[origin]]
+slug = "santo-domingo"
+name = "Santo Domingo"
+lat = 18.4719
+lon = -69.8923
+
+[[origin]]
+slug = "lome"
+name = "Lomé"
+lat = 6.1287
+lon = 1.2215
+
+[[origin]]
+slug = "multan"
+name = "Multan"
+lat = 30.1968
+lon = 71.4782
+
+[[origin]]
+slug = "havana"
+name = "Havana"
+lat = 23.133
+lon = -82.383
+
+[[origin]]
+slug = "ordos"
+name = "Ordos"
+lat = 39.6086
+lon = 109.7816
+
+[[origin]]
+slug = "coimbatore"
+name = "Coimbatore"
+lat = 11.0055
+lon = 76.9661
+
+[[origin]]
+slug = "qingyang"
+name = "Qingyang"
+lat = 35.7098
+lon = 107.6445
+
+[[origin]]
+slug = "port-harcourt"
+name = "Port Harcourt"
+lat = 4.7774
+lon = 7.0134
+
+[[origin]]
+slug = "pretoria"
+name = "Pretoria"
+lat = -25.7449
+lon = 28.1878
+
+[[origin]]
+slug = "cordoba"
+name = "Córdoba"
+lat = -31.4065
+lon = -64.1885
+
+[[origin]]
+slug = "mbuji-mayi"
+name = "Mbuji-Mayi"
+lat = -6.136
+lon = 23.5898
+
+[[origin]]
+slug = "aleppo"
+name = "Aleppo"
+lat = 36.2012
+lon = 37.1612
+
+[[origin]]
+slug = "al-mawsil-al-jadidah"
+name = "Al Mawşil al Jadīdah"
+lat = 36.3327
+lon = 43.1056
+
+[[origin]]
+slug = "zunyi"
+name = "Zunyi"
+lat = 27.6867
+lon = 106.9072
+
+[[origin]]
+slug = "lianyungang"
+name = "Lianyungang"
+lat = 34.5984
+lon = 119.2156
+
+[[origin]]
+slug = "puning"
+name = "Puning"
+lat = 23.3107
+lon = 116.1687
+
+[[origin]]
+slug = "indore"
+name = "Indore"
+lat = 22.7179
+lon = 75.8333
+
+[[origin]]
+slug = "ganzhou"
+name = "Ganzhou"
+lat = 25.8466
+lon = 114.9326
+
+[[origin]]
+slug = "curitiba"
+name = "Curitiba"
+lat = -25.4278
+lon = -49.2731
+
+[[origin]]
+slug = "sanaa"
+name = "Sanaa"
+lat = 15.3545
+lon = 44.2065
+
+[[origin]]
+slug = "conakry"
+name = "Conakry"
+lat = 9.538
+lon = -13.6773
+
+[[origin]]
+slug = "tijuana"
+name = "Tijuana"
+lat = 32.5027
+lon = -117.0037
+
+[[origin]]
+slug = "hyderabad-pk"
+name = "Hyderabad"
+lat = 25.3969
+lon = 68.3772
+
+[[origin]]
+slug = "jilin"
+name = "Jilin"
+lat = 43.8465
+lon = 126.5608
+
+[[origin]]
+slug = "kakamega"
+name = "Kakamega"
+lat = 0.2842
+lon = 34.7523
+
+[[origin]]
+slug = "shangqiu"
+name = "Shangqiu"
+lat = 34.4143
+lon = 115.6561
+
+[[origin]]
+slug = "nanchong"
+name = "Nanchong"
+lat = 30.7951
+lon = 106.0847
+
+[[origin]]
+slug = "tainan"
+name = "Tainan"
+lat = 22.9908
+lon = 120.2133
+
+[[origin]]
+slug = "kaduna"
+name = "Kaduna"
+lat = 10.5264
+lon = 7.4388
+
+[[origin]]
+slug = "davao"
+name = "Davao"
+lat = 7.0731
+lon = 125.6128
+
+[[origin]]
+slug = "diyarbakir"
+name = "Diyarbakır"
+lat = 37.9136
+lon = 40.2172
+
+[[origin]]
+slug = "santa-cruz-de-la-sierra"
+name = "Santa Cruz de la Sierra"
+lat = -17.7863
+lon = -63.1812
+
+[[origin]]
+slug = "vadodara"
+name = "Vadodara"
+lat = 22.2994
+lon = 73.2081
+
+[[origin]]
+slug = "adana"
+name = "Adana"
+lat = 36.9862
+lon = 35.3253
+
+[[origin]]
+slug = "nanyang"
+name = "Nanyang"
+lat = 33.0052
+lon = 112.5466
+
+[[origin]]
+slug = "palembang"
+name = "Palembang"
+lat = -2.9167
+lon = 104.7458
+
+[[origin]]
+slug = "bhopal"
+name = "Bhopal"
+lat = 23.2547
+lon = 77.4029
+
+[[origin]]
+slug = "jiangmen"
+name = "Jiangmen"
+lat = 22.5833
+lon = 113.0833
+
+[[origin]]
+slug = "benin-city"
+name = "Benin City"
+lat = 6.3381
+lon = 5.6258
+
+[[origin]]
+slug = "fuyang"
+name = "Fuyang"
+lat = 32.9
+lon = 115.8167
+
+[[origin]]
+slug = "bayan-nur"
+name = "Bayan Nur"
+lat = 40.7414
+lon = 107.386
+
+[[origin]]
+slug = "chengtangcun"
+name = "Chengtangcun"
+lat = 35.0836
+lon = 117.1907
+
+[[origin]]
+slug = "maracaibo"
+name = "Maracaibo"
+lat = 10.6423
+lon = -71.6109
+
+[[origin]]
+slug = "minsk"
+name = "Minsk"
+lat = 53.9002
+lon = 27.5665
+
+[[origin]]
+slug = "qingyuan"
+name = "Qingyuan"
+lat = 23.7
+lon = 113.0333
+
+[[origin]]
+slug = "tai-an"
+name = "Tai’an"
+lat = 36.1853
+lon = 117.12
+
+[[origin]]
+slug = "rasapudipalem"
+name = "Rasapūdipalem"
+lat = 17.7331
+lon = 83.3162
+
+[[origin]]
+slug = "semarang"
+name = "Semarang"
+lat = -6.9931
+lon = 110.4208
+
+[[origin]]
+slug = "puebla"
+name = "Puebla"
+lat = 19.0478
+lon = -98.2072
+
+[[origin]]
+slug = "patna"
+name = "Patna"
+lat = 25.5941
+lon = 85.1356
+
+[[origin]]
+slug = "kallakurichi"
+name = "Kallakurichi"
+lat = 11.7338
+lon = 78.9592
+
+[[origin]]
+slug = "kampala"
+name = "Kampala"
+lat = 0.3163
+lon = 32.5822
+
+[[origin]]
+slug = "changshu"
+name = "Changshu"
+lat = 31.6461
+lon = 120.7422
+
+[[origin]]
+slug = "rabat"
+name = "Rabat"
+lat = 34.0132
+lon = -6.8326
+
+[[origin]]
+slug = "recife"
+name = "Recife"
+lat = -8.0539
+lon = -34.8811
+
+[[origin]]
+slug = "phoenix"
+name = "Phoenix"
+lat = 33.4484
+lon = -112.074
+
+[[origin]]
+slug = "suzhou-cn"
+name = "Suzhou"
+lat = 33.6361
+lon = 116.9789
+
+[[origin]]
+slug = "lu-an"
+name = "Lu’an"
+lat = 31.7356
+lon = 116.5169
+
+[[origin]]
+slug = "valencia"
+name = "Valencia"
+lat = 10.1615
+lon = -68.0004
+
+[[origin]]
+slug = "ludhiana"
+name = "Ludhiana"
+lat = 30.912
+lon = 75.8538
+
+[[origin]]
+slug = "yancheng"
+name = "Yancheng"
+lat = 33.3575
+lon = 120.1573
+
+[[origin]]
+slug = "novosibirsk"
+name = "Novosibirsk"
+lat = 55.0226
+lon = 82.9317
+
+[[origin]]
+slug = "erbil"
+name = "Erbil"
+lat = 36.1912
+lon = 44.0094
+
+[[origin]]
+slug = "taizhou"
+name = "Taizhou"
+lat = 32.4907
+lon = 119.9081
+
+[[origin]]
+slug = "daqing"
+name = "Daqing"
+lat = 46.5833
+lon = 125.0
+
+[[origin]]
+slug = "wuhu"
+name = "Wuhu"
+lat = 31.3526
+lon = 118.4295
+
+[[origin]]
+slug = "santiago-de-queretaro"
+name = "Santiago de Querétaro"
+lat = 20.5881
+lon = -100.3881
+
+[[origin]]
+slug = "dazhou"
+name = "Dazhou"
+lat = 31.2106
+lon = 107.4631
+
+[[origin]]
+slug = "leon-de-los-aldama"
+name = "León de los Aldama"
+lat = 21.1218
+lon = -101.6825
+
+[[origin]]
+slug = "makkah"
+name = "Makkah"
+lat = 21.4266
+lon = 39.8256
+
+[[origin]]
+slug = "philadelphia"
+name = "Philadelphia"
+lat = 39.9524
+lon = -75.1636
+
+[[origin]]
+slug = "guilin"
+name = "Guilin"
+lat = 25.2802
+lon = 110.2964
+
+[[origin]]
+slug = "damascus"
+name = "Damascus"
+lat = 33.5102
+lon = 36.2913
+
+[[origin]]
+slug = "quetta"
+name = "Quetta"
+lat = 30.1841
+lon = 67.0014
+
+[[origin]]
+slug = "zhaoqing"
+name = "Zhaoqing"
+lat = 23.0489
+lon = 112.4609
+
+[[origin]]
+slug = "onitsha"
+name = "Onitsha"
+lat = 6.1498
+lon = 6.7857
+
+[[origin]]
+slug = "mianyang"
+name = "Mianyang"
+lat = 31.4678
+lon = 104.6817
+
+[[origin]]
+slug = "isfahan"
+name = "Isfahan"
+lat = 32.6525
+lon = 51.6746
+
+[[origin]]
+slug = "wanzhou"
+name = "Wanzhou"
+lat = 30.7645
+lon = 108.3959
+
+[[origin]]
+slug = "astana"
+name = "Astana"
+lat = 51.1801
+lon = 71.446
+
+[[origin]]
+slug = "harare"
+name = "Harare"
+lat = -17.8277
+lon = 31.0534
+
+[[origin]]
+slug = "monrovia"
+name = "Monrovia"
+lat = 6.3005
+lon = -10.7969
+
+[[origin]]
+slug = "putian"
+name = "Putian"
+lat = 25.4394
+lon = 119.0103
+
+[[origin]]
+slug = "goiania"
+name = "Goiânia"
+lat = -16.6786
+lon = -49.2539
+
+[[origin]]
+slug = "san-antonio"
+name = "San Antonio"
+lat = 29.4241
+lon = -98.4936
+
+[[origin]]
+slug = "jinzhou"
+name = "Jinzhou"
+lat = 41.1078
+lon = 121.1417
+
+[[origin]]
+slug = "ciudad-juarez"
+name = "Ciudad Juárez"
+lat = 31.7202
+lon = -106.4608
+
+[[origin]]
+slug = "can-tho"
+name = "Cần Thơ"
+lat = 10.0371
+lon = 105.7883
+
+[[origin]]
+slug = "khulna"
+name = "Khulna"
+lat = 22.8098
+lon = 89.5644
+
+[[origin]]
+slug = "belem"
+name = "Belém"
+lat = -1.4558
+lon = -48.5044
+
+[[origin]]
+slug = "yekaterinburg"
+name = "Yekaterinburg"
+lat = 56.8573
+lon = 60.6153
+
+[[origin]]
+slug = "porto-alegre"
+name = "Porto Alegre"
+lat = -30.0328
+lon = -51.2302
+
+[[origin]]
+slug = "nashik"
+name = "Nashik"
+lat = 19.9973
+lon = 73.791
+
+[[origin]]
+slug = "taizhou-cn"
+name = "Taizhou"
+lat = 28.6627
+lon = 121.4331
+
+[[origin]]
+slug = "makassar"
+name = "Makassar"
+lat = -5.1486
+lon = 119.4319
+
+[[origin]]
+slug = "adelaide"
+name = "Adelaide"
+lat = -34.9287
+lon = 138.5986
+
+[[origin]]
+slug = "quanzhou"
+name = "Quanzhou"
+lat = 24.9139
+lon = 118.5858
+
+[[origin]]
+slug = "madurai"
+name = "Madurai"
+lat = 9.919
+lon = 78.1195
+
+[[origin]]
+slug = "jinhua"
+name = "Jinhua"
+lat = 29.1068
+lon = 119.6442
+
+[[origin]]
+slug = "kyoto"
+name = "Kyoto"
+lat = 35.0211
+lon = 135.7538
+
+[[origin]]
+slug = "cixi"
+name = "Cixi"
+lat = 30.1764
+lon = 121.2457
+
+[[origin]]
+slug = "changde"
+name = "Changde"
+lat = 29.0321
+lon = 111.6984
+
+[[origin]]
+slug = "kayseri"
+name = "Kayseri"
+lat = 38.7322
+lon = 35.4853
+
+[[origin]]
+slug = "kaifeng"
+name = "Kaifeng"
+lat = 34.7986
+lon = 114.3074
+
+[[origin]]
+slug = "karaj"
+name = "Karaj"
+lat = 35.8327
+lon = 50.9915
+
+[[origin]]
+slug = "daejeon"
+name = "Daejeon"
+lat = 36.3491
+lon = 127.3849
+
+[[origin]]
+slug = "baoji"
+name = "Baoji"
+lat = 34.3678
+lon = 107.237
+
+[[origin]]
+slug = "suqian"
+name = "Suqian"
+lat = 33.9492
+lon = 118.2958
+
+[[origin]]
+slug = "liuzhou"
+name = "Liuzhou"
+lat = 24.324
+lon = 109.407
+
+[[origin]]
+slug = "tirunelveli"
+name = "Tirunelveli"
+lat = 8.7274
+lon = 77.6838
+
+[[origin]]
+slug = "konya"
+name = "Konya"
+lat = 37.8713
+lon = 32.4846
+
+[[origin]]
+slug = "agra"
+name = "Agra"
+lat = 27.1833
+lon = 78.0167
+
+[[origin]]
+slug = "tabriz"
+name = "Tabriz"
+lat = 38.08
+lon = 46.2919
+
+[[origin]]
+slug = "kharkiv"
+name = "Kharkiv"
+lat = 49.9818
+lon = 36.2548
+
+[[origin]]
+slug = "xinyang"
+name = "Xinyang"
+lat = 32.1228
+lon = 114.0656
+
+[[origin]]
+slug = "bozhou"
+name = "Bozhou"
+lat = 33.8772
+lon = 115.7703
+
+[[origin]]
+slug = "qujing"
+name = "Qujing"
+lat = 25.4833
+lon = 103.7833
+
+[[origin]]
+slug = "gwangju"
+name = "Gwangju"
+lat = 35.1547
+lon = 126.9156
+
+[[origin]]
+slug = "zhanjiang"
+name = "Zhanjiang"
+lat = 21.2339
+lon = 110.3875
+
+[[origin]]
+slug = "fushun"
+name = "Fushun"
+lat = 41.8867
+lon = 123.9436
+
+[[origin]]
+slug = "rajkot"
+name = "Rājkot"
+lat = 22.2916
+lon = 70.7932
+
+[[origin]]
+slug = "luoyang"
+name = "Luoyang"
+lat = 34.6735
+lon = 112.4368
+
+[[origin]]
+slug = "guankou"
+name = "Guankou"
+lat = 28.1586
+lon = 113.6271
+
+[[origin]]
+slug = "hue"
+name = "Huế"
+lat = 16.4619
+lon = 107.5955
+
+[[origin]]
+slug = "lianjiang"
+name = "Lianjiang"
+lat = 21.6467
+lon = 110.2817
+
+[[origin]]
+slug = "n-djamena"
+name = "N'Djamena"
+lat = 12.1067
+lon = 15.0444
+
+[[origin]]
+slug = "handan"
+name = "Handan"
+lat = 36.61
+lon = 114.4876
+
+[[origin]]
+slug = "bannu"
+name = "Bannu"
+lat = 32.9853
+lon = 70.604
+
+[[origin]]
+slug = "yichang"
+name = "Yichang"
+lat = 30.7144
+lon = 111.2847
+
+[[origin]]
+slug = "antananarivo"
+name = "Antananarivo"
+lat = -18.9137
+lon = 47.5361
+
+[[origin]]
+slug = "heze"
+name = "Heze"
+lat = 35.2393
+lon = 115.4736
+
+[[origin]]
+slug = "jamshedpur"
+name = "Jamshedpur"
+lat = 22.8028
+lon = 86.1855
+
+[[origin]]
+slug = "douala"
+name = "Douala"
+lat = 4.0483
+lon = 9.7043
+
+[[origin]]
+slug = "antalya"
+name = "Antalya"
+lat = 36.9081
+lon = 30.6956
+
+[[origin]]
+slug = "basrah"
+name = "Basrah"
+lat = 30.5085
+lon = 47.7804
+
+[[origin]]
+slug = "niamey"
+name = "Niamey"
+lat = 13.5137
+lon = 2.1098
+
+[[origin]]
+slug = "liupanshui"
+name = "Liupanshui"
+lat = 26.5944
+lon = 104.8333
+
+[[origin]]
+slug = "maoming"
+name = "Maoming"
+lat = 21.6663
+lon = 110.9136
+
+[[origin]]
+slug = "calgary"
+name = "Calgary"
+lat = 51.0501
+lon = -114.0853
+
+[[origin]]
+slug = "tripoli"
+name = "Tripoli"
+lat = 32.8874
+lon = 13.1873
+
+[[origin]]
+slug = "madinah"
+name = "Madinah"
+lat = 24.4686
+lon = 39.6142
+
+[[origin]]
+slug = "yaounde"
+name = "Yaoundé"
+lat = 3.8667
+lon = 11.5167
+
+[[origin]]
+slug = "qinzhou"
+name = "Qinzhou"
+lat = 21.9825
+lon = 108.6506
+
+[[origin]]
+slug = "luohe"
+name = "Luohe"
+lat = 33.5742
+lon = 114.0326
+
+[[origin]]
+slug = "xiangyang"
+name = "Xiangyang"
+lat = 32.0422
+lon = 112.1448
+
+[[origin]]
+slug = "yangjiang"
+name = "Yangjiang"
+lat = 21.8556
+lon = 111.9627
+
+[[origin]]
+slug = "yixing"
+name = "Yixing"
+lat = 31.3606
+lon = 119.8202
+
+[[origin]]
+slug = "da-nang"
+name = "Da Nang"
+lat = 16.0678
+lon = 108.2208
+
+[[origin]]
+slug = "budta"
+name = "Budta"
+lat = 7.2042
+lon = 124.4397
+
+[[origin]]
+slug = "xuchang"
+name = "Xuchang"
+lat = 34.0319
+lon = 113.863
+
+[[origin]]
+slug = "zigong"
+name = "Zigong"
+lat = 29.3416
+lon = 104.7769
+
+[[origin]]
+slug = "nizhniy-novgorod"
+name = "Nizhniy Novgorod"
+lat = 56.3287
+lon = 44.002
+
+[[origin]]
+slug = "jepara"
+name = "Jepara"
+lat = -6.5924
+lon = 110.671
+
+[[origin]]
+slug = "maputo"
+name = "Maputo"
+lat = -25.9655
+lon = 32.5832
+
+[[origin]]
+slug = "xuzhou"
+name = "Xuzhou"
+lat = 34.2044
+lon = 117.2839
+
+[[origin]]
+slug = "dammam"
+name = "Dammam"
+lat = 26.4344
+lon = 50.1033
+
+[[origin]]
+slug = "shiraz"
+name = "Shiraz"
+lat = 29.6103
+lon = 52.5311
+
+[[origin]]
+slug = "heshan"
+name = "Heshan"
+lat = 28.5694
+lon = 112.3473
+
+[[origin]]
+slug = "kananga"
+name = "Kananga"
+lat = -5.8962
+lon = 22.4166
+
+[[origin]]
+slug = "kazan"
+name = "Kazan"
+lat = 55.7887
+lon = 49.1221
+
+[[origin]]
+slug = "jining"
+name = "Jining"
+lat = 35.405
+lon = 116.5814
+
+[[origin]]
+slug = "barquisimeto"
+name = "Barquisimeto"
+lat = 10.0647
+lon = -69.357
+
+[[origin]]
+slug = "port-au-prince"
+name = "Port-au-Prince"
+lat = 18.5435
+lon = -72.3388
+
+[[origin]]
+slug = "liaocheng"
+name = "Liaocheng"
+lat = 36.4506
+lon = 116.0025
+
+[[origin]]
+slug = "meerut"
+name = "Meerut"
+lat = 28.98
+lon = 77.7064
+
+[[origin]]
+slug = "virar"
+name = "Virār"
+lat = 19.4559
+lon = 72.8114
+
+[[origin]]
+slug = "nowrangapur"
+name = "Nowrangapur"
+lat = 19.2311
+lon = 82.5483
+
+[[origin]]
+slug = "karbala"
+name = "Karbala"
+lat = 32.616
+lon = 44.0249
+
+[[origin]]
+slug = "changzhi"
+name = "Changzhi"
+lat = 36.1839
+lon = 113.1053
+
+[[origin]]
+slug = "tianshui"
+name = "Tianshui"
+lat = 34.5795
+lon = 105.7424
+
+[[origin]]
+slug = "mombasa"
+name = "Mombasa"
+lat = -4.0547
+lon = 39.6636
+
+[[origin]]
+slug = "mandalay"
+name = "Mandalay"
+lat = 21.9747
+lon = 96.0836
+
+[[origin]]
+slug = "srinagar"
+name = "Srinagar"
+lat = 34.0857
+lon = 74.8055
+
+[[origin]]
+slug = "barranquilla"
+name = "Barranquilla"
+lat = 10.9685
+lon = -74.7813
+
+[[origin]]
+slug = "chelyabinsk"
+name = "Chelyabinsk"
+lat = 55.1611
+lon = 61.4288
+
+[[origin]]
+slug = "merida"
+name = "Mérida"
+lat = 20.967
+lon = -89.6232
+
+[[origin]]
+slug = "hiroshima"
+name = "Hiroshima"
+lat = 34.4
+lon = 132.45
+
+[[origin]]
+slug = "santiago-de-los-caballeros"
+name = "Santiago de los Caballeros"
+lat = 19.4504
+lon = -70.6908
+
+[[origin]]
+slug = "shymkent"
+name = "Shymkent"
+lat = 42.3099
+lon = 69.6004
+
+[[origin]]
+slug = "weinan"
+name = "Weinan"
+lat = 34.5035
+lon = 109.5089
+
+[[origin]]
+slug = "dhanbad"
+name = "Dhanbad"
+lat = 23.7976
+lon = 86.4299
+
+[[origin]]
+slug = "arequipa"
+name = "Arequipa"
+lat = -16.399
+lon = -71.5375
+
+[[origin]]
+slug = "fes"
+name = "Fes"
+lat = 34.0331
+lon = -5.0003
+
+[[origin]]
+slug = "nouakchott"
+name = "Nouakchott"
+lat = 18.0858
+lon = -15.9785
+
+[[origin]]
+slug = "kisangani"
+name = "Kisangani"
+lat = 0.5153
+lon = 25.191
+
+[[origin]]
+slug = "jiaxing"
+name = "Jiaxing"
+lat = 30.7522
+lon = 120.75
+
+[[origin]]
+slug = "aurangabad"
+name = "Aurangabad"
+lat = 19.8776
+lon = 75.3423
+
+[[origin]]
+slug = "zhongwei"
+name = "Zhongwei"
+lat = 37.5113
+lon = 105.1907
+
+[[origin]]
+slug = "omsk"
+name = "Omsk"
+lat = 54.9924
+lon = 73.3686
+
+[[origin]]
+slug = "pekanbaru"
+name = "Pekanbaru"
+lat = 0.5167
+lon = 101.4417
+
+[[origin]]
+slug = "panjin"
+name = "Panjin"
+lat = 41.121
+lon = 122.0739
+
+[[origin]]
+slug = "bandar-lampung"
+name = "Bandar Lampung"
+lat = -5.4292
+lon = 105.2611
+
+[[origin]]
+slug = "varanasi"
+name = "Varanasi"
+lat = 25.3167
+lon = 83.0104
+
+[[origin]]
+slug = "jiujiang"
+name = "Jiujiang"
+lat = 29.7048
+lon = 116.0021
+
+[[origin]]
+slug = "samara"
+name = "Samara"
+lat = 53.2077
+lon = 50.1355
+
+[[origin]]
+slug = "aba"
+name = "Aba"
+lat = 5.1066
+lon = 7.3667
+
+[[origin]]
+slug = "amritsar"
+name = "Amritsar"
+lat = 31.6223
+lon = 74.8753
+
+[[origin]]
+slug = "birmingham"
+name = "Birmingham"
+lat = 52.4814
+lon = -1.8998
+
+[[origin]]
+slug = "anyang"
+name = "Anyang"
+lat = 36.096
+lon = 114.3828
+
+[[origin]]
+slug = "vijayawada"
+name = "Vijayawada"
+lat = 16.5074
+lon = 80.6466
+
+[[origin]]
+slug = "fengxiang"
+name = "Fengxiang"
+lat = 30.8584
+lon = 121.4678
+
+[[origin]]
+slug = "bijie"
+name = "Bijie"
+lat = 27.3019
+lon = 105.2863
+
+[[origin]]
+slug = "monterrey"
+name = "Monterrey"
+lat = 25.6843
+lon = -100.3172
+
+[[origin]]
+slug = "rostov-on-don"
+name = "Rostov-on-Don"
+lat = 47.22
+lon = 39.7077
+
+[[origin]]
+slug = "zhuzhou"
+name = "Zhuzhou"
+lat = 27.8333
+lon = 113.15
+
+[[origin]]
+slug = "touba"
+name = "Touba"
+lat = 14.8623
+lon = -15.8753
+
+[[origin]]
+slug = "ufa"
+name = "Ufa"
+lat = 54.7431
+lon = 55.9678
+
+[[origin]]
+slug = "ranchi"
+name = "Ranchi"
+lat = 23.3432
+lon = 85.3094
+
+[[origin]]
+slug = "shangrao"
+name = "Shangrao"
+lat = 28.4518
+lon = 117.9429
+
+[[origin]]
+slug = "lilongwe"
+name = "Lilongwe"
+lat = -13.9669
+lon = 33.7873
+
+[[origin]]
+slug = "huaibei"
+name = "Huaibei"
+lat = 33.9744
+lon = 116.7917
+
+[[origin]]
+slug = "maiduguri"
+name = "Maiduguri"
+lat = 11.8469
+lon = 13.1571
+
+[[origin]]
+slug = "meishan"
+name = "Meishan"
+lat = 30.0439
+lon = 103.837
+
+[[origin]]
+slug = "mwanza"
+name = "Mwanza"
+lat = -2.5167
+lon = 32.9
+
+[[origin]]
+slug = "ulsan"
+name = "Ulsan"
+lat = 35.5372
+lon = 129.3167
+
+[[origin]]
+slug = "sendai"
+name = "Sendai"
+lat = 38.2667
+lon = 140.8667
+
+[[origin]]
+slug = "krasnoyarsk"
+name = "Krasnoyarsk"
+lat = 56.0374
+lon = 92.9314
+
+[[origin]]
+slug = "fuzhou-cn"
+name = "Fuzhou"
+lat = 27.96
+lon = 116.3333
+
+[[origin]]
+slug = "guigang"
+name = "Guigang"
+lat = 23.116
+lon = 109.5947
+
+[[origin]]
+slug = "jabalpur"
+name = "Jabalpur"
+lat = 23.167
+lon = 79.9501
+
+[[origin]]
+slug = "ilorin"
+name = "Ilorin"
+lat = 8.4966
+lon = 4.5421
+
+[[origin]]
+slug = "aden"
+name = "Aden"
+lat = 12.7796
+lon = 45.0385
+
+[[origin]]
+slug = "bogor"
+name = "Bogor"
+lat = -6.5944
+lon = 106.7892
+
+[[origin]]
+slug = "hengyang"
+name = "Hengyang"
+lat = 26.8895
+lon = 112.6189
+
+[[origin]]
+slug = "prayagraj"
+name = "Prayagraj"
+lat = 25.4448
+lon = 81.8432
+
+[[origin]]
+slug = "trujillo"
+name = "Trujillo"
+lat = -8.116
+lon = -79.03
+
+[[origin]]
+slug = "yulin"
+name = "Yulin"
+lat = 22.6305
+lon = 110.1469
+
+[[origin]]
+slug = "jodhpur"
+name = "Jodhpur"
+lat = 26.2684
+lon = 73.0059
+
+[[origin]]
+slug = "gwalior"
+name = "Gwalior"
+lat = 26.2298
+lon = 78.1734
+
+[[origin]]
+slug = "jingzhou"
+name = "Jingzhou"
+lat = 30.3503
+lon = 112.1903
+
+[[origin]]
+slug = "gqeberha"
+name = "Gqeberha"
+lat = -33.9611
+lon = 25.6149
+
+[[origin]]
+slug = "voronezh"
+name = "Voronezh"
+lat = 51.6683
+lon = 39.192
+
+[[origin]]
+slug = "xinxiang"
+name = "Xinxiang"
+lat = 35.1903
+lon = 113.8015
+
+[[origin]]
+slug = "yichun"
+name = "Yichun"
+lat = 27.8333
+lon = 114.4
+
+[[origin]]
+slug = "sokoto"
+name = "Sokoto"
+lat = 13.0627
+lon = 5.2432
+
+[[origin]]
+slug = "jos"
+name = "Jos"
+lat = 9.9285
+lon = 8.8921
+
+[[origin]]
+slug = "tangier"
+name = "Tangier"
+lat = 35.7673
+lon = -5.7998
+
+[[origin]]
+slug = "teni"
+name = "Teni"
+lat = 10.0112
+lon = 77.4777
+
+[[origin]]
+slug = "mexicali"
+name = "Mexicali"
+lat = 32.6278
+lon = -115.4545
+
+[[origin]]
+slug = "pointe-noire"
+name = "Pointe-Noire"
+lat = -4.7761
+lon = 11.8635
+
+[[origin]]
+slug = "maceio"
+name = "Maceió"
+lat = -9.6658
+lon = -35.7353
+
+[[origin]]
+slug = "campinas"
+name = "Campinas"
+lat = -22.9056
+lon = -47.0608
+
+[[origin]]
+slug = "sanya"
+name = "Sanya"
+lat = 18.2543
+lon = 109.5095
+
+[[origin]]
+slug = "rangpur"
+name = "Rangpur"
+lat = 25.7466
+lon = 89.2517
+
+[[origin]]
+slug = "kirkuk"
+name = "Kirkuk"
+lat = 35.4681
+lon = 44.3922
+
+[[origin]]
+slug = "ashgabat"
+name = "Ashgabat"
+lat = 37.95
+lon = 58.3833
+
+[[origin]]
+slug = "shaoguan"
+name = "Shaoguan"
+lat = 24.8
+lon = 113.5833
+
+[[origin]]
+slug = "raipur"
+name = "Raipur"
+lat = 21.2333
+lon = 81.6333
+
+[[origin]]
+slug = "longyan"
+name = "Longyan"
+lat = 25.0749
+lon = 117.0178
+
+[[origin]]
+slug = "koeln"
+name = "Köln"
+lat = 50.9333
+lon = 6.95
+
+[[origin]]
+slug = "tiruchirappalli"
+name = "Tiruchirappalli"
+lat = 10.8155
+lon = 78.6965
+
+[[origin]]
+slug = "yongzhou"
+name = "Yongzhou"
+lat = 26.4239
+lon = 111.6131
+
+[[origin]]
+slug = "zamboanga"
+name = "Zamboanga"
+lat = 6.9103
+lon = 122.0739
+
+[[origin]]
+slug = "ottawa"
+name = "Ottawa"
+lat = 45.4112
+lon = -75.6981
+
+[[origin]]
+slug = "huzhou"
+name = "Huzhou"
+lat = 30.8703
+lon = 120.0933
+
+[[origin]]
+slug = "xinyi"
+name = "Xinyi"
+lat = 22.373
+lon = 110.9475
+
+[[origin]]
+slug = "volgograd"
+name = "Volgograd"
+lat = 48.7138
+lon = 44.4976
+
+[[origin]]
+slug = "edmonton"
+name = "Edmonton"
+lat = 53.5501
+lon = -113.4687
+
+[[origin]]
+slug = "odesa"
+name = "Odesa"
+lat = 46.4857
+lon = 30.7438
+
+[[origin]]
+slug = "wuwei"
+name = "Wuwei"
+lat = 37.9267
+lon = 102.632
+
+[[origin]]
+slug = "jacksonville"
+name = "Jacksonville"
+lat = 30.3322
+lon = -81.6556
+
+[[origin]]
+slug = "fort-worth"
+name = "Fort Worth"
+lat = 32.7254
+lon = -97.3208
+
+[[origin]]
+slug = "yishui"
+name = "Yishui"
+lat = 35.7847
+lon = 118.6281
+
+[[origin]]
+slug = "hanzhong"
+name = "Hanzhong"
+lat = 33.0751
+lon = 107.0221
+
+[[origin]]
+slug = "hezhou"
+name = "Hezhou"
+lat = 24.4036
+lon = 111.5667
+
+[[origin]]
+slug = "kota"
+name = "Kota"
+lat = 25.1825
+lon = 75.8391
+
+[[origin]]
+slug = "zhu-cheng-city"
+name = "Zhu Cheng City"
+lat = 35.995
+lon = 119.4026
+
+[[origin]]
+slug = "guatemala-city"
+name = "Guatemala City"
+lat = 14.6407
+lon = -90.5133
+
+[[origin]]
+slug = "managua"
+name = "Managua"
+lat = 12.1328
+lon = -86.2504
+
+[[origin]]
+slug = "kingston"
+name = "Kingston"
+lat = 17.997
+lon = -76.7936
+
+[[origin]]
+slug = "nay-pyi-taw"
+name = "Nay Pyi Taw"
+lat = 19.745
+lon = 96.1297
+
+[[origin]]
+slug = "bishkek"
+name = "Bishkek"
+lat = 42.87
+lon = 74.59
+
+[[origin]]
+slug = "tegucigalpa"
+name = "Tegucigalpa"
+lat = 14.0818
+lon = -87.2068
+
+[[origin]]
+slug = "libreville"
+name = "Libreville"
+lat = 0.3924
+lon = 9.4536
+
+[[origin]]
+slug = "bangui"
+name = "Bangui"
+lat = 4.3612
+lon = 18.555
+
+[[origin]]
+slug = "freetown"
+name = "Freetown"
+lat = 8.4871
+lon = -13.2356
+
+[[origin]]
+slug = "dodoma"
+name = "Dodoma"
+lat = -6.1722
+lon = 35.7395
+
+[[origin]]
+slug = "riga"
+name = "Riga"
+lat = 56.946
+lon = 24.1059
+
+[[origin]]
+slug = "sarajevo"
+name = "Sarajevo"
+lat = 43.8486
+lon = 18.3564
+
+[[origin]]
+slug = "dushanbe"
+name = "Dushanbe"
+lat = 38.5358
+lon = 68.779
+
+[[origin]]
+slug = "chisinau"
+name = "Chisinau"
+lat = 47.009
+lon = 28.8594
+
+[[origin]]
+slug = "djibouti"
+name = "Djibouti"
+lat = 11.589
+lon = 43.145
+
+[[origin]]
+slug = "asmara"
+name = "Asmara"
+lat = 15.3381
+lon = 38.9318
+
+[[origin]]
+slug = "pristina"
+name = "Pristina"
+lat = 42.6727
+lon = 21.1669
+
+[[origin]]
+slug = "vilnius"
+name = "Vilnius"
+lat = 54.6892
+lon = 25.2798
+
+[[origin]]
+slug = "san-salvador"
+name = "San Salvador"
+lat = 13.6893
+lon = -89.1872
+
+[[origin]]
+slug = "skopje"
+name = "Skopje"
+lat = 41.9965
+lon = 21.4314
+
+[[origin]]
+slug = "juba"
+name = "Juba"
+lat = 4.8517
+lon = 31.5825
+
+[[origin]]
+slug = "bissau"
+name = "Bissau"
+lat = 11.8636
+lon = -15.5977
+
+[[origin]]
+slug = "bratislava"
+name = "Bratislava"
+lat = 48.1482
+lon = 17.1067
+
+[[origin]]
+slug = "tirana"
+name = "Tirana"
+lat = 41.3274
+lon = 19.8187
+
+[[origin]]
+slug = "san-juan"
+name = "San Juan"
+lat = 18.4663
+lon = -66.1057
+
+[[origin]]
+slug = "panama-city"
+name = "Panama City"
+lat = 8.9936
+lon = -79.5197
+
+[[origin]]
+slug = "tallinn"
+name = "Tallinn"
+lat = 59.437
+lon = 24.7535
+
+[[origin]]
+slug = "windhoek"
+name = "Windhoek"
+lat = -22.5594
+lon = 17.0832
+
+[[origin]]
+slug = "canberra"
+name = "Canberra"
+lat = -35.2835
+lon = 149.1281
+
+[[origin]]
+slug = "maseru"
+name = "Maseru"
+lat = -29.3167
+lon = 27.4833
+
+[[origin]]
+slug = "san-jose"
+name = "San José"
+lat = 9.9339
+lon = -84.0849
+
+[[origin]]
+slug = "yamoussoukro"
+name = "Yamoussoukro"
+lat = 6.8205
+lon = -5.2767
+
+[[origin]]
+slug = "ljubljana"
+name = "Ljubljana"
+lat = 46.0511
+lon = 14.5051
+
+[[origin]]
+slug = "porto-novo"
+name = "Porto-Novo"
+lat = 6.4965
+lon = 2.6036
