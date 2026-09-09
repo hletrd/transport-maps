@@ -1,8 +1,11 @@
 # calibration.toml
 #
-# Fitted coefficients for the flight time model. This file contains NO flight
-# records from any provider -- only regression outputs. See the licence firewall
-# note in the design spec.
+# Calibration constants for the air, rail, ferry and land-border models. Each
+# table's comment says whether it is FITTED (and against what) or a
+# published-figure default -- the CLAUDE.md modelling rule, checked by
+# tests/test_calibration_provenance.py. This file contains NO flight records
+# from any provider -- only regression outputs. See the licence firewall note
+# in the design spec.
 #
 # The airborne coefficients below are FITTED, from adsb.lol (ODbL-1.0) daily
 # globe history. Only regression outputs are stored here; no flight record is.
@@ -20,32 +23,43 @@ holdout_mae_min = 9.3
 # arrives as fragments and only 2 of 107,366 legs exceed 6000 km. Long-haul
 # is also inherently +/-1 h on winds alone, which a distance-only symmetric
 # model cannot represent. Treat 10,000 km+ figures as approximate.
+#
+# The [airborne] table below is the FITTED output of that sample; [meta]
+# records the fit itself.
 
 [airborne]
 # airborne_min = climb_descent_penalty_min + 60 * distance_km / cruise_kmh
 climb_descent_penalty_min = 15.0
 cruise_kmh = 844
 
+# Published-figure defaults (typical block-time components by airport size);
+# not fitted.
 [taxi_out_min]
 large = 17.0
 medium = 12.0
 small = 8.0
 
+# Published-figure defaults (typical block-time components by airport size);
+# not fitted.
 [taxi_in_min]
 large = 9.0
 medium = 6.0
 small = 4.0
 
+# Hand-fitted to two anchors (ICN-NRT ~120/wk, ICN-LHR ~14/wk); no
+# observed-frequency refit has been done (calibrate/fit.py's fit_frequency
+# exists but has no data to run on). Details below.
 [frequency]
 # Gravity model for weekly frequency on a route that is known to exist:
 #   flights_per_week = base * size_weight[dep] * size_weight[arr] * (distance_km ^ decay)
-# Coefficients are refitted in Task 13 against observed frequencies. No observed
-# frequency is ever written to dist/.
+# The coefficients are a hand fit, not a regression: no observed-frequency
+# refit has been done, and no observed frequency is ever written to dist/.
 # Fitted to two real-world anchors: ICN-NRT (1,258 km) runs about 120 flights/week
 # and ICN-LHR (8,880 km) about 14. Sanity across the range: Seoul-Jeju (450 km,
 # the world's busiest route) -> 362/week vs ~500 real; a 13,800 km ultra-long-haul
 # -> 8.4/week vs ~7 real. Transatlantic trunks like LHR-JFK come out low (23 vs ~90)
-# because they are frequency outliers for their distance; Task 12 refits from data.
+# because they are frequency outliers for their distance; only a refit against
+# observed frequencies would move them, and none has been done.
 #
 # Do NOT use a shallow decay here. An earlier draft used base=42, decay=-0.35, which
 # produced 1.5-5 flights/week for EVERY route on Earth -- Seoul-Jeju at 5/week -- so
@@ -53,6 +67,7 @@ small = 4.0
 base = 300000.0
 decay = -1.10
 
+# Published-figure defaults; not fitted.
 [frequency.size_weight]
 large = 1.0
 medium = 0.55
@@ -70,13 +85,15 @@ small = 0.25
 # alike for a border one barely notices and the other never crosses.
 
 # Check-in, bag drop, security, walk to gate, boarding. Scales with terminal
-# size, which is the usable proxy for queue length.
+# size, which is the usable proxy for queue length. Published-figure default;
+# not fitted.
 [processing_min]
 large = 70.0
 medium = 55.0
 small = 40.0
 
-# Deplane, walk, and wait at the belt. No border component.
+# Deplane, walk, and wait at the belt. No border component. Published-figure
+# default; not fitted.
 [disembark_min]
 large = 30.0
 medium = 22.0
@@ -85,14 +102,15 @@ small = 15.0
 # Emigration on departure plus immigration on arrival, charged ONCE on a flight
 # edge and only when it leaves the departure airport's immigration zone.
 # Schengen counts as a single zone: an Amsterdam-Milan flight crosses a national
-# border but no immigration desk.
+# border but no immigration desk. Published-figure default; not fitted.
 [border_min]
 large = 45.0
 medium = 35.0
 small = 25.0
 
+# Minimum connection time: published-figure defaults (typical MCTs by airport
+# size); not fitted. Nothing in the repo observes connections.
 [connection_min]
-# Minimum connection time, refitted in Task 12 from observed connections.
 large = 75.0
 medium = 50.0
 small = 35.0

@@ -2,7 +2,7 @@
 
 # Isochronic Passage Chart
 
-**How long it takes to reach anywhere on Earth from 550+ cities, door to door.**
+**How long it takes to reach anywhere on Earth, door to door, from the cities in `data/origins.toml` (553 today; the live build may lag).**
 
 [![Live site](https://img.shields.io/badge/live-worldmap.atik.kr-1f6feb)](https://worldmap.atik.kr/)
 ![Python 3.14](https://img.shields.io/badge/python-3.14-3776ab)
@@ -55,16 +55,16 @@ from `dist/` must carry the same credits; `dist/index.json` ships them in its
 | [OurAirports](https://ourairports.com/data/) | Public Domain | airport locations, sizes and scheduled-service status |
 | [Natural Earth](https://www.naturalearthdata.com/) | Public Domain | 1:10m land polygons defining the H3 cell universe; country borders; populated places behind the urban mask |
 | [GRIP4 (Global Roads Inventory Project)](https://www.globio.info/download-grip-dataset) | CC0 1.0 | road-density rasters setting per-cell ground speed |
-| [OpenStreetMap](https://www.openstreetmap.org/copyright) | ODbL 1.0 | coastlines drawn on the map (water polygons via [osmdata.openstreetmap.de](https://osmdata.openstreetmap.de/)); rail route relations; upstream source of the GRIP4 road network |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) | ODbL 1.0 | coastlines drawn on the map (water polygons via [osmdata.openstreetmap.de](https://osmdata.openstreetmap.de/)); rail route relations and ferry ways; upstream source of the GRIP4 road network |
 | [GeoNames](https://www.geonames.org/) | CC BY 4.0 | departure cities and the place names under the cursor (cities15000) |
 | [HydroLAKES](https://www.hydrosheds.org/products/hydrolakes) | CC BY 4.0 | lake outlines drawn on the map (Messager et al. 2016) |
 | [adsb.lol](https://adsb.lol/) | ODbL 1.0 | observed flights behind the fitted cruise speed and climb/descent penalty |
 
-OpenStreetMap enters three ways: rail and ferry route relations are parsed
-from Geofabrik PBF extracts (`sources/osm.py`), the coastline layer is built
-from OSM water polygons (`emit/water.py`), and GRIP4 is itself compiled from
-many road datasets **including OpenStreetMap**, so the road-density rasters
-that set every ground speed are downstream of it as well.
+OpenStreetMap enters three ways: rail route relations and ferry ways
+(`route=ferry`) are parsed from Geofabrik PBF extracts (`sources/osm.py`), the
+coastline layer is built from OSM water polygons (`emit/water.py`), and GRIP4
+is itself compiled from many road datasets **including OpenStreetMap**, so the
+road-density rasters that set every ground speed are downstream of it as well.
 
 GRIP4 asks to be cited as: Meijer, J.R., Huijbregts, M.A.J., Schotten, C.G.J.
 and Schipper, A.M. (2018): Global patterns of current and future road
@@ -73,6 +73,7 @@ infrastructure. *Environmental Research Letters* 13-064006.
 No commercial flight data (schedules, frequencies or positions) is used
 anywhere in this pipeline; `tests/test_licence_firewall.py` checks that no
 provider fingerprint reaches `dist/`. One commercial service is used during
-**calibration only**: `scripts/calibrate_ground.py` fits the ground-speed
-constants against Google Routes journeys, and only the fitted coefficients in
-`calibration.toml` are kept.
+**calibration only**: `scripts/calibrate_ground.py` samples driving times from
+Google Routes and fits the per-road-class speeds in `graph/ground.py` and the
+urban factor in `sources/urban.py`. The sampled durations stay in
+`data/build/` (gitignored) and nothing from them reaches `dist/`.
