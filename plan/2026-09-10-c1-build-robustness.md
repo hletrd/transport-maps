@@ -123,3 +123,4 @@ orchestrator are running; do not start/stop them, do not rewrite `dist/` or
 
 - 2026-09-10 cycle 1: plan written; cycle-1 tasks implemented in the cycle-1 commits.
 - 2026-09-10 cycle 1 done: A3 (b030d38), A5 (599dc60), A8 (be2cc94), A4 (b38fb8b, superseding 3487081), E1 verify half + FD-5 (cea16ca, 4d74cbe). Each guard shown red under its mutation, then reverted.
+- 2026-09-10 deploy attempt: the consistency gate refused mid-rebuild (new origin arrays at 90,659 entries against a 90,740-entry hover_cells.bin) -- live evidence for A6b/A6c (write hover_cells.bin and index.json last; build identity per origin). No files were copied.
