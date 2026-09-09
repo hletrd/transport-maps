@@ -2,16 +2,25 @@ import maplibregl from "./vendor/maplibre-gl.js";
 import * as pmtiles from "./vendor/pmtiles.js";
 import * as h3 from "./vendor/h3.js";
 
-// Sequential single hue on a dark ground: brightest where the journey is
-// shortest, fading outward. Lightness is strictly monotonic in OKLCH
-// (0.90 -> 0.46), which is the property a sequential ramp actually needs --
-// the categorical CVD checks do not apply to a ramp read as magnitude.
-const BANDS = ["#ffd6a8","#f8c58d","#f2b372","#eba156","#e48f35","#dd7c00",
-               "#cb7108","#b86616","#a55b1c","#93511f","#814720"];
+// Sequential ramp, brightest where the journey is shortest. Multi-hue on
+// purpose: a SINGLE hue cannot separate eleven bands on a dark ground.
+// Measured adjacent-pair separation in OKLab (x100) -- below about 8 two
+// bands are hard to tell apart at all:
+//
+//   earlier single-hue amber   every pair 4.4-4.8, so China and Siberia
+//                              rendered as one flat orange mass
+//   this ramp                  min 6.4, median 7.2
+//
+// A vivid inferno-style ramp measured better still (median 10.0) but read as
+// a neon heatmap rather than a chart; this is the deliberate trade. Lightness
+// stays strictly monotonic (0.95 -> 0.32), which is what a sequential ramp
+// actually requires.
+const BANDS = ["#faefc5","#f6d49c","#f5b77b","#ef9a69","#e27e65","#cd686a",
+               "#b0586f","#8f4d6e","#6d4464","#503955","#392b49"];
 const BG = "#0a0b0d", SEA = "#0f1114";
 // Land no scheduled service reaches. A tone, not a colour: it must read as
 // "no route" rather than as the far end of the time ramp.
-const UNCHARTED = "#23262b";
+const UNCHARTED = "#4a4d50";
 const UNREACHABLE_BAND = -1;
 
 const $ = (id) => document.getElementById(id);

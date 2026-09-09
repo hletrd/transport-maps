@@ -82,7 +82,7 @@ body{
 }
 summary{
   list-style:none;cursor:pointer;padding:10px 14px;
-  font-size:11px;text-transform:uppercase;color:var(--text-2);font-weight:500;
+  font-size:12.5px;color:var(--text-2);font-weight:500;
   white-space:nowrap;display:flex;align-items:center;gap:8px;
 }
 summary::-webkit-details-marker{display:none}
@@ -101,7 +101,6 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .reading{position:fixed;left:22px;bottom:20px;z-index:6;width:290px}
 .reading .v{
   margin:0;font-size:50px;line-height:1;font-weight:300;
-  font-variant-numeric:tabular-nums;
 }
 .reading .v small{font-size:16px;color:var(--text-2);margin-left:6px;font-weight:400}
 .reading .at{margin:4px 0 0;font-size:12px;color:var(--text-2);min-height:2.6em}
@@ -113,7 +112,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .scale{position:relative;height:15px;margin-top:5px}
 .scale span{
   position:absolute;transform:translateX(-50%);font-size:10px;color:var(--text-3);
-  font-variant-numeric:tabular-nums;white-space:nowrap;
+  white-space:nowrap;
 }
 .legend-cap{margin:6px 0 0;font-size:10.5px;color:var(--text-3)}
 
@@ -121,10 +120,10 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .legs{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;
   max-height:34vh;overflow-y:auto;scrollbar-width:thin;
   scrollbar-color:var(--line-2) transparent}
-.legs h2{margin:0 0 7px;font-size:11px;font-weight:500;text-transform:uppercase;
+.legs h2{margin:0 0 7px;font-size:12px;font-weight:500;
   color:var(--text-3)}
 .leg{display:flex;gap:9px;align-items:baseline;padding:3px 0;font-size:12.5px}
-.leg .t{color:var(--text-3);font-variant-numeric:tabular-nums;width:56px;flex:none;
+.leg .t{color:var(--text-3);width:58px;flex:none;
   text-align:right}
 .leg .d{color:var(--text-2)}
 .leg .d b{color:var(--text);font-weight:500}
@@ -164,7 +163,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}
 .btn{
   background:var(--surface-2);border:1px solid var(--line);border-radius:2px;color:var(--text-2);
-  font:500 11px/1 inherit;text-transform:uppercase;padding:7px 9px;cursor:pointer;
+  font:500 12px/1 inherit;padding:7px 10px;cursor:pointer;
 }
 .btn:hover{color:var(--text);border-color:var(--line-2)}
 
@@ -181,7 +180,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 /* ---- point to point ---- */
 .pins{margin:8px 0 0;font-size:12px;color:var(--text-2)}
 .pins div{display:flex;gap:8px;padding:3px 0;align-items:baseline}
-.pins .k{color:var(--text-3);width:34px;flex:none;font-size:10.5px;text-transform:uppercase}
+.pins .k{color:var(--text-3);width:38px;flex:none;font-size:12px}
 .pins .val{color:var(--text)}
 
 #key p{margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--text-2)}
@@ -230,7 +229,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 
 <div class="rail">
   <details class="panel" id="departure" open>
-    <summary>Departure<span id="origin-name" style="text-transform:none;color:var(--text);font-weight:400;font-size:12.5px"></span></summary>
+    <summary>Departure<span id="origin-name" style="color:var(--text);font-weight:400;font-size:12.5px"></span></summary>
     <div class="body">
       <p class="here" id="here"></p>
       <input id="q" type="search" placeholder="Search 157 cities…" autocomplete="off" spellcheck="false" aria-label="Search departure cities">
@@ -268,7 +267,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   </details>
 
   <details class="panel" id="key">
-    <summary>Sources &amp; method</summary>
+    <summary>Sources and method</summary>
     <div class="body">
       <p>Reckoned from a planned departure: the first service is not waited for,
          but onward connections are.</p>

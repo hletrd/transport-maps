@@ -9,9 +9,19 @@ arrays; a static page renders them on a globe.
   `web/vendor/`. No serif faces, no webfont CDN (the CSP blocks external font
   hosts, and a face that silently falls back undoes the choice).
 - **`letter-spacing` stays at its default everywhere.** Do not set it — not on
-  headings, not on uppercase labels, not on small caps. If a label looks
-  cramped, change size or weight instead.
+  headings, not on labels, not on small caps. If a label looks cramped, change
+  size or weight instead.
+- **No `text-transform: uppercase`.** Small all-caps micro-labels ("DEPARTURE",
+  "ROUTE") are the generic-dashboard tell. Use sentence case and carry the
+  hierarchy with weight and colour.
+- **No `font-variant-numeric: tabular-nums`.** Monospaced digits read as a
+  terminal, not a chart. Plex Sans' proportional figures suit the prose; if a
+  column needs aligning, set a width.
 - **Dark theme.** Near-black ground (`--bg`), not a light or sepia palette.
+- **Band colours must be measurably separable.** Adjacent bands need OKLab ΔE
+  of roughly 8; below that they read as one mass. A single hue cannot achieve
+  it across eleven bands on a dark ground — rotate hue as well as lightness,
+  and keep lightness strictly monotonic. Measure it, do not eyeball it.
 - **The legend is always visible**, never folded into a panel, and its ticks sit
   at their true band boundaries — the bands are equal width but the time scale
   is not linear, so evenly spaced labels would misstate the scale.
