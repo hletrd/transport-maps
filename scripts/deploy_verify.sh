@@ -40,3 +40,4 @@ for f in index.json app.js index.html places.json airports.json borders.json ori
   printf "  %-26s %s\n" "$f" "$(curl -s -o /dev/null -w '%{http_code}' "https://worldmap.atik.kr/$f")"
 done
 printf "  %-26s %s\n" "seoul.pmtiles range" "$(curl -s -o /dev/null -w '%{http_code}' -r 0-99 https://worldmap.atik.kr/origins/seoul.pmtiles)"
+printf "  %-26s %s\n" "water.pmtiles range" "$(curl -s -o /dev/null -w '%{http_code}' -r 0-99 https://worldmap.atik.kr/water.pmtiles)"
