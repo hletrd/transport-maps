@@ -24,7 +24,33 @@ const $ = (id) => document.getElementById(id);
 const proto = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", proto.tile);
 
-const meta = await (await fetch("./index.json")).json();
+// Anything that reaches the DOM from a dataset (GeoNames, OurAirports,
+// Nominatim, OpenStreetMap station names) goes through this first.
+const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// A blank globe with no message is the failure mode this page has shipped
+// twice. If the two files everything depends on cannot be read, say so where
+// the reading would have been, then stop.
+function fatal(msg) {
+  $("time").textContent = "—";
+  $("where").textContent = msg;
+  throw new Error(msg);
+}
+async function loadJSON(url) {
+  const r = await fetch(url).catch((e) => fatal(`Could not reach ${url} (${e.message}).`));
+  if (!r.ok) fatal(`Could not load ${url} (HTTP ${r.status}).`);
+  return r.json().catch(() => fatal(`${url} is not valid JSON.`));
+}
+async function loadCells(url) {
+  const r = await fetch(url).catch((e) => fatal(`Could not reach ${url} (${e.message}).`));
+  if (!r.ok) fatal(`Could not load ${url} (HTTP ${r.status}).`);
+  const b = await r.arrayBuffer();
+  if (!b.byteLength || b.byteLength % 8) fatal(`${url} is ${b.byteLength} bytes, not whole 8-byte cells.`);
+  return new BigUint64Array(b);
+}
+
+const meta = await loadJSON("./index.json");
 const UNREACHABLE = meta.unreachable ?? 65535;
 const HOVER_RES = meta.hoverRes ?? 4;
 // The surface is solved per res-5 cell (~8 km); the readout array is res 4
@@ -35,9 +61,7 @@ const SOLVE_RES = meta.solveRes ?? 5;
 const EDGES = meta.bandEdgesMin ?? [];
 
 // shared, origin-independent cell ordering — fetched once
-const hoverCells = new BigUint64Array(
-  await (await fetch("./" + (meta.hoverCellsUrl || "hover_cells.bin"))).arrayBuffer()
-);
+const hoverCells = await loadCells("./" + (meta.hoverCellsUrl || "hover_cells.bin"));
 const RAMPS = {
   // Adjacent-pair separation measured in OKLab (x100); below about 8 two bands
   // are hard to tell apart. Lightness is strictly monotonic in every ramp,
@@ -97,6 +121,17 @@ function expandRamp(control, n) {
 }
 const N_BANDS = (meta.bandEdgesMin?.length ?? 10) + 1;
 let BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
+
+// How each surface mode is modelled, when index.json predates the emitter
+// that ships the calibrated sentence (builds before modeDetail existed).
+const MODE_FALLBACK = {
+  "rail": "Scheduled trains from OpenStreetMap route relations, stop to stop, plus boarding time.",
+  "ferry": "Scheduled ferry routes from OpenStreetMap, sailing time plus time at the terminals.",
+  "highway": "Motorways and expressways (GRIP4 class 1) at a fitted free-flow speed, halved inside cities.",
+  "major road": "Primary and secondary roads (GRIP4 classes 2-3) at fitted speeds, halved inside cities.",
+  "minor road": "Tertiary and local roads (GRIP4 classes 4-5) at fitted speeds, halved inside cities.",
+  "track": "No mapped road: walking pace.",
+};
 
 let hoverTimes = null;          // Uint16Array for the active origin
 let hoverAir = null;            // arrival-airport ordinal per hover cell
@@ -225,7 +260,9 @@ fetch("./places.json")
     });
     const showLabels = () => {
       const z = map.getZoom();
-      const n = z < 2.2 ? 0 : z < 3 ? 40 : z < 4 ? 120 : z < 5.5 ? 350 : 900;
+      // The opening view (zoom 1.9) must show some names: the first line of
+      // copy says to click one. Eighteen is the largest cities, no clutter.
+      const n = z < 1.2 ? 0 : z < 2.2 ? 18 : z < 3 ? 40 : z < 4 ? 120 : z < 5.5 ? 350 : 900;
       // Largest cities claim their screen space first; a smaller one whose
       // label would land within the gap of one already placed is skipped, so
       // the map thins itself rather than piling names on top of each other.
@@ -369,6 +406,10 @@ fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
     if (map.getLayer(id)) map.moveLayer(id);
 }).catch(() => {});
 
+// A flyTo arc becomes a cut when the visitor asked for less motion.
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
+function moveTo(opts) { if (REDUCED_MOTION.matches) map.jumpTo(opts); else map.flyTo(opts); }
+
 let hoveredCell = null;
 function highlight(lat, lon) {
   const cell = h3.latLngToCell(lat, lon, SOLVE_RES);
@@ -432,7 +473,9 @@ function paintOrigin(o) {
 
   hoverTimes = null;
   railDetail = null;
-  Promise.all([
+  // Station naming exists only in builds whose index.json says so; asking an
+  // older build for it was two 404s per origin switch.
+  if (meta.railDetail) Promise.all([
     fetch(`./origins/${o.slug}.rail.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)),
     fetch(`./origins/${o.slug}.rail.json`).then((r) => (r.ok ? r.json() : null)),
   ]).then(([b, j]) => {
@@ -469,7 +512,7 @@ function paintOrigin(o) {
     })
     .catch(() => {});
 
-  map.flyTo({ center: [o.lon, o.lat], zoom: 1.9, speed: 0.75, curve: 1.5 });
+  moveTo({ center: [o.lon, o.lat], zoom: 1.9, speed: 0.75, curve: 1.5 });
   for (const b of document.querySelectorAll(".results button"))
     b.setAttribute("aria-current", String(b.dataset.slug === o.slug));
   $("origin-name").textContent = o.name;
@@ -542,13 +585,12 @@ function renderLegs() {
   const dur = (m) => { const [b, u] = fmtTime(m); return `${b}${u ? " " + u : ""}`; };
   // A code like SHE or FNJ means nothing to most readers: hovering it names
   // the airport and its country. Modes explain how they were modelled.
-  const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   const ap = (code) => {
     const a = airports.find((x) => x[0] === code);
-    return a ? `<span class="ap" tabindex="0" data-tip="${esc(a[1])}, ${esc(a[2])}">${code}</span>` : code;
+    return a ? `<span class="ap" tabindex="0" data-tip="${esc(a[1])}, ${esc(a[2])}">${esc(code)}</span>` : esc(code);
   };
   const mode = (name) => {
-    const tip = meta.modeDetail?.[name];
+    const tip = meta.modeDetail?.[name] ?? MODE_FALLBACK[name];
     return tip ? `<span class="mode" tabindex="0" data-tip="${esc(tip)}">${name}</span>` : name;
   };
 
@@ -649,7 +691,7 @@ function describe(lat, lon) {
   // Beyond a couple of hundred kilometres the nearest town is not where you
   // are, so say "near" rather than implying the cursor is on it.
   const lead = p.km > 60 ? `near ${p.name}` : p.name;
-  return `<b>${lead}</b>${where ? ` — ${where}` : ""}`;
+  return `<b>${esc(lead)}</b>${where ? ` — ${esc(where)}` : ""}`;
 }
 
 let raf = 0;
@@ -788,7 +830,8 @@ function render(filter = "") {
     const b = document.createElement("button");
     b.dataset.airport = a[0];
     const name = document.createElement("span");
-    name.innerHTML = `<b>${a[0]}</b> ${a[1]}`;
+    const code = document.createElement("b"); code.textContent = a[0];
+    name.append(code, ` ${a[1]}`);
     const coord = document.createElement("span");
     coord.className = "coord";
     coord.textContent = `${a[2]} · destination`;
@@ -889,7 +932,7 @@ $("results").addEventListener("click", (e) => {
   if (gb) {
     const [lat, lon] = gb.dataset.geo.split(",").map(Number);
     pinB = { lat, lon, label: gb.dataset.label.split(",").slice(0, 3).join(",") };
-    map.flyTo({ center: [lon, lat], zoom: 8, speed: 0.9 });
+    moveTo({ center: [lon, lat], zoom: 8, speed: 0.9 });
     $("route").open = true;
     renderPins(); renderLegs();
     return;
@@ -899,7 +942,7 @@ $("results").addEventListener("click", (e) => {
     const a = airports.find((x) => x[0] === ab.dataset.airport);
     if (!a) return;
     pinB = { lat: a[3], lon: a[4], label: `${a[0]} — ${a[1]}` };
-    map.flyTo({ center: [a[4], a[3]], zoom: 5, speed: 0.9 });
+    moveTo({ center: [a[4], a[3]], zoom: 5, speed: 0.9 });
     $("route").open = true;
     renderPins(); renderLegs();
     return;
@@ -941,7 +984,7 @@ render();
 
 // ---- controls ----
 $("compass").addEventListener("click", () => {
-  map.easeTo({ bearing: 0, pitch: 0, duration: 420 });
+  map.easeTo({ bearing: 0, pitch: 0, duration: REDUCED_MOTION.matches ? 0 : 420 });
 });
 
 const lockBox = $("lock-north");
@@ -1048,21 +1091,32 @@ function nearest(lat, lon) {
 // first frame wait on a permission prompt is exactly the initial wait we do not
 // want. If a position arrives later, quietly re-centre on the nearest city.
 paintOrigin(FALLBACK);
-$("here").textContent = "Showing Seoul. Allow location to start from the city nearest you.";
+$("here").textContent = `Showing ${FALLBACK.name}.`;
 
-if (navigator.geolocation) {
+// Location only on request. A permission prompt on load, before the page has
+// said what it is for, is the one thing every browser now warns about, and
+// it fired here on every first visit.
+const locate = $("locate");
+if (!navigator.geolocation) locate.hidden = true;
+locate.addEventListener("click", () => {
+  locate.disabled = true;
+  $("here").textContent = "Locating…";
   navigator.geolocation.getCurrentPosition(
     (pos) => {
+      locate.disabled = false;
       const { latitude: la, longitude: lo } = pos.coords;
       const c = nearest(la, lo);
       $("here").textContent = `${c.name} is the nearest charted city to you.`;
       map.getSource("me").setData({ type: "FeatureCollection", features: [
         { type: "Feature", geometry: { type: "Point", coordinates: [lo, la] } }] });
-      if (c.slug !== active?.slug) paintOrigin(c);
-      // The surface is the nearest city's, but the view opens on where you are.
-      map.once("moveend", () => map.flyTo({ center: [lo, la], zoom: 3.2, speed: 0.8 }));
+      // The surface is the nearest city's, but the view opens on where you
+      // are. Only wait for a move if one was actually started: waiting for
+      // "the next moveend" otherwise hijacks the visitor's next drag.
+      const view = { center: [lo, la], zoom: 3.2, speed: 0.8 };
+      if (c.slug !== active?.slug) { paintOrigin(c); map.once("moveend", () => moveTo(view)); }
+      else moveTo(view);
     },
-    () => { $("here").textContent = "Location unavailable — showing Seoul."; },
+    () => { locate.disabled = false; $("here").textContent = `Location unavailable — showing ${active?.name ?? FALLBACK.name}.`; },
     { timeout: 8000, maximumAge: 900000 }
   );
-}
+});

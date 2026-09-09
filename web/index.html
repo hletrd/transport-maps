@@ -389,6 +389,9 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <details class="panel" id="departure" open>
     <summary>Departure<span id="origin-name" style="color:var(--text);font-weight:400;font-size:12.5px"></span></summary>
     <div class="body">
+      <div class="qrow" style="margin:0 0 8px">
+        <button class="btn" id="locate" type="button">Start from the city nearest me</button>
+      </div>
       <p class="here" id="here"></p>
       <input id="q" type="search" placeholder="City, airport code or address…" autocomplete="off" spellcheck="false" aria-label="Search departure cities, airports or addresses">
       <div class="qrow">
