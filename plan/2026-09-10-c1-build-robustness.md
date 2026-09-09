@@ -14,7 +14,7 @@ orchestrator are running; do not start/stop them, do not rewrite `dist/` or
 
 ## Cycle 1 (this run)
 
-- [ ] **A3** A failing gate inside a forked worker must abort the run, not hang
+- [x] **A3** A failing gate inside a forked worker must abort the run, not hang
       it: `_solve_one` returns a failure record (or raises a plain `Exception`
       that `multiprocessing.pool` propagates) instead of `SystemExit`; the
       parent terminates the pool and exits non-zero with the message

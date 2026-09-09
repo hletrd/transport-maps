@@ -1,4 +1,5 @@
 import argparse
+import signal
 from typing import ClassVar
 
 import numpy as np
@@ -29,7 +30,9 @@ def _stub_pipeline(monkeypatch, written, coverages):
     """Replace every collaborator `_build_all` calls with a cheap stand-in, so
     the test exercises only the sequencing of `_build_all` itself: two fake
     origins, "first" and "second", `coverages` supplying `check_coverage`'s
-    return value for each in turn. `written` records every emitted file path.
+    return value for each BY ORIGIN, in origins order. `written` records every
+    emitted file path (in the calling process only: a forked worker's appends
+    never reach the parent).
     """
     class FakeIdx:
         n_cells = 1
@@ -47,7 +50,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
         cli.index, "load_origins",
         lambda: [
             {"slug": "first", "name": "First", "lat": 0.0, "lon": 0.0},
-            {"slug": "second", "name": "Second", "lat": 0.0, "lon": 0.0},
+            {"slug": "second", "name": "Second", "lat": 1.0, "lon": 0.0},
         ],
     )
     monkeypatch.setattr(cli.index, "write_hover_cells", lambda idx, out: None)
@@ -61,14 +64,18 @@ def _stub_pipeline(monkeypatch, written, coverages):
     monkeypatch.setattr(cli.countries, "iso2", lambda a3: "KR")
     monkeypatch.setattr(roads, "cell_class", lambda cells: np.array([1]))
     monkeypatch.setattr(cli.ground, "cell_class", lambda idx: np.array([1]))
-    monkeypatch.setattr(cli.dijkstra, "origin_node", lambda idx, lat, lon: 0)
+    # The origin's latitude doubles as its position in `coverages`, threaded
+    # through the stubbed solve so check_coverage can look its value up by
+    # ORIGIN. Keyed on call order (an iterator) this was wrong under fork:
+    # every worker inherits its own copy of the iterator, so each origin
+    # would have drawn the first value.
+    monkeypatch.setattr(cli.dijkstra, "origin_node", lambda idx, lat, lon: int(lat))
     monkeypatch.setattr(
         cli.dijkstra, "solve_from",
-        lambda csr, source, with_predecessors=False: (np.array([1.0]), np.array([-9999])),
+        lambda csr, source, with_predecessors=False: (np.array([float(source)]), np.array([-9999])),
     )
-
-    remaining = iter(coverages)
-    monkeypatch.setattr(cli.validate, "check_coverage", lambda minutes, idx: next(remaining))
+    monkeypatch.setattr(cli.validate, "check_coverage",
+                        lambda minutes, idx: coverages[int(minutes[0])])
     monkeypatch.setattr(
         cli.validate, "check_monotonic_ground", lambda idx, minutes, speeds, **kw: None
     )
@@ -155,8 +162,7 @@ def test_a_limited_build_does_not_rewrite_index_json(monkeypatch, tmp_path):
     """
     monkeypatch.setattr(cli.config, "DIST", tmp_path)
     written: list = []
-    # one origin for the limited run, then two for the full one
-    _stub_pipeline(monkeypatch, written, [1.0, 1.0, 1.0])
+    _stub_pipeline(monkeypatch, written, [1.0, 1.0])
     wrote_index: list = []
     monkeypatch.setattr(cli.index, "write_index",
                         lambda origins, out: wrote_index.append(out))
@@ -185,3 +191,34 @@ def test_the_build_reports_whether_rail_and_ferries_are_included(monkeypatch, tm
     out = capsys.readouterr().out
     assert "rail:" in out and "EXCLUDED" in out
     assert "ferries:" in out
+
+
+def test_a_gate_failure_in_a_forked_worker_aborts_the_run(monkeypatch, tmp_path):
+    """With enough origins the workers are FORKED, and multiprocessing's
+    worker loop catches only Exception. The coverage gate used to raise
+    SystemExit inside the worker: that killed the worker, the pool quietly
+    respawned it, the task's result never arrived and imap blocked forever --
+    a build that neither finishes nor reports. The failure must reach the
+    parent and abort the run, as it does on the serial path.
+
+    Bounded by an alarm so a regression fails instead of hanging the suite.
+    """
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    monkeypatch.setattr(cli, "_worker_count", lambda n_origins: 2)
+    written: list = []
+    _stub_pipeline(monkeypatch, written, coverages=[1.0, 0.0])  # "second" fails coverage
+    index_calls: list = []
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out: index_calls.append(1))
+
+    def hung(signum, frame):
+        raise TimeoutError("_build_all is hanging: the worker's gate failure never reached the parent")
+
+    previous = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(30)
+    try:
+        with pytest.raises(SystemExit, match="second"):
+            cli._build_all()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+    assert index_calls == []

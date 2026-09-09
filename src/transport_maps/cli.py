@@ -82,6 +82,19 @@ def _worker_cap(n_cells: int) -> int:
     return 5 if n_cells > 3_000_000 else 8
 
 
+class GateFailure(RuntimeError):
+    """A per-origin publication gate failed; the run must abort.
+
+    A plain Exception on purpose. This used to be a SystemExit raised inside
+    `_solve_one`, which is fine in the serial path and fatal in the forked
+    one: multiprocessing.pool.worker catches only Exception, so the SystemExit
+    killed the worker, the pool quietly respawned a replacement, the task's
+    result never arrived and `imap` blocked forever -- a 553-origin build
+    sitting at 0% CPU with no exit code and no traceback. A RuntimeError is
+    pickled back to the parent, which terminates the pool and exits.
+    """
+
+
 def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     """Solve and emit one origin. Returns the table row to print."""
     slug = origin["slug"]
@@ -90,7 +103,7 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
 
     coverage = validate.check_coverage(minutes, idx)
     if coverage < validate.MIN_COVERAGE:
-        raise SystemExit(
+        raise GateFailure(
             f"{slug}: coverage {coverage:.1%} below {validate.MIN_COVERAGE:.0%}"
         )
     validate.check_monotonic_ground(idx, minutes, speeds,
@@ -188,15 +201,24 @@ def _build_all(limit: int | None = None) -> None:
     # ~1 GB of scipy arrays, so workers are FORKED to inherit it copy-on-write
     # rather than spawned, which would rebuild it once per worker.
     workers = min(_worker_cap(len(idx.cells)), _worker_count(len(origins)))
-    if workers <= 1:
-        for origin in origins:
-            print(_solve_one(origin, idx, csr, speeds, shared))
-    else:
-        ctx = multiprocessing.get_context("fork")
-        globals()["_CTX"] = (idx, csr, speeds, shared)
-        with ctx.Pool(workers) as pool:
-            for line in pool.imap(_solve_one_forked, origins):
-                print(line, flush=True)
+    try:
+        if workers <= 1:
+            for origin in origins:
+                print(_solve_one(origin, idx, csr, speeds, shared))
+        else:
+            ctx = multiprocessing.get_context("fork")
+            globals()["_CTX"] = (idx, csr, speeds, shared)
+            with ctx.Pool(workers) as pool:
+                # A GateFailure in a worker comes back out of imap here (see
+                # the class); leaving the block then runs Pool.__exit__, which
+                # is terminate(): the other workers are stopped mid-origin
+                # rather than left writing into dist/ while this exits.
+                for line in pool.imap(_solve_one_forked, origins):
+                    print(line, flush=True)
+    except GateFailure as exc:
+        # The same exit from either path: the origin's message, status 1,
+        # no traceback.
+        raise SystemExit(str(exc)) from exc
 
     # Only reached once every origin above has succeeded -- and never for a
     # partial run. A --limit smoke test that rewrote index.json would leave
