@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
 import math
 import re
 import tomllib
@@ -26,7 +27,8 @@ import zipfile
 
 import httpx
 
-from transport_maps import config
+from transport_maps import _io, config
+from transport_maps.emit.index import _SLUG_RE
 
 NEAR_KM = 40.0
 GEONAMES_URL = "https://download.geonames.org/export/dump/cities15000.zip"
@@ -40,9 +42,9 @@ COLS = ("id", "name", "ascii", "alt", "lat", "lon", "fclass", "fcode", "cc", "cc
 def geonames() -> list[dict]:
     cached = config.CACHE / "cities15000.zip"
     if not cached.exists():
-        r = httpx.get(GEONAMES_URL, timeout=120)
+        r = httpx.get(GEONAMES_URL, follow_redirects=True, timeout=120)
         r.raise_for_status()
-        cached.write_bytes(r.content)
+        _io.write_bytes(cached, r.content)
     with zipfile.ZipFile(cached) as z:
         text = z.read("cities15000.txt").decode("utf-8")
     return [dict(zip(COLS, row)) for row in csv.reader(io.StringIO(text), delimiter="\t", quoting=csv.QUOTE_NONE)]
@@ -81,11 +83,15 @@ def main() -> None:
         lat, lon = float(r["lat"]), float(r["lon"])
         if any(km(lat, lon, o["lat"], o["lon"]) < NEAR_KM for o in existing + added):
             continue
-        slug = slugify(r["ascii"] or name)
-        if not slug or slug in slugs:
-            slug = slugify(f"{r['ascii'] or name}-{country}")
+        # A name with no ASCII form slugifies to nothing, and the old fallback
+        # collapsed it to the bare country code, so the second such city was
+        # silently skipped. The GeoNames id is always unique.
+        slug = slugify(r["ascii"] or name) or f"city-{r['id']}"
         if slug in slugs:
-            continue
+            slug = f"{slug}-{country.lower()}"
+        if slug in slugs:
+            slug = f"{slug}-{r['id']}"
+        assert _SLUG_RE.fullmatch(slug), slug
         slugs.add(slug)
         added.append({"slug": slug, "name": name, "lat": round(lat, 4), "lon": round(lon, 4),
                       "country": country, "pop": pop, "capital": capital})
@@ -94,7 +100,9 @@ def main() -> None:
         fh.write(f"\n# Added by scripts/expand_origins.py: population >= {args.min_pop:,},"
                  f" or a national capital >= {args.capital_pop:,} (GeoNames cities15000, CC BY 4.0).\n")
         for o in added:
-            fh.write(f'\n[[origin]]\nslug = "{o["slug"]}"\nname = "{o["name"]}"\n'
+            # json.dumps is valid TOML basic-string quoting for these names
+            # (quotes and backslashes escaped); f-string quoting was not.
+            fh.write(f'\n[[origin]]\nslug = "{o["slug"]}"\nname = {json.dumps(o["name"], ensure_ascii=False)}\n'
                      f'lat = {o["lat"]}\nlon = {o["lon"]}\n')
     print(f"  {len(existing)} existing, {len(added)} added -> {len(existing) + len(added)} origins")
     for o in added[:12]:

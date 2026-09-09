@@ -5,6 +5,10 @@ from email.utils import parsedate_to_datetime
 
 from transport_maps._io import atomic_write, params_hash
 
+# A server can ask for an arbitrarily long Retry-After; a crawl that sleeps a
+# day on one header is indistinguishable from a hang.
+MAX_RETRY_AFTER_S = 300.0
+
 
 def _retry_after_seconds(value: str | None, attempt: int) -> float:
     """Parse a `Retry-After` header, falling back to exponential backoff.
@@ -17,17 +21,17 @@ def _retry_after_seconds(value: str | None, attempt: int) -> float:
     """
     if value is not None:
         try:
-            return float(value)
+            return min(max(float(value), 0.0), MAX_RETRY_AFTER_S)
         except ValueError:
             pass
         try:
             dt = parsedate_to_datetime(value)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=UTC)
-            return max((dt - datetime.now(UTC)).total_seconds(), 0.0)
+            return min(max((dt - datetime.now(UTC)).total_seconds(), 0.0), MAX_RETRY_AFTER_S)
         except (TypeError, ValueError):
             pass
-    return float(2**attempt)
+    return min(float(2**attempt), MAX_RETRY_AFTER_S)
 
 
 def _validated_json(response, *, expect_key: str, require_batchcomplete: bool) -> dict:
