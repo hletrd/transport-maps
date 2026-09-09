@@ -92,6 +92,7 @@ def write_index(origins: list[dict], out: Path) -> None:
         "bandEdgesMin": list(config.BAND_EDGES_MIN),
         "unreachable": config.UNREACHABLE,
         "hoverRes": config.HOVER_RES,
+        "solveRes": config.SOLVE_RES,
         "hoverCellsUrl": "hover_cells.bin",
         "attribution": [dict(entry) for entry in ATTRIBUTION],
         "origins": [

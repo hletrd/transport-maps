@@ -42,6 +42,11 @@ maplibregl.addProtocol("pmtiles", proto.tile);
 const meta = await (await fetch("./index.json")).json();
 const UNREACHABLE = meta.unreachable ?? 65535;
 const HOVER_RES = meta.hoverRes ?? 4;
+// The surface is solved per res-5 cell (~8 km); the readout array is res 4
+// (~22 km, the min of seven children) to stay small. The highlight must show
+// the SOLVED cell -- outlining the readout parent drew a hexagon seven times
+// the size of anything the map was actually computed from.
+const SOLVE_RES = meta.solveRes ?? 5;
 const EDGES = meta.bandEdgesMin ?? [];
 
 // shared, origin-independent cell ordering — fetched once
@@ -151,7 +156,15 @@ fetch("./places.json")
         else if (!want && l.on) { l.m.remove(); l.on = false; }
       }
     };
-    map.on("moveend", showLabels);
+    // On every frame of a move, not only at rest: otherwise nothing appears
+    // during a zoom-in until it stops, and a rotation can drag far-side
+    // labels into view before the moveend filter removes them.
+    let pending = 0;
+    const onMove = () => {
+      if (pending) return;
+      pending = requestAnimationFrame(() => { pending = 0; showLabels(); });
+    };
+    map.on("move", onMove);
     showLabels();
   })
   .catch(() => { /* the map is still readable without names */ });
@@ -216,7 +229,7 @@ map.addLayer({ id: "me-dot", type: "circle", source: "me",
 
 let hoveredCell = null;
 function highlight(lat, lon) {
-  const cell = h3.latLngToCell(lat, lon, HOVER_RES);
+  const cell = h3.latLngToCell(lat, lon, SOLVE_RES);
   if (cell === hoveredCell) return;
   hoveredCell = cell;
   const ring = h3.cellToBoundary(cell).map(([la, lo]) => [lo, la]);
