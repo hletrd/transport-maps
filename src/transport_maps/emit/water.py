@@ -28,10 +28,12 @@ from transport_maps import config
 
 WATER_URL = "https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip"
 LAYER = "water"
-MIN_ZOOM, MAX_ZOOM = 0, 10
-# Tile-space tolerance. At zoom 10 one unit is ~9.5 m, so 8 keeps the coast
-# within ~76 m -- about one screen pixel at the page's maximum zoom of 11.
-SIMPLIFICATION = 8
+MIN_ZOOM, MAX_ZOOM = 0, 11
+# Tile-space tolerance. At zoom 11 one unit is ~4.8 m, so 6 keeps the coast
+# within ~29 m -- well under a screen pixel at the page's maximum zoom of 11,
+# so the shore never shows facets. (10 / 8, about 76 m, was one pixel and
+# read as slightly soft.)
+SIMPLIFICATION = 6
 
 
 def _download(url: str = WATER_URL) -> Path:
@@ -109,8 +111,13 @@ def build(out: Path) -> Path:
             # The split ocean polygons abut along grid lines; without this the
             # shared edges simplify differently and hairlines open between them.
             "--detect-shared-borders",
-            "--coalesce-densest-as-needed",
-            "--extend-zooms-if-still-dropping",
+            # Visvalingam drops the smallest bumps first, which is what a
+            # generalised coast should look like. Douglas-Peucker keeps the
+            # farthest-out vertices and leaves a sawtooth of spikes at low
+            # zoom -- black teeth biting into every coast at zoom 3.
+            "--visvalingam",
+            # A bay too small to draw should vanish, not become a square.
+            "--no-tiny-polygon-reduction",
             "--exclude-all",                     # geometry only; no attributes
             str(ocean), str(lakes),
         ], check=True, capture_output=True, text=True)
