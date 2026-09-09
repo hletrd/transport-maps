@@ -159,9 +159,31 @@ function paintScale() {
 }
 paintScale();
 
-$("credits").textContent = (meta.attribution ?? [])
-  .map((s) => `${s.name} (${s.licence})`)
-  .join(" · ") || "Attribution missing from index.json.";
+// Credits: the pipeline's list from index.json, plus what the PAGE itself
+// adds (the gazetteer, the lakes and the address search), so a build whose
+// index.json predates those sources still credits them.
+const PAGE_CREDITS = [
+  { name: "GeoNames", licence: "CC BY 4.0", url: "https://www.geonames.org/" },
+  { name: "HydroLAKES", licence: "CC BY 4.0", url: "https://www.hydrosheds.org/products/hydrolakes" },
+  { name: "Nominatim (OpenStreetMap)", licence: "ODbL 1.0", url: "https://nominatim.org/" },
+];
+{
+  const seen = new Map();
+  for (const s of [...(meta.attribution ?? []), ...PAGE_CREDITS]) if (!seen.has(s.name)) seen.set(s.name, s);
+  const el = $("credits");
+  el.replaceChildren();
+  let first = true;
+  for (const s of seen.values()) {
+    if (!first) el.append(" · ");
+    first = false;
+    const a = document.createElement("a");
+    a.href = s.url; a.rel = "noopener"; a.target = "_blank";
+    a.textContent = s.name;
+    el.append(a, ` (${s.licence})`);
+  }
+  if (first) el.textContent = "Attribution missing from index.json.";
+}
+$("n-cities").textContent = String(meta.origins.length);
 
 // ---- gazetteer, so a reading can name where it is ----
 let places = null;
@@ -478,8 +500,11 @@ function cellIndex(lat, lon) {
   return -1;                          // ocean, or outside the land mask
 }
 
+// undefined: the origin's times have not arrived (or failed); null: not land.
+// The two used to share null, so land read "Open water." until the fetch
+// landed, and for ever after a failed fetch.
 function lookup(lat, lon) {
-  if (!hoverTimes) return null;
+  if (!hoverTimes) return undefined;
   const i = cellIndex(lat, lon);
   return i < 0 ? null : hoverTimes[i];
 }
@@ -562,7 +587,11 @@ function renderLegs() {
     if (total > landed.min) {
       const parts = surface();
       if (parts.length) {
-        rows.push([dur(total - landed.min), `Onward from <b>${ap(landed.code)}</b>, of which:`]);
+        rows.push([dur(total - landed.min), `Onward from <b>${ap(landed.code)}</b>`]);
+        // modes.bin sums surface minutes over the WHOLE journey, the access leg
+        // to the first airport included, so these rows are not a breakdown of
+        // the onward figure and must not be headed as one.
+        rows.push(["", "Surface travel over the whole journey:"]);
         rows.push(...parts);
       } else {
         rows.push([dur(total - landed.min),
@@ -634,10 +663,11 @@ map.on("mousemove", (e) => {
     const [big, unit] = fmtTime(t);
     $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
     const band = bandRangeAt(e.point);
-    $("where").innerHTML = t == null
-      ? "Open water."
+    $("where").innerHTML = t === undefined
+      ? `Loading the times from ${esc(active?.name ?? "the departure city")}…`
+      : t === null ? "Open water."
       : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}`
-        + `${band ? " · " + band : ""}${active ? " · from " + active.name : ""}`;
+        + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`;
 
     const tip = $("tip");
     if (t == null) { tip.hidden = true; clearHighlight(); return; }
@@ -645,7 +675,7 @@ map.on("mousemove", (e) => {
     const p = nearestPlace(lat, lng);
     const where = p ? (p.km > 60 ? `near ${p.name}` : p.name) + (p.country ? `, ${p.country}` : "")
                     : fmtCoord(lat, lng);
-    tip.innerHTML = `<b>${big}${unit ? " " + unit : ""}</b> <i>${where}</i>`;
+    tip.innerHTML = `<b>${big}${unit ? " " + unit : ""}</b> <i>door to door · ${esc(where)}</i>`;
     tip.hidden = false;
     // Offset so the pointer never covers it; flip when near the right edge.
     const x = e.originalEvent.clientX, y = e.originalEvent.clientY;
@@ -677,7 +707,7 @@ function renderPins() {
     const t = lookup(pinB.lat, pinB.lon);
     const [big, unit] = fmtTime(t);
     rows.push(["To", pinB.label]);
-    rows.push(["Time", t == null ? "not on land" : `${big} ${unit}`.trim()]);
+    rows.push(["Door to door", t === undefined ? "loading…" : t === null ? "not on land" : `${big} ${unit}`.trim()]);
   } else {
     rows.push(["To", "click the chart"]);
   }
@@ -736,7 +766,7 @@ $("clear-pins").addEventListener("click", () => { pinB = null; renderPins(); ren
 const cities = meta.origins.slice().sort((a, b) => a.name.localeCompare(b.name));
 const bySlug = new Map(cities.map((c) => [c.slug, c]));
 // Airports are searchable by code ("JFK") or name. Picking one drops it as the
-// DESTINATION -- only the 157 cities have a computed surface to depart from.
+// DESTINATION -- only the departure cities in index.json have a computed surface.
 let airports = [];
 fetch("./airports.json")
   .then((r) => (r.ok ? r.json() : null))

@@ -12,7 +12,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Isochronic Passage Chart — travel time to anywhere on Earth</title>
-<meta name="description" content="How many hours it takes to reach any point on Earth from 553 cities, by air, rail and road. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
+<meta name="description" content="How many hours it takes to reach any point on Earth from hundreds of cities, by air, rail and road. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
 <link rel="canonical" href="https://worldmap.atik.kr/">
 <meta name="theme-color" content="#0a0b0d">
 <meta name="robots" content="index,follow,max-image-preview:large">
@@ -20,7 +20,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Isochronic Passage Chart">
 <meta property="og:title" content="Isochronic Passage Chart — travel time to anywhere on Earth">
-<meta property="og:description" content="Hours required to reach any point on Earth from 553 cities, by air, rail and road. Recomputed from open data, after Galton, 1881.">
+<meta property="og:description" content="Hours required to reach any point on Earth from hundreds of cities, by air, rail and road. Recomputed from open data, after Galton, 1881.">
 <meta property="og:url" content="https://worldmap.atik.kr/">
 <meta property="og:image" content="https://worldmap.atik.kr/preview.png">
 <meta property="og:image:width" content="1200">
@@ -28,7 +28,7 @@
 <meta property="og:image:alt" content="A dark globe shaded by travel time from Seoul, brightest nearby and fading to violet at three days">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Isochronic Passage Chart">
-<meta name="twitter:description" content="Hours required to reach any point on Earth from 553 cities.">
+<meta name="twitter:description" content="Hours required to reach any point on Earth from hundreds of cities.">
 <meta name="twitter:image" content="https://worldmap.atik.kr/preview.png">
 
 <script type="application/ld+json">
@@ -38,8 +38,8 @@
     {
       "@type": "Dataset",
       "@id": "https://worldmap.atik.kr/#dataset",
-      "name": "Global travel-time isochrones from 553 cities",
-      "description": "Expected door-to-door travel time from each of 553 origin cities to every land area on Earth, combining scheduled air routes, rail from OpenStreetMap route relations, ferry crossings, and a road-speed model calibrated against 2,998 real driving journeys, with check-in, border-control and transfer penalties. Distributed as PMTiles isochrone bands (37 continuous bands at four levels of detail) plus per-origin binary arrays of time, arrival airport, surface mode and rail station on an H3 grid, with coastlines from OpenStreetMap and lakes from HydroLAKES.",
+      "name": "Global travel-time isochrones from hundreds of cities",
+      "description": "Expected door-to-door travel time from each of its origin cities to every land area on Earth, combining scheduled air routes, rail from OpenStreetMap route relations, ferry crossings, and a road-speed model calibrated against 2,998 real driving journeys, with check-in, border-control and transfer penalties. Distributed as PMTiles isochrone bands (37 continuous bands at four levels of detail) plus per-origin binary arrays of time, arrival airport, surface mode and rail station on an H3 grid, with coastlines from OpenStreetMap and lakes from HydroLAKES.",
       "url": "https://worldmap.atik.kr/",
       "keywords": ["isochrone", "travel time", "accessibility", "world map", "H3", "PMTiles", "aviation", "geography"],
       "spatialCoverage": { "@type": "Place", "name": "Earth" },
@@ -47,12 +47,17 @@
       "creator": { "@type": "Person", "name": "Jiyong Youn" },
       "isBasedOn": [
         "https://ourairports.com/data/",
+        "https://en.wikipedia.org/",
+        "https://www.wikidata.org/",
         "https://adsb.lol/",
         "https://www.openstreetmap.org/copyright",
         "https://www.globio.info/download-grip-dataset",
-        "https://www.naturalearthdata.com/"
+        "https://www.naturalearthdata.com/",
+        "https://www.geonames.org/",
+        "https://www.hydrosheds.org/products/hydrolakes"
       ],
-      "license": "https://opendatacommons.org/licenses/odbl/1-0/",
+      "conditionsOfAccess": "A derivative of mixed-licence open data: ODbL 1.0 (OpenStreetMap, adsb.lol), CC BY-SA 4.0 (Wikipedia), CC BY 4.0 (GeoNames, HydroLAKES), CC0 (Wikidata, GRIP4) and public-domain (OurAirports, Natural Earth) sources. Each source's attribution and share-alike terms apply to the data derived from it; credits are listed in index.json and on the page.",
+      "isAccessibleForFree": true,
       "dateModified": "2026-09-10"
     },
     {
@@ -154,6 +159,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   white-space:nowrap;
 }
 .legend-cap{margin:6px 0 0;font-size:10.5px;color:var(--text-3)}
+.reading .disclaimer{margin:4px 0 0;font-size:10px;color:var(--text-3);line-height:1.4}
 /* The two tones the ramp does not cover: land no scheduled service reaches, and
    the sea. Without them a tenth of the land is a grey the legend never names. */
 .keys{display:flex;gap:14px;margin-top:7px;font-size:10.5px;color:var(--text-3)}
@@ -287,8 +293,8 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 
 #key p{margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--text-2)}
 #key .src{margin-top:8px;font-size:10px;color:var(--text-3);line-height:1.55}
-#key .disclaimer{border-top:1px solid var(--line);padding-top:8px}
-#key .disclaimer b{color:var(--text-2);font-weight:500}
+#key .disclaimer-long{border-top:1px solid var(--line);padding-top:8px}
+#key .disclaimer-long b{color:var(--text-2);font-weight:500}
 
 /* ---- small screens: the map is the page, everything else is a bottom sheet ----
    Below 860px the desktop arrangement collapses: the right rail ate 79% of a
@@ -362,6 +368,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
       <span class="key"><span class="sw" id="sw-sea"></span>open water</span>
     </div>
     <p class="legend-cap">Hours from the departure city, door to door.</p>
+    <p class="disclaimer" id="disclaimer">For reference only: estimates from open data and a simplified model, with no warranty.</p>
   </div>
 
   <div class="legs" id="legs" hidden></div>
@@ -395,9 +402,11 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <details class="panel" id="route">
     <summary>Route</summary>
     <div class="body">
-      <p class="hint" style="margin-top:0">Click the chart to drop an origin, then click again for a
-        destination. The origin snaps to the nearest charted city, because only those
-        553 have a computed surface.</p>
+      <p class="hint" style="margin-top:0">Click anywhere on the chart to set a destination; the
+        route from the departure city appears here. To change the departure, pick a city
+        in the list above, click a city name on the globe, or click near a city and press
+        “Depart from”. Only the <span id="n-cities">…</span> charted cities have a computed
+        surface, so a departure snaps to the nearest of them.</p>
       <div class="pins" id="pins"></div>
       <button class="btn" id="clear-pins" style="margin-top:10px">Clear</button>
     </div>
@@ -434,7 +443,15 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          airport, check-in and security, border control where one is crossed, and
          the journey from the arrival field into the city. A flight of two hours
          commonly makes a passage of five.</p>
+      <p>Address search and click-to-address send the typed text or the clicked
+         coordinates to OpenStreetMap’s Nominatim service. Page views are counted
+         by Google Analytics. Everything else is computed in the browser from
+         files on this site.</p>
       <p class="src" id="credits"></p>
+      <p class="disclaimer-long"><b>For reference only.</b> Every figure is an
+         estimate from open data and a simplified model. It carries no warranty of
+         accuracy, is not travel advice, and must not be relied on for any journey,
+         booking or decision. The author accepts no liability for any use.</p>
     </div>
   </details>
 </div>
@@ -443,10 +460,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <div style="position:fixed;inset:0;background:#0a0b0d;color:#e9e7e4;z-index:20;padding:40px;max-width:62ch">
     <h1 style="font-weight:600">Isochronic Passage Chart</h1>
     <p>An interactive world map showing how many hours it takes to reach any point
-    on Earth from each of 553 cities, combining scheduled flights, road speed and
-    transfer times. It needs JavaScript and WebGL to draw the globe.</p>
-    <p>Built from open data: OurAirports, Wikipedia, OpenStreetMap, GRIP4 road
-    density and Natural Earth. After Francis Galton's isochronic passage chart of 1881.</p>
+    on Earth from hundreds of cities, combining scheduled flights, rail, ferries,
+    road speed and transfer times. It needs JavaScript and WebGL to draw the globe.</p>
+    <p>Built from open data: OurAirports, Wikipedia (CC BY-SA 4.0), Wikidata,
+    OpenStreetMap (ODbL), GRIP4 road density, Natural Earth, GeoNames (CC BY 4.0),
+    HydroLAKES (CC BY 4.0) and adsb.lol (ODbL). After Francis Galton's isochronic
+    passage chart of 1881.</p>
     <p>For reference only. Estimates from a simplified model; no warranty of
     accuracy and no liability for any use.</p>
   </div>
