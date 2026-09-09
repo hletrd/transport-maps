@@ -97,3 +97,35 @@ def test_a_ferry_between_distant_cells_is_still_kept():
     idx = _index([HEL, TLL])
     r, _, _ = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
     assert len(r) == 2
+
+
+def test_a_ferry_into_a_sealed_country_is_dropped():
+    """An OSM ferry way across the Yellow Sea carried travellers from Seoul into
+    North Korea with every land border sealed: ferry edges never consulted the
+    closed-border list. Now they do."""
+    # Inland so both cells resolve by centroid; the rule under test is the
+    # border, not the shoreline, and _ferry_edges only needs a non-adjacent
+    # pair within range.
+    south = (37.57, 126.98)           # Seoul, KOR
+    north = (37.97, 126.55)           # Kaesong, PRK
+    idx = _index([south, north])
+    from transport_maps.sources import countries
+    codes = countries.cell_country(idx.cells)
+    assert set(codes) == {"KOR", "PRK"}, codes
+    r, _, _ = build._ferry_edges(idx, _links([_link(1, south, north, "Yellow Sea")]), CAL)
+    assert len(r) == 0, "a ferry crossed the sealed inter-Korean border"
+
+
+def test_a_ferry_between_immigration_zones_pays_the_crossing():
+    """Helsinki-Tallinn is Schengen-internal: no charge. Singapore-Batam is not."""
+    sg, batam = (1.27, 103.85), (1.13, 104.05)
+    idx = _index([sg, batam])
+    _, _, d_sg = build._ferry_edges(idx, _links([_link(1, sg, batam)]), CAL)
+    idx2 = _index([HEL, TLL])
+    _, _, d_eu = build._ferry_edges(idx2, _links([_link(2, HEL, TLL)]), CAL)
+    # Both are ~20-80 km; the Singapore one carries the crossing on top.
+    from transport_maps.graph import ground
+    assert d_sg.min() > ground._land_border_min(), "SG->ID ferry paid no crossing"
+    km_eu = 80.0
+    assert d_eu.min() < 60.0 * km_eu / CAL.speed_kmh + CAL.terminal_min + 5, \
+        "a Schengen-internal ferry was charged a crossing"

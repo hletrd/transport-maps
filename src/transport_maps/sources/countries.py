@@ -153,7 +153,7 @@ def _fill_blanks(cells: list[str], out: np.ndarray, passes: int = 3) -> np.ndarr
     # Whatever is left has no assigned neighbour at all -- isolated atolls and
     # islets whose every neighbour is water. Take the nearest assigned cell.
     blanks = np.where(out == UNKNOWN)[0]
-    if len(blanks):
+    if len(blanks) and len(blanks) < len(out):      # nothing to copy from if all blank
         from scipy.spatial import cKDTree
 
         latlng = np.array([h3.cell_to_latlng(c) for c in cells])

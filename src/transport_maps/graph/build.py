@@ -213,6 +213,22 @@ def _transfer_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]
     )
 
 
+def _border_rules(idx: NodeIndex):
+    """Country and immigration zone per cell, plus the crossing charge.
+
+    Ground edges applied these from the start; rail and ferry did not, and an
+    OSM ferry way across the Yellow Sea carried travellers from Seoul into
+    North Korea with every land border sealed. The same two rules -- cut a
+    closed pair, charge a zone change -- now apply to every surface edge.
+    """
+    from transport_maps.sources import countries
+
+    country = countries.cell_country(idx.cells)
+    zone = np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
+                     for c in country])
+    return country, zone, ground._land_border_min(), countries.is_closed
+
+
 def _rail_edges(idx: NodeIndex, routes, cal) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Station-to-station rides, plus the cell edges that board and alight.
 
@@ -232,9 +248,20 @@ def _rail_edges(idx: NodeIndex, routes, cal) -> tuple[np.ndarray, np.ndarray, np
                    .group_by("a", "b").agg(pl.col("minutes").min())
                    .filter(pl.col("a") != pl.col("b")))
 
-    a = np.array([idx.station_index(x) for x in undirected["a"]], dtype=np.int64)
-    b = np.array([idx.station_index(x) for x in undirected["b"]], dtype=np.int64)
-    m = undirected["minutes"].to_numpy()
+    country, zone, crossing, is_closed = _border_rules(idx)
+    a_l, b_l, m_l = [], [], []
+    cut = 0
+    for sa, sb, mins in zip(undirected["a"], undirected["b"], undirected["minutes"]):
+        ca, cb = idx.station_cell_index(sa), idx.station_cell_index(sb)
+        if is_closed(country[ca], country[cb]):
+            cut += 1
+            continue
+        if zone[ca] and zone[cb] and zone[ca] != zone[cb]:
+            mins = float(mins) + crossing
+        a_l.append(idx.station_index(sa)); b_l.append(idx.station_index(sb)); m_l.append(float(mins))
+    if cut:
+        logger.info("%d rail segment(s) cut at closed land borders", cut)
+    a = np.array(a_l, dtype=np.int64); b = np.array(b_l, dtype=np.int64); m = np.array(m_l, dtype=np.float64)
 
     # Boarding is charged on the way IN to the network and alighting on the way
     # out, so riding through an intermediate station costs only running time.
@@ -256,7 +283,9 @@ def _ferry_edges(idx: NodeIndex, links, cal) -> tuple[np.ndarray, np.ndarray, np
     so there is no through-journey whose terminal time would be double-charged,
     and a node per crossing would add tens of thousands of nodes to no end.
     """
+    country, zone, crossing, is_closed = _border_rules(idx)
     a_cells, b_cells, minutes = [], [], []
+    cut = 0
     for row in links.iter_rows(named=True):
         km = float(ground.haversine_km(
             np.array([[row["from_lat"], row["from_lon"]]]),
@@ -278,10 +307,17 @@ def _ferry_edges(idx: NodeIndex, links, cal) -> tuple[np.ndarray, np.ndarray, np
         # road time PLUS the sailing rather than the cheaper of the two.
         if idx.cells[v] in h3.grid_disk(idx.cells[u], 1):
             continue
+        # A sailing into a sealed country is no more open than a road.
+        if is_closed(country[u], country[v]):
+            cut += 1
+            continue
+        extra = crossing if (zone[u] and zone[v] and zone[u] != zone[v]) else 0.0
         a_cells.append(u)
         b_cells.append(v)
-        minutes.append(60.0 * km / cal.speed_kmh + cal.terminal_min)
+        minutes.append(60.0 * km / cal.speed_kmh + cal.terminal_min + extra)
 
+    if cut:
+        logger.info("%d ferry crossing(s) cut at closed borders", cut)
     if not a_cells:
         empty_i = np.array([], dtype=np.int64)
         return empty_i, empty_i, np.array([], dtype=np.float64)
