@@ -20,40 +20,40 @@ DOM-write table).
 
 ## Cycle 2 (this run)
 
-- [ ] **Q1** Nominatim rate: one request per 1,100 ms across search and reverse
+- [x] **Q1** Nominatim rate: one request per 1,100 ms across search and reverse
       with the latest click winning; no reverse request for water/unreachable
       clicks; results cached by rounded coordinate; the reverse-geocoded label
       carries "address by Nominatim © OpenStreetMap contributors" (SEC-18,
       CR-12). Implemented in the web plan (M11 + Q1); recorded here as the
       policy item. Check: ten rapid clicks → at most one Nominatim request per
       1.1 s in the network log.
-- [ ] **Q3 / I2** Patch the vendored `maplibre-gl.js` `removeAttributes` loop to
+- [x] **Q3 / I2** Patch the vendored `maplibre-gl.js` `removeAttributes` loop to
       iterate `Array.from(t.attributes)` (CVE-2026-85061; no 5.x fix exists —
       5.24.0 is the last 5.x, fixed only in 6.4.1); record the advisory, the
       pre- and post-patch sha256 in `web/README.md`; keep
       `attributionControl: false` and pin it with a test (gates plan P11)
       (SEC-22, CRIT-20, DOC-4). The 6.x migration with the tile-loading retest
       is a separate cycle-3 task.
-- [ ] **I3** `deploy_verify.sh` runs `tests/test_licence_firewall.py` against
+- [x] **I3** `deploy_verify.sh` runs `tests/test_licence_firewall.py` against
       `dist/` before rsync; `FORBIDDEN` gains the Google Routes token names;
       the scan covers `.txt`, `.bin`-adjacent JSON and `.md` (SEC-8).
-- [ ] **L5 / I4** rsync excludes, stray refusal, `0o644`, nginx dotfile/temp
+- [x] **L5 / I4** rsync excludes, stray refusal, `0o644`, nginx dotfile/temp
       deny — implemented in the build plan (L5); recorded here as the security
       item. Live evidence: `/origins/las-vegas.pmtiles-journal` returns 200
       today (SEC-20).
-- [ ] **Q6 / I5** Remove `selectolax` from `pyproject.toml` (no imports) and
+- [x] **Q6 / I5** Remove `selectolax` from `pyproject.toml` (no imports) and
       `uv.lock`; record the six vendored sha256s in `web/README.md` with a test
       that recomputes them; document `uvx pip-audit` (not installed in the venv;
       nothing is installed this cycle) in the deploy checklist (SEC-25, DOC-22).
-- [ ] **Q5** `object-src 'none'` and `report-to` placeholder in the CSP snippet;
+- [x] **Q5** `object-src 'none'` and `report-to` placeholder in the CSP snippet;
       `deploy/README.md` notes the extra hosts Google signals would need
       (SEC-24). `script-src blob:` stays until Q2's rehearsal proves the worker
       loads under `worker-src` alone.
-- [ ] **Q7 / A17** Slug validation in `load_origins`; `expand_origins.py` shares
+- [x] **Q7 / A17** Slug validation in `load_origins`; `expand_origins.py` shares
       `_SLUG_RE` and escapes names — implemented in the build plan (A17).
-- [ ] **Q8 / J5** Script paths and the process-kill scope — build plan L10.
-- [ ] **L13** CSP hash test — gates plan.
-- [ ] **G2 / SEC-9 (bounded)** `expand_origins.py` uses `follow_redirects` and an
+- [x] **Q8 / J5** Script paths and the process-kill scope — build plan L10.
+- [x] **L13** CSP hash test — gates plan.
+- [x] **G2 / SEC-9 (bounded)** `expand_origins.py` uses `follow_redirects` and an
       atomic write; Wikimedia `User-Agent` strings carry a contact URL
       (`routes.py:23`, `wikidata.py:20`); `_retry_after_seconds` is capped.
       The full download provenance (URL hash, ETag/size) stays in the build
@@ -97,3 +97,4 @@ DOM-write table).
 - 2026-09-10 cycle 2: plan written from the cycle-2 aggregate; carries every
   unfinished task from the cycle-1 security plan (now archived) under its
   original ID.
+- 2026-09-10 cycle 2 done: Q1 9d0a401 (one Nominatim queue, 1.1 s spacing, latest click wins, cache by rounded coordinate, credit beside the label; no request for water or unreached clicks); Q3/I2 773eafe (one-token patch, hashes recorded, tests red when unpatched); I3, L5/I4, Q5, Q8/J5 0e74b2b; Q6/I5 773eafe; Q7/A17 269e17c + 379d607; L13 c4b7295; G2 bounded 379d607. Blocked-on-owner items unchanged (E3 server half: live headers still absent on page assets).

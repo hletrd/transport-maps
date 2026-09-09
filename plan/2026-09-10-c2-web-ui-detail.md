@@ -21,12 +21,12 @@ the rebuild has finished (M1's guard makes the rest say "unavailable").
 ## Cycle 2 (this run) — bounded, S-effort, user-visible
 
 Origin switch, races and failure states (one theme, ordered commits)
-- [ ] **M3** Hoist every module-level `let` the functions assign (`active`,
+- [x] **M3** Hoist every module-level `let` the functions assign (`active`,
       `pinB`, `railDetail`, `airports`, `places`, `hoveredCell`, `addressSeq`,
       `reverseSeq`, the origin data) into one state block right after `meta`
       loads, before any function that assigns them (`app.js:739-742,816-820`).
       No behaviour change. Check: page loads; `browser_verify.sh` on the preview.
-- [ ] **M2 / C5** One `loadOrigin(o)` with `const gen = ++originGen`; every
+- [x] **M2 / C5** One `loadOrigin(o)` with `const gen = ++originGen`; every
       per-origin fetch (`.bin`, `.air.bin`, `.modes.bin`, `.json`, `.rail.*`) and
       the `.bin` `.catch` assign only when `gen === originGen`; one
       `AbortController` per switch, aborted at the top of the next (PR-8). The
@@ -34,25 +34,25 @@ Origin switch, races and failure states (one theme, ordered commits)
       `seoul.air.bin` by 3 s with a `fetch` wrapper, click Seoul then Tokyo;
       after 4 s the route for a Siberian click names Tokyo's airports.
       Mutation: drop the `gen` guard → Seoul's array lands last → wrong airports.
-- [ ] **M1** After each `arrayBuffer()`, refuse an array whose length is not
+- [x] **M1** After each `arrayBuffer()`, refuse an array whose length is not
       `hoverCells.length` (× 6 for `.modes.bin`) and route `.bin` through the
       existing "Times unavailable" branch (`app.js:489-511`). Check: serve a
       `.bin` 20 bytes short → readout says unavailable, not a number.
-- [ ] **M4** At the top of the switch: `#time` "—", `#where` "Loading the times
+- [x] **M4** At the top of the switch: `#time` "—", `#where` "Loading the times
       from X…"; restore the idle prompt when `.bin` lands with no pointer on the
       chart; re-run the readout for the last pointer position otherwise
       (UX-28, CRIT-7). Check: click London; `#where` names London within one frame.
-- [ ] **M5** `lookup()` tests land before load state (ocean never says
+- [x] **M5** `lookup()` tests land before load state (ocean never says
       "Loading…"); `renderPins` says "unavailable" when `hoverFailed === active`
       (TR-8, CRIT-14).
-- [ ] **M8** `fatal()` when `index.json` lacks `origins`/`bandEdgesMin`
+- [x] **M8** `fatal()` when `index.json` lacks `origins`/`bandEdgesMin`
       (DBG-6); **K10** page half: `fatal("index.json lists no departure cities")`.
-- [ ] **M9** Re-enable "Start from the city nearest me" on a 10 s timer as well
+- [x] **M9** Re-enable "Start from the city nearest me" on a 10 s timer as well
       (DBG-7). **M13** Close panels only on the first entry into the small
       layout, not on every orientation change (DBG-12).
 
 Touch and the legend (a standing CLAUDE.md rule)
-- [ ] **M16 / C13** (a) `map.on("click")` writes `#time`/`#where` through the same
+- [x] **M16 / C13** (a) `map.on("click")` writes `#time`/`#where` through the same
       `showReading(lat, lng)` the pointer uses; (b) a click unfolds the sheet
       (`rail.classList.remove("folded")`, `aria-expanded`); (c) the `#tints`
       strip (and the two keys) stays visible while the sheet is folded — keep
@@ -63,21 +63,21 @@ Touch and the legend (a standing CLAUDE.md rule)
       states. `browser_verify.sh` gains the folded-sheet check.
 
 Labels and affordance
-- [ ] **N1** Place the active origin's label first regardless of gazetteer rank
+- [x] **N1** Place the active origin's label first regardless of gazetteer rank
       (Seoul is rank 22, budget 18) and mark it `aria-current`; keep the
       collision filter (UX-24). Check at 1280×800 after load: a `.lbl.origin`
       whose text is the active origin exists.
-- [ ] **N2** Non-origin labels are not click-through targets (`pointer-events:
+- [x] **N2** Non-origin labels are not click-through targets (`pointer-events:
       auto` + `stopPropagation`, or excluded from the opening budget); origin
       labels carry a visible affordance (a 4 px dot); the "Depart from" button
       for a gazetteer label within 80 km says the *origin's* name (CRIT-6,
       CR-11). Check: click "Wuhan" at the opening view → no pin dropped.
-- [ ] **N13** Keep the current zoom when switching origin from a label or the
+- [x] **N13** Keep the current zoom when switching origin from a label or the
       "Depart from" button if the new origin is on the near side; only recentre
       (CR-10).
 
 One time notation (D19) and the legend
-- [ ] **N3 + N4** One `fmtTime` for the readout, tooltip, pins, legs *and the
+- [x] **N3 + N4** One `fmtTime` for the readout, tooltip, pins, legs *and the
       legend ticks*: minutes under an hour ("45 min"), "5 h 11 min" to 48 h,
       hours beyond ("51 h", days in `title`); the legend prints the true edge
       ("3 h 45", "7 h 45", "16 h", "24 h 30", "50 h", "72 h+"), puts the unit
@@ -90,7 +90,7 @@ One time notation (D19) and the legend
       "by air, rail, road and ferry". Raise the disclaimer, keys and ticks to
       11 px (CRIT-16). Check: every `.tick` label equals `fmtTime(data-min)`;
       `#time` and `.pins .val` use the same string for the same value.
-- [ ] **N5** Per-scheme `uncharted` grey chosen so ΔE ≥ 8 from every one of the
+- [x] **N5** Per-scheme `uncharted` grey chosen so ΔE ≥ 8 from every one of the
       37 bands (Mono gets a cool low-chroma tone); `scripts/check_ramps.py`
       measures `min ΔE(uncharted, bands)` per scheme and the sea-vs-space /
       sea-vs-darkest-band constraints the README and CLAUDE.md say it measures
@@ -100,68 +100,68 @@ One time notation (D19) and the legend
       `check_ramps.py` exits 1.
 
 Search, results and copy
-- [ ] **N12** Diacritic folding on both sides of the city and airport match
+- [x] **N12** Diacritic folding on both sides of the city and airport match
       (`normalize("NFD")` + strip marks, fold `ı/İ`) (CR-5). Check: "Sao
       Paulo" and "Zurich" match.
-- [ ] **N8 / D8** "No charted city or airport matches "…". Press Enter or
+- [x] **N8 / D8** "No charted city or airport matches "…". Press Enter or
       Search address to look it up." when the local list is empty; "Type at
       least three characters." for a short address query (UX-30).
-- [ ] **M6** Restore the `$("q").value.trim() !== q` guard in `searchAddress`
+- [x] **M6** Restore the `$("q").value.trim() !== q` guard in `searchAddress`
       and drop the second `box.append(ul)` (DBG-4). **M7** `Array.isArray(hits)`
       before iterating (CR-13, DBG-13).
-- [ ] **N11** Address and airport rows are tagged "· destination"; the hint reads
+- [x] **N11** Address and airport rows are tagged "· destination"; the hint reads
       "Enter picks the first match: a city to depart from, an airport or
       address as destination" (CRIT-8, UX-41).
-- [ ] **D11** One "Route" heading; the time shown once in the panel (the pins
+- [x] **D11** One "Route" heading; the time shown once in the panel (the pins
       row carries it; the legs total does not repeat it) (UX regression note).
-- [ ] **O1** Sources panel and `llms.txt`: "connections are charged the minimum
+- [x] **O1** Sources panel and `llms.txt`: "connections are charged the minimum
       connection time or the expected wait, whichever is longer, capped at the
       cost of leaving and re-entering the terminal (about an hour to an hour and
       a half); rail and ferry legs carry no wait"; "a gravity model hand-fitted
       to two anchor routes" (CRIT-2, DOC-19). **O13** "door to door" in the
       meta/OG/Twitter descriptions (CRIT-22).
-- [ ] **O4 (page half)** "from more than a hundred cities" instead of "hundreds"
+- [x] **O4 (page half)** "from more than a hundred cities" instead of "hundreds"
       (true at 157 and 553); JSON-LD `measurementTechnique` loses the airport /
       station / ferry counts and states the h3 v4 sizes (O3); the Sources panel
       prints "Data built on <date>" when `index.json` carries `builtAt` (the
       emitter half is in the build plan); `llms.txt` "about 98 %" → the 90 %
       gate wording (CRIT-9, CRIT-10, CRIT-11, DOC-11).
-- [ ] **N21** `mode_detail()` prints "200,000" not "200,000.0" and the road
+- [x] **N21** `mode_detail()` prints "200,000" not "200,000.0" and the road
       tooltip says "motorways and expressways" without "GRIP4 class 1"
       (CR-8; the rail/ferry figures read from the calibration object — B2 in
       the docs plan).
 
 Controls, focus, tooltips, semantics
-- [ ] **N6** Focus ring inside the row (`outline-offset:-2px`) or padding on
+- [x] **N6** Focus ring inside the row (`outline-offset:-2px`) or padding on
       `.results` so the ring is not clipped (UX-27).
-- [ ] **N7** `.qrow .btn{flex:none;white-space:nowrap}`; the hint yields
+- [x] **N7** `.qrow .btn{flex:none;white-space:nowrap}`; the hint yields
       (UX-29).
-- [ ] **N9 / D15** Tooltip flips above the pointer when it would overflow the
+- [x] **N9 / D15** Tooltip flips above the pointer when it would overflow the
       bottom edge (UX-31).
-- [ ] **N18 / D16** Origin-label buttons get a 24 px hit area via padding and
+- [x] **N18 / D16** Origin-label buttons get a 24 px hit area via padding and
       negative margin; scheme rows 24 px; sheet handle 28 px (UX-39).
-- [ ] **N20** One radius token; `.pins .depart` styled as `.btn` and in the
+- [x] **N20** One radius token; `.pins .depart` styled as `.btn` and in the
       focus-visible list; compass needle grey → `var(--text-3)`;
       `type="button"` on generated buttons (UX-42).
-- [ ] **N10 / D4 (semantics)** `tabindex="-1"` on `.lbl.origin`; roving tabindex
+- [x] **N10 / D4 (semantics)** `tabindex="-1"` on `.lbl.origin`; roving tabindex
       with `role="listbox"`/`"option"` on the results and `aria-activedescendant`
       on `#q`; `#ramps role="radiogroup"` with `role="radio" aria-checked`;
       `aria-live="polite"` on `#where` and `#pins`; `#map` → `role="application"
       aria-roledescription="globe"`; Escape with a route open clears it (UX-32).
       Check: `document.querySelectorAll("[tabindex='0'],button,input,summary,a")`
       from `#q` to the Route summary is under 10 stops.
-- [ ] **N14** Above ~250 km show coordinates only; when unreachable print "No
+- [x] **N14** Above ~250 km show coordinates only; when unreachable print "No
       scheduled route · <place>" without "door to door" (UX-34).
-- [ ] **N17** `<link rel="icon">` with an inline SVG (UX-38).
-- [ ] **M12** `?from=<slug>` read before the first paint (unknown slugs
+- [x] **N17** `<link rel="icon">` with an inline SVG (UX-38).
+- [x] **M12** `?from=<slug>` read before the first paint (unknown slugs
       ignored); `history.replaceState` on every origin switch (CRIT-13).
       Check: open `/?from=tokyo` → `#origin-name` Tokyo.
-- [ ] **M11 + Q1 (page half)** Return early on a water/unreachable click (no
+- [x] **M11 + Q1 (page half)** Return early on a water/unreachable click (no
       Route panel, no Nominatim); reverse-geocode at most one request per
       1,100 ms across search and reverse with the latest click winning; cache by
       rounded coordinate; print "address by Nominatim © OpenStreetMap
       contributors" beside the reverse-geocoded label (SEC-18, CR-12).
-- [ ] **D17** Closed: 0 console entries across load, hover, click, three
+- [x] **D17** Closed: 0 console entries across load, hover, click, three
       switches and a scheme change (designer, cycle 2); the seven entries were
       the `.rail.*` 404s C12 removed.
 
@@ -204,3 +204,4 @@ Controls, focus, tooltips, semantics
 
 - 2026-09-10 cycle 2: plan written from the cycle-2 aggregate; carries every
   unfinished web task from the cycle-1 plan (now archived) under its original ID.
+- 2026-09-10 cycle 2 done: every cycle-2 task shipped in 9d0a401 (page) with N21 in 269e17c and the parity test in 1d382c8; verified on the local preview with agent-browser at 1280x800, 820x1180, 390x844 and 844x390 (0 console errors) and by scripts/browser_verify.sh against the preview (all checks passed, including the folded-sheet legend, the tap reading, the departure label, borders and ?from=tokyo). Checks recorded in the commit body. Not deployed: the rebuild owns dist/ (see the build plan's deploy note).

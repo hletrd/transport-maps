@@ -15,7 +15,7 @@ build.
 
 ## Cycle 2 (this run)
 
-- [ ] **O2 / B2 (comment half)** `calibration.toml`: the seven unlabelled
+- [x] **O2 / B2 (comment half)** `calibration.toml`: the seven unlabelled
       tables get "Published-figure default; not fitted" (`taxi_out_min`,
       `taxi_in_min`, `frequency.size_weight`, `processing_min`,
       `disembark_min`, `border_min`, `connection_min`); the three false
@@ -28,28 +28,28 @@ build.
       (DOC-26, CR-8). A provenance test parses the raw TOML and asserts every
       table header is preceded by "fitted" or "published-figure default" within
       its comment block (ARCH-8). Mutation: delete one label → red.
-- [ ] **O3 / E8** JSON-LD `index.html:46` and the ten comment sites
+- [x] **O3 / E8** JSON-LD `index.html:46` and the ten comment sites
       (`refine.py:3,7`, `bands.py:13,17,148-157`, `tiles.py:11,17`,
       `hover.py:35`, `countries.py:91`, `grid.py:3`, `roads.py:100-101`,
       `ground.py:55-57`, `rail.py:24`) carry the h3 4.5.0 figures: res 4
       26.07 km edge / 1,770 km² / 45 km across; res 6 3.72 km / 36.1 km² /
       6.5 km; res 7 1.41 km / 5.16 km² / 2.4 km (DOC-3, VER-31, CR-9). The
       JSON-LD loses the airport/station/ferry counts (web plan O4).
-- [ ] **O8** `emit/index.py:19-21` comment; the OSM `usedFor` names rail
+- [x] **O8** `emit/index.py:19-21` comment; the OSM `usedFor` names rail
       relations, ferry ways, coastlines and GRIP4; README :58/:63 and
       `llms.txt:53` say "ferry ways"; Natural Earth `usedFor` matches the README
       row (DOC-7, VER-32).
-- [ ] **O10** Stale-number batch: `build.py:380`, `modes.py:10`,
+- [x] **O10** Stale-number batch: `build.py:380`, `modes.py:10`,
       `calibrate_ground.py:7,47`, the two sample sizes explained in
       `ground.py:17` / `ground_check.py:5` / `urban.py:4-6`, `app.js:233,319,
       618-622`, `places.py:3`, `airports_json.py:3`, `nodes.py:32`,
       `validate.py:14,133`, `cli.py:170`, `bands.py:25`, `tiles.py:9-19,35`,
       `osm_rail.sh:11-16`; delete `landmask._cells_touching` (with G1) (DOC-14,
       VER-37).
-- [ ] **O5** `web/README.md` pin note: 5.24.0 is the last 5.x and carries
+- [x] **O5** `web/README.md` pin note: 5.24.0 is the last 5.x and carries
       CVE-2026-85061 (fixed only in 6.4.1); the vendored patch and its hashes
       recorded (security plan Q3) (DOC-4).
-- [ ] **O7** Bookkeeping: the archived web plan's completion line says
+- [x] **O7** Bookkeeping: the archived web plan's completion line says
       "verified on the local preview; not deployed"; H2's rail half ticked
       with `bf9e5cc`; E8 one entry; D17 closed; `593c231`'s note corrected
       (old = 90,659 res-5 arrays, new = 90,740 `hover_cells.bin`);
@@ -57,28 +57,28 @@ build.
       11 complete + 4 done outside the plan; a header on
       `cycle-1/_aggregate.md` saying its status column is a snapshot at
       `edf4b0d` (CRIT-4, VER-28, VER-38, DOC-6, DOC-16, DOC-17, DOC-18).
-- [ ] **O9 / E10** Spec status → "Superseded in part — see As built"; a short
+- [x] **O9 / E10** Spec status → "Superseded in part — see As built"; a short
       "As built (2026-09)" section with the delta table from DOC-9; the pipeline
       plan gets a header pointing at the SDD ledger and stating that Tasks 9,
       10, 12, 13 were completed outside the plan or replaced. The pipeline plan
       stays under `docs/` (its ledger is the record).
-- [ ] **O12 / E11** `water.py` uses `--no-simplification-of-shared-nodes`
+- [x] **O12 / E11** `water.py` uses `--no-simplification-of-shared-nodes`
       (takes effect on the next water build); the sky call keeps
       `atmosphere-blend` and a comment names the inert keys (DOC-21).
-- [ ] **O11** `web/vendor/OFL.txt` (IBM Plex LICENSE.txt) and one line in
+- [x] **O11** `web/vendor/OFL.txt` (IBM Plex LICENSE.txt) and one line in
       `web/README.md` Typography (DOC-15).
-- [ ] **O14** `data/origins.toml` header mentions the `expand_origins.py` half
+- [x] **O14** `data/origins.toml` header mentions the `expand_origins.py` half
       (DOC-23). **O15** `<meta charset>` first in `<head>` (DOC-25). **O16**
       `llms.txt` states the array sizes and that `hover_cells.bin` orders them
       (DOC-27).
-- [ ] **E14** Document the `h3shape_to_cells_experimental` dependency in
+- [x] **E14** Document the `h3shape_to_cells_experimental` dependency in
       `landmask.py` and pin its `contain="overlap"` behaviour with a test on a
       small island polygon (the cache-free islands test already exists — make
       the dependency explicit in its docstring and the README).
-- [ ] **O4 (docs half)** README "550+" → "the cities in `data/origins.toml`
+- [x] **O4 (docs half)** README "550+" → "the cities in `data/origins.toml`
       (553 today; the live build may lag)"; `llms.txt` coverage sentence →
       the 90 % gate wording (DOC-11, DOC-20).
-- [ ] **O1 (llms.txt half)** with the web plan.
+- [x] **O1 (llms.txt half)** with the web plan.
 
 ## Cycle 3
 
@@ -108,3 +108,4 @@ build.
   unfinished task from the cycle-1 docs plan (now archived) under its original
   ID. VER-29 (CLAUDE.md band wording) was refuted: the on-disk file already
   says anchors ≥ 6 (changed in `2526673`); D20's wording half stands as done.
+- 2026-09-10 cycle 2 done: O2 comment half 30e6034 (provenance test red twice under a deleted label) with the code half in 269e17c; O3 9555045 + 9d0a401 (JSON-LD) + 8129e47 (roads/ground/hover/tiles); O8 9555045 + 269e17c; O10 9555045 + 8129e47; O5 43eb6b6 + 773eafe (hashes recorded after the patch); O7 9b4a248 + a6e6d22; O9 a6e6d22; O12 64ab007 (water flag) + 9d0a401 (sky comment); O11, O16, O4 docs half, O1 llms half 43eb6b6; O14 a6e6d22; O15 9d0a401; E14 364986b (land_cells docstring; the cache-free islands test pins contain=overlap).

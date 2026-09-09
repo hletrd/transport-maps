@@ -19,7 +19,7 @@ change a cache key make the next build recompute that cache once; each says so.
 ## Cycle 2 (this run)
 
 The airport snap (bf9e5cc) and its tests
-- [ ] **K1** `_nearest_land` also considers the `FINE_RES` children of a ring
+- [x] **K1** `_nearest_land` also considers the `FINE_RES` children of a ring
       cell that is absent from `cell_pos` but present in the split set, ranked
       by distance to the airport; ring 1 and ring 2 candidates are compared by
       distance, not first-found (`graph/nodes.py:114-128,154-173`). Refresh the
@@ -28,17 +28,17 @@ The airport snap (bf9e5cc) and its tests
       an unsplit ring-2 cell → the nearest child wins; an off-centre probe with
       two ring-2 candidates → the nearer wins. Mutation: revert to the current
       lookup → the child case returns the ring-2 cell → red.
-- [ ] **K2 (rail half)** `test_write_rail_detail_never_touches_polars`: monkeypatch
+- [x] **K2 (rail half)** `test_write_rail_detail_never_touches_polars`: monkeypatch
       `rail_detail.pl` to raise and call `write_rail_detail` on the two-cell
       fixture (VER-27). Mutation: build a `pl.DataFrame` in the writer → red.
 
 Worker failure, locks, logging
-- [ ] **K3** Consume the pool with `it.next(timeout=…)` in a loop; on
+- [x] **K3** Consume the pool with `it.next(timeout=…)` in a loop; on
       `TimeoutError`, check `[p for p in pool._pool if p.exitcode not in (None, 0)]`
       (or count live workers) and abort with a message (TR-1). Test: a worker
       that `os.kill(getpid(), SIGKILL)`s under a 30 s alarm → `SystemExit`, not
       a hang. Mutation: remove the liveness check → alarm fires → red.
-- [ ] **K4** `dist/.build.lock` opened `O_CREAT|O_EXCL` with pid and start time,
+- [x] **K4** `dist/.build.lock` opened `O_CREAT|O_EXCL` with pid and start time,
       removed in `finally`; a stale lock whose pid is dead is reported, not
       reused; `Pool(initializer=_watch_parent)` starts a daemon thread that
       `os._exit(1)`s when `os.getppid()` changes; `_build_all` warns loudly when
@@ -46,59 +46,59 @@ Worker failure, locks, logging
       `deploy_verify.sh` refuses while the lock exists or `pgrep` finds a build.
       Test: second `_build_all` against a held lock → `SystemExit`. Mutation:
       drop the `O_EXCL` → green → red.
-- [ ] **K5** `logging.basicConfig(level=INFO, format="%(levelname)s %(name)s:
+- [x] **K5** `logging.basicConfig(level=INFO, format="%(levelname)s %(name)s:
       %(message)s")` in `cli.main` (workers inherit it); the snapped list at
       WARNING with distances; bound `len(snapped)` (5 %) beside the dropped
       bound (CR-4, TR-3). Test: the snapped bound aborts. Mutation: drop the
       bound → red.
-- [ ] **K8** `if m > cap: raise RuntimeError(...)` before writing past capacity
+- [x] **K8** `if m > cap: raise RuntimeError(...)` before writing past capacity
       in `hex_edges` and `native_edges` (FD-4). Test: a fixture whose cap is
       forced below its edge count raises with the message. Mutation: remove
       the check → `IndexError` (different type) → red.
-- [ ] **K9** `rail_detail`: raise when `len(table) >= NO_RAIL` (TR-10).
-- [ ] **K10** `load_origins` raises on an empty list (CR-14); page half in the
+- [x] **K9** `rail_detail`: raise when `len(table) >= NO_RAIL` (TR-10).
+- [x] **K10** `load_origins` raises on an empty list (CR-14); page half in the
       web plan.
-- [ ] **K6** `check_bands_cover` pull-in in an unwrapped frame for
+- [x] **K6** `check_bands_cover` pull-in in an unwrapped frame for
       antimeridian-straddling cells (or test their raw vertices) (DBG-2). Test:
       the Chukotka cell `860d9100fffffff` with a synthetic single band passes.
       Mutation: restore the planar interpolation → red.
-- [ ] **A13** Clamp emitted minutes to 65,534 and treat 65,534 as unreachable on
+- [x] **A13** Clamp emitted minutes to 65,534 and treat 65,534 as unreachable on
       both sides (`hover.py:23,67-69`, `modes.py:28`, `app.js:534`); a
       `routes.json` leg ≥ 65,535 is refused by the emitter (TR T7).
 
 Atomic writes and the next build's identity
-- [ ] **L2 / A6a (pmtiles)** `tiles.write_pmtiles` and `water.build` copy the
+- [x] **L2 / A6a (pmtiles)** `tiles.write_pmtiles` and `water.build` copy the
       local staged file to `out.parent / f".{out.name}.tmp"` and `os.replace`
       it; `finally` removes the temp (CR-2, TR-6, ARCH-2). Test: monkeypatch
       `os.replace` to record its source → it lies in `out.parent`. Mutation:
       restore `shutil.move` → the source is under `$TMPDIR` → red.
-- [ ] **A6a (arrays)** `hover.py`, `itinerary.py`, `modes.py`, `rail_detail.py`,
+- [x] **A6a (arrays)** `hover.py`, `itinerary.py`, `modes.py`, `rail_detail.py`,
       `routes_json.py` and `index.py` write through `_atomic_write` (moved to
       `transport_maps/_io.py` with public names; `_params_hash` too). Test: an
       inner write that raises after the temp file exists → target absent, no
       `.tmp` left. Mutation: `out.write_bytes` directly → truncated target → red.
-- [ ] **S1 (S parts) / A6c (identity)** `write_index` adds `buildId`
+- [x] **S1 (S parts) / A6c (identity)** `write_index` adds `buildId`
       (`inputs_hash-startUTC`), `builtAt`, `hoverCellCount`, `modeChannels`
       (from `modes.CHANNELS`), `graph: {rail, ferry}` (ARCH-12); the page
       prints `builtAt` when present (web plan O4). Sidecars and staging: cycle 3.
-- [ ] **H10 / R6** tippecanoe input under `data/build/tmp/`, deleted as soon as
+- [x] **H10 / R6** tippecanoe input under `data/build/tmp/`, deleted as soon as
       tippecanoe has read it and in `finally`; a start-up sweep of stale
       `tmp*.geojson`; threads capped to the worker budget (`-P` / env) (PR-7).
-- [ ] **L11** tippecanoe runs with `cwd` set, relative paths and `-n <slug>`
+- [x] **L11** tippecanoe runs with `cwd` set, relative paths and `-n <slug>`
       `-N` so no local path reaches the served metadata (CRIT-17).
-- [ ] **A7** Delete the `solve` and `index` subcommands; add `build-all --only
+- [x] **A7** Delete the `solve` and `index` subcommands; add `build-all --only
       slug,…` that runs the same `_solve_one` with every gate and leaves
       `index.json` untouched (ARCH-10; design in `architect.md` §4 A7). README
       updated. Test: `--only x` on the stub pipeline → `index.json` untouched.
       Mutation: publish anyway → red.
-- [ ] **A17 / Q7** `load_origins` applies `_SLUG_RE.fullmatch` (leading `-`
+- [x] **A17 / Q7** `load_origins` applies `_SLUG_RE.fullmatch` (leading `-`
       excluded) to every slug; `expand_origins.py` imports the same regex,
       writes names with `json.dumps` and falls back to the GeoNames id for a
       slug that would collapse (SEC-26, ARCH-14, DBG-9).
 
 Cache provenance (CLAUDE.md rule; each key change recomputes that cache once
 on the next build)
-- [ ] **G1 / P7** `routes.parquet` keyed on `_params_hash(airports table stamp,
+- [x] **G1 / P7** `routes.parquet` keyed on `_params_hash(airports table stamp,
       _SANITY_PAIRS, cargo regex, _SKIP_PREFIXES, PARSER_VERSION)` with a
       documented legacy adoption: when the stamped file is absent and the bare
       `routes.parquet` exists, use it and print a WARNING naming the stale
@@ -114,19 +114,19 @@ on the next build)
 
 Deploy and verification scripts (`scripts/deploy_verify.sh`,
 `scripts/browser_verify.sh`, `deploy/`)
-- [ ] **L4 / F9** Step 1 becomes `scripts/check_dist.py` (`check_dist(dist,
+- [x] **L4 / F9** Step 1 becomes `scripts/check_dist.py` (`check_dist(dist,
       origins, n_channels) -> list[str]`) imported by the script and tested on a
       synthetic `tmp_path` dist (truncate a `.bin` by 2 bytes; `.rail.bin`
       without `.rail.json`; a listed origin with no files; a `*-journal`;
       `n_channels` from `modes.CHANNELS`). Step 1b asserts that `web/index.html`
       and `llms.txt` contain **no** hard-coded three-digit count and no
       "hundreds" (TE-4, CRIT-9). Mutation: widen a byte width → red.
-- [ ] **L3** `check_dist` requires `{slug}.json`, pairs `.rail.json` with
+- [x] **L3** `check_dist` requires `{slug}.json`, pairs `.rail.json` with
       `.rail.bin`, requires `.rail.*` when `index.json.railDetail`, checks each
       `.pmtiles` starts with the `PMTiles` magic and the header offsets lie
       within the file, refuses when a build is running (lock or `pgrep`)
       (CR-7, VER-36, TR-5, SEC-20).
-- [ ] **L5 / I4** `deploy/rsync-excludes.txt` (`.*`, `*-journal`, `tmp*`,
+- [x] **L5 / I4** `deploy/rsync-excludes.txt` (`.*`, `*-journal`, `tmp*`,
       `*.tmp`, `*.part`, `.build-*`, `.build.lock`) used by the server rsync
       with `--delete-delay --delay-updates --chmod=D755,F644`, output logged to
       a file (no `tail -c 200`); `check_dist` **refuses** a stray (they are
@@ -135,24 +135,24 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       under E3); `_atomic_write` chmods `0o644`. Deleting
       `dist/origins/las-vegas.pmtiles-journal` waits for the orchestrator's
       go-ahead.
-- [ ] **L6** `rsync -a --delete web/vendor/ dist/vendor/` (and the enumerated
+- [x] **L6** `rsync -a --delete web/vendor/ dist/vendor/` (and the enumerated
       page files) so removed vendor files do not linger (VER-33).
-- [ ] **L7** Add `css` and `png` to the `no-cache` location; `deploy/README.md`
+- [x] **L7** Add `css` and `png` to the `no-cache` location; `deploy/README.md`
       lists them; the font comment says "named by family/subset/weight, not by
       content" (VER-34, CRIT-21, DOC-8).
-- [ ] **L8** `deploy_verify.sh --page-only`: rsync `web/` minus README to the
+- [x] **L8** `deploy_verify.sh --page-only`: rsync `web/` minus README to the
       server with no `--delete` and no `dist/` gate, then `browser_verify.sh`
       (VER-28). Correct the cycle-1 web plan's completion line (docs plan O7).
-- [ ] **L9** `browser_verify.sh` asserts `map.getLayer("borders")` and
+- [x] **L9** `browser_verify.sh` asserts `map.getLayer("borders")` and
       `queryRenderedFeatures({layers:["borders"]}).length > 0` at zoom ≥ 3
       (CR-6, CRIT-3, VER-30); adds the folded-sheet legend check (web plan M16)
       and a `?from=` check (M12). Mutation: rename the layer id → red.
-- [ ] **L10 / J5 / Q8** Repo root from the script's own path; host, server root
+- [x] **L10 / J5 / Q8** Repo root from the script's own path; host, server root
       and URL from `deploy/.env` (documented defaults); screenshots under
       `mktemp -d`; the cleanup kills only the session the script opened plus
       agent-browser's own Chrome tree under `~/.agent-browser/browsers/`, never
       a name grep (VER-35, SEC-27, ARCH-15).
-- [ ] **K4 (deploy half)** covered above.
+- [x] **K4 (deploy half)** covered above.
 
 ## Cycle 3
 
@@ -214,3 +214,5 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
   ID. Live evidence recorded in the aggregate: `dist/` is a mixed generation
   (L1), `las-vegas.pmtiles-journal` is served live with 200 (L5), eight orphaned
   workers from 09 Sep are still resident (K4).
+- 2026-09-10 cycle 2 done: K1/K2 a30ef1b (old lookup red on the split-neighbour and nearest tests; polars mutant red), K5 c22d630 (snapped bound red without it), K3/K4 53cd8cf (SIGKILLed worker aborts under a 15 s alarm; removing the liveness check hangs -> red; dropping O_EXCL -> red), K8/K9/K10 151b1e6, K6 100f2bb (planar pull-in red), A13 ceb2732 (clamp restored red), A6a 12fe779 (in-place write red for each of seven writers), L2/H10/L11/O12 64ab007 (shutil.move red; metadata carries no local path), S1 S-parts + A17 269e17c (slug validation removed red), A7 35320bf (--only publishing red), G1 364986b (25 stamped constants each red when dropped; urban whole-list red), L3/L4 160bb34 (twelve check_dist refusals), L5/L6/L7/L8/L9/L10/K4-deploy 0e74b2b. Every code change takes effect on the next build; the running rebuild16 is untouched.
+- 2026-09-10 cycle 2 deploy: DEPLOY_CMD run once at the end of the cycle; the new gate refuses because rebuild16 is still running and dist/ is a mixed generation (recorded in the cycle report as per-cycle-failed:artifacts-mid-rebuild).

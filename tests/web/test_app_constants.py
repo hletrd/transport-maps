@@ -64,3 +64,25 @@ def test_every_index_json_key_the_page_reads_is_written(tmp_path):
     written = set(json.loads(out.read_text()))
     read = set(re.findall(r"meta\.(\w+)", APP))
     assert read <= written, f"app.js reads {sorted(read - written)} which write_index never writes"
+
+
+def test_the_legend_tick_rule_lands_on_true_band_edges():
+    """A Python port of paintScale's selection: each target snaps to the
+    nearest edge by log distance, an exact hour winning when nearly as close,
+    so every tick is a real band boundary (the CLAUDE.md legend rule); the
+    on-screen gap rule is measured in the browser (browser_verify.sh)."""
+    import math
+
+    m = re.search(r"const TICK_TARGETS_MIN = \[([^\]]+)\];", APP)
+    targets = [int(x) for x in m.group(1).split(",")]
+    edges = list(config.BAND_EDGES_MIN)
+    picked = []
+    for t in targets:
+        best, best_err = -1, math.inf
+        for i, e in enumerate(edges):
+            err = abs(math.log(e / t)) * (0.6 if e % 60 == 0 else 1.0)
+            if err < best_err:
+                best, best_err = i, err
+        picked.append(edges[best])
+    assert picked == [60, 300, 1470, 4320]
+    assert all(v in edges for v in picked)
