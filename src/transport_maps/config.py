@@ -14,7 +14,11 @@ SOLVE_RES = 5
 HOVER_RES = 4
 
 # Upper edge of each isochrone band, in minutes. The 11th band is open-ended.
-BAND_EDGES_MIN: tuple[int, ...] = (120, 240, 360, 540, 720, 1080, 1440, 2160, 2880, 4320)
+# Thirty-six bands on a geometric ladder from 30 minutes to 72 hours, ratio
+# about 1.155, so the map reads as a continuous gradient rather than eleven
+# lumps that put 12 h and 18 h in the same color. Each band is thin enough that
+# with corner smoothing and the seam stroke the steps vanish at any zoom.
+BAND_EDGES_MIN: tuple[int, ...] = (30, 35, 40, 45, 55, 60, 70, 80, 95, 110, 125, 145, 170, 195, 225, 260, 300, 350, 400, 465, 535, 620, 715, 825, 955, 1100, 1270, 1470, 1695, 1960, 2260, 2615, 3020, 3485, 4025, 4320)
 
 # uint16 sentinel for "no path exists".
 UNREACHABLE = 65535

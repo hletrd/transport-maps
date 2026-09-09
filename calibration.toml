@@ -123,3 +123,13 @@ alighting_min = 5.0
 [ferry]
 speed_kmh = 35.0
 terminal_min = 30.0
+
+# Crossing a land border. Charged on the ground edge between two cells whose
+# countries sit in different immigration zones, the same test the air model
+# applies -- so Schengen and the Common Travel Area cost nothing, and the
+# Johor causeway, the Tijuana crossing and the Dover ferry all pay. A
+# published-figure default, not fitted: Singapore-Johor alone ranges from
+# twenty minutes to two hours by time of day. Closed borders are not slowed,
+# they are cut (sources/countries.py).
+[land_border]
+crossing_min = 45.0

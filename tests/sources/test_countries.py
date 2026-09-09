@@ -49,3 +49,35 @@ def test_the_inter_korean_border_is_not_traversable_on_the_ground():
     north = int(np.where(codes == "PRK")[0][-1])
     assert not np.isfinite(sp.csgraph.dijkstra(csr, indices=[south])[0][north]), \
         "ground route crosses the sealed inter-Korean border"
+
+
+def test_a_land_border_between_immigration_zones_costs_a_crossing():
+    """Singapore to Johor Bahru is a fifteen-minute drive plus a passport desk.
+
+    Air routes already paid border_min when leaving an immigration zone; ground
+    edges paid nothing, which made the causeway free.
+    """
+    sg = h3.latlng_to_cell(1.44, 103.78, config.SOLVE_RES)      # Woodlands
+    jb = h3.latlng_to_cell(1.49, 103.74, config.SOLVE_RES)      # Johor Bahru
+    assert jb in h3.grid_disk(sg, 1), "fixture cells must be adjacent"
+    idx = NodeIndex([sg, jb], [], {sg: 0, jb: 1}, {}, {}, ())
+    r, c, d = ground.hex_edges(idx)
+    edge = {(int(a), int(b)): float(m) for a, b, m in zip(r, c, d)}
+    dist_only = ground.haversine_km(
+        np.array([h3.cell_to_latlng(sg)]), np.array([h3.cell_to_latlng(jb)]))[0]
+    assert edge[(0, 1)] > dist_only / 120 * 60 + 30, \
+        "crossing SG -> MY cost no more than the drive itself"
+
+
+def test_a_schengen_border_costs_nothing_extra():
+    de = h3.latlng_to_cell(47.59, 7.59, config.SOLVE_RES)      # Basel side, DE/CH/FR corner
+    fr = [c for c in h3.grid_disk(de, 1) if c != de][0]
+    idx = NodeIndex([de, fr], [], {de: 0, fr: 1}, {}, {}, ())
+    from transport_maps.sources import countries
+    codes = countries.cell_country(idx.cells)
+    # only meaningful if the two cells really are in different Schengen states
+    if len(set(codes)) == 2 and all(countries.iso2(c) in ("DE", "FR", "CH") for c in codes):
+        r, c, d = ground.hex_edges(idx)
+        dist = ground.haversine_km(
+            np.array([h3.cell_to_latlng(de)]), np.array([h3.cell_to_latlng(fr)]))[0]
+        assert d.max() < dist / 20 * 60 + 5, "a Schengen-internal edge was charged a crossing"

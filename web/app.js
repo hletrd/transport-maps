@@ -28,7 +28,44 @@ const RAMPS = {
                                 "#646464","#4e4e4e","#3a3a3a","#282828","#191919"] },
 };
 let rampName = "muted";
-let BANDS = RAMPS[rampName].c;
+
+// Bands are as many as index.json says (37 now, on a geometric ladder), and
+// each scheme is eleven control points. Colors are interpolated in OKLab so
+// the gradient is perceptually even; interpolating hex channels would dip
+// through muddy grays between hues.
+function hexToOklab(h) {
+  const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  const l = Math.cbrt(0.4122214708 * c[0] + 0.5363325363 * c[1] + 0.0514459929 * c[2]);
+  const m = Math.cbrt(0.2119034982 * c[0] + 0.6806995451 * c[1] + 0.1073969566 * c[2]);
+  const s = Math.cbrt(0.0883024619 * c[0] + 0.2817188376 * c[1] + 0.6299787005 * c[2]);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+          1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+          0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+}
+function oklabToHex([L, a, b]) {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3;
+  const rgb = [ 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+               -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+               -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s]
+    .map((v) => Math.max(0, Math.min(1, v)))
+    .map((v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055))
+    .map((v) => Math.round(v * 255).toString(16).padStart(2, "0"));
+  return "#" + rgb.join("");
+}
+function expandRamp(control, n) {
+  const lab = control.map(hexToOklab);
+  return Array.from({ length: n }, (_, i) => {
+    const t = (i / (n - 1)) * (lab.length - 1);
+    const k = Math.min(Math.floor(t), lab.length - 2), f = t - k;
+    return oklabToHex(lab[k].map((v, j) => v + (lab[k + 1][j] - v) * f));
+  });
+}
+const N_BANDS = (meta.bandEdgesMin?.length ?? 10) + 1;
+let BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
 const BG = "#0a0b0d", SEA = "#0f1114";
 // Land no scheduled service reaches. A tone, not a colour: it must read as
 // "no route" rather than as the far end of the time ramp.
@@ -68,7 +105,7 @@ const store = {
   },
   set(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch { /* private mode */ } },
 };
-try { const r = localStorage.getItem("ramp"); if (r && RAMPS[r]) { rampName = r; BANDS = RAMPS[r].c; } }
+try { const r = localStorage.getItem("ramp"); if (r && RAMPS[r]) { rampName = r; BANDS = expandRamp(RAMPS[r].c, N_BANDS); } }
 catch { /* private mode */ }
 let lockNorth = store.get("lockNorth", false);
 let namePlaces = store.get("namePlaces", true);
@@ -84,13 +121,16 @@ paintLegend();
 // Segments are equal width but the time scale is not linear, so a tick must sit
 // at its own band boundary. Placing evenly spaced labels under uneven bands is
 // how a legend ends up lying about the thing it explains.
-const SHOWN_HOURS = [2, 6, 12, 24, 48, 72];
+const SHOWN_HOURS = [1, 2, 4, 8, 16, 24, 48, 72];
 $("scale").replaceChildren(...EDGES.flatMap((mins, i) => {
   const hours = mins / 60;
-  if (!SHOWN_HOURS.includes(hours)) return [];
+  // Edges sit on a geometric ladder, so a round hour may not fall exactly on
+  // one; label the nearest edge to each and skip duplicates.
+  const nearest = SHOWN_HOURS.find((h) => Math.abs(hours - h) / h < 0.08);
+  if (nearest == null || EDGES.findIndex((e) => Math.abs(e / 60 - nearest) / nearest < 0.08) !== i) return [];
   const el = document.createElement("span");
   el.style.left = `${((i + 1) / BANDS.length) * 100}%`;
-  el.textContent = hours === 72 ? "72+" : String(hours);
+  el.textContent = nearest === 72 ? "72+" : String(nearest);
   return [el];
 }));
 
@@ -226,6 +266,15 @@ map.addLayer({ id: "me-halo", type: "circle", source: "me",
 map.addLayer({ id: "me-dot", type: "circle", source: "me",
   paint: { "circle-radius": 4, "circle-color": "#ffffff",
            "circle-stroke-color": "#0a0b0d", "circle-stroke-width": 1.5 } });
+
+// International boundaries, drawn above the bands and below the labels.
+fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
+  if (!g) return;
+  map.addSource("borders", { type: "geojson", data: g });
+  map.addLayer({ id: "borders", type: "line", source: "borders",
+    paint: { "line-color": "#ffffff", "line-opacity": 0.28, "line-width": 0.8 } },
+    map.getLayer("hover-line") ? "hover-line" : undefined);
+}).catch(() => {});
 
 let hoveredCell = null;
 function highlight(lat, lon) {
@@ -456,7 +505,8 @@ function bandRangeAt(point) {
   if (b === UNREACHABLE_BAND) return "no scheduled route";
   const lo = b === 0 ? 0 : EDGES[b - 1] / 60;
   const hi = b < EDGES.length ? EDGES[b] / 60 : null;
-  return hi == null ? `over ${lo} h` : `${lo}–${hi} h band`;
+  const f = (h) => (h < 10 ? h.toFixed(1).replace(/\.0$/, "") : Math.round(h));
+  return hi == null ? `over ${f(lo)} h` : `${f(lo)}–${f(hi)} h`;
 }
 
 function describe(lat, lon) {
@@ -653,7 +703,7 @@ $("ramps").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-ramp]");
   if (!b) return;
   rampName = b.dataset.ramp;
-  BANDS = RAMPS[rampName].c;
+  BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
   try { localStorage.setItem("ramp", rampName); } catch { /* private mode */ }
   paintLegend();
   paintRampPicker();

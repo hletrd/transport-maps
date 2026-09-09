@@ -34,11 +34,22 @@ COUNTRIES_URL = (
 # silently deletes real routes, so the bar is "obviously and durably shut".
 CLOSED_BORDERS: frozenset[frozenset[str]] = frozenset({
     frozenset({"PRK", "KOR"}),   # inter-Korean: sealed since 1953
+    # North Korea's other borders admit no independent traveller either --
+    # entry is by escorted tour, by air or by the Beijing train, never by a
+    # visitor driving up to the crossing. Leaving these open made Pyongyang
+    # reachable overland from Seoul via a loop through China.
+    frozenset({"PRK", "CHN"}),
+    frozenset({"PRK", "RUS"}),
     frozenset({"ARM", "AZE"}),   # closed since 1991
     frozenset({"ARM", "TUR"}),   # closed since 1993
     frozenset({"DZA", "MAR"}),   # closed since 1994
     frozenset({"ISR", "LBN"}),   # no crossing open to travellers
     frozenset({"ISR", "SYR"}),   # no crossing open to travellers
+    frozenset({"IND", "PAK"}),   # Wagah admits a trickle by permit; shut to through traffic
+    frozenset({"RUS", "UKR"}),   # war
+    frozenset({"ERI", "ETH"}),   # reopened 2018, shut again
+    frozenset({"BGD", "MMR"}),   # no crossing open to foreigners
+    frozenset({"AFG", "PAK"}),   # Torkham closed to third-country nationals
 })
 
 UNKNOWN = ""
@@ -53,10 +64,20 @@ def _download() -> pathlib.Path:
     return cached
 
 
+# Natural Earth's ISO_A2 is -99 for a handful of territories; ADM0_A3 never is,
+# so it stays the cell key and this is only for the immigration-zone lookup.
+A3_TO_A2: dict[str, str] = {}
+
+
 def _polygons() -> tuple[list, list[str]]:
     path = _download().resolve()
     meta, table = pyogrio.read_arrow(f"/vsizip/{path}")
     codes = table.column("ADM0_A3").to_pylist()
+    a2 = table.column("ISO_A2_EH").to_pylist() if "ISO_A2_EH" in table.schema.names \
+         else table.column("ISO_A2").to_pylist()
+    for c3, c2 in zip(codes, a2):
+        if c3 and c2 and c2 != "-99":
+            A3_TO_A2[c3] = c2
     geoms = shapely.from_wkb(table.column(meta["geometry_name"] or "wkb_geometry").to_pylist())
     return list(geoms), [c or UNKNOWN for c in codes]
 
@@ -96,6 +117,13 @@ def cell_country(cells: list[str]) -> np.ndarray:
     df = pl.DataFrame({"country": out.astype(str)})
     _atomic_write(cached, lambda tmp: df.write_parquet(tmp))
     return df["country"].to_numpy()
+
+
+def iso2(a3: str) -> str:
+    """ISO-2 for an ADM0_A3, loading the table on first use."""
+    if not A3_TO_A2:
+        _polygons()
+    return A3_TO_A2.get(a3, a3)
 
 
 def is_closed(a: str, b: str) -> bool:

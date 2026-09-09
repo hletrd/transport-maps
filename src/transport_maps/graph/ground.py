@@ -5,6 +5,7 @@ import logging
 import h3
 import numpy as np
 
+from transport_maps.graph import transfers
 from transport_maps.graph.nodes import NodeIndex
 from transport_maps.sources import countries, roads, urban
 
@@ -19,6 +20,15 @@ logger = logging.getLogger(__name__)
 # none at all, and an unguarded fit returned 58 km/h for ROADLESS terrain,
 # which is not merely wrong but impossible.
 SPEED_BY_ROAD_CLASS_KMH = np.array([5.0, 107.0, 49.0, 36.0, 25.0, 25.0], dtype=np.float64)
+
+
+def _land_border_min() -> float:
+    import tomllib
+
+    from transport_maps import config
+
+    with open(config.ROOT / "calibration.toml", "rb") as fh:
+        return float(tomllib.load(fh)["land_border"]["crossing_min"])
 
 
 def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
@@ -55,10 +65,18 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     # Some cannot, and a road route through the inter-Korean border made Seoul
     # reachable overland from Vladivostok.
     country = countries.cell_country(idx.cells)
+    zone = np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
+                     for c in country])
+    crossing_min = _land_border_min()
 
     rows: list[int] = []
     cols: list[int] = []
+    # Extra minutes per edge, over and above the distance cost: a passport
+    # desk on every ground edge that leaves an immigration zone. Without this
+    # Singapore to Johor Bahru was a fifteen-minute drive.
+    extra: list[float] = []
     blocked = 0
+    crossings = 0
     for u, cell in enumerate(idx.cells):
         for neighbour in h3.grid_disk(cell, 1):
             if neighbour == cell:  # grid_disk includes the centre cell
@@ -71,13 +89,21 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                 continue
             rows.append(u)
             cols.append(v)
+            if zone[u] and zone[v] and zone[u] != zone[v]:
+                extra.append(crossing_min)
+                crossings += 1
+            else:
+                extra.append(0.0)
     if blocked:
         logger.info("%d ground edge(s) cut at closed land borders", blocked)
+    if crossings:
+        logger.info("%d ground edge(s) charged %.0f min for a border crossing",
+                    crossings, crossing_min)
 
     r = np.asarray(rows, dtype=np.int64)
     c = np.asarray(cols, dtype=np.int64)
     dist_km = haversine_km(centroids[r], centroids[c])
-    minutes = dist_km / speeds[c] * 60.0
+    minutes = dist_km / speeds[c] * 60.0 + np.asarray(extra, dtype=np.float64)
     return r, c, minutes
 
 
