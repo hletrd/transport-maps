@@ -82,8 +82,20 @@ def test_the_archive_metadata_carries_no_local_path(tmp_path):
     assert '"name":"seoul"' in meta or '"name": "seoul"' in meta
 
 
-def test_sweep_removes_stale_staging_files():
-    stale = tiles.scratch_dir() / "stale-test.geojson"
-    stale.write_text("{}")
-    assert tiles.sweep_scratch() >= 1
-    assert not stale.exists()
+def test_sweep_removes_only_files_whose_writer_is_gone(tmp_path):
+    """The staging directory is shared by every build on the machine and by
+    this suite: a sweep that deleted everything aborted another build's
+    in-flight origin. Only a file whose pid is dead is stale."""
+    import os
+    import subprocess
+    import sys
+
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    stale = tmp_path / f"seoul.{dead.pid}.abc.geojson"
+    live = tmp_path / f"tokyo.{os.getpid()}.abc.geojson"
+    foreign = tmp_path / "someone-elses.geojson"
+    for p in (stale, live, foreign):
+        p.write_text("{}")
+    assert tiles.sweep_scratch(tmp_path) == 1
+    assert not stale.exists() and live.exists() and foreign.exists()

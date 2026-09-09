@@ -81,9 +81,13 @@ Atomic writes and the next build's identity
       (`inputs_hash-startUTC`), `builtAt`, `hoverCellCount`, `modeChannels`
       (from `modes.CHANNELS`), `graph: {rail, ferry}` (ARCH-12); the page
       prints `builtAt` when present (web plan O4). Sidecars and staging: cycle 3.
-- [x] **H10 / R6** tippecanoe input under `data/build/tmp/`, deleted as soon as
-      tippecanoe has read it and in `finally`; a start-up sweep of stale
-      `tmp*.geojson`; threads capped to the worker budget (`-P` / env) (PR-7).
+- [x] **H10 / R6** tippecanoe input in one named LOCAL scratch directory
+      (deliberately not `data/build/tmp/`: tippecanoe's sqlite output is
+      unreliable over the NFS mount, and the input is read once), named with
+      the writer's pid, deleted as soon as tippecanoe has read it and in
+      `finally`; the start-up sweep removes only files whose writer is gone,
+      so it cannot touch another build; threads capped through
+      `TIPPECANOE_MAX_THREADS` (PR-7).
 - [x] **L11** tippecanoe runs with `cwd` set, relative paths and `-n <slug>`
       `-N` so no local path reaches the served metadata (CRIT-17).
 - [x] **A7** Delete the `solve` and `index` subcommands; add `build-all --only

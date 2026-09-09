@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -25,20 +26,33 @@ def scratch_dir() -> Path:
     named directory. tippecanoe writes its output through sqlite3, whose file
     locking is unreliable over NFS -- and this repo lives on an NFS mount;
     writing straight to dist/ survived 111 origins of a 157-origin build and
-    then died with "sqlite3 map insert failed: disk I/O error". A named
-    directory (rather than bare tempfile names) is what lets sweep_scratch()
-    remove what a killed worker left behind: 650 MB per origin at res 6/7."""
+    then died with "sqlite3 map insert failed: disk I/O error" (which is why
+    the input is not under data/build either). A named directory, with the
+    writing process's pid in every file name, is what lets sweep_scratch()
+    remove what a killed worker left behind -- 650 MB per origin at res 6/7 --
+    without touching a build that is still running."""
     d = Path(tempfile.gettempdir()) / "transport-maps"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def sweep_scratch() -> int:
-    """Delete stale staging files from earlier runs; returns the count."""
+# Staging files are named <slug>.<pid>.<random>.geojson|.pmtiles.
+_STAGED = re.compile(r"^.+\.(\d+)\.[^.]+\.(geojson|pmtiles)$")
+
+
+def sweep_scratch(directory: Path | None = None) -> int:
+    """Delete staging files whose writing process is gone; returns the count.
+
+    The directory is shared by every build on the machine (and by the test
+    suite), so a file is only stale when the pid in its name no longer exists;
+    anything else -- including files without a pid, which are not ours -- is
+    left alone.
+    """
     n = 0
-    d = scratch_dir()
+    d = directory or scratch_dir()
     for p in d.iterdir():
-        if p.is_file():
+        m = _STAGED.match(p.name)
+        if p.is_file() and m and not _io.pid_alive(int(m.group(1))):
             p.unlink(missing_ok=True)
             n += 1
     return n
@@ -59,7 +73,7 @@ def write_pmtiles(feature_collection: dict, out: Path, *, workers: int | None = 
 
     out = Path(out)
     scratch = scratch_dir()
-    fd, src_name = tempfile.mkstemp(dir=scratch, prefix=f"{out.stem}.", suffix=".geojson")
+    fd, src_name = tempfile.mkstemp(dir=scratch, prefix=f"{out.stem}.{os.getpid()}.", suffix=".geojson")
     src = Path(src_name)
     with os.fdopen(fd, "w") as fh:
         json.dump(feature_collection, fh)

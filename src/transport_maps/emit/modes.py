@@ -25,7 +25,8 @@ CHANNELS = ("rail", "ferry", "highway", "major road", "minor road", "track")
 # GRIP4 class -> channel. 0 roadless, 1 highway, 2 primary, 3 secondary,
 # 4 tertiary, 5 local.
 ROAD_CHANNEL = {0: 5, 1: 2, 2: 3, 3: 3, 4: 4, 5: 4}
-MAX_MINUTES = 65534
+# The same ceiling the hover array uses: one constant, not two copies.
+MAX_MINUTES = config.UNREACHABLE - 1
 
 
 def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,

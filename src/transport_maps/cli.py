@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from transport_maps import config, validate
+from transport_maps import _io, config, validate
 from transport_maps.contour import bands, grid
 from transport_maps.emit import (
     hover,
@@ -45,6 +45,14 @@ def _slug(name: str) -> str:
             "starting with a letter or digit"
         )
     return name
+
+
+def _slug_list(text: str) -> list[str]:
+    slugs = [_slug(x) for x in text.split(",") if x]
+    if not slugs:
+        # An empty list is not "everything": that would be a full, publishing build.
+        raise argparse.ArgumentTypeError("--only needs at least one slug")
+    return slugs
 
 
 def _load_rail():
@@ -96,14 +104,7 @@ WORKER_POLL_S = 60.0
 LOCK_NAME = ".build.lock"
 
 
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+_pid_alive = _io.pid_alive
 
 
 def _acquire_lock(dist: Path) -> Path:
@@ -350,6 +351,7 @@ def _consume(pool, results):
 
     The pool replaces a worker that exits for any reason, so the set of worker
     pids changing is the signal that a task's result will never arrive.
+    `pool._pool` is private API; verified against CPython 3.14.2.
     """
     expected = {p.pid for p in pool._pool}
     while True:
@@ -390,7 +392,7 @@ def main() -> None:
     )
     build_all.add_argument(
         "--only",
-        type=lambda s: [_slug(x) for x in s.split(",") if x],
+        type=_slug_list,
         default=None,
         help="comma-separated origin slugs to build (partial build; index.json untouched)",
     )

@@ -198,6 +198,7 @@ STAMPED = [
     (routes, "PARSER_VERSION", 999, routes._network_cache_path),
     (routes, "_SANITY_PAIRS", (("AAA", "BBB"),), routes._network_cache_path),
     (routes, "_SKIP_PREFIXES", ("Nowhere:",), routes._network_cache_path),
+    (wikidata, "RESOLVER_VERSION", 999, routes._network_cache_path),
 ]
 
 

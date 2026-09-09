@@ -863,7 +863,13 @@ function showReading(lat, lng, point) {
 // Once an origin's times land, the reading under the pointer (or the last
 // tap) is redone, so it never keeps saying "loading".
 function rereadPointer() {
-  if (lastPointer) showReading(lastPointer.lat, lastPointer.lng, lastPointer.point);
+  if (!lastPointer) return;
+  const { lat, lng } = lastPointer;
+  // The stored screen point may have moved with the map (an origin switch
+  // flies to the new city); project the coordinates afresh, and skip the
+  // band when the place is now on the far side of the globe.
+  const point = onNearSide(lat, lng) ? map.project([lng, lat]) : null;
+  showReading(lat, lng, point);
 }
 
 map.on("mouseout", () => { $("tip").hidden = true; clearHighlight(); });

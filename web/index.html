@@ -282,7 +282,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .ap:hover::after,.ap:focus::after,.mode:hover::after,.mode:focus::after{content:attr(data-tip);
   position:absolute;left:0;bottom:calc(100% + 5px);z-index:6;min-width:180px;max-width:260px;
   white-space:normal;font-weight:400;font-size:11.5px;line-height:1.4;color:var(--text);
-  background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:5px 8px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:5px 8px;
   box-shadow:0 4px 14px rgba(0,0,0,.45)}
 .ap:focus:not(:focus-visible),.mode:focus:not(:focus-visible){outline:none}
 .ap:focus-visible,.mode:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -409,7 +409,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <g class="needle" id="needle">
       <path d="M12 3 L15 13 L12 11.4 L9 13 Z" fill="#e48f35"></path>
-      <path d="M12 21 L9 11.6 L12 13.2 L15 11.6 Z" fill="#8f96a0"></path>
+      <path d="M12 21 L9 11.6 L12 13.2 L15 11.6 Z" style="fill:var(--text-3)"></path>
     </g>
   </svg>
 </button>

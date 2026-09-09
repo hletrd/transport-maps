@@ -259,8 +259,8 @@ def _network_cache_path():
     was crawled for (its own stamped name), the parser version and the sanity
     pairs. The bare routes.parquet it replaces was keyed on `.exists()` and,
     on disk today, predates the airport table it is used with."""
-    stamp = _params_hash(airports._table_cache_path().stem, PARSER_VERSION, _SANITY_PAIRS,
-                         _SKIP_PREFIXES, _SECTION_RE.pattern, _CARGO_RE.pattern)
+    stamp = _params_hash(airports._table_cache_path().stem, PARSER_VERSION, wikidata.RESOLVER_VERSION,
+                         _SANITY_PAIRS, _SKIP_PREFIXES, _SECTION_RE.pattern, _CARGO_RE.pattern)
     return config.BUILD / f"routes_{stamp}.parquet"
 
 

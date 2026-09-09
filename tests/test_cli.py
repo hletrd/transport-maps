@@ -43,6 +43,9 @@ def _stub_pipeline(monkeypatch, written, coverages):
         airports: ClassVar[list[str]] = []  # check_airport_connectivity runs for real below
 
     monkeypatch.setattr(cli.nodes, "build_index", lambda **kw: FakeIdx())
+    # The staging sweep touches a directory shared with every build on the
+    # machine; the sequencing tests must never reach it.
+    monkeypatch.setattr(cli.tiles, "sweep_scratch", lambda: 0)
     # The OSM extracts are a real, multi-gigabyte cache: the sequencing tests
     # must not depend on them (nor pay the 2.75 s polars UDF per _build_all).
     monkeypatch.setattr(cli.osm, "rail_routes",
@@ -338,3 +341,10 @@ def test_solve_and_index_subcommands_are_gone(monkeypatch, cmd):
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 2
+
+
+def test_only_with_no_slug_is_an_error_not_a_full_build():
+    with pytest.raises(argparse.ArgumentTypeError):
+        cli._slug_list("")
+    with pytest.raises(argparse.ArgumentTypeError):
+        cli._slug_list(",")

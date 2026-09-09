@@ -20,6 +20,17 @@ from collections.abc import Callable
 ARTIFACT_MODE = 0o644
 
 
+def pid_alive(pid: int) -> bool:
+    """Whether a process with this pid exists (permission errors mean yes)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def atomic_write(path: pathlib.Path, write_fn: Callable[[pathlib.Path], None],
                  mode: int = ARTIFACT_MODE) -> None:
     """Call `write_fn(tmp)` on a same-directory temp file, then replace `path`.

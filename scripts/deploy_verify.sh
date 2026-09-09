@@ -16,15 +16,23 @@ cd "$ROOT"
 : "${DEPLOY_HOST:=atik.kr}" "${DEPLOY_ROOT:=/var/www/worldmap}" "${SITE_URL:=https://worldmap.atik.kr}"
 MODE=full
 [ "${1:-}" = "--page-only" ] && MODE=page
-LOG="$(mktemp -t deploy_verify.XXXXXX).log"
+LOG="$(mktemp -t deploy_verify.XXXXXX)"
 RSYNC_COMMON=(-a --chmod=D755,F644 --exclude-from=deploy/rsync-excludes.txt)
 
 if [ "$MODE" = full ]; then
   echo "=== 1. artifact consistency ==="
   # A build rewrites dist/origins in place; its lock (or, for a build started
-  # before the lock existed, its process) means dist/ is a mixed generation.
-  if [ -e dist/.build.lock ] || pgrep -f "transport-maps build-all|transport_maps.cli build-all" >/dev/null; then
-    echo "  a build-all is running (or died holding dist/.build.lock); refusing to deploy a mixed dist/"
+  # before the lock existed, a build-all process that is actually working)
+  # means dist/ is a mixed generation. Orphaned workers of a killed build sit
+  # at 0 % CPU for days and must not block every deploy: only a process above
+  # 1 % CPU counts. Reaping the orphans is the owner's call.
+  if [ -e dist/.build.lock ]; then
+    echo "  dist/.build.lock exists: a build-all is running or died holding it; refusing to deploy a mixed dist/"
+    exit 1
+  fi
+  busy=$(/bin/ps -axo pid=,pcpu=,command= | grep -E "transport-maps build-all|transport_maps.cli build-all" | grep -v grep | awk '$2 >= 1 {print $1}' | tr '\n' ' ')
+  if [ -n "$busy" ]; then
+    echo "  a build-all is running (pids $busy); refusing to deploy a mixed dist/"
     exit 1
   fi
   uv run python scripts/check_dist.py --dist dist --web web
@@ -63,3 +71,8 @@ for f in "" app.js index.json; do
   h=$(curl -sI "$SITE_URL/$f" | tr -d '\r' | grep -ci "^content-security-policy:" || true)
   printf "  %-26s CSP header: %s\n" "/${f}" "$([ "$h" -gt 0 ] && echo present || echo ABSENT)"
 done
+
+echo "=== 4. open it in a browser ==="
+# No deploy is done until the page has been opened and checked (CLAUDE.md):
+# a 200 proves nothing about whether the page runs.
+"$ROOT/scripts/browser_verify.sh" "$SITE_URL/"

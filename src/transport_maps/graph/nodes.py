@@ -129,7 +129,9 @@ def _nearest_land(cell: str, cell_pos: dict[str, int], lat: float, lon: float,
     reclaimed-island airport -- was invisible to the search: Kitakyushu was
     dropped with land 5 km away and Bodø was wired to a cell 11 km off past six
     adjacent land cells. Every candidate across both rings is compared by
-    distance, so "nearest" means nearest and not first-found.
+    distance, so "nearest" means nearest and not first-found. Two rings reach
+    about 13 km from a res-6 cell (the case that arises: an off-mask cell is
+    never split) and about 5 km from a res-7 one.
     """
     best: tuple[int, float] | None = None
     for ring in (1, 2):
