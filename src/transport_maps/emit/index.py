@@ -81,7 +81,11 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
 def load_origins(path: Path | None = None) -> list[dict]:
     path = path or (config.DATA / "origins.toml")
     with open(path, "rb") as fh:
-        origins = tomllib.load(fh)["origin"]
+        origins = tomllib.load(fh).get("origin", [])
+    if not origins:
+        # A valid index.json with no origins is a page that throws on its
+        # first line (cities[0]) -- the blank-globe class of failure.
+        raise ValueError(f"{path} lists no origins")
     slugs = [o["slug"] for o in origins]
     if len(set(slugs)) != len(slugs):
         raise ValueError("duplicate origin slug in origins.toml")

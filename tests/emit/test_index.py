@@ -90,3 +90,16 @@ def test_readme_documents_the_same_sources():
     for entry in index.ATTRIBUTION:
         assert entry["name"] in readme, f"README.md does not credit {entry['name']}"
         assert entry["licence"] in readme, f"README.md omits {entry['name']}'s licence"
+
+
+def test_an_origins_file_with_no_origins_is_refused(tmp_path):
+    """A valid index.json listing nothing is a page that throws on cities[0]."""
+    import pytest
+
+    empty = tmp_path / "origins.toml"
+    empty.write_text("# nothing here\norigin = []\n")
+    with pytest.raises(ValueError, match="no origins"):
+        index.load_origins(empty)
+    (tmp_path / "none.toml").write_text("title = 'x'\n")
+    with pytest.raises(ValueError, match="no origins"):
+        index.load_origins(tmp_path / "none.toml")

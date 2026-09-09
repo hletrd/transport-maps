@@ -29,6 +29,8 @@ GRID_VERSION = "rings-nb6-v2"
 RINGS = 4
 # Test fixtures of a handful of cells are not worth a cache file each.
 MIN_CELLS_TO_CACHE = 5_000
+# See graph/ground.EDGE_SLOTS_PER_CELL: the same preallocation, the same guard.
+EDGE_SLOTS_PER_CELL = 8
 
 
 def universe(cells: list[str], rings: int = RINGS) -> tuple[list[str], np.ndarray, np.ndarray]:
@@ -101,25 +103,34 @@ def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     pos = {c: i for i, c in enumerate(cells)}
     fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
     fine = fine_attr if len(fine_attr) == len(cells) else np.zeros(len(cells), dtype=bool)
-    cap = 8 * len(cells)
+    cap = EDGE_SLOTS_PER_CELL * len(cells)
     rows = np.empty(cap, dtype=np.int32)
     cols = np.empty(cap, dtype=np.int32)
     m = 0
     complete = np.ones(len(cells), dtype=bool)
     cross: set[tuple[int, int]] = set()
+
+    def put(a: int, b: int) -> None:
+        nonlocal m
+        if m >= cap:
+            raise RuntimeError(
+                f"native edge capacity exceeded: more than {EDGE_SLOTS_PER_CELL} edges per "
+                f"cell over {len(cells):,} cells; raise EDGE_SLOTS_PER_CELL after measuring")
+        rows[m] = a; cols[m] = b; m += 1
+
     for u, c in enumerate(cells):
         for n in h3.grid_ring(c, 1):
             v = pos.get(n)
             if v is not None:
-                rows[m] = u; cols[m] = v; m += 1
+                put(u, v)
                 continue
             if fine[u]:
                 v = pos.get(h3.cell_to_parent(n, config.SOLVE_RES))
                 if v is not None:
                     if (u, v) not in cross:
                         cross.add((u, v))
-                        rows[m] = u; cols[m] = v; m += 1
-                        rows[m] = v; cols[m] = u; m += 1
+                        put(u, v)
+                        put(v, u)
                     continue
             complete[u] = False
     out = (rows[:m].copy(), cols[:m].copy(), complete)

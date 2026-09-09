@@ -104,7 +104,11 @@ def write_rail_detail(idx, minutes: np.ndarray, predecessors: np.ndarray,
                 index[key] = len(table)
                 table.append([stop_names.get(station, ""), line])
             chosen[p] = index[key]
+    if len(table) >= NO_RAIL:
+        # np.minimum used to fold any index past the sentinel into "no rail"
+        # silently; a table that large is a bug, not a build.
+        raise ValueError(f"rail table has {len(table):,} rows; uint16 holds {NO_RAIL - 1:,}")
     out_bin.parent.mkdir(parents=True, exist_ok=True)
-    out_bin.write_bytes(np.minimum(chosen, NO_RAIL).astype("<u2").tobytes())
+    out_bin.write_bytes(chosen.astype("<u2").tobytes())
     out_json.write_text(json.dumps({"fields": ["station", "line"], "stations": table},
                                    ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

@@ -192,3 +192,19 @@ def test_a_ferry_the_ground_network_does_not_duplicate_is_kept_on_the_mixed_grid
     assert set(zip(fr, fc)) == {(u, v), (v, u)}, "a crossing the ground network does not cover was dropped"
     _no_air(monkeypatch)
     build.build_graph(idx, ferry_links=links)   # both edge sets, no duplicate pair
+
+
+def test_the_edge_capacity_guard_names_the_problem_instead_of_an_index_error(monkeypatch):
+    """The preallocated edge arrays were sized from one measurement with no
+    check; an overflow was a bare IndexError hours into a build."""
+    from transport_maps.contour import grid as grid_mod
+    from transport_maps.graph import ground
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    cells = [centre, *h3.grid_ring(centre, 1)]           # the centre alone has six edges
+    idx = NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, ())
+    monkeypatch.setattr(ground, "EDGE_SLOTS_PER_CELL", 1)
+    with pytest.raises(RuntimeError, match="edge capacity exceeded"):
+        ground.hex_edges(idx)
+    monkeypatch.setattr(grid_mod, "EDGE_SLOTS_PER_CELL", 1)
+    with pytest.raises(RuntimeError, match="edge capacity exceeded"):
+        grid_mod.native_edges(idx)

@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 # 58 km/h for ROADLESS terrain, which is not merely wrong but impossible.
 SPEED_BY_ROAD_CLASS_KMH = np.array([5.0, 104.0, 57.0, 50.0, 18.0, 25.0], dtype=np.float64)
 
+# Directed edge slots preallocated per cell: six ring neighbours plus the
+# cross-resolution pairs along split seams. Measured at 8.0 per cell over the
+# res-6/7 universe (82 M edges over 10.2 M cells); the guard below turns an
+# overflow into a message instead of a bare IndexError hours into a build.
+EDGE_SLOTS_PER_CELL = 8
+
 
 def _land_border_min() -> float:
     import tomllib
@@ -90,7 +96,7 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
     # Preallocated: at 82 million edges, three Python lists peaked at 19 GB
     # in the build's parent process, which five forked workers then inherit.
-    cap = 8 * len(idx.cells)                 # six ring edges plus cross-resolution pairs
+    cap = EDGE_SLOTS_PER_CELL * len(idx.cells)
     rows = np.empty(cap, dtype=np.int32)
     cols = np.empty(cap, dtype=np.int32)
     extra = np.zeros(cap, dtype=np.float64)
@@ -105,6 +111,11 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if countries.is_closed(country[u], country[v]):
             blocked += 1
             return
+        if m >= cap:
+            raise RuntimeError(
+                f"ground edge capacity exceeded: more than {EDGE_SLOTS_PER_CELL} edges per "
+                f"cell over {len(idx.cells):,} cells; raise EDGE_SLOTS_PER_CELL after "
+                "measuring the new split fraction")
         rows[m] = u
         cols[m] = v
         if zone[u] and zone[v] and zone[u] != zone[v]:

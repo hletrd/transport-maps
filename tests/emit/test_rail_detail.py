@@ -3,6 +3,7 @@ from typing import ClassVar
 import h3
 import numpy as np
 import polars as pl
+import pytest
 
 from transport_maps import config
 from transport_maps.emit import rail_detail
@@ -74,3 +75,25 @@ def test_write_rail_detail_never_touches_polars(monkeypatch, tmp_path):
     rail_detail.write_rail_detail(idx, minutes, pred, tables,
                                   tmp_path / "x.rail.bin", tmp_path / "x.rail.json")
     assert (tmp_path / "x.rail.bin").stat().st_size == 2 * len({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
+
+
+def test_a_rail_table_that_reaches_the_sentinel_is_refused(monkeypatch, tmp_path):
+    """np.minimum used to fold table indexes past 65,535 into NO_RAIL silently."""
+    tables = rail_detail.lookup_tables(pl.DataFrame({
+        "route_id": [1, 1], "seq": [0, 1], "stop_id": [10, 11],
+        "lat": [37.0, 37.1], "lon": [127.0, 127.1],
+        "name": ["A", "B"], "highspeed": [False, False], "route_name": ["Line One", "Line One"],
+    }))
+
+    class OneCell:
+        """cell 0; airport dep 1 / arr 2; stations 3, 4 -- the cell is reached by rail."""
+        cells: ClassVar[list[str]] = [h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)]
+        n_cells = 1
+        airports: ClassVar[list[str]] = ["AAA"]
+        stations = ("s1", "s2")
+    minutes = np.array([30.0, np.inf, np.inf, 5.0, 20.0])
+    pred = np.array([4, -9999, -9999, -9999, 3])
+    monkeypatch.setattr(rail_detail, "NO_RAIL", 1)     # a one-row table now "reaches" it
+    with pytest.raises(ValueError, match="uint16 holds"):
+        rail_detail.write_rail_detail(OneCell(), minutes, pred, tables,
+                                      tmp_path / "x.rail.bin", tmp_path / "x.rail.json")
