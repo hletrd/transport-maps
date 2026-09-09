@@ -73,6 +73,13 @@ def test_attribution_entries_are_complete_records(tmp_path):
         assert all(str(v).strip() for v in entry.values())
 
 
+def test_index_json_advertises_rail_detail(tmp_path):
+    """The page asks for {slug}.rail.bin/.rail.json only when this key is
+    present; a build that drops it silently loses station naming.
+    """
+    assert _written_index(tmp_path)["railDetail"] is True
+
+
 def test_readme_documents_the_same_sources():
     """The obligation is on the artifact AND on the repo that produces it, and
     the two lists must not drift apart.

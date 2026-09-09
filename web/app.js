@@ -138,6 +138,7 @@ const MODE_FALLBACK = {
 };
 
 let hoverTimes = null;          // Uint16Array for the active origin
+let hoverFailed = null;         // the origin whose .bin fetch failed, if any
 let hoverAir = null;            // arrival-airport ordinal per hover cell
 let hoverModes = null;          // rail / ferry / road minutes per hover cell
 let routes = null;              // {offsets, byId} for walking the leg chain
@@ -476,6 +477,7 @@ function paintOrigin(o) {
   }, "water");
 
   hoverTimes = null;
+  hoverFailed = null;
   railDetail = null;
   // Station naming exists only in builds whose index.json says so; asking an
   // older build for it was two 404s per origin switch.
@@ -493,7 +495,8 @@ function paintOrigin(o) {
     .then((b) => { hoverTimes = new Uint16Array(b); renderPins(); renderLegs(); })
     .catch((err) => {
       console.error("hover data unavailable:", err);
-      $("where").textContent = `Hover data unavailable for ${o.name}.`;
+      hoverFailed = o;                 // so the readout says "unavailable", not "loading"
+      $("where").textContent = `Times unavailable for ${o.name}: ${err.message}.`;
     });
 
   // The leg breakdown is a progressive extra: an origin built before these
@@ -710,7 +713,9 @@ map.on("mousemove", (e) => {
     $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
     const band = bandRangeAt(e.point);
     $("where").innerHTML = t === undefined
-      ? `Loading the times from ${esc(active?.name ?? "the departure city")}…`
+      ? (hoverFailed === active
+          ? `Times unavailable for ${esc(active.name)}.`
+          : `Loading the times from ${esc(active?.name ?? "the departure city")}…`)
       : t === null ? "Open water."
       : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}`
         + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`;
@@ -1115,8 +1120,11 @@ locate.addEventListener("click", () => {
       // are. Only wait for a move if one was actually started: waiting for
       // "the next moveend" otherwise hijacks the visitor's next drag.
       const view = { center: [lo, la], zoom: 3.2, speed: 0.8 };
-      if (c.slug !== active?.slug) { paintOrigin(c); map.once("moveend", () => moveTo(view)); }
-      else moveTo(view);
+      // Under reduced motion paintOrigin's jumpTo has already fired moveend
+      // synchronously, so waiting for the next one would wait for the
+      // visitor's drag: move now instead.
+      if (c.slug !== active?.slug && !REDUCED_MOTION.matches) { paintOrigin(c); map.once("moveend", () => moveTo(view)); }
+      else { if (c.slug !== active?.slug) paintOrigin(c); moveTo(view); }
     },
     () => { locate.disabled = false; $("here").textContent = `Location unavailable — showing ${active?.name ?? FALLBACK.name}.`; },
     { timeout: 8000, maximumAge: 900000 }

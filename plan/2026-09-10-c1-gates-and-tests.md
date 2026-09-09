@@ -48,6 +48,18 @@ test goes red. Every task below names its mutation.
 
 ## Cycle 2
 
+- [ ] **W1 (gate warning, recorded per the warnings rule)** `uv run pytest` emits two
+      `DeprecationWarning: This process is multi-threaded, use of fork() may lead
+      to deadlocks in the child` from
+      `tests/test_cli.py::test_a_gate_failure_in_a_forked_worker_aborts_the_run`
+      (Python 3.14 `multiprocessing/popen_fork.py:70`). Severity Low, confidence
+      High. Not fixed this cycle: the production build uses the `fork` context
+      on purpose (`cli.py` shares the graph through inherited memory) and the
+      test exercises that exact path. Exit criterion: `_build_all` moves to a
+      `forkserver`/`spawn` context with the graph passed explicitly, or the
+      test is marked with a `filterwarnings` limited to that one test with a
+      comment quoting this entry.
+
 - [ ] **F3** DMZ cut test: build the chain from `grid_disk` neighbours at
       `config.SOLVE_RES` so every consecutive pair is adjacent, and pick a
       Singapore/Johor pair that is adjacent at res 6; drop the `if` guard in
