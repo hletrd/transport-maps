@@ -23,7 +23,10 @@
 
 A pipeline for building global travel-time isochrone maps from open geodata.
 
-This project generates accessibility data showing travel times from any location in the world using H3 hexagonal indexing and open-source routing data.
+It computes expected door-to-door travel time from each departure city in
+`data/origins.toml` to every land cell on Earth (H3 resolution 6, refined to 7
+in dense regions), by air, rail, ferry and road, and emits one PMTiles band
+set plus binary time, airport, mode and rail-station arrays per departure.
 
 ## Development
 
@@ -57,14 +60,19 @@ from `dist/` must carry the same credits; `dist/index.json` ships them in its
 | [HydroLAKES](https://www.hydrosheds.org/products/hydrolakes) | CC BY 4.0 | lake outlines drawn on the map (Messager et al. 2016) |
 | [adsb.lol](https://adsb.lol/) | ODbL 1.0 | observed flights behind the fitted cruise speed and climb/descent penalty |
 
-GRIP4 is itself compiled from many road datasets **including OpenStreetMap**,
-which is why OSM is credited here even though this pipeline never queries OSM
-directly: the road-density rasters that set every ground speed are downstream
-of it.
+OpenStreetMap enters three ways: rail and ferry route relations are parsed
+from Geofabrik PBF extracts (`sources/osm.py`), the coastline layer is built
+from OSM water polygons (`emit/water.py`), and GRIP4 is itself compiled from
+many road datasets **including OpenStreetMap**, so the road-density rasters
+that set every ground speed are downstream of it as well.
 
 GRIP4 asks to be cited as: Meijer, J.R., Huijbregts, M.A.J., Schotten, C.G.J.
 and Schipper, A.M. (2018): Global patterns of current and future road
 infrastructure. *Environmental Research Letters* 13-064006.
 
 No commercial flight data (schedules, frequencies or positions) is used
-anywhere in this pipeline; `tests/test_licence_firewall.py` enforces that.
+anywhere in this pipeline; `tests/test_licence_firewall.py` checks that no
+provider fingerprint reaches `dist/`. One commercial service is used during
+**calibration only**: `scripts/calibrate_ground.py` fits the ground-speed
+constants against Google Routes journeys, and only the fitted coefficients in
+`calibration.toml` are kept.
