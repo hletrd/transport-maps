@@ -49,31 +49,47 @@ def _line_between(routes: pl.DataFrame) -> dict[tuple[str, str], str]:
         pl.struct("lat", "lon").map_elements(lambda s: station_key(s["lat"], s["lon"]),
                                              return_dtype=pl.Utf8).alias("station"))
     out: dict[tuple[str, str], str] = {}
-    for rid, g in df.group_by("route_id", maintain_order=True):
+    for _rid, g in df.group_by("route_id", maintain_order=True):
         st = g["station"].to_list()
         name = g["route_name"][0] if "route_name" in g.columns else ""
-        for a, b in pairwise(st):
+        for a, b in zip(st, st[1:]):
             out.setdefault((a, b), name)
             out.setdefault((b, a), name)
     return out
 
 
+def lookup_tables(routes: pl.DataFrame | None) -> dict:
+    """Everything the per-origin writer needs, as plain dicts.
+
+    Built ONCE in the build's parent process. The writer runs in forked
+    workers, and polars' thread pool does not survive a fork: a worker that
+    touches a DataFrame blocks on the pool's lock forever, which is exactly
+    how the first mixed-resolution build sat for three hours with eight idle
+    processes and no output.
+    """
+    if routes is None:
+        return {"lines": {}, "stop_names": {}}
+    from transport_maps.graph.rail import station_key
+
+    stop_names: dict[str, str] = {}
+    for lat, lon, nm in zip(routes["lat"].to_list(), routes["lon"].to_list(), routes["name"].to_list()):
+        stop_names.setdefault(station_key(lat, lon), nm)
+    return {"lines": _line_between(routes), "stop_names": stop_names}
+
+
 def write_rail_detail(idx, minutes: np.ndarray, predecessors: np.ndarray,
-                      routes: pl.DataFrame | None, out_bin: Path, out_json: Path) -> None:
-    """`.rail.bin`: uint16 per hover cell into `.rail.json`'s station table."""
+                      tables: dict | None, out_bin: Path, out_json: Path) -> None:
+    """`.rail.bin`: uint16 per hover cell into `.rail.json`'s station table.
+    `tables` is `lookup_tables(routes)`; None or empty means no rail."""
     from .hover import _representative_children
 
     parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
     chosen = np.full(len(parents), NO_RAIL, dtype=np.int64)
     table: list[list[str]] = []
-    if routes is not None and len(idx.stations):
+    if tables and tables.get("lines") is not None and len(idx.stations):
         first_station = idx.n_cells + 2 * len(idx.airports)
         last = last_station_per_node(idx, minutes, predecessors)
-        stop_names = {}
-        from transport_maps.graph.rail import station_key
-        for lat, lon, nm in zip(routes["lat"], routes["lon"], routes["name"]):
-            stop_names.setdefault(station_key(lat, lon), nm)
-        lines = _line_between(routes)
+        lines, stop_names = tables["lines"], tables["stop_names"]
         index: dict[tuple[str, str], int] = {}
         for p, pos in _representative_children(idx, parents, minutes[: idx.n_cells]).items():
             node = int(last[pos])

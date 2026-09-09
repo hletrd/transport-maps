@@ -120,7 +120,7 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
     modes.write_modes(idx, minutes, predecessors, out / f"{slug}.modes.bin",
                       cell_class=shared["cell_class"])
-    rail_detail.write_rail_detail(idx, minutes, predecessors, shared.get("rail_routes"),
+    rail_detail.write_rail_detail(idx, minutes, predecessors, shared.get("rail_tables"),
                                   out / f"{slug}.rail.bin", out / f"{slug}.rail.json")
 
     size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
@@ -181,7 +181,8 @@ def _build_all(limit: int | None = None) -> None:
               # native (mixed-resolution) cells for the finest level.
               "grid": grid.universe(getattr(idx, "base_cells", None) or idx.cells),
               "native": grid.native_edges(idx),
-              "rail_routes": rail_routes}
+              # Plain dicts: a forked worker must never touch a polars frame.
+              "rail_tables": rail_detail.lookup_tables(rail_routes)}
 
     origins = index.load_origins()
     if limit is not None:

@@ -35,3 +35,17 @@ def test_line_name_comes_from_the_route_that_joins_the_two_stops():
     lines = rail_detail._line_between(routes)
     a, b = station_key(37.0, 127.0), station_key(37.1, 127.1)
     assert lines[(a, b)] == "Line One" and lines[(b, a)] == "Line One"  # first route wins
+
+
+def test_lookup_tables_are_plain_dicts_a_fork_can_use():
+    from transport_maps.graph.rail import station_key
+    routes = pl.DataFrame({
+        "route_id": [1, 1], "seq": [0, 1], "stop_id": [10, 11],
+        "lat": [37.0, 37.1], "lon": [127.0, 127.1],
+        "name": ["A", "B"], "highspeed": [False, False], "route_name": ["Line One", "Line One"],
+    })
+    t = rail_detail.lookup_tables(routes)
+    assert set(t) == {"lines", "stop_names"}
+    assert isinstance(t["lines"], dict) and isinstance(t["stop_names"], dict)
+    assert t["stop_names"][station_key(37.0, 127.0)] == "A"
+    assert rail_detail.lookup_tables(None) == {"lines": {}, "stop_names": {}}

@@ -111,6 +111,23 @@ class NodeIndex:
         return self._station_cell[station]
 
 
+def _nearest_land(cell: str, cell_pos: dict[str, int], lat: float, lon: float) -> int | None:
+    """Position of the nearest indexed cell within two rings of `cell`, at the
+    cell's own resolution, or None."""
+    best, best_km = None, float("inf")
+    for ring in (1, 2):
+        for n in h3.grid_ring(cell, ring):
+            pos = cell_pos.get(n)
+            if pos is None:
+                continue
+            km = h3.great_circle_distance((lat, lon), h3.cell_to_latlng(n), unit="km")
+            if km < best_km:
+                best, best_km = pos, km
+        if best is not None:
+            return best
+    return None
+
+
 def build_index(rail_routes=None) -> NodeIndex:
     """Build the node index. `rail_routes` is an osm.rail_routes() frame, or
     None to build a road-and-air graph."""
@@ -132,10 +149,20 @@ def build_index(rail_routes=None) -> NodeIndex:
     apts = airports.scheduled_airports()
     codes: list[str] = []
     dropped: list[str] = []
+    snapped: list[str] = []
     airport_cell: dict[str, int] = {}
     for iata, lat, lon in zip(apts["iata"], apts["lat"], apts["lon"]):
         cell = cell_at(lat, lon)
         pos = cell_pos.get(cell)
+        if pos is None:
+            # An airport is on land by definition; when its cell is not in the
+            # mask (reclaimed islands, atolls, a shore the 1:10m outline cuts
+            # inside), the nearest land cell within two rings stands in. At
+            # 2-6 km cells that is a few kilometres, less than the ground
+            # access already charged. 64 of 4,008 needed it at resolution 6.
+            pos = _nearest_land(cell, cell_pos, lat, lon)
+            if pos is not None:
+                snapped.append(iata)
         if pos is None:
             # Airport on a cell the land mask missed; skip rather than corrupt
             # the graph. Counted and bounded below -- an unbounded silent skip
@@ -145,6 +172,9 @@ def build_index(rail_routes=None) -> NodeIndex:
         codes.append(iata)
         airport_cell[iata] = pos
 
+    if snapped:
+        logger.info("%d airport(s) snapped to the nearest land cell within two rings (%s%s)",
+                    len(snapped), ", ".join(snapped[:8]), ", ..." if len(snapped) > 8 else "")
     if dropped:
         logger.warning(
             "%d of %d scheduled-service airport(s) dropped: no land cell at their "

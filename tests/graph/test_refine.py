@@ -64,3 +64,15 @@ def test_ground_adjacency_is_judged_the_way_hex_edges_joins_cells():
     assert not refine.ground_adjacent(edge_kid, far_kid), "opposite children of one parent do not touch"
     assert refine.ground_adjacent(base, neighbour)
     assert not refine.ground_adjacent(base, h3.grid_ring(base, 2)[0])
+
+
+def test_an_airport_off_the_mask_snaps_to_the_nearest_land_cell_within_two_rings():
+    from transport_maps.graph.nodes import _nearest_land
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    ring2 = h3.grid_ring(centre, 2)
+    land = {c: i for i, c in enumerate(ring2)}          # only ring 2 is "land"
+    la, lo = h3.cell_to_latlng(centre)
+    pos = _nearest_land(centre, land, la, lo)
+    assert pos is not None and ring2[pos] in ring2
+    # nothing within two rings -> None
+    assert _nearest_land(centre, {h3.grid_ring(centre, 3)[0]: 0}, la, lo) is None
