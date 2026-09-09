@@ -734,6 +734,9 @@ function layoutForSize() {
 }
 layoutForSize();
 SMALL.addEventListener("change", layoutForSize);
+// There is no pointer on a phone.
+if (window.matchMedia("(pointer: coarse)").matches)
+  $("where").textContent = "Tap the chart to read a passage.";
 
 const FALLBACK = bySlug.get("seoul") ?? cities[0];
 

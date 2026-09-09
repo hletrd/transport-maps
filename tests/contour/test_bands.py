@@ -13,10 +13,13 @@ from transport_maps.solve import dijkstra
 
 
 def test_band_boundaries_are_inclusive_of_the_lower_band():
+    # Expressed against the configured first edge, not a literal: the ladder
+    # has changed once already (120 min -> 30 min) and will again.
+    e0 = config.BAND_EDGES_MIN[0]
     assert bands.band_of(0.0) == 0
-    assert bands.band_of(119.0) == 0
-    assert bands.band_of(120.0) == 0      # exactly 2h is still the first band
-    assert bands.band_of(121.0) == 1
+    assert bands.band_of(e0 - 1.0) == 0
+    assert bands.band_of(float(e0)) == 0      # exactly on the edge is still the first band
+    assert bands.band_of(e0 + 1.0) == 1
 
 
 def test_beyond_the_last_edge_is_the_open_ended_band():
@@ -32,7 +35,9 @@ def test_feature_collection_has_one_feature_per_occupied_band():
     fc = bands.band_feature_collection(FakeIndex(), np.array([10.0, 5000.0]))
     assert fc["type"] == "FeatureCollection"
     assert len(fc["features"]) == 2
-    assert {f["properties"]["band"] for f in fc["features"]} == {0, 10}
+    expected = {bands.band_of(10.0), bands.band_of(5000.0)}
+    assert expected == {0, len(config.BAND_EDGES_MIN)}, "fixture no longer spans first and open band"
+    assert {f["properties"]["band"] for f in fc["features"]} == expected
 
 
 def test_bands_are_emitted_in_ascending_order():
@@ -41,21 +46,25 @@ def test_bands_are_emitted_in_ascending_order():
     class FakeIndex:
         cells: ClassVar[list[str]] = ["8530e08ffffffff", "8530e087fffffff", "852f5a37fffffff"]
         n_cells = 3
-    # Insertion order (9, 0, 5) deliberately does not match ascending band order,
-    # so a reversed or unsorted emission order would show up here.
-    fc = bands.band_feature_collection(FakeIndex(), np.array([3000.0, 10.0, 1000.0]))
-    assert [f["properties"]["band"] for f in fc["features"]] == [0, 5, 9]
+    # Insertion order (slow, fast, middle) deliberately does not match ascending
+    # band order, so a reversed or unsorted emission order would show up here.
+    times = [3000.0, 10.0, 1000.0]
+    fc = bands.band_feature_collection(FakeIndex(), np.array(times))
+    expected = sorted(bands.band_of(t) for t in times)
+    assert len(set(expected)) == 3, "fixture times must land in three distinct bands"
+    assert [f["properties"]["band"] for f in fc["features"]] == expected
 
 
 def test_max_minutes_matches_the_band_edge_and_is_none_past_the_last_edge():
     class FakeIndex:
         cells: ClassVar[list[str]] = ["8530e08ffffffff", "8530e087fffffff", "852f5a37fffffff"]
         n_cells = 3
-    # band 0 (10 min), band 5 (1000 min), and past the last edge (5000 min -> open band)
+    # a near band, a middle band, and past the last edge (5000 min -> open band)
     fc = bands.band_feature_collection(FakeIndex(), np.array([10.0, 1000.0, 5000.0]))
     by_band = {f["properties"]["band"]: f["properties"]["max_minutes"] for f in fc["features"]}
-    assert by_band[0] == config.BAND_EDGES_MIN[0]
-    assert by_band[5] == config.BAND_EDGES_MIN[5]
+    near, mid = bands.band_of(10.0), bands.band_of(1000.0)
+    assert by_band[near] == config.BAND_EDGES_MIN[near]
+    assert by_band[mid] == config.BAND_EDGES_MIN[mid]
     assert by_band[len(config.BAND_EDGES_MIN)] is None
 
 

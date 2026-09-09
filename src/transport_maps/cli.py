@@ -49,6 +49,11 @@ def _worker_count(n_origins: int) -> int:
     object headers and gradually un-shares pages, so more workers cost more
     real memory than the arrays suggest.
     """
+    # A handful of origins is not worth a fork -- and the test stubs record
+    # their writes into a list that a forked child cannot append to in the
+    # parent, which is how a two-origin test silently saw zero files written.
+    if n_origins < 4:
+        return 1
     cores = os.cpu_count() or 1
     return max(1, min(cores - 2, 8, n_origins))
 
