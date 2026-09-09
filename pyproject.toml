@@ -17,7 +17,6 @@ dependencies = [
     "pyogrio>=0.13.0",
     "rasterio>=1.5.1",
     "scipy>=1.18.1",
-    "selectolax>=0.4.11",
     "shapely>=2.1.2",
 ]
 

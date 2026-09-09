@@ -48,7 +48,7 @@ in the same commit.
 
 | file | sha256 |
 |---|---|
-| maplibre-gl.js | patched — see security plan Q3; pre-patch `c51e43e844402c587c55f43ff09de18989cacb80850d2ea7365f21088a332b0b` |
+| maplibre-gl.js | `b2b139c104732232252c74b66bee0ab6302d22a3c98723ac6d07589f9bd1c052` (patched: `removeAttributes` iterates `Array.from(t.attributes)`, CVE-2026-85061; upstream 5.24.0 was `c51e43e844402c587c55f43ff09de18989cacb80850d2ea7365f21088a332b0b`) |
 | pmtiles.js | `ea53f031446436ac57b420eeda2cc81092ed8b9b6dcbd15207f1b63495fad0bc` |
 | h3.js | `fcaa69b16ddfdd26e8544bf326eeb2c6d25ae3ba94ffa27c0a484cb5318cfd32` |
 | fflate.js | `d22d603594fe32208e563d2f2fbe9e53f8addc1c845320786c7de62464c288a8` |

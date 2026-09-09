@@ -17,3 +17,6 @@ data/validation/
 
 # oh-my-claudecode session state (ralph prd/progress); never source.
 .omc/
+
+# The example is documentation; only a real deploy/.env stays private.
+!deploy/.env.example
