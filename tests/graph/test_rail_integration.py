@@ -32,8 +32,11 @@ def _index():
     cell_pos = {c: i for i, c in enumerate(cells)}
     station_pos = {k: len(cells) + i for i, k in enumerate(keys)}
     station_cell = {k: cell_pos[c] for k, c in zip(keys, cells)}
-    return NodeIndex(cells, [], cell_pos, {}, {}, (),
-                     tuple(keys), station_pos, station_cell), keys, cells
+    # By keyword: the refinement fields (base_cells, base_index, fine, _split)
+    # sit between `stations` and the station maps, so passed positionally the
+    # maps landed in base_cells/base_index and every station lookup failed.
+    return NodeIndex(cells, [], cell_pos, {}, {}, (), stations=tuple(keys),
+                     _station_pos=station_pos, _station_cell=station_cell), keys, cells
 
 
 def _rail_only_graph(idx):
