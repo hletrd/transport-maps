@@ -1,3 +1,5 @@
+> Status column is a snapshot at `edf4b0d`; HEAD status is tracked in `plan/*.md` (cycle 2 moved every finished item to `plan/archive/`).
+
 # Aggregate review — transport-maps, cycle 1
 
 Reviewed tree: `feat/transport-pipeline` at `ac191db` (working tree clean at fan-out).

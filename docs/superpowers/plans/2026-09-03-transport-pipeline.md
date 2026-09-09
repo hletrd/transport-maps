@@ -1,5 +1,17 @@
 # Transport-Time Data Pipeline — Implementation Plan
 
+> **Status (2026-09-10): historical.** None of the 118 checkboxes below was
+> ever ticked; the record of what was done is the SDD ledger at
+> `.superpowers/sdd/2026-09-03-transport-pipeline/progress.md`, which marks 11
+> of the 15 tasks complete (1–8, 11, 14, 15) and 9, 10, 12, 13 as blocked.
+> Those four were completed outside the plan or replaced: rail (9) and ferry
+> (10) via `scripts/osm_rail.sh` and `sources/osm.py`; the air fit (12) against
+> adsb.lol instead of FR24/FlightAware; Task 13 (Google TRANSIT city↔airport
+> legs) replaced by the DRIVE-mode ground fit in `scripts/calibrate_ground.py`.
+> The constants below (resolution 5, 548,557 cells, 82,983 hover cells, 11
+> bands) are design-time values; `src/transport_maps/config.py` and the "As
+> built (2026-09)" section of the design spec hold the current ones.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the offline Python pipeline that turns open geodata into per-origin isochrone artifacts (PMTiles bands, hover array, route index) for the global transport-time globe.

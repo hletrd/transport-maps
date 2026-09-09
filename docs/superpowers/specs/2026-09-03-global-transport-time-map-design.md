@@ -1,7 +1,36 @@
 # Global Transport-Time Map — Design
 
 **Date:** 2026-09-03
-**Status:** Approved, pre-implementation
+**Status:** Superseded in part — see "As built (2026-09)" below
+
+## As built (2026-09)
+
+The pipeline and the page were built from this spec and diverged as they went.
+The table lists every claim below that no longer holds; the rest reads as
+written. Current values live in `src/transport_maps/config.py`,
+`calibration.toml`, `src/transport_maps/graph/ground.py` and `README.md`.
+
+| Spec claim | As built |
+|---|---|
+| "The site makes no runtime API calls" (Summary) | Two: OpenStreetMap's Nominatim for address search and click-to-address (on request only) and the Google tag for page-view counting (`web/app.js`, `web/index.html`) |
+| D9: Google Routes API (TRANSIT) for city↔airport legs | Google Routes in DRIVE mode, used offline only, to fit the per-road-class ground speeds (`calibrate/ground.py`, `scripts/calibrate_ground.py`); no transit legs |
+| D10: AWS S3 + CloudFront | nginx on `atik.kr` (`deploy/`) |
+| D12: res-5 cells match GRIP4's 5-arcmin cells | Solver grid is H3 resolution 6, refined to 7 in dense regions; a res-6 cell (36 km²) is smaller than a GRIP4 cell |
+| ~150 origins | 553 in `data/origins.toml` |
+| Vite + React 19 + TypeScript | One vanilla ES-module page (`web/index.html`, `web/app.js`) |
+| Flight times fitted from FR24 / FlightAware | Fitted from adsb.lol globe history (ODbL); `calibration.toml [meta]` |
+| Protomaps basemap, `basemap.pmtiles` ~100 MB | No basemap; `water.pmtiles` (867 MB) built from OSM water polygons and HydroLAKES cuts the bands to the coast |
+| 548,557 res-5 cells (~253 km², ~8.5 km edge) | 4,091,715 res-6 land cells (36 km², 3.7 km edge, 6.5 km across), refined to res 7 (5.2 km², 2.4 km across) |
+| Ground speeds 85/60/40/25/5 km/h | By GRIP4 class: roadless 5, highway 104, primary 57, secondary 50, tertiary 18, local 25 km/h, fitted against 2,998 Google Routes journeys (`graph/ground.py`) |
+| Rail 250/80 km/h with 140/56 services per week | 200/75 km/h, no headway model (`calibration.toml [rail]`) |
+| Rail sinuosity 1.15 | `detour_factor = 1.2` |
+| Transfer table | `processing_min`, `disembark_min`, `border_min` and `connection_min` tables in `calibration.toml` |
+| 600k nodes, 4M edges, minutes per origin | About 10 M cells; a full build takes hours (`cli.py`) |
+| Google TRANSIT sampled per origin | Never done |
+| `.bin` 162 KB (82,983 cells) | 181,480 B (90,740 res-4 cells; `hover_cells.bin` gives the ordering) |
+| Eleven bands | 37 bands (`config.BAND_EDGES_MIN`) |
+| Contour lines | None |
+| EC2 / S3 / CloudFront | nginx (`deploy/`) |
 
 ## Summary
 
