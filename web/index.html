@@ -1,6 +1,14 @@
 <!doctype html>
 <html lang="en">
 <head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2NYW09JSK2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-2NYW09JSK2');
+</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Isochronic Passage Chart — travel time to anywhere on Earth</title>
@@ -224,6 +232,14 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .pins .depart{margin-top:8px;padding:5px 10px;font:inherit;font-size:12px;color:var(--text);
   background:var(--surface-2);border:1px solid var(--line, #2a2e36);border-radius:6px;cursor:pointer}
 .pins .depart:hover{background:var(--surface)}
+/* An airport code or a travel mode in the route explains itself on hover. */
+.ap,.mode{position:relative;cursor:help;border-bottom:1px dotted var(--text-3)}
+.ap:hover::after,.ap:focus::after,.mode:hover::after,.mode:focus::after{content:attr(data-tip);
+  position:absolute;left:0;bottom:calc(100% + 5px);z-index:6;min-width:180px;max-width:260px;
+  white-space:normal;font-weight:400;font-size:11.5px;line-height:1.4;color:var(--text);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:5px 8px;
+  box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.ap:focus,.mode:focus{outline:none}
 .tip i{font-style:normal;color:var(--text-3)}
 .row label{cursor:pointer}
 .hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}
