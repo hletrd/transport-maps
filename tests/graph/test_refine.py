@@ -74,13 +74,46 @@ def test_ground_adjacency_is_judged_the_way_hex_edges_joins_cells():
     assert not refine.ground_adjacent(base, h3.grid_ring(base, 2)[0])
 
 
+def _toward(cell: str, target: str, frac: float) -> tuple[float, float]:
+    """A point `frac` of the way from cell's centre toward target's centre."""
+    (la, lo), (ta, to) = h3.cell_to_latlng(cell), h3.cell_to_latlng(target)
+    return la + frac * (ta - la), lo + frac * (to - lo)
+
+
 def test_an_airport_off_the_mask_snaps_to_the_nearest_land_cell_within_two_rings():
     from transport_maps.graph.nodes import _nearest_land
     centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
     ring2 = h3.grid_ring(centre, 2)
     land = {c: i for i, c in enumerate(ring2)}          # only ring 2 is "land"
-    la, lo = h3.cell_to_latlng(centre)
-    pos = _nearest_land(centre, land, la, lo)
-    assert pos is not None and ring2[pos] in ring2
+    # Off-centre toward one ring-2 cell: that exact cell must win, not the
+    # first indexed one the ring walk happens to visit.
+    la, lo = _toward(centre, ring2[7], 0.4)
+    found = _nearest_land(centre, land, la, lo)
+    assert found is not None
+    pos, km = found
+    assert ring2[pos] == ring2[7], "did not pick the nearest ring-2 cell"
+    assert 0 < km < 15
     # nothing within two rings -> None
     assert _nearest_land(centre, {h3.grid_ring(centre, 3)[0]: 0}, la, lo) is None
+
+
+def test_the_snap_sees_a_split_neighbour_through_its_fine_children():
+    """A dense coastal cell is in the index only as its res-7 children, so a
+    lookup by its res-6 id found nothing and the search walked past it to a
+    farther unsplit cell (or dropped the airport): Kitakyushu, Bodø, Ushuaia.
+    """
+    from transport_maps.graph.nodes import _nearest_land
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    ring1, ring2 = h3.grid_ring(centre, 1), h3.grid_ring(centre, 2)
+    dense = ring1[0]
+    kids = h3.cell_to_children(dense, config.FINE_RES)
+    far = ring2[0]
+    land = {k: i for i, k in enumerate(kids)}
+    land[far] = len(kids)
+    la, lo = _toward(centre, dense, 0.3)
+    found = _nearest_land(centre, land, la, lo, split={dense})
+    assert found is not None
+    pos, km = found
+    assert pos < len(kids), "snapped to the far unsplit cell instead of the adjacent dense cell"
+    expected = min(kids, key=lambda k: h3.great_circle_distance((la, lo), h3.cell_to_latlng(k), unit="km"))
+    assert kids[pos] == expected, "not the nearest child"

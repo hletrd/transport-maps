@@ -27,12 +27,14 @@ import numpy as np
 from transport_maps import config
 from transport_maps.sources import airports, landmask
 
-# An airport whose containing H3 cell is absent from the land mask cannot be
-# wired into the graph, so it is dropped. A handful is normal and permanent:
-# 25 of 4,008 today (0.62%), all on islands and coastal spits finer than the
-# 10m coastline. Thousands would mean the land mask itself regressed -- which
-# NOTHING else would catch, because the 90% publication gate measures land
-# CELLS, not airports, and would still pass with every airport on Earth gone.
+# An airport whose containing H3 cell is absent from the land mask is snapped
+# to the nearest indexed cell within two rings (_nearest_land); one with no
+# land cell that close cannot be wired into the graph and is dropped. A handful
+# is normal and permanent: at resolution 6 about a dozen atolls of 4,008 are
+# dropped and about 46 are snapped (2026-09). Thousands would mean the land
+# mask itself regressed -- which NOTHING else would catch, because the 90%
+# publication gate measures land CELLS, not airports, and would still pass
+# with every airport on Earth gone.
 MAX_DROPPED_AIRPORT_FRACTION = 0.02
 
 logger = logging.getLogger(__name__)
@@ -111,21 +113,39 @@ class NodeIndex:
         return self._station_cell[station]
 
 
-def _nearest_land(cell: str, cell_pos: dict[str, int], lat: float, lon: float) -> int | None:
-    """Position of the nearest indexed cell within two rings of `cell`, at the
-    cell's own resolution, or None."""
-    best, best_km = None, float("inf")
+def _nearest_land(cell: str, cell_pos: dict[str, int], lat: float, lon: float,
+                  split: frozenset | set = frozenset()) -> tuple[int, float] | None:
+    """The nearest indexed cell within two rings of `cell`: (position, km), or None.
+
+    Ring neighbours are looked up at `cell`'s own resolution. A neighbour that
+    is absent from the index because it was SPLIT (it is present only as its
+    FINE_RES children) contributes those children instead; a fine neighbour
+    whose base cell was not split contributes that base cell. Without the
+    split case every dense coastal cell -- exactly the land beside a
+    reclaimed-island airport -- was invisible to the search: Kitakyushu was
+    dropped with land 5 km away and Bodø was wired to a cell 11 km off past six
+    adjacent land cells. Every candidate across both rings is compared by
+    distance, so "nearest" means nearest and not first-found.
+    """
+    best: tuple[int, float] | None = None
     for ring in (1, 2):
         for n in h3.grid_ring(cell, ring):
-            pos = cell_pos.get(n)
-            if pos is None:
+            if n in cell_pos:
+                candidates = (n,)
+            elif n in split:
+                candidates = h3.cell_to_children(n, config.FINE_RES)
+            elif h3.get_resolution(n) > config.SOLVE_RES:
+                candidates = (h3.cell_to_parent(n, config.SOLVE_RES),)
+            else:
                 continue
-            km = h3.great_circle_distance((lat, lon), h3.cell_to_latlng(n), unit="km")
-            if km < best_km:
-                best, best_km = pos, km
-        if best is not None:
-            return best
-    return None
+            for candidate in candidates:
+                pos = cell_pos.get(candidate)
+                if pos is None:
+                    continue
+                km = h3.great_circle_distance((lat, lon), h3.cell_to_latlng(candidate), unit="km")
+                if best is None or km < best[1]:
+                    best = (pos, km)
+    return best
 
 
 def build_index(rail_routes=None) -> NodeIndex:
@@ -149,7 +169,7 @@ def build_index(rail_routes=None) -> NodeIndex:
     apts = airports.scheduled_airports()
     codes: list[str] = []
     dropped: list[str] = []
-    snapped: list[str] = []
+    snapped: list[tuple[str, float]] = []
     airport_cell: dict[str, int] = {}
     for iata, lat, lon in zip(apts["iata"], apts["lat"], apts["lon"]):
         cell = cell_at(lat, lon)
@@ -157,12 +177,13 @@ def build_index(rail_routes=None) -> NodeIndex:
         if pos is None:
             # An airport is on land by definition; when its cell is not in the
             # mask (reclaimed islands, atolls, a shore the 1:10m outline cuts
-            # inside), the nearest land cell within two rings stands in. At
-            # 2-6 km cells that is a few kilometres, less than the ground
-            # access already charged. 64 of 4,008 needed it at resolution 6.
-            pos = _nearest_land(cell, cell_pos, lat, lon)
-            if pos is not None:
-                snapped.append(iata)
+            # inside), the nearest land cell within two rings stands in: two
+            # rings at resolution 6 reach about 13 km, and most snaps are one
+            # cell over. 58 of 4,008 airports needed it at resolution 6.
+            found = _nearest_land(cell, cell_pos, lat, lon, split_set)
+            if found is not None:
+                pos, km = found
+                snapped.append((iata, km))
         if pos is None:
             # Airport on a cell the land mask missed; skip rather than corrupt
             # the graph. Counted and bounded below -- an unbounded silent skip
@@ -173,8 +194,10 @@ def build_index(rail_routes=None) -> NodeIndex:
         airport_cell[iata] = pos
 
     if snapped:
+        worst = sorted(snapped, key=lambda s: -s[1])
         logger.info("%d airport(s) snapped to the nearest land cell within two rings (%s%s)",
-                    len(snapped), ", ".join(snapped[:8]), ", ..." if len(snapped) > 8 else "")
+                    len(snapped), ", ".join(f"{i} {km:.1f} km" for i, km in worst[:8]),
+                    ", ..." if len(snapped) > 8 else "")
     if dropped:
         logger.warning(
             "%d of %d scheduled-service airport(s) dropped: no land cell at their "
