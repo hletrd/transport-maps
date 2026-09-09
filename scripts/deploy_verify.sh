@@ -23,12 +23,12 @@ for o in idx["origins"]:
     if not (d/"origins"/f"{s}.pmtiles").exists():
         bad.append(f"{s}.pmtiles missing")
 print(f"  hover cells {n_cells:,} | origins {len(idx['origins'])} | bands {len(idx['bandEdgesMin'])+1} | solveRes {idx.get('solveRes')}")
-for extra in ("places.json", "airports.json", "borders.json"):
+for extra in ("places.json", "airports.json", "borders.json", "water.pmtiles"):
     if not (d/extra).exists(): bad.append(f"{extra} missing")
 print(f"  attribution {[a['name'] for a in idx['attribution']]}")
 if bad:
     print("  MISMATCHES:", *bad[:10], sep="\n    "); sys.exit(1)
-print("  every origin has pmtiles + bin + air.bin + modes.bin, all lengths agree; gazetteer, airports, borders present")
+print("  every origin has pmtiles + bin + air.bin + modes.bin, all lengths agree; gazetteer, airports, borders, water tiles present")
 PY
 
 echo "=== 2. copy web assets and deploy ==="

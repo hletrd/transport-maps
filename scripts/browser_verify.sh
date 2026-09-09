@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Post-deploy browser verification. Exits non-zero on any failed check.
+#   scripts/browser_verify.sh                      # the live site
+#   scripts/browser_verify.sh http://127.0.0.1:8899/   # a local dist
 set -u
+URL="${1:-https://worldmap.atik.kr/}"
 cd /tmp
 agent-browser close >/dev/null 2>&1
-agent-browser open "https://worldmap.atik.kr/" >/dev/null 2>&1; sleep 15
+agent-browser open "$URL" >/dev/null 2>&1; sleep 15
 fail=0
 echo "=== data-level checks (desktop) ==="
 R=$(agent-browser eval '(()=>{const q=s=>document.querySelector(s);return JSON.stringify({
@@ -14,6 +17,15 @@ echo "  $R"
 echo "$R" | grep -q '"canvas":true' || fail=1
 echo "$R" | grep -q '"tints":37' || { echo "  !! expected 37 legend swatches"; fail=1; }
 echo "$R" | grep -q '"cities":157' || fail=1
+# The coast is a separate static tileset drawn above the bands. A missing or
+# empty water.pmtiles shows no console error -- the shore just goes back to
+# being hex-shaped -- so ask the map whether water features actually rendered.
+W=$(agent-browser eval '(()=>{const m=window.__map;if(!m||!m.getLayer("water"))return "no water layer";
+  const n=m.queryRenderedFeatures({layers:["water"]}).length;const b=m.queryRenderedFeatures({layers:["bands"]}).length;
+  return JSON.stringify({waterFeatures:n,bandFeatures:b,bandsBelowWater:m.getStyle().layers.findIndex(l=>l.id==="bands")<m.getStyle().layers.findIndex(l=>l.id==="water")})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  $W"
+echo "$W" | grep -qE '"waterFeatures":[1-9]' || { echo "  !! water layer rendered nothing"; fail=1; }
+echo "$W" | grep -q '"bandsBelowWater":true' || { echo "  !! bands are painted above the coast"; fail=1; }
 # route summary with surface modes: click a Siberian destination from Seoul
 agent-browser eval '(()=>{const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();
   const o={clientX:r.left+r.width*0.44,clientY:r.top+r.height*0.30,bubbles:true};
