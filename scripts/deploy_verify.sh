@@ -12,12 +12,15 @@ d = pathlib.Path("dist")
 n_cells = (d/"hover_cells.bin").stat().st_size // 8
 idx = json.load(open(d/"index.json"))
 bad = []
+warn = []
 for o in idx["origins"]:
     s = o["slug"]
     for suffix, width in ((".bin", 2), (".air.bin", 2), (".modes.bin", 12), (".rail.bin", 2)):
         p = d/"origins"/f"{s}{suffix}"
         if not p.exists():
-            bad.append(f"{s}{suffix} missing"); continue
+            # The rail detail is optional on the page (it appears when present);
+            # every other array is required and must agree in length.
+            (warn if suffix == ".rail.bin" else bad).append(f"{s}{suffix} missing"); continue
         if p.stat().st_size // width != n_cells:
             bad.append(f"{s}{suffix} has {p.stat().st_size//width} entries, expected {n_cells}")
     if not (d/"origins"/f"{s}.pmtiles").exists():
@@ -26,6 +29,8 @@ print(f"  hover cells {n_cells:,} | origins {len(idx['origins'])} | bands {len(i
 for extra in ("places.json", "airports.json", "borders.json", "water.pmtiles"):
     if not (d/extra).exists(): bad.append(f"{extra} missing")
 print(f"  attribution {[a['name'] for a in idx['attribution']]}")
+if warn:
+    print(f"  note: {len(warn)} optional file(s) absent, e.g. {warn[0]} (rail detail ships with the next full build)")
 if bad:
     print("  MISMATCHES:", *bad[:10], sep="\n    "); sys.exit(1)
 print("  every origin has pmtiles + bin + air.bin + modes.bin, all lengths agree; gazetteer, airports, borders, water tiles present")
