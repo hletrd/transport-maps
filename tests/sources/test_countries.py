@@ -1,5 +1,7 @@
 """Closed land borders must actually cut the ground graph."""
 
+from itertools import pairwise
+
 import h3
 import numpy as np
 import pytest
@@ -28,6 +30,34 @@ def test_closed_border_table(a, b, closed):
     assert countries.is_closed(a, b) is closed
 
 
+def _chain(lat_south: float, lat_north: float, lon: float) -> list[str]:
+    """Every consecutive pair adjacent, or the cut is untestable.
+
+    Sampling a line of latitudes at res 6 skipped cells (four gaps on the
+    eastern chain), so north was unreachable from south whether or not the
+    border was cut and the test stayed green with the cut deleted.
+    """
+    south = h3.latlng_to_cell(lat_south, lon, config.SOLVE_RES)
+    north = h3.latlng_to_cell(lat_north, lon, config.SOLVE_RES)
+    cells = h3.grid_path_cells(south, north)
+    assert all(h3.are_neighbor_cells(a, b) for a, b in pairwise(cells)), \
+        "fixture chain has a gap; the border cut cannot be exercised"
+    return cells
+
+
+def _cut_end_to_end(cells: list[str]) -> None:
+    idx = NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, ())
+    codes = countries.cell_country(cells)
+    assert "KOR" in codes and "PRK" in codes, "fixture does not span the border"
+    assert countries.UNKNOWN not in codes, "a blank cell survives on the chain"
+    r, c, d = ground.hex_edges(idx)
+    csr = sp.coo_matrix((d, (r, c)), shape=(idx.n, idx.n)).tocsr()
+    south = int(np.where(codes == "KOR")[0][0])
+    north = int(np.where(codes == "PRK")[0][-1])
+    assert not np.isfinite(sp.csgraph.dijkstra(csr, indices=[south])[0][north]), \
+        "ground route crosses the sealed inter-Korean border"
+
+
 def test_the_inter_korean_border_is_not_traversable_on_the_ground():
     """A chain of cells across the DMZ must not connect end to end.
 
@@ -35,20 +65,7 @@ def test_the_inter_korean_border_is_not_traversable_on_the_ground():
     peninsula reads as one road network.
     """
     # A north-south line of cells spanning the border near the eastern coast.
-    lats = np.arange(37.6, 39.2, 0.05)
-    cells = list(dict.fromkeys(h3.latlng_to_cell(la, 127.6, config.SOLVE_RES)
-                               for la in lats))
-    idx = NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, ())
-
-    codes = countries.cell_country(cells)
-    assert "KOR" in codes and "PRK" in codes, "fixture does not span the border"
-
-    r, c, d = ground.hex_edges(idx)
-    csr = sp.coo_matrix((d, (r, c)), shape=(idx.n, idx.n)).tocsr()
-    south = int(np.where(codes == "KOR")[0][0])
-    north = int(np.where(codes == "PRK")[0][-1])
-    assert not np.isfinite(sp.csgraph.dijkstra(csr, indices=[south])[0][north]), \
-        "ground route crosses the sealed inter-Korean border"
+    _cut_end_to_end(_chain(37.6, 39.2, 127.6))
 
 
 def test_a_land_border_between_immigration_zones_costs_a_crossing():
@@ -75,19 +92,26 @@ def test_a_land_border_between_immigration_zones_costs_a_crossing():
 
 
 def test_a_schengen_border_costs_nothing_extra():
-    de = h3.latlng_to_cell(47.59, 7.59, config.SOLVE_RES)      # Basel side, DE/CH/FR corner
-    fr = [c for c in h3.grid_disk(de, 1) if c != de][0]
-    idx = NodeIndex([de, fr], [], {de: 0, fr: 1}, {}, {}, ())
-    from transport_maps.sources import countries
-    codes = countries.cell_country(idx.cells)
-    # only meaningful if the two cells really are in different Schengen states
-    if len(set(codes)) == 2 and all(countries.iso2(c) in ("DE", "FR", "CH") for c in codes):
-        r, c, d = ground.hex_edges(idx)
-        dist = ground.haversine_km(
-            np.array([h3.cell_to_latlng(de)]), np.array([h3.cell_to_latlng(fr)]))[0]
-        assert d.max() < dist / 20 * 60 + 5, "a Schengen-internal edge was charged a crossing"
+    """Two cells in different Schengen states share an immigration zone, so the
+    edge between them is the drive and nothing more. The pair is found by
+    country, not by a coordinate: the old fixture guarded its only assertion
+    with an `if` that a country-table change would have turned into a silent
+    pass."""
+    corner = h3.latlng_to_cell(47.59, 7.59, config.SOLVE_RES)      # Basel: DE/CH/FR meet
+    ring = h3.grid_ring(corner, 1)
+    codes = countries.cell_country([corner, *ring])
+    assert codes[0] in ("DEU", "FRA", "CHE"), codes[0]
+    other = next((c for c, code in zip(ring, codes[1:])
+                  if code in ("DEU", "FRA", "CHE") and code != codes[0]), None)
+    assert other is not None, f"no neighbouring Schengen state found around {codes[0]}"
+    idx = NodeIndex([corner, other], [], {corner: 0, other: 1}, {}, {}, ())
+    r, c, d = ground.hex_edges(idx)
+    dist = ground.haversine_km(
+        np.array([h3.cell_to_latlng(corner)]), np.array([h3.cell_to_latlng(other)]))[0]
+    assert d.max() < dist / 20 * 60 + 5, "a Schengen-internal edge was charged a crossing"
 
 
+@pytest.mark.integration
 def test_no_land_cell_is_left_without_a_country():
     """A blank cell is a bridge across every closed border.
 
@@ -104,13 +128,4 @@ def test_no_land_cell_is_left_without_a_country():
 
 def test_the_western_dmz_is_cut_too():
     """The first DMZ test ran at longitude 127.6; the bridge was at 126.3."""
-    lats = np.arange(37.5, 38.3, 0.04)
-    cells = list(dict.fromkeys(h3.latlng_to_cell(la, 126.45, config.SOLVE_RES) for la in lats))
-    idx = NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, ())
-    codes = countries.cell_country(cells)
-    assert "KOR" in codes and "PRK" in codes
-    assert countries.UNKNOWN not in codes, "a blank cell survives on the western DMZ"
-    r, c, d = ground.hex_edges(idx)
-    csr = sp.coo_matrix((d, (r, c)), shape=(idx.n, idx.n)).tocsr()
-    south = int(np.where(codes == "KOR")[0][0]); north = int(np.where(codes == "PRK")[0][-1])
-    assert not np.isfinite(sp.csgraph.dijkstra(csr, indices=[south])[0][north])
+    _cut_end_to_end(_chain(37.5, 38.3, 126.45))
