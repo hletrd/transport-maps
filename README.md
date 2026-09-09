@@ -32,8 +32,11 @@ set plus binary time, airport, mode and rail-station arrays per departure.
 
 ```bash
 uv sync
-uv run pytest
-uv run transport-maps build-all            # every origin -> dist/
+uv run ruff check .
+uv run pytest                              # the gate; -m "not integration" for a fast loop
+uv run transport-maps build-all            # every origin -> dist/ (one build per dist/ at a time)
+uv run transport-maps build-all --only seoul,tokyo   # a smoke test through every gate; never publishes
+uv run python scripts/check_dist.py        # is dist/ consistent enough to deploy?
 uv run python scripts/build_water_tiles.py # the coast, once -> dist/water.pmtiles
 ```
 

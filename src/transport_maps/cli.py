@@ -267,7 +267,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
     validate.check_airport_connectivity(idx, csr)
     # Computed once and reused by check_monotonic_ground below: the ground
     # speed grid does not change between origins, and re-deriving it per
-    # origin cost ~4.8s x 157 origins for the same value.
+    # origin cost ~4.8s x every origin (553 today) for the same value.
     speeds = ground.cell_speed_kmh(idx)
     # Everything a worker needs that comes from parquet or GDAL is loaded HERE,
     # once, and inherited copy-on-write -- so no forked child ever calls into

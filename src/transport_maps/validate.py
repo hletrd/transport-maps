@@ -11,7 +11,7 @@ KNOWN_UNREACHABLE_MAX_LAT = -60.0
 
 # A scheduled-service airport in a component cut off from the rest of the graph
 # is unreachable from every origin, whatever the coverage number says. A few
-# are genuine and permanent: 9 of 3,983 today (0.23%) -- AGJ, AJN, CYO, CYU,
+# are genuine and permanent: 9 of 3,983 at res 5 (0.23%, 2026-09) -- AGJ, AJN, CYO, CYU,
 # FHZ, FUT, IBB, XYA, YAS -- small-island fields whose Wikipedia pages yield no
 # resolvable destination, so they sit alone with their island's land cells.
 # Hundreds would mean the route network or the land mask broke.
@@ -153,7 +153,7 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
     bound fails on any slow terrain. Do not reintroduce a single global bound.
 
     `speeds` is `ground.cell_speed_kmh(idx)`, computed once by the caller. This
-    gate runs once per origin (157 times in a full build), and the grid it is
+    gate runs once per origin (553 times in a full build), and the grid it is
     derived from does not change between origins; recomputing it here cost
     ~4.8s of `roads.cell_class` work per origin for a value the caller already
     has.

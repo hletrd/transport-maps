@@ -6,8 +6,8 @@ surface leg is a large share of the total -- a median of 1.2 to 1.7 hours even
 in Japan, Europe and the United States, and far more in remote country.
 
 Shipping the stations themselves would cost about 1.6 MB per origin (27,843 of
-the 57,286 stations lie on some shortest path from Paris). Three minute-totals
-per cell cost 6 bytes, and answer the question people actually ask.
+the 57,286 stations lie on some shortest path from Paris). Six minute-totals
+per cell (CHANNELS) cost 12 bytes, and answer the question people actually ask.
 """
 
 from pathlib import Path

@@ -58,7 +58,7 @@ def urban_mask(idx: NodeIndex) -> np.ndarray:
 
 def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
     """Effective ground speed per cell, indexed by cell position."""
-    # Footprint aggregation, NOT centroid sampling: an H3 res-5 cell spans 3-6
+    # Footprint aggregation, NOT centroid sampling: an H3 cell's window spans 1-4
     # GRIP4 cells, and sampling the centre alone reports 51.5% of land roadless
     # against a true 29.3%, depressing mean ground speed from 36.8 to 23.9 km/h.
     classes = cell_class(idx)

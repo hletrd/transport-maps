@@ -77,3 +77,5 @@ is computed in the browser from files on this site.
 ## Disclaimer
 
 For reference only. All figures are estimates computed from open data and a simplified model. They carry no warranty of accuracy, are not travel advice, and must not be relied on for any journey, booking, or decision. The author accepts no liability for any use.
+
+A departure city can be opened directly with `?from=<slug>` (the slugs are the `origins[].slug` values in index.json); the page keeps the address bar in step with the selected departure.

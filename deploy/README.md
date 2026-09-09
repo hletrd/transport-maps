@@ -3,20 +3,40 @@
 Static hosting on nginx. `scripts/deploy_verify.sh` does the whole thing and
 refuses to ship an inconsistent build:
 
-1. checks that every origin's arrays agree with `hover_cells.bin`, that the
-   gazetteer, airports, borders and water tiles exist, and that the page copy
-   does not state a city count that disagrees with `index.json`;
-2. copies the page into the build output — `rsync web/ dist/` (everything but
-   `web/README.md`), so `index.html`, `app.js`, `llms.txt`, `vendor/` sit beside
-   `index.json`, `hover_cells.bin` and `origins/`;
-3. rsyncs `dist/` to `/var/www/worldmap` with `--delete`;
-4. curls the live files, including a byte-range request against a `.pmtiles`.
+1. refuses while a `build-all` is running (its lock, or its process: a build
+   rewrites `dist/origins` in place, so `dist/` is a mixed generation until it
+   finishes);
+2. runs `scripts/check_dist.py` — every origin's arrays agree in length with
+   `hover_cells.bin` (widths from the emitters), `{slug}.json` is present and
+   valid, `.rail.bin` and `.rail.json` ship together, every `.pmtiles` header
+   is sane, `index.json` lists exactly the origins of `data/origins.toml`, no
+   stray `*-journal`/`.tmp`/dotfile is present, and the page copy states no
+   city count (it must come from `index.json`);
+3. runs the licence firewall (`tests/test_licence_firewall.py`) on `dist/`;
+4. copies the page into the build output — `web/vendor/` mirrored with
+   `--delete`, the rest of `web/` (everything but `web/README.md`) on top — so
+   `index.html`, `app.js`, `llms.txt`, `vendor/` sit beside `index.json`,
+   `hover_cells.bin` and `origins/`;
+5. rsyncs `dist/` to the server with `--delete --delete-delay --delay-updates`,
+   explicit modes and `deploy/rsync-excludes.txt`, logging to a temp file;
+6. curls the live files, including a byte-range request against a `.pmtiles`,
+   and reports whether the security headers are present.
 
-`scripts/browser_verify.sh` then opens the live site in a browser and checks
-the canvas, the city list and legend counts (read from the deployed
-`index.json`, never hard-coded), the coast layer, a route with surface modes
-and tooltips, address search, click-to-depart, zoom 3, the console, and four
-viewports. **A deploy is not done until that has passed** (CLAUDE.md).
+`scripts/deploy_verify.sh --page-only` ships `web/` alone, without the
+`dist/` gate and without `--delete`, for a page fix while a rebuild owns
+`dist/`; the page reads every newer `index.json` field with a fallback, so an
+older build stays valid. Host, server root and site URL come from
+`deploy/.env` (see `deploy/.env.example`); the defaults are the live site.
+
+`scripts/browser_verify.sh` then opens the live site (or a local preview,
+given its URL) in a browser and checks the canvas, the city list and legend
+counts (read from the deployed `index.json`, never hard-coded), the
+departure label, the coast and borders layers, a route with surface modes
+and tooltips, address search, click-to-depart, zoom 3, the `?from=` permalink,
+the console, four viewports, and that on a phone the legend stays on screen
+and a tap writes the reading with the sheet folded. It kills only the browser
+processes it started. **A deploy is not done until that has passed**
+(CLAUDE.md).
 
 ## Before deploying
 

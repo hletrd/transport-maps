@@ -99,8 +99,9 @@ def road_class_grid() -> np.ndarray:
 def cell_class(cells: list[str]) -> np.ndarray:
     """Best road grade anywhere inside each H3 cell's footprint.
 
-    An H3 res-5 cell is about 253 km2; a GRIP4 cell is about 86 km2 at the
-    equator and 43 km2 at 60 degrees, so each H3 cell spans 3-6 GRIP4 cells.
+    An H3 res-6 cell is about 36 km2; a GRIP4 cell is about 86 km2 at the
+    equator and 43 km2 at 60 degrees, so the footprint window spans 1-4 GRIP4
+    cells (the 51.5 % -> 29.3 % roadless figures were measured at res 5, 2026-09).
     Sampling only the centroid therefore under-reports road access badly.
     Measured over 6,000 random land cells:
 

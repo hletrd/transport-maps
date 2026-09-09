@@ -34,7 +34,7 @@ def _representative_children(idx, parents: list[str], cell_minutes: np.ndarray) 
     """For each res-4 parent, the solver cell the readout should report.
 
     The CENTRE child where it is on land, else the fastest child. Taking the
-    minimum everywhere made the readout "the best time anywhere within ~22 km",
+    minimum everywhere made the readout "the best time anywhere within ~45 km",
     which read South Korean times ten kilometres inside North Korea and put
     Johor Bahru at 21 minutes from Singapore by borrowing the Singapore side
     of the strait. The centre child is what a pointer at that spot means.
