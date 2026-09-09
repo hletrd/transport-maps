@@ -246,12 +246,23 @@ const map = new maplibregl.Map({
 });
 
 await new Promise((r) => map.on("load", r));
+// For scripts/browser_verify.sh only: lets the post-deploy check ask the map
+// whether the water layer actually rendered rather than trusting a 200.
+window.__map = map;
 // MapLibre is pinned to 5.24 (see web/README.md); this is its projection API.
 map.setProjection({ type: "globe" });
 
 map.addSource("sphere", { type: "geojson", data: { type: "Feature", geometry: { type: "Polygon",
   coordinates: [[[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]]] } } });
 map.addLayer({ id: "sphere", type: "fill", source: "sphere",
+  paint: { "fill-color": SEA, "fill-opacity": 1 } });
+
+// The coast. Bands are painted one cell past the shore (contour/grid.py) and
+// this static water layer, built once from OpenStreetMap coastlines, cuts
+// them back to the real outline. It sits above the bands and below the
+// borders and the cursor; paintOrigin inserts each origin's bands beneath it.
+map.addSource("water", { type: "vector", url: "pmtiles://./water.pmtiles" });
+map.addLayer({ id: "water", type: "fill", source: "water", "source-layer": "water",
   paint: { "fill-color": SEA, "fill-opacity": 1 } });
 
 // The hovered cell, outlined so the reading has a visible footprint.
@@ -333,11 +344,17 @@ function paintOrigin(o) {
   map.addSource("bands", { type: "vector", url: `pmtiles://./origins/${o.slug}.pmtiles` });
   map.addLayer({
     id: "bands", type: "fill", source: "bands", "source-layer": "bands",
+    // Neighbouring bands overlap by one cell (see contour/bands.py) and the
+    // faster one must win, so paint slow to fast: higher sort key draws
+    // later. Unreachable land goes underneath everything.
+    layout: {
+      "fill-sort-key": ["case", ["<", ["get", "band"], 0], -1000, ["-", ["get", "band"]]]
+    },
     paint: {
       "fill-color": bandColorExpression(),
       "fill-opacity": 1
     }
-  });
+  }, "water");
 
   hoverTimes = null;
   fetch(`./origins/${o.slug}.bin`)
@@ -509,7 +526,14 @@ function bandRangeAt(point) {
   if (!map.getLayer("bands")) return null;
   const hit = map.queryRenderedFeatures(point, { layers: ["bands"] });
   if (!hit.length) return null;
-  const b = hit[0].properties.band;
+  // Bands overlap by a one-cell rim and the fastest is painted on top, so
+  // the band under the cursor is the smallest non-negative one hit.
+  let b = null;
+  for (const h of hit) {
+    const v = h.properties.band;
+    if (v >= 0 && (b == null || v < b)) b = v;
+  }
+  if (b == null) b = hit[0].properties.band;
   if (b === UNREACHABLE_BAND) return "no scheduled route";
   const lo = b === 0 ? 0 : EDGES[b - 1] / 60;
   const hi = b < EDGES.length ? EDGES[b] / 60 : null;

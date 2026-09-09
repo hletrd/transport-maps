@@ -15,7 +15,7 @@ import re
 import numpy as np
 
 from transport_maps import config, validate
-from transport_maps.contour import bands
+from transport_maps.contour import bands, grid
 from transport_maps.emit import hover, index, itinerary, modes, routes_json, tiles
 from transport_maps.graph import build, ground, nodes, transfers
 from transport_maps.solve import dijkstra
@@ -81,8 +81,8 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     validate.check_monotonic_ground(idx, minutes, speeds,
                                     country=shared["country"], zone=shared["zone"])
 
-    fc = bands.band_feature_collection(idx, minutes[: idx.n_cells])
-    validate.check_bands_disjoint(fc)
+    fc = bands.band_feature_collection(idx, minutes[: idx.n_cells], grid=shared["grid"])
+    validate.check_bands_cover(shared["grid"][0], shared["grid"][1], fc)
 
     out = config.DIST / "origins"
     tiles.write_pmtiles(fc, out / f"{slug}.pmtiles")
@@ -142,7 +142,10 @@ def _build_all(limit: int | None = None) -> None:
     zone = np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
                      for c in country])
     cell_class = roads.cell_class(idx.cells)
-    shared = {"country": country, "zone": zone, "cell_class": cell_class}
+    # The render grid (land + sea fringe, neighbour table) is the same for
+    # every origin; computed once here, inherited copy-on-write.
+    shared = {"country": country, "zone": zone, "cell_class": cell_class,
+              "grid": grid.universe(idx.cells)}
 
     origins = index.load_origins()
     if limit is not None:

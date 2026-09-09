@@ -118,16 +118,63 @@ def seoul_band_feature_collection():
     return bands.band_feature_collection(idx, minutes[: idx.n_cells])
 
 
-def test_real_multi_band_solve_passes_the_disjoint_bands_gate(seoul_band_feature_collection):
-    """Regression guard for the antimeridian bug: a real Seoul solve produces
-    bands (including far bands with hundreds of disconnected, globe-scattered
-    components and antimeridian-crossing cells) that the publish gate accepts.
-    Before the fix this raised inside `check_bands_disjoint` with a GEOS
-    TopologyException, and after a naive validity repair it raised ValueError
-    for genuine overlap between the far bands.
+def test_real_multi_band_solve_passes_the_cover_gate(seoul_band_feature_collection):
+    """A real Seoul solve -- far bands with hundreds of globe-scattered
+    components, antimeridian-crossing cells, one-cell-wide bands everywhere --
+    must leave no hex vertex unpainted. This is the gate the build runs.
     """
+    from transport_maps.contour import grid
     assert len(seoul_band_feature_collection["features"]) > 5  # exercise the far bands too
-    validate.check_bands_disjoint(seoul_band_feature_collection)  # must not raise
+    cells, nb = grid.universe(nodes.build_index().cells)
+    validate.check_bands_cover(cells, nb, seoul_band_feature_collection)  # must not raise
+
+
+def test_no_gap_opens_between_bands_however_they_meet():
+    """Random bands make every hex vertex a junction of up to three bands and
+    every boundary a jump of several bands at once -- the worst case for the
+    old per-band smoothing, which opened a hole at each such junction.
+    """
+    from transport_maps.contour import grid
+    centre = h3.latlng_to_cell(37.5, 127.0, 5)
+    cells = sorted(h3.grid_disk(centre, 6))
+    rng = np.random.default_rng(1)
+    edges = np.asarray(config.BAND_EDGES_MIN, dtype=float)
+    band = rng.integers(0, 9, size=len(cells))
+    minutes = np.where(band == 0, 1.0, edges[np.maximum(band - 1, 0)] + 1.0)
+
+    class Idx:
+        pass
+    idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
+    fc = bands.band_feature_collection(idx, minutes)
+    assert len(fc["features"]) >= 8
+    universe, nb = grid.universe(cells)
+    validate.check_bands_cover(universe, nb, fc, samples=len(universe))  # every vertex
+
+
+def test_the_sea_fringe_is_painted_with_the_fastest_neighbour():
+    """A water-centroid cell next to land is painted, and takes the FASTER of
+    two land neighbours. Without the fringe a single hexagon's smoothed
+    polygon cannot contain a neighbour's centroid at all.
+    """
+    from shapely.geometry import Point, shape
+    a = h3.latlng_to_cell(37.5, 127.0, 5)
+    b = h3.grid_ring(a, 1)[0]
+    shared = [c for c in h3.grid_ring(a, 1) if h3.are_neighbor_cells(c, b)]
+    assert shared, "fixture: no common neighbour"
+
+    class Idx:
+        cells = [a, b]
+        n_cells = 2
+    fc = bands.band_feature_collection(Idx(), np.array([1.0, 3000.0]))
+    fast = next(shape(f["geometry"]) for f in fc["features"] if f["properties"]["band"] == 0)
+    la, lo = h3.cell_to_latlng(shared[0])
+    assert fast.contains(Point(lo, la)), "common fringe cell not painted with the faster band"
+    # A ring-2 cell of `a` that is not also a neighbour of `b` -- otherwise it
+    # is b's legitimate fringe.
+    far = next(c for c in h3.grid_ring(a, 2) if c not in h3.grid_disk(b, 1))
+    la, lo = h3.cell_to_latlng(far)
+    assert not any(shape(f["geometry"]).contains(Point(lo, la)) for f in fc["features"]), \
+        "ring 2 must stay unpainted: the fringe is one cell"
 
 
 def test_unreachable_land_is_emitted_rather_than_dropped():

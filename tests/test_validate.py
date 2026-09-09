@@ -32,25 +32,38 @@ def test_low_coverage_trips_the_publish_threshold():
     assert validate.check_coverage(minutes, Idx()) < validate.MIN_COVERAGE
 
 
-def test_overlapping_bands_are_rejected():
-    fc = {"features": [
-        {"properties": {"band": 0}, "geometry": {"type": "Polygon", "coordinates": [[
-            [0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]}},
-        {"properties": {"band": 1}, "geometry": {"type": "Polygon", "coordinates": [[
-            [1, 1], [3, 1], [3, 3], [1, 3], [1, 1]]]}},
-    ]}
-    with pytest.raises(ValueError, match="overlap"):
-        validate.check_bands_disjoint(fc)
+def _hex_universe():
+    """A 19-cell disk and its neighbour table, the shape the gate expects."""
+    from transport_maps.contour import grid
+    centre = h3.latlng_to_cell(37.5, 127.0, 5)
+    return grid.universe(sorted(h3.grid_disk(centre, 2)))
 
 
-def test_disjoint_bands_are_accepted():
-    fc = {"features": [
-        {"properties": {"band": 0}, "geometry": {"type": "Polygon", "coordinates": [[
-            [0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}},
-        {"properties": {"band": 1}, "geometry": {"type": "Polygon", "coordinates": [[
-            [5, 5], [6, 5], [6, 6], [5, 6], [5, 5]]]}},
-    ]}
-    validate.check_bands_disjoint(fc)  # must not raise
+def _feature(geom, band=0):
+    from shapely.geometry import mapping
+    return {"properties": {"band": band}, "geometry": mapping(geom)}
+
+
+def test_a_hole_between_bands_is_rejected():
+    """The gate must see a gap at an interior hex vertex, not just at centroids."""
+    from shapely.geometry import Point, Polygon
+    from shapely.ops import unary_union
+    cells, nb = _hex_universe()
+    whole = unary_union([Polygon([(lo, la) for la, lo in h3.cell_to_boundary(c)]) for c in cells])
+    # Punch out a disc around one vertex of the CENTRE cell -- an interior vertex.
+    la, lo = h3.cell_to_boundary(cells[len(cells) // 2])[0]
+    holed = whole.difference(Point(lo, la).buffer(0.002))
+    with pytest.raises(ValueError, match="between bands"):
+        validate.check_bands_cover(cells, nb, {"features": [_feature(holed)]}, samples=len(cells))
+
+
+def test_full_coverage_is_accepted():
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+    cells, nb = _hex_universe()
+    whole = unary_union([Polygon([(lo, la) for la, lo in h3.cell_to_boundary(c)]) for c in cells])
+    validate.check_bands_cover(cells, nb, {"features": [_feature(whole.buffer(1e-6))]},
+                               samples=len(cells))  # must not raise
 
 
 class _TwoCellIdx:

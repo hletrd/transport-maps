@@ -1,4 +1,30 @@
-"""Per-cell minutes -> dissolved isochrone band polygons."""
+"""Per-cell minutes -> smoothed isochrone band polygons.
+
+How the bands fit together
+--------------------------
+Band k is emitted as the CUMULATIVE region reached within its upper edge,
+minus the cells that sit safely inside the previous band -- so it covers its
+own cells plus a one-cell rim of everything faster. Neighbouring bands
+overlap by that rim, the page draws the faster band on top (`fill-sort-key`
+in web/app.js), and the visible boundary between k-1 and k is always k-1's
+own outer edge.
+
+The overlap is the whole point. Smoothing moves a boundary by up to a quarter
+of a hex edge (about 2 km at resolution 5), and moves it differently for each
+polygon it is applied to: where three bands met, two independently rounded
+curves diverged and left a triangular hole. With 37 bands, most of them one
+cell wide, those junctions were everywhere and the map read as hexagons with
+gaps between them. A one-cell rim (7 km at the least) puts the hidden edge far
+beyond anything smoothing can reach, so a gap is geometrically impossible
+rather than merely unlikely. `validate.check_bands_cover` checks that promise
+on the emitted geometry.
+
+The bands are NOT clipped to the coast here. They run one cell into the sea
+(contour/grid.py adds the fringe) and the static water layer drawn above them
+cuts them back to the real shoreline, at whatever precision that layer
+carries -- far beyond what clipping 157 origins against a land mask could
+afford, and independent of it.
+"""
 
 import bisect
 
@@ -12,12 +38,6 @@ from shapely.ops import unary_union
 from transport_maps import config
 
 UNREACHABLE_BAND = -1
-# ~1.1 km; see _land() for why.
-# ~110 m. Natural Earth 10m carries 445,356 coastline vertices; the previous
-# 0.01 (~1.1 km) threw away 64% of them and was the reason the outline looked
-# coarse. At this tolerance 90% survive, and the union actually builds FASTER
-# (1.1 s against 5.3 s) because there is less generalising to do.
-LAND_SIMPLIFY_DEG = 0.001
 
 
 def band_of(minutes: float) -> int:
@@ -25,6 +45,15 @@ def band_of(minutes: float) -> int:
     if not np.isfinite(minutes):
         return UNREACHABLE_BAND
     return bisect.bisect_left(config.BAND_EDGES_MIN, minutes)
+
+
+def band_indices(minutes: np.ndarray) -> np.ndarray:
+    """Vectorised `band_of`, except that unreachable comes out as one past the
+    open band so that "everything up to band k" is a plain `<=` comparison."""
+    m = np.asarray(minutes, dtype=float)
+    edges = np.asarray(config.BAND_EDGES_MIN, dtype=float)
+    k = np.searchsorted(edges, m, side="left")
+    return np.where(np.isfinite(m), k, len(edges) + 1).astype(np.int64)
 
 
 ANTIMERIDIAN_SPAN_DEG = 180.0
@@ -54,25 +83,6 @@ def _split_at_antimeridian(cell: str) -> list:
         ring.intersection(box(180.0, -90.0, 540.0, 90.0)), xoff=-360.0
     )
     return [part for part in (left, right) if not part.is_empty]
-
-
-_land_cache = None
-
-
-def _land() -> "shapely.Geometry":
-    """Simplified land outline used to clip band edges to real coastlines.
-
-    Without this, every coastline is drawn as H3 hex edges: 9.9 km segments
-    against Natural Earth's ~0.1 km detail, which reads as a hexagonal world.
-    Simplifying to ~1.1 km keeps the outline 9x finer than the hex grid while
-    cutting 422k vertices to 151k. Clipping costs about 0.9 s per origin.
-    """
-    global _land_cache
-    if _land_cache is None:
-        from transport_maps.sources import landmask
-        merged = shapely.union_all(landmask._land_parts())
-        _land_cache = shapely.make_valid(shapely.simplify(merged, LAND_SIMPLIFY_DEG))
-    return _land_cache
 
 
 # Chaikin corner-cutting. Two passes round a hexagon's 120-degree corners into
@@ -168,74 +178,69 @@ def _dissolve(cells: list[str]):
     if not geoms:
         return None
     merged = shapely.make_valid(unary_union(geoms))
-    # Smooth BEFORE clipping, so the coastline stays exact: rounding a band and
-    # the shore together would eat headlands and round off every island.
-    return _polygonal(shapely.make_valid(shapely.intersection(_smooth(merged), _land())))
+    return _smooth(merged)
 
 
-def band_feature_collection(idx, cell_minutes: np.ndarray) -> dict:
+def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None) -> dict:
     """GeoJSON FeatureCollection, one polygon feature per occupied band.
 
-    Dissolution returns a Polygon for contiguous cells and a MultiPolygon when
-    a band is split across regions; both serialise correctly. Cells that
-    straddle the antimeridian are handled separately by `_dissolve`, since
-    h3's own dissolve reads their ring as spanning the globe backwards.
+    See the module docstring for the construction. `grid` is the
+    `contour.grid.universe` of `idx.cells`; the build computes it once in the
+    parent process and hands it to every forked worker.
+
+    Features are emitted in ascending band order with unreachable land last,
+    which is also the order the page paints them in when it has no sort key
+    to go on.
     """
     if len(cell_minutes) < idx.n_cells:
         raise ValueError("cell_minutes shorter than the cell universe")
+    from transport_maps.contour import grid as grid_mod
 
-    by_band: dict[int, list[str]] = {}
-    for pos, cell in enumerate(idx.cells):
-        band = band_of(float(cell_minutes[pos]))
-        by_band.setdefault(band, []).append(cell)
+    cells, nb = grid if grid is not None else grid_mod.universe(idx.cells)
+    n_land = idx.n_cells
+    if len(cells) < n_land or cells[:n_land] != list(idx.cells):
+        raise ValueError("render grid does not match the cell universe")
 
-    # Unreachable land is emitted as its own feature rather than dropped.
-    # Dropping it left Antarctica -- which no scheduled service reaches -- with
-    # no polygon at all, so it rendered as open ocean: the land mask had it,
-    # the map did not. It carries UNREACHABLE_BAND so the style can give it a
-    # "no route" tone instead of a travel-time colour.
-    # Bands share boundaries, and smoothing each one on its own moves those
-    # boundaries in different directions, so neighbours overlap. Subtracting
-    # everything already emitted makes disjointness structural instead of
-    # something the gate has to hope for. Reachable bands go first, ascending,
-    # so a nearer band always wins the contested sliver; unreachable land is
-    # emitted last and takes only what is left.
-    order = sorted(b for b in by_band if b != UNREACHABLE_BAND)
-    if UNREACHABLE_BAND in by_band:
-        order.append(UNREACHABLE_BAND)
+    # Fringe cells take the fastest adjacent land cell. Their own slots start
+    # at +inf, so the minimum over neighbours only ever sees land.
+    minutes = np.full(len(cells), np.inf)
+    minutes[:n_land] = np.asarray(cell_minutes[:n_land], dtype=float)
+    if len(cells) > n_land:
+        fringe_nb = nb[n_land:]
+        minutes[n_land:] = np.where(fringe_nb >= 0,
+                                    minutes[np.maximum(fringe_nb, 0)], np.inf).min(axis=1)
+
+    band = band_indices(minutes)
+    # Slowest band among each cell's neighbours. A missing neighbour (open sea
+    # past the fringe) does not count: a coastal cell whose land neighbours are
+    # all faster is interior, and leaving it in every slower band would copy
+    # the whole coast into each of them.
+    slowest_nb = np.where(nb >= 0, band[np.maximum(nb, 0)], -1).max(axis=1)
+
+    open_band = len(config.BAND_EDGES_MIN)
+    unreachable = open_band + 1
+    cells_arr = np.array(cells, dtype=object)
 
     features = []
-    # Every earlier band must be subtracted -- with thin bands a smoothed edge
-    # bleeds past its neighbour, and non-adjacent bands touch wherever the one
-    # between them is locally absent, so "previous band only" overlapped and
-    # the disjoint gate refused it. But subtracting the UNION of all earlier
-    # bands was quadratic (23 min per origin at 37 bands). Only the earlier
-    # bands that actually intersect this one are subtracted; `intersects`
-    # rejects on bounding box first, so the rest cost almost nothing.
-    emitted: list = []
-    for band in order:
-        geometry = _dissolve(by_band[band])
-        touching = [g for g in emitted if g.intersects(geometry)]
-        if touching:
-            geometry = _polygonal(shapely.make_valid(
-                shapely.difference(geometry, shapely.union_all(touching))))
-        if geometry.is_empty:
+    for k in np.unique(band).tolist():
+        interior = (band <= k - 1) & (slowest_nb <= k - 1)
+        keep = (band <= k) & ~interior
+        geometry = _dissolve(cells_arr[keep].tolist())
+        if geometry is None or geometry.is_empty:
             continue
-        emitted.append(geometry)
+        emitted = UNREACHABLE_BAND if k == unreachable else int(k)
         features.append({
             "type": "Feature",
             "properties": {
-                "band": band,
+                "band": emitted,
                 # None for the open band AND for unreachable land: band -1
                 # would otherwise index BAND_EDGES_MIN from the end and claim
                 # the unreachable cells are inside the last edge.
                 "max_minutes": (
-                    config.BAND_EDGES_MIN[band]
-                    if 0 <= band < len(config.BAND_EDGES_MIN)
-                    else None
+                    config.BAND_EDGES_MIN[emitted]
+                    if 0 <= emitted < open_band else None
                 ),
             },
             "geometry": mapping(geometry),
         })
-
     return {"type": "FeatureCollection", "features": features}

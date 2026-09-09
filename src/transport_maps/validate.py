@@ -39,12 +39,43 @@ def check_coverage(minutes: np.ndarray, idx) -> float:
     return float(np.isfinite(considered).mean())
 
 
-def check_bands_disjoint(feature_collection: dict) -> None:
-    geoms = [shape(f["geometry"]) for f in feature_collection["features"]]
-    for i, a in enumerate(geoms):
-        for b in geoms[i + 1:]:
-            if a.intersection(b).area > 1e-9:
-                raise ValueError("isochrone bands overlap; dissolution is broken")
+# Hex vertices sampled per origin. Gaps, when the construction is wrong, are
+# systematic -- at every band junction -- so a sample this size cannot miss
+# them, and the full 3.6 million vertices would cost minutes per origin.
+COVER_SAMPLE_CELLS = 20_000
+
+
+def check_bands_cover(cells: list[str], nb: np.ndarray, feature_collection: dict,
+                      samples: int = COVER_SAMPLE_CELLS, seed: int = 0) -> None:
+    """Every interior hex vertex must lie inside at least one emitted band.
+
+    Bands are smoothed one at a time and smoothing moves boundaries, so two
+    bands that merely share an edge can open a hole between them. The
+    construction in `contour.bands` overlaps neighbours by a full cell so that
+    nothing can; this checks the promise on the emitted geometry, at the hex
+    VERTICES, which is where the holes used to appear. Interior cells only:
+    the universe's outer edge is legitimately rounded off into the sea.
+    """
+    import h3
+    import shapely
+
+    interior = np.flatnonzero((nb >= 0).all(axis=1))
+    if len(interior) == 0:
+        return
+    rng = np.random.default_rng(seed)
+    pick = rng.choice(interior, size=min(samples, len(interior)), replace=False)
+    pts = np.array([(lon, lat) for i in pick for lat, lon in h3.cell_to_boundary(cells[i])])
+
+    covered = np.zeros(len(pts), dtype=bool)
+    for f in feature_collection["features"]:
+        g = shape(f["geometry"])
+        shapely.prepare(g)
+        covered |= shapely.contains_xy(g, pts[:, 0], pts[:, 1])
+    if not covered.all():
+        n = int((~covered).sum())
+        raise ValueError(
+            f"{n:,} of {len(pts):,} interior hex vertices fall between bands; "
+            "smoothing opened gaps")
 
 
 def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,

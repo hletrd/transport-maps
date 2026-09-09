@@ -70,8 +70,13 @@ def _stub_pipeline(monkeypatch, written, coverages):
     monkeypatch.setattr(
         cli.validate, "check_monotonic_ground", lambda idx, minutes, speeds, **kw: None
     )
-    monkeypatch.setattr(cli.bands, "band_feature_collection", lambda idx, minutes: {"features": []})
-    monkeypatch.setattr(cli.validate, "check_bands_disjoint", lambda fc: None)
+    monkeypatch.setattr(cli.bands, "band_feature_collection",
+                        lambda idx, minutes, grid=None: {"features": []})
+    monkeypatch.setattr(cli.validate, "check_bands_cover", lambda cells, nb, fc: None)
+    # The render grid is preloaded in the parent like the arrays above; the
+    # fake index's cell is not a real H3 id, so it needs a stand-in too.
+    monkeypatch.setattr(cli.grid, "universe",
+                        lambda cells: (list(cells), np.full((len(cells), 6), -1, dtype=np.int32)))
 
     def _fake_write(out, *_args):
         out.parent.mkdir(parents=True, exist_ok=True)
