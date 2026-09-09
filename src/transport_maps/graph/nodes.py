@@ -183,6 +183,6 @@ def build_index(rail_routes=None) -> NodeIndex:
                     len(station_keys), dropped_stations)
 
     return NodeIndex(cells, codes, cell_pos, airport_pos, airport_cell, tuple(dropped),
-                     tuple(station_keys), station_pos, station_cell,
+                     tuple(station_keys), _station_pos=station_pos, _station_cell=station_cell,
                      base_cells=base_cells, base_index=base_index, fine=fine,
                      _split=frozenset(split_set))
