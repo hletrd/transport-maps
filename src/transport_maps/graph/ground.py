@@ -6,28 +6,19 @@ import h3
 import numpy as np
 
 from transport_maps.graph.nodes import NodeIndex
-from transport_maps.sources import countries, roads
+from transport_maps.sources import countries, roads, urban
 
 logger = logging.getLogger(__name__)
 
 # Index by GRIP road class: 0 = roadless, 1 = highway .. 5 = local road.
 #
-# KNOWN ERROR, measured not guessed: against six real city-to-airport journeys
-# this model is about 2.1x too fast (1.4x Tokyo to 4.4x Paris) -- run
-# scripts/ground_check.py to reproduce. Two causes, both structural:
-#
-#   1. These are FREE-FLOW speeds. A dense urban cell contains a motorway, so
-#      it is classified 1 and charged 85 km/h -- the motorway's speed, not a
-#      city's door-to-door average through signals and congestion.
-#   2. hex_edges measures straight lines between cell centroids. Real road
-#      distance runs about 1.2-1.3x that, the same circuity the rail model
-#      corrects for explicitly.
-#
-# The table is deliberately NOT tuned to those six journeys: six hand-picked
-# routes are far too thin to fit six speeds against, and doing so would trade a
-# visible error for a hidden one. Task 13 fits this properly against sampled
-# Google Routes journeys, which is what GOOGLE_ROUTES_API_KEY is for.
-SPEED_BY_ROAD_CLASS_KMH = np.array([5.0, 85.0, 60.0, 40.0, 30.0, 25.0], dtype=np.float64)
+# FITTED against 1,383 real driving journeys sampled from Google Routes between
+# populated places (scripts/calibrate_ground.py). Classes 1-4 are fitted;
+# roadless and local keep their published-figure defaults because the sample
+# could not speak to them -- roadless drew 103 km across 6 journeys and local
+# none at all, and an unguarded fit returned 58 km/h for ROADLESS terrain,
+# which is not merely wrong but impossible.
+SPEED_BY_ROAD_CLASS_KMH = np.array([5.0, 107.0, 49.0, 36.0, 25.0, 25.0], dtype=np.float64)
 
 
 def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
@@ -36,7 +27,19 @@ def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
     # GRIP4 cells, and sampling the centre alone reports 51.5% of land roadless
     # against a true 29.3%, depressing mean ground speed from 36.8 to 23.9 km/h.
     classes = roads.cell_class(idx.cells)
-    return SPEED_BY_ROAD_CLASS_KMH[classes]
+    speeds = SPEED_BY_ROAD_CLASS_KMH[classes]
+    # GRIP4 gives a cell the grade of its BEST road, so a dense city cell with a
+    # motorway through it is charged at motorway speed. Measured over 112 real
+    # city-to-airport journeys that made urban access 2.03x too fast, against
+    # only 1.12x between towns: the error is in built-up areas, not on the open
+    # road. Dividing marked cells by the fitted factor brings urban access to
+    # 1.02x and inter-town to 1.06x.
+    # Only where there are roads to be congested. A roadless cell is already at
+    # walking pace, and traffic does not make walking slower -- halving it to
+    # 2.5 km/h would put the slowest terrain on Earth below its own floor.
+    congested = urban.urban_mask(idx.cells) & (classes > 0)
+    speeds = np.where(congested, speeds / urban.URBAN_CONGESTION_FACTOR, speeds)
+    return speeds
 
 
 def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
