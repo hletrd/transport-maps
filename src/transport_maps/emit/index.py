@@ -1,14 +1,24 @@
 """index.json plus the shared hover-cell ordering."""
 
+import hashlib
 import json
+import re
+import subprocess
 import tomllib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import h3
 import numpy as np
 
 from transport_maps import _io, config
-from transport_maps.emit import hover
+from transport_maps.emit import hover, modes
+
+# Origin slugs become filenames under dist/origins and path segments in the
+# page's fetch URLs, so reject anything that could escape the directory or
+# start with a dot or dash: letters, digits, '_' and '-' only, and a
+# letter or digit first. One grammar, checked where the slugs are read.
+_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 # Redistribution obligations of the open datasets this artifact is derived from.
 # The licence firewall (tests/test_licence_firewall.py) only proves that NO
@@ -16,9 +26,9 @@ from transport_maps.emit import hover
 # the sources that legitimately did. Shipping the map without this block leaves
 # the CC-BY-SA and ODbL obligations unmet while every gate reports green.
 #
-# GRIP4 is itself built from many sources INCLUDING OpenStreetMap, which is why
-# OSM appears here even though this pipeline never queries OSM directly: the
-# road-density rasters that set every ground speed are downstream of it.
+# OSM enters three ways: rail route relations and ferry ways parsed from
+# Geofabrik extracts (sources/osm.py), the coastline layer (emit/water.py), and
+# GRIP4, which is compiled partly from OSM.
 ATTRIBUTION: tuple[dict[str, str], ...] = (
     {
         "name": "Wikipedia",
@@ -42,7 +52,7 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
         "name": "Natural Earth",
         "licence": "Public Domain",
         "url": "https://www.naturalearthdata.com/",
-        "usedFor": "1:10m land polygons defining the H3 cell universe",
+        "usedFor": "1:10m land polygons defining the H3 cell universe; country borders; populated places behind the urban mask",
     },
     {
         "name": "GRIP4 (Global Roads Inventory Project)",
@@ -54,7 +64,7 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
         "name": "OpenStreetMap",
         "licence": "ODbL 1.0",
         "url": "https://www.openstreetmap.org/copyright",
-        "usedFor": "coastlines (water polygons via osmdata.openstreetmap.de); rail route relations; upstream source of the GRIP4 road network",
+        "usedFor": "coastlines (water polygons via osmdata.openstreetmap.de); rail route relations and ferry ways; upstream source of the GRIP4 road network",
     },
     {
         "name": "GeoNames",
@@ -86,7 +96,11 @@ def load_origins(path: Path | None = None) -> list[dict]:
         # A valid index.json with no origins is a page that throws on its
         # first line (cities[0]) -- the blank-globe class of failure.
         raise ValueError(f"{path} lists no origins")
-    slugs = [o["slug"] for o in origins]
+    slugs = [str(o.get("slug", "")) for o in origins]
+    bad = [s for s in slugs if not _SLUG_RE.fullmatch(s)]
+    if bad:
+        raise ValueError(f"invalid origin slug(s) in {path}: {bad[:5]} -- letters, digits, "
+                         "'_' and '-' only, starting with a letter or digit")
     if len(set(slugs)) != len(slugs):
         raise ValueError("duplicate origin slug in origins.toml")
     return origins
@@ -103,30 +117,85 @@ def write_hover_cells(idx, out: Path) -> None:
 
 
 def mode_detail() -> dict[str, str]:
-    """One sentence per surface mode, with the calibrated speeds it uses."""
-    from transport_maps.graph import ground
+    """One sentence per surface mode, with the calibrated speeds it uses.
+
+    Every figure comes from the calibration objects the graph itself uses,
+    so the tooltips cannot drift from the model (they hard-coded 200/75/35/30
+    before, which were equal to calibration.toml only by luck).
+    """
+    from transport_maps.graph import ground, rail
     from transport_maps.sources import urban
 
     kmh = ground.SPEED_BY_ROAD_CLASS_KMH
-    halved = f"halved inside cities (within {urban.URBAN_RADIUS_KM:.0f} km of a city over {urban.URBAN_POP_MIN:,})"
+    rc, fc = rail.load_rail_calibration(), rail.load_ferry_calibration()
+    halved = (f"halved inside cities (within {urban.URBAN_RADIUS_KM:.0f} km of a city "
+              f"over {urban.URBAN_POP_MIN:,.0f} people)")
     return {
         "rail": "Scheduled trains from OpenStreetMap route relations, stop to stop; "
-                "high-speed lines at 200 km/h, conventional at 75 km/h along the track, plus boarding time.",
-        "ferry": "Scheduled ferry routes from OpenStreetMap, at 35 km/h plus 30 min at the terminals.",
-        "highway": f"Motorways and expressways (GRIP4 class 1), fitted at {kmh[1]:.0f} km/h free-flow, {halved}.",
-        "major road": f"Primary and secondary roads (GRIP4 classes 2-3), fitted at {kmh[2]:.0f}-{kmh[3]:.0f} km/h, {halved}.",
-        "minor road": f"Tertiary and local roads (GRIP4 classes 4-5), fitted at {kmh[4]:.0f}-{kmh[5]:.0f} km/h, {halved}.",
+                f"high-speed lines at {rc.highspeed_kmh:.0f} km/h, conventional at "
+                f"{rc.conventional_kmh:.0f} km/h along the track, plus {rc.boarding_min:.0f} min "
+                "to board.",
+        "ferry": f"Scheduled ferry routes from OpenStreetMap, at {fc.speed_kmh:.0f} km/h plus "
+                 f"{fc.terminal_min:.0f} min at the terminals.",
+        "highway": f"Motorways and expressways, fitted at {kmh[1]:.0f} km/h free-flow, {halved}.",
+        "major road": f"Primary and secondary roads, fitted at {kmh[2]:.0f}-{kmh[3]:.0f} km/h, {halved}.",
+        "minor road": f"Tertiary and local roads, fitted at {kmh[4]:.0f}-{kmh[5]:.0f} km/h, {halved}.",
         "track": f"No mapped road: {kmh[0]:.0f} km/h, walking pace.",
     }
 
 
-def write_index(origins: list[dict], out: Path) -> None:
+def _git_head() -> str:
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=config.ROOT,
+                              capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                               cwd=config.ROOT, capture_output=True, text=True, check=True).stdout
+        return head + ("-dirty" if dirty.strip() else "")
+    except (OSError, subprocess.CalledProcessError):
+        return "nogit"
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12] if path.exists() else "absent"
+
+
+def build_identity(started: datetime | None = None) -> dict[str, str]:
+    """Which inputs and which run produced an artifact.
+
+    `inputsHash` covers the code (git head, dirty flag), the two hand-edited
+    inputs (calibration.toml, origins.toml) and the constants that shape the
+    grid, the bands and the mode channels; `buildId` adds the start time so
+    two runs of one input set (one of them aborted) stay distinguishable.
+    """
+    started = started or datetime.now(UTC)
+    inputs = _io.params_hash(
+        _git_head(), _sha256(config.ROOT / "calibration.toml"),
+        _sha256(config.DATA / "origins.toml"),
+        config.SOLVE_RES, config.FINE_RES, config.HOVER_RES, config.BAND_EDGES_MIN,
+        modes.CHANNELS)
+    return {"inputsHash": inputs,
+            "buildId": f"{inputs}-{started:%Y%m%dT%H%M%SZ}",
+            "builtAt": started.replace(microsecond=0).isoformat()}
+
+
+def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None = None,
+                graph: dict | None = None, identity: dict | None = None) -> None:
+    """index.json: what the page needs to read every other artifact.
+
+    `hover_cell_count` lets the page refuse a per-origin array whose length
+    disagrees with hover_cells.bin; `graph` says whether rail and ferries
+    were in the build (a road-and-air build is otherwise indistinguishable);
+    `identity` is build_identity(). All three are optional so a stale
+    index.json is still valid -- the page has a fallback for each.
+    """
     payload = {
         "bandEdgesMin": list(config.BAND_EDGES_MIN),
         "unreachable": config.UNREACHABLE,
         "hoverRes": config.HOVER_RES,
         "solveRes": config.SOLVE_RES,
         "fineRes": config.FINE_RES,
+        # Channel order of .modes.bin, so the page never re-types it.
+        "modeChannels": list(modes.CHANNELS),
         # How each surface mode was modelled, for the route's hover notes.
         "modeDetail": mode_detail(),
         # This emitter writes {slug}.rail.bin/.rail.json; the page asks for them
@@ -139,4 +208,10 @@ def write_index(origins: list[dict], out: Path) -> None:
             for o in origins
         ],
     }
+    if hover_cell_count is not None:
+        payload["hoverCellCount"] = int(hover_cell_count)
+    if graph is not None:
+        payload["graph"] = dict(graph)
+    if identity is not None:
+        payload.update(identity)
     _io.write_text(out, json.dumps(payload, separators=(",", ":")))

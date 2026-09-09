@@ -4,7 +4,7 @@ from typing import ClassVar
 import numpy as np
 
 from transport_maps import config
-from transport_maps.emit import index
+from transport_maps.emit import index, modes
 
 
 class FakeIndex:
@@ -103,3 +103,49 @@ def test_an_origins_file_with_no_origins_is_refused(tmp_path):
     (tmp_path / "none.toml").write_text("title = 'x'\n")
     with pytest.raises(ValueError, match="no origins"):
         index.load_origins(tmp_path / "none.toml")
+
+
+def test_index_json_can_carry_the_build_identity_the_hover_count_and_the_graph_flags(tmp_path):
+    out = tmp_path / "index.json"
+    identity = index.build_identity()
+    assert set(identity) == {"inputsHash", "buildId", "builtAt"}
+    assert identity["buildId"].startswith(identity["inputsHash"] + "-")
+    index.write_index([{"slug": "seoul", "name": "Seoul", "lat": 37.5, "lon": 127.0}], out,
+                      hover_cell_count=90_740, graph={"rail": True, "ferry": False}, identity=identity)
+    payload = json.loads(out.read_text())
+    assert payload["hoverCellCount"] == 90_740
+    assert payload["graph"] == {"rail": True, "ferry": False}
+    assert payload["buildId"] == identity["buildId"] and payload["builtAt"] == identity["builtAt"]
+    assert payload["modeChannels"] == list(modes.CHANNELS)
+
+
+def test_the_build_identity_moves_with_the_inputs(monkeypatch):
+    before = index.build_identity()["inputsHash"]
+    monkeypatch.setattr(index.config, "HOVER_RES", 3)
+    assert index.build_identity()["inputsHash"] != before
+
+
+def test_mode_detail_reads_the_calibration_it_describes(monkeypatch):
+    """The tooltips hard-coded 200/75/35/30, equal to calibration.toml only by
+    luck; a 'city over 200,000.0' also reached every road tooltip."""
+    from transport_maps.graph import rail
+
+    detail = index.mode_detail()
+    assert "200,000 people" in detail["highway"] and "200,000.0" not in detail["highway"]
+    assert "GRIP4 class" not in detail["highway"]
+    rc = rail.load_rail_calibration()
+    assert f"{rc.highspeed_kmh:.0f} km/h" in detail["rail"]
+    monkeypatch.setattr(rail, "load_rail_calibration",
+                        lambda path=None: rail.RailCalibration(highspeed_kmh=321.0, conventional_kmh=75.0,
+                                                               detour_factor=1.2, boarding_min=15.0, alighting_min=5.0))
+    assert "321 km/h" in index.mode_detail()["rail"]
+
+
+def test_origin_slugs_are_validated_where_they_are_read(tmp_path):
+    import pytest
+
+    for bad in ("../x", "-seoul", "seo ul", ".hidden", "a/b"):
+        f = tmp_path / "o.toml"
+        f.write_text(f'[[origin]]\nslug = "{bad}"\nname = "X"\nlat = 0.0\nlon = 0.0\n')
+        with pytest.raises(ValueError, match="invalid origin slug"):
+            index.load_origins(f)
