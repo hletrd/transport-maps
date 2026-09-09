@@ -60,7 +60,6 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
     the hex VERTICES, where holes used to appear. Interior cells only: each
     level's outer edge is legitimately open sea.
     """
-    import h3
     import shapely
 
     from transport_maps.contour import bands
@@ -91,12 +90,7 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
         # containment even when the two meet perfectly -- on the mixed grid a
         # fine cell's corner lies on the seam between its parent and the next
         # base cell -- while the holes this gate exists for are cells wide.
-        pts = []
-        for c in pick:
-            clat, clon = h3.cell_to_latlng(cells[c])
-            for lat, lon in h3.cell_to_boundary(cells[c]):
-                pts.append((clon + 0.97 * (lon - clon), clat + 0.97 * (lat - clat)))
-        pts = np.array(pts)
+        pts = np.array([pt for c in pick for pt in _pulled_in_vertices(cells[c])])
 
         # Features are multipolygons whose parts may overlap (contour.bands),
         # which GEOS predicates do not accept on the whole; the parts are
@@ -113,6 +107,35 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
             raise ValueError(
                 f"level {i} (zoom {lod['minzoom']}+): {n:,} of {len(pts):,} interior hex "
                 "vertices fall between bands")
+
+
+def _pulled_in_vertices(cell: str) -> list[tuple[float, float]]:
+    """Each vertex of `cell` pulled 3 % toward its centre, as (lon, lat).
+
+    The interpolation runs in an unwrapped frame: for a cell straddling the
+    antimeridian a vertex at +179.96 and a centre at -179.95 differ by 0.09
+    degrees of longitude, not 359.9, and the planar formula put the sample
+    point eleven degrees away in another band (or the open sea) -- a gate
+    failure on correct geometry, latent only because the seed-0 sample never
+    happened to pick such a cell.
+    """
+    import h3
+
+    clat, clon = h3.cell_to_latlng(cell)
+    out = []
+    for lat, lon in h3.cell_to_boundary(cell):
+        dlon = lon - clon
+        if dlon > 180.0:
+            dlon -= 360.0
+        elif dlon < -180.0:
+            dlon += 360.0
+        plon = clon + 0.97 * dlon
+        if plon > 180.0:
+            plon -= 360.0
+        elif plon < -180.0:
+            plon += 360.0
+        out.append((plon, clat + 0.97 * (lat - clat)))
+    return out
 
 
 def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,

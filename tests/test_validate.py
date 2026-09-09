@@ -263,3 +263,16 @@ def test_an_all_excluded_universe_has_zero_coverage_not_nan():
     coverage = validate.check_coverage(np.array([10.0, 20.0]), Idx())
     assert coverage == 0.0
     assert coverage < validate.MIN_COVERAGE, "the gate must fail an unmeasurable universe"
+
+
+def test_the_cover_sample_pull_in_stays_inside_an_antimeridian_cell():
+    """The pull-in used to interpolate longitude planarly, so a vertex at
+    +179.96 with the centre at -179.95 landed eleven degrees away -- in
+    another band or the open sea -- and the gate could fail correct geometry.
+    """
+    chukotka = "860d9100fffffff"          # straddles 180 E
+    clat, clon = h3.cell_to_latlng(chukotka)
+    assert abs(abs(clon) - 180.0) < 0.5, "fixture no longer straddles the antimeridian"
+    for lon, lat in validate._pulled_in_vertices(chukotka):
+        dlon = (lon - clon + 540.0) % 360.0 - 180.0
+        assert abs(dlon) < 0.2 and abs(lat - clat) < 0.2, f"sample point {lon:.2f},{lat:.2f} left the cell"
