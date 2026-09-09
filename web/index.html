@@ -176,10 +176,35 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   font-size:12.5px;color:var(--text-2)}
 .row + .row{border-top:1px solid var(--line)}
 .row input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
-.row select{
-  background:var(--surface-2);border:1px solid var(--line);border-radius:2px;
-  color:var(--text);font:400 12.5px/1.3 inherit;padding:3px 6px;cursor:pointer;
+/* A color scheme cannot be judged from its name, so each option shows the
+   actual ramp it will paint. */
+.rampwrap{padding:7px 0 2px;border-top:1px solid var(--line)}
+.rowlabel{font-size:12.5px;color:var(--text-2);padding-bottom:6px}
+.ramps{display:flex;flex-direction:column;gap:5px}
+.ramps button{
+  display:flex;align-items:center;gap:9px;width:100%;cursor:pointer;
+  background:none;border:1px solid transparent;border-radius:2px;padding:3px;
+  font:400 12px/1.2 inherit;color:var(--text-3);text-align:left;
 }
+.ramps button:hover{color:var(--text-2)}
+.ramps button[aria-current="true"]{border-color:var(--line-2);color:var(--text)}
+.ramps .strip{display:flex;height:11px;flex:1;border-radius:1px;overflow:hidden}
+.ramps .strip span{flex:1}
+.ramps .nm{width:52px;flex:none}
+
+/* Follows the pointer, so the reading is where the eye already is. */
+.tip{
+  position:fixed;z-index:8;pointer-events:none;padding:5px 8px;border-radius:2px;
+  background:color-mix(in srgb, var(--bg) 86%, transparent);
+  border:1px solid var(--line);backdrop-filter:blur(6px);
+  font-size:12px;color:var(--text);white-space:nowrap;
+}
+.tip b{font-weight:500}
+
+/* Place labels: DOM markers in the page's own typeface. */
+.lbl{font-size:11px;color:var(--text-2);white-space:nowrap;pointer-events:none;
+  text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 0 3px var(--bg)}
+.tip i{font-style:normal;color:var(--text-3)}
 .row label{cursor:pointer}
 .hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}
 .btn{
@@ -239,6 +264,8 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   <div class="legs" id="legs" hidden></div>
 </div>
 
+<div class="tip" id="tip" hidden></div>
+
 <button class="compass" id="compass" title="Reset bearing to north" aria-label="Reset bearing to north">
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <g class="needle" id="needle">
@@ -253,7 +280,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
     <summary>Departure<span id="origin-name" style="color:var(--text);font-weight:400;font-size:12.5px"></span></summary>
     <div class="body">
       <p class="here" id="here"></p>
-      <input id="q" type="search" placeholder="Search 157 cities…" autocomplete="off" spellcheck="false" aria-label="Search departure cities">
+      <input id="q" type="search" placeholder="City or airport code…" autocomplete="off" spellcheck="false" aria-label="Search departure cities">
       <ul class="results" id="results"></ul>
     </div>
   </details>
@@ -282,13 +309,9 @@ details[open] > summary{border-bottom:1px solid var(--line)}
         <label for="show-places">Name the place under the cursor</label>
         <input type="checkbox" id="show-places" checked>
       </div>
-      <div class="row">
-        <label for="ramp">Colour scheme</label>
-        <select id="ramp">
-          <option value="muted">Muted</option>
-          <option value="vivid">Vivid</option>
-          <option value="warm">Warm</option>
-        </select>
+      <div class="rampwrap">
+        <div class="rowlabel">Color scheme</div>
+        <div id="ramps" class="ramps"></div>
       </div>
       <p class="hint">Drag to rotate the globe, scroll to zoom. Locking to north
         disables rotation so dragging only pans.</p>

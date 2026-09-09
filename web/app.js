@@ -11,18 +11,24 @@ import * as h3 from "./vendor/h3.js";
 // ramp actually requires; hue rotation supplies the separation lightness
 // alone cannot.
 const RAMPS = {
-  // min dE 6.4, median 7.2 -- restrained, the default
-  muted: ["#faefc5","#f6d49c","#f5b77b","#ef9a69","#e27e65","#cd686a",
-          "#b0586f","#8f4d6e","#6d4464","#503955","#392b49"],
-  // min dE 7.5, median 10.0 -- most legible, reads as a heatmap
-  vivid: ["#fff7a8","#ffd453","#ffa600","#ff7100","#ff3833","#fd0066",
-          "#d10885","#9f268f","#6e3283","#46316c","#26245e"],
-  // min dE 6.2, median 6.8 -- quietest, closest to an atlas plate
-  warm:  ["#fbeec9","#f4d59d","#eebc74","#e6a153","#da883c","#c87134",
-          "#b15e36","#95503b","#77443c","#5b3837","#49282b"],
+  // Adjacent-pair separation measured in OKLab (x100); below about 8 two bands
+  // are hard to tell apart. Lightness is strictly monotonic in every ramp,
+  // which is what a sequential scale actually requires.
+  muted:  { name: "Muted",  c: ["#faefc5","#f6d49c","#f5b77b","#ef9a69","#e27e65","#cd686a",
+                                "#b0586f","#8f4d6e","#6d4464","#503955","#392b49"] },
+  vivid:  { name: "Vivid",  c: ["#fff7a8","#ffd453","#ffa600","#ff7100","#ff3833","#fd0066",
+                                "#d10885","#9f268f","#6e3283","#46316c","#26245e"] },
+  warm:   { name: "Warm",   c: ["#fbeec9","#f4d59d","#eebc74","#e6a153","#da883c","#c87134",
+                                "#b15e36","#95503b","#77443c","#5b3837","#49282b"] },
+  ice:    { name: "Ice",    c: ["#eaf6fb","#c9e7f5","#a4d6ee","#7cc2e5","#55acd9","#3792c7",
+                                "#2477ad","#1d5d8f","#1a4570","#182f51","#141d33"] },
+  forest: { name: "Forest", c: ["#f2f6da","#dcecb4","#bfdd90","#9ccb72","#77b75d","#549f52",
+                                "#3a8549","#2c6a40","#245036","#1d3829","#16231c"] },
+  mono:   { name: "Mono",   c: ["#f4f4f4","#dcdcdc","#c4c4c4","#ababab","#939393","#7b7b7b",
+                                "#646464","#4e4e4e","#3a3a3a","#282828","#191919"] },
 };
 let rampName = "muted";
-let BANDS = RAMPS[rampName];
+let BANDS = RAMPS[rampName].c;
 const BG = "#0a0b0d", SEA = "#0f1114";
 // Land no scheduled service reaches. A tone, not a colour: it must read as
 // "no route" rather than as the far end of the time ramp.
@@ -57,7 +63,7 @@ const store = {
   },
   set(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch { /* private mode */ } },
 };
-try { const r = localStorage.getItem("ramp"); if (r && RAMPS[r]) { rampName = r; BANDS = RAMPS[r]; } }
+try { const r = localStorage.getItem("ramp"); if (r && RAMPS[r]) { rampName = r; BANDS = RAMPS[r].c; } }
 catch { /* private mode */ }
 let lockNorth = store.get("lockNorth", false);
 let namePlaces = store.get("namePlaces", true);
@@ -99,6 +105,30 @@ fetch("./places.json")
       lon: Float32Array.from(p.places, (x) => x[4]),
       rows: p.places,
     };
+    // Labels, so a zoomed view says roughly where it is. DOM markers rather
+    // than a symbol layer: MapLibre text needs a glyph server, which the CSP
+    // blocks, and markers render in the page's own typeface. The gazetteer is
+    // ordered largest-first, so rank is the row index; more labels appear as
+    // the zoom rises.
+    const labelPool = p.places.slice(0, 900).map((r, i) => {
+      const el = document.createElement("div");
+      el.className = "lbl";
+      el.textContent = r[0];
+      const m = new maplibregl.Marker({ element: el, anchor: "top" })
+        .setLngLat([r[4], r[3]]);
+      return { m, rank: i, on: false };
+    });
+    const showLabels = () => {
+      const z = map.getZoom();
+      const n = z < 2.2 ? 0 : z < 3 ? 40 : z < 4 ? 120 : z < 5.5 ? 350 : 900;
+      for (const l of labelPool) {
+        const want = l.rank < n;
+        if (want && !l.on) { l.m.addTo(map); l.on = true; }
+        else if (!want && l.on) { l.m.remove(); l.on = false; }
+      }
+    };
+    map.on("zoomend", showLabels);
+    showLabels();
   })
   .catch(() => { /* the map is still readable without names */ });
 
@@ -145,6 +175,36 @@ map.addSource("sphere", { type: "geojson", data: { type: "Feature", geometry: { 
 map.addLayer({ id: "sphere", type: "fill", source: "sphere",
   paint: { "fill-color": SEA, "fill-opacity": 1 } });
 
+// The hovered cell, outlined so the reading has a visible footprint.
+map.addSource("hover", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+map.addLayer({ id: "hover-line", type: "line", source: "hover",
+  paint: { "line-color": "#ffffff", "line-width": 1.5, "line-opacity": 0.85 } });
+map.addLayer({ id: "hover-fill", type: "fill", source: "hover",
+  paint: { "fill-color": "#ffffff", "fill-opacity": 0.10 } });
+
+// Your own position, once geolocation answers.
+map.addSource("me", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+map.addLayer({ id: "me-halo", type: "circle", source: "me",
+  paint: { "circle-radius": 9, "circle-color": "#ffffff", "circle-opacity": 0.18 } });
+map.addLayer({ id: "me-dot", type: "circle", source: "me",
+  paint: { "circle-radius": 4, "circle-color": "#ffffff",
+           "circle-stroke-color": "#0a0b0d", "circle-stroke-width": 1.5 } });
+
+let hoveredCell = null;
+function highlight(lat, lon) {
+  const cell = h3.latLngToCell(lat, lon, HOVER_RES);
+  if (cell === hoveredCell) return;
+  hoveredCell = cell;
+  const ring = h3.cellToBoundary(cell).map(([la, lo]) => [lo, la]);
+  ring.push(ring[0]);
+  map.getSource("hover").setData({ type: "FeatureCollection", features: [
+    { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] } }] });
+}
+function clearHighlight() {
+  hoveredCell = null;
+  map.getSource("hover").setData({ type: "FeatureCollection", features: [] });
+}
+
 function applyLockNorth() {
   if (lockNorth) {
     map.setBearing(0);
@@ -165,7 +225,7 @@ function syncNeedle() {
 }
 map.on("rotate", syncNeedle);
 
-function bandColourExpression() {
+function bandColorExpression() {
   return ["match", ["get", "band"],
     UNREACHABLE_BAND, UNCHARTED,
     ...BANDS.flatMap((c, i) => [i, c]), UNCHARTED];
@@ -173,14 +233,14 @@ function bandColourExpression() {
 
 function paintOrigin(o) {
   active = o;
-  if (map.getLayer("bands")) map.removeLayer("bands");
+  for (const id of ["band-seams", "bands"]) if (map.getLayer(id)) map.removeLayer(id);
   if (map.getSource("bands")) map.removeSource("bands");
 
   map.addSource("bands", { type: "vector", url: `pmtiles://./origins/${o.slug}.pmtiles` });
   map.addLayer({
     id: "bands", type: "fill", source: "bands", "source-layer": "bands",
     paint: {
-      "fill-color": bandColourExpression(),
+      "fill-color": bandColorExpression(),
       "fill-opacity": 1
     }
   });
@@ -293,10 +353,12 @@ function renderLegs() {
     if (!hoverModes) return [];
     const i = cellIndex(pinB.lat, pinB.lon);
     if (i < 0) return [];
-    const [rail, ferry, road] = [hoverModes[i*3], hoverModes[i*3+1], hoverModes[i*3+2]];
-    return [["rail", rail], ["ferry", ferry], ["road", road]]
+    const names = ["rail", "ferry", "highway", "major road", "minor road", "track"];
+    const n = names.length;
+    return names.map((name, k) => [name, hoverModes[i * n + k]])
       .filter(([, m]) => m >= 1)
-      .map(([name, m]) => [dur(m), `Surface travel by <b>${name}</b>`]);
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, m]) => [dur(m), `by <b>${name}</b>`]);
   };
 
   if (chain.length === 0) {
@@ -373,6 +435,7 @@ function describe(lat, lon) {
 }
 
 let raf = 0;
+map.on("mouseout", () => { $("tip").hidden = true; clearHighlight(); });
 map.on("mousemove", (e) => {
   if (raf) return;
   raf = requestAnimationFrame(() => {
@@ -386,6 +449,20 @@ map.on("mousemove", (e) => {
       ? "Open water."
       : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}`
         + `${band ? " · " + band : ""}${active ? " · from " + active.name : ""}`;
+
+    const tip = $("tip");
+    if (t == null) { tip.hidden = true; clearHighlight(); return; }
+    highlight(lat, lng);
+    const p = nearestPlace(lat, lng);
+    const where = p ? (p.km > 60 ? `near ${p.name}` : p.name) + (p.country ? `, ${p.country}` : "")
+                    : fmtCoord(lat, lng);
+    tip.innerHTML = `<b>${big}${unit ? " " + unit : ""}</b> <i>${where}</i>`;
+    tip.hidden = false;
+    // Offset so the pointer never covers it; flip when near the right edge.
+    const x = e.originalEvent.clientX, y = e.originalEvent.clientY;
+    const w = tip.offsetWidth;
+    tip.style.left = `${x + 16 + w > window.innerWidth ? x - w - 12 : x + 16}px`;
+    tip.style.top = `${y + 14}px`;
   });
 });
 
@@ -424,13 +501,41 @@ map.on("click", (e) => {
 
 $("clear-pins").addEventListener("click", () => { pinB = null; renderPins(); renderLegs(); });
 
-// ---- city list ----
+// ---- city and airport list ----
 const cities = meta.origins.slice().sort((a, b) => a.name.localeCompare(b.name));
 const bySlug = new Map(cities.map((c) => [c.slug, c]));
+// Airports are searchable by code ("JFK") or name. Picking one drops it as the
+// DESTINATION -- only the 157 cities have a computed surface to depart from.
+let airports = [];
+fetch("./airports.json")
+  .then((r) => (r.ok ? r.json() : null))
+  .then((a) => { if (a) airports = a.airports; })
+  .catch(() => {});
 function render(filter = "") {
   const f = filter.trim().toLowerCase();
   const hits = f ? cities.filter((c) => c.name.toLowerCase().includes(f)) : cities;
   const list = document.createDocumentFragment();
+
+  // Airports first when the query looks like a code, so "jfk" is one keystroke
+  // from the answer; otherwise after the cities.
+  const apHits = f.length >= 2
+    ? airports.filter((a) => a[0].toLowerCase() === f || a[1].toLowerCase().includes(f))
+               .slice(0, 12)
+    : [];
+  const airportRows = apHits.map((a) => {
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.dataset.airport = a[0];
+    const name = document.createElement("span");
+    name.innerHTML = `<b>${a[0]}</b> ${a[1]}`;
+    const coord = document.createElement("span");
+    coord.className = "coord";
+    coord.textContent = `${a[2]} · destination`;
+    b.append(name, coord); li.append(b);
+    return li;
+  });
+  if (f.length === 3 && apHits.some((a) => a[0].toLowerCase() === f)) list.append(...airportRows);
+
   for (const c of hits) {
     const li = document.createElement("li");
     const b = document.createElement("button");
@@ -445,9 +550,20 @@ function render(filter = "") {
     li.append(b);
     list.append(li);
   }
+  if (!(f.length === 3 && apHits.some((a) => a[0].toLowerCase() === f))) list.append(...airportRows);
   $("results").replaceChildren(list);
 }
 $("results").addEventListener("click", (e) => {
+  const ab = e.target.closest("button[data-airport]");
+  if (ab) {
+    const a = airports.find((x) => x[0] === ab.dataset.airport);
+    if (!a) return;
+    pinB = { lat: a[3], lon: a[4], label: `${a[0]} — ${a[1]}` };
+    map.flyTo({ center: [a[4], a[3]], zoom: 5, speed: 0.9 });
+    $("route").open = true;
+    renderPins(); renderLegs();
+    return;
+  }
   const b = e.target.closest("button[data-slug]");
   if (!b) return;
   // The geolocation line is set once and would otherwise keep claiming
@@ -468,19 +584,7 @@ lockBox.checked = lockNorth;
 lockBox.addEventListener("change", () => {
   lockNorth = lockBox.checked;
   store.set("lockNorth", lockNorth);
-  const rampBox = $("ramp");
-rampBox.value = rampName;
-rampBox.addEventListener("change", () => {
-  rampName = rampBox.value;
-  BANDS = RAMPS[rampName];
-  try { localStorage.setItem("ramp", rampName); } catch { /* private mode */ }
-  paintLegend();
-  // Repaint in place rather than reloading the tiles, which are already there.
-  if (map.getLayer("bands"))
-    map.setPaintProperty("bands", "fill-color", bandColourExpression());
-});
-
-applyLockNorth();
+  applyLockNorth();
 });
 
 const placesBox = $("show-places");
@@ -490,16 +594,37 @@ placesBox.addEventListener("change", () => {
   store.set("namePlaces", namePlaces);
 });
 
-const rampBox = $("ramp");
-rampBox.value = rampName;
-rampBox.addEventListener("change", () => {
-  rampName = rampBox.value;
-  BANDS = RAMPS[rampName];
+function paintRampPicker() {
+  $("ramps").replaceChildren(...Object.entries(RAMPS).map(([key, r]) => {
+    const b = document.createElement("button");
+    b.dataset.ramp = key;
+    b.setAttribute("aria-current", String(key === rampName));
+    const nm = document.createElement("span");
+    nm.className = "nm"; nm.textContent = r.name;
+    const strip = document.createElement("span");
+    strip.className = "strip";
+    for (const c of r.c) {
+      const sw = document.createElement("span"); sw.style.background = c; strip.append(sw);
+    }
+    b.append(nm, strip);
+    return b;
+  }));
+}
+paintRampPicker();
+
+$("ramps").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-ramp]");
+  if (!b) return;
+  rampName = b.dataset.ramp;
+  BANDS = RAMPS[rampName].c;
   try { localStorage.setItem("ramp", rampName); } catch { /* private mode */ }
   paintLegend();
-  // Repaint in place rather than reloading the tiles, which are already there.
+  paintRampPicker();
+  // Repaint in place; the tiles are already loaded.
   if (map.getLayer("bands"))
-    map.setPaintProperty("bands", "fill-color", bandColourExpression());
+    map.setPaintProperty("bands", "fill-color", bandColorExpression());
+  if (map.getLayer("band-seams"))
+    map.setPaintProperty("band-seams", "line-color", bandColorExpression());
 });
 
 applyLockNorth();
@@ -529,9 +654,14 @@ $("here").textContent = "Showing Seoul. Allow location to start from the city ne
 if (navigator.geolocation) {
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      const c = nearest(pos.coords.latitude, pos.coords.longitude);
+      const { latitude: la, longitude: lo } = pos.coords;
+      const c = nearest(la, lo);
       $("here").textContent = `${c.name} is the nearest charted city to you.`;
+      map.getSource("me").setData({ type: "FeatureCollection", features: [
+        { type: "Feature", geometry: { type: "Point", coordinates: [lo, la] } }] });
       if (c.slug !== active?.slug) paintOrigin(c);
+      // The surface is the nearest city's, but the view opens on where you are.
+      map.once("moveend", () => map.flyTo({ center: [lo, la], zoom: 3.2, speed: 0.8 }));
     },
     () => { $("here").textContent = "Location unavailable — showing Seoul."; },
     { timeout: 8000, maximumAge: 900000 }

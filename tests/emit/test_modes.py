@@ -32,8 +32,10 @@ def test_road_and_ferry_are_told_apart_by_adjacency():
     minutes = np.array([0.0, 30.0, 200.0, *([np.inf] * 6)])
     prev = np.array([-9999, 0, 0, -9999, -9999, -9999, -9999, -9999, -9999])
     acc = modes.mode_minutes_per_node(idx, minutes, prev)
-    assert acc[1][2] == 30.0 and acc[1][1] == 0.0, "neighbouring cells are road"
-    assert acc[2][1] == 200.0 and acc[2][2] == 0.0, "a jump between cells is a ferry"
+    road = acc[1][2:].sum()
+    assert road == 30.0 and acc[1][1] == 0.0, "neighboring cells are road"
+    assert acc[2][1] == 200.0 and acc[2][2:].sum() == 0.0, \
+        "a jump between cells is a ferry"
 
 
 def test_station_edges_count_as_rail_and_accumulate():
@@ -45,7 +47,7 @@ def test_station_edges_count_as_rail_and_accumulate():
     acc = modes.mode_minutes_per_node(idx, minutes, prev)
     assert acc[8][0] == 80.0, "boarding plus riding must accumulate as rail"
     assert acc[1][0] == 100.0, "alighting adds to the rail total"
-    assert acc[1][1] == 0.0 and acc[1][2] == 0.0
+    assert acc[1][1] == 0.0 and acc[1][2:].sum() == 0.0
 
 
 def test_air_and_airport_time_are_not_counted_as_surface():
@@ -66,4 +68,4 @@ def test_written_file_is_three_uint16_per_hover_cell(tmp_path):
     out = tmp_path / "x.modes.bin"
     modes.write_modes(idx, minutes, prev, out)
     parents = {h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells}
-    assert out.stat().st_size == len(parents) * 3 * 2
+    assert out.stat().st_size == len(parents) * len(modes.CHANNELS) * 2

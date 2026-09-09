@@ -28,6 +28,7 @@ from transport_maps import config
 from transport_maps.calibrate import ground as gfit
 from transport_maps.graph import ground as gmodel
 from transport_maps.graph import nodes
+from transport_maps.sources import roads, urban
 
 
 def main() -> None:
@@ -50,11 +51,15 @@ def main() -> None:
     print(f"  sampling between {len(towns):,} populated places")
 
     idx = nodes.build_index()
-    speeds_now = gmodel.cell_speed_kmh(idx)
-    classes = np.searchsorted(np.sort(gmodel.SPEED_BY_ROAD_CLASS_KMH), speeds_now)
-    # map each cell back to its GRIP4 class by matching its speed
-    lookup = {v: i for i, v in enumerate(gmodel.SPEED_BY_ROAD_CLASS_KMH)}
-    classes = np.array([lookup[s] for s in speeds_now], dtype=np.int64)
+    # Read the class directly. Reverse-mapping from the cell's speed broke as
+    # soon as the urban factor existed: 36 / 2 = 18 km/h is nobody's class.
+    classes = roads.cell_class(idx.cells).astype(np.int64)
+    # The model halves speed in built-up cells, so a kilometre there costs as
+    # much time as two kilometres of open road. Weighting the design matrix the
+    # same way means the fit recovers FREE-FLOW class speeds, consistent with
+    # how the model then applies them, rather than a blend of the two regimes.
+    urban_w = np.where(urban.urban_mask(idx.cells) & (classes > 0),
+                       urban.URBAN_CONGESTION_FACTOR, 1.0)
 
     r, c, d = gmodel.hex_edges(idx)
     csr = sp.coo_matrix((d, (r, c)), shape=(idx.n, idx.n)).tocsr()
@@ -111,7 +116,7 @@ def main() -> None:
                 while n != src and pred[n] >= 0 and guard < 4000:
                     p = int(pred[n])
                     seg = gmodel.haversine_km(centroids[p][None, :], centroids[n][None, :])[0]
-                    per_class[classes[n]] += seg
+                    per_class[classes[n]] += seg * urban_w[n]
                     n = p
                     guard += 1
                 if n != src or per_class.sum() < gfit.MIN_KM:

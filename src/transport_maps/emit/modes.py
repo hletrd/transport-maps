@@ -17,13 +17,19 @@ import numpy as np
 
 from transport_maps import config
 
-# Order of the three uint16 channels in the emitted file.
-CHANNELS = ("rail", "ferry", "road")
+# Order of the uint16 channels in the emitted file. Road is split by grade
+# because "road" covers both a motorway and a dirt track, which is exactly the
+# distinction a traveller cares about.
+CHANNELS = ("rail", "ferry", "highway", "major road", "minor road", "track")
+# GRIP4 class -> channel. 0 roadless, 1 highway, 2 primary, 3 secondary,
+# 4 tertiary, 5 local.
+ROAD_CHANNEL = {0: 5, 1: 2, 2: 3, 3: 3, 4: 4, 5: 4}
 MAX_MINUTES = 65534
 
 
-def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray) -> np.ndarray:
-    """(n_nodes, 3) array of minutes spent on rail, ferry and road.
+def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
+                          cell_class: np.ndarray | None = None) -> np.ndarray:
+    """(n_nodes, len(CHANNELS)) array of minutes spent in each surface mode.
 
     Accumulated down the shortest-path tree in one pass ordered by distance, so
     every node's predecessor is already resolved. The mode of an edge is read
@@ -36,7 +42,11 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray) ->
     first_arr = n_cells + n_air
     first_stn = n_cells + 2 * n_air
 
-    acc = np.zeros((len(minutes), 3), dtype=np.float64)
+    if cell_class is None:
+        from ..sources import roads
+
+        cell_class = roads.cell_class(idx.cells)
+    acc = np.zeros((len(minutes), len(CHANNELS)), dtype=np.float64)
     finite = np.isfinite(minutes)
     order = np.argsort(np.where(finite, minutes, np.inf), kind="stable")
 
@@ -55,7 +65,10 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray) ->
 
         if prev_cell and node_cell:
             neighbours = h3.grid_disk(idx.cells[prev], 1)
-            acc[node][2 if idx.cells[node] in neighbours else 1] += cost
+            if idx.cells[node] in neighbours:
+                acc[node][ROAD_CHANNEL[int(cell_class[node])]] += cost
+            else:
+                acc[node][1] += cost          # only a crossing joins distant cells
         elif prev_stn or node_stn:
             # Boarding, riding and alighting all count as rail.
             acc[node][0] += cost
@@ -66,7 +79,7 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray) ->
 
 
 def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) -> None:
-    """Three uint16 channels per hover cell, in `hover_cells` order.
+    """One uint16 channel per mode per hover cell, in `hover_cells` order.
 
     Taken from the same res-5 child the hover time came from, so the breakdown
     describes the journey the number refers to rather than a different one.
@@ -76,7 +89,7 @@ def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) -
 
     acc = mode_minutes_per_node(idx, minutes, predecessors)
     best = np.full(len(parents), np.inf)
-    picked = np.zeros((len(parents), 3), dtype=np.float64)
+    picked = np.zeros((len(parents), len(CHANNELS)), dtype=np.float64)
     for pos, cell in enumerate(idx.cells):
         p = position[h3.cell_to_parent(cell, config.HOVER_RES)]
         if minutes[pos] < best[p]:

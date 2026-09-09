@@ -1,6 +1,8 @@
 """Pipeline entry point."""
 
 import argparse
+import multiprocessing
+import os
 import re
 
 from transport_maps import config, validate
@@ -38,6 +40,50 @@ def _load_rail():
     print(f"rail:     included -- {routes['route_id'].n_unique():,} routes, "
           f"{len(routes):,} stops")
     return routes
+
+
+def _worker_count(n_origins: int) -> int:
+    """Workers to fork. Bounded by RAM, not by cores.
+
+    Each fork shares the graph copy-on-write, but Python's refcounting touches
+    object headers and gradually un-shares pages, so more workers cost more
+    real memory than the arrays suggest.
+    """
+    cores = os.cpu_count() or 1
+    return max(1, min(cores - 2, 8, n_origins))
+
+
+def _solve_one(origin: dict, idx, csr, speeds) -> str:
+    """Solve and emit one origin. Returns the table row to print."""
+    slug = origin["slug"]
+    source = dijkstra.origin_node(idx, origin["lat"], origin["lon"])
+    minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
+
+    coverage = validate.check_coverage(minutes, idx)
+    if coverage < validate.MIN_COVERAGE:
+        raise SystemExit(
+            f"{slug}: coverage {coverage:.1%} below {validate.MIN_COVERAGE:.0%}"
+        )
+    validate.check_monotonic_ground(idx, minutes, speeds)
+
+    fc = bands.band_feature_collection(idx, minutes[: idx.n_cells])
+    validate.check_bands_disjoint(fc)
+
+    out = config.DIST / "origins"
+    tiles.write_pmtiles(fc, out / f"{slug}.pmtiles")
+    hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
+    routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
+    itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
+    modes.write_modes(idx, minutes, predecessors, out / f"{slug}.modes.bin")
+
+    size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
+    return f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}"
+
+
+def _solve_one_forked(origin: dict) -> str:
+    """Pool entry point. Reads the graph the fork inherited."""
+    idx, csr, speeds = globals()["_CTX"]
+    return _solve_one(origin, idx, csr, speeds)
 
 
 def _load_ferries():
@@ -87,30 +133,21 @@ def _build_all(limit: int | None = None) -> None:
     index.write_hover_cells(idx, config.DIST / "hover_cells.bin")
 
     print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}")
-    for origin in origins:
-        slug = origin["slug"]
-        source = dijkstra.origin_node(idx, origin["lat"], origin["lon"])
-        minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
 
-        coverage = validate.check_coverage(minutes, idx)
-        if coverage < validate.MIN_COVERAGE:
-            raise SystemExit(
-                f"{slug}: coverage {coverage:.1%} below {validate.MIN_COVERAGE:.0%}"
-            )
-        validate.check_monotonic_ground(idx, minutes, speeds)
-
-        fc = bands.band_feature_collection(idx, minutes[: idx.n_cells])
-        validate.check_bands_disjoint(fc)
-
-        out = config.DIST / "origins"
-        tiles.write_pmtiles(fc, out / f"{slug}.pmtiles")
-        hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
-        routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
-        itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
-        modes.write_modes(idx, minutes, predecessors, out / f"{slug}.modes.bin")
-
-        size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
-        print(f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}")
+    # Origins are independent once the graph exists, and the machine has more
+    # than one core. Serially this build took nearly eight hours; the graph is
+    # ~1 GB of scipy arrays, so workers are FORKED to inherit it copy-on-write
+    # rather than spawned, which would rebuild it once per worker.
+    workers = _worker_count(len(origins))
+    if workers <= 1:
+        for origin in origins:
+            print(_solve_one(origin, idx, csr, speeds))
+    else:
+        ctx = multiprocessing.get_context("fork")
+        globals()["_CTX"] = (idx, csr, speeds)
+        with ctx.Pool(workers) as pool:
+            for line in pool.imap(_solve_one_forked, origins):
+                print(line, flush=True)
 
     # Only reached once every origin above has succeeded -- and never for a
     # partial run. A --limit smoke test that rewrote index.json would leave

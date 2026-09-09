@@ -29,10 +29,14 @@ import numpy as np
 ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes"
 # Enough to fit six speeds with a held-out set, and far inside the 10,000/month
 # free allowance. Checked BEFORE each call.
-MAX_REQUESTS = 2500
+MAX_REQUESTS = 4000
 # A journey shorter than this is dominated by the endpoints rather than by the
 # road classes crossed; longer than this and it would realistically be flown.
-MIN_KM, MAX_KM = 25.0, 600.0
+# Widened down from 25 km after the first run: journeys that long stay on
+# trunk roads, so the sample saw 41.8% highway and 47.6% primary but only 3.0%
+# tertiary and NO local road at all, leaving both unfittable. Short hops
+# between small towns are what traverse the lower classes.
+MIN_KM, MAX_KM = 8.0, 600.0
 TIMEOUT_S = 20.0
 
 
