@@ -1,5 +1,8 @@
 import argparse
+import os
 import signal
+import subprocess
+import sys
 from typing import ClassVar
 
 import numpy as np
@@ -222,3 +225,64 @@ def test_a_gate_failure_in_a_forked_worker_aborts_the_run(monkeypatch, tmp_path)
         signal.alarm(0)
         signal.signal(signal.SIGALRM, previous)
     assert index_calls == []
+
+
+def test_a_worker_killed_by_a_signal_aborts_the_run_instead_of_hanging(monkeypatch, tmp_path):
+    """multiprocessing.Pool respawns a worker that dies of a signal and the
+    task's result never arrives, so imap blocks forever: an OOM kill or a
+    native crash at hour six left the build neither finished nor failed.
+    The parent must notice the replaced worker and abort.
+    """
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    monkeypatch.setattr(cli, "_worker_count", lambda n_origins: 2)
+    monkeypatch.setattr(cli, "WORKER_POLL_S", 0.5)
+    written: list = []
+    _stub_pipeline(monkeypatch, written, coverages=[1.0, 1.0])
+
+    def die_on_second(minutes, idx):
+        if int(minutes[0]) == 1:
+            os.kill(os.getpid(), signal.SIGKILL)
+        return 1.0
+    monkeypatch.setattr(cli.validate, "check_coverage", die_on_second)
+
+    def hung(signum, frame):
+        raise TimeoutError("_build_all is hanging: the killed worker was never noticed")
+
+    previous = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(30)
+    try:
+        with pytest.raises(SystemExit, match="died without reporting"):
+            cli._build_all()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def test_a_second_build_refuses_while_the_lock_is_held(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    _stub_pipeline(monkeypatch, [], [1.0, 1.0])       # so a wrongly acquired lock runs fast, not for real
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out: None)
+    (tmp_path / cli.LOCK_NAME).write_text(f"{os.getpid()} 2026-09-10T00:00:00Z\n")
+    with pytest.raises(SystemExit, match="held by a running build"):
+        cli._build_all()
+    assert (tmp_path / cli.LOCK_NAME).exists(), "the refused build removed someone else's lock"
+
+
+def test_a_stale_lock_is_reported_not_reused(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    _stub_pipeline(monkeypatch, [], [1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out: None)
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()                                                    # a pid that has exited
+    (tmp_path / cli.LOCK_NAME).write_text(f"{dead.pid} 2026-09-10T00:00:00Z\n")
+    with pytest.raises(SystemExit, match="STALE"):
+        cli._build_all()
+
+
+def test_the_lock_is_released_after_a_run(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    written: list = []
+    _stub_pipeline(monkeypatch, written, [1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out: None)
+    cli._build_all()
+    assert not (tmp_path / cli.LOCK_NAME).exists()

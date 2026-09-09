@@ -12,6 +12,11 @@ import argparse
 import logging
 import multiprocessing
 import re
+import subprocess
+import threading
+import time
+from datetime import UTC, datetime
+from pathlib import Path
 
 import numpy as np
 
@@ -81,6 +86,83 @@ def _worker_cap(n_cells: int) -> int:
     cell-list pages it touches, and its own arrays scale with the graph; at
     ten million cells eight workers exceed 32 GB."""
     return 5 if n_cells > 3_000_000 else 8
+
+
+# How long the parent waits on the next origin before checking that every
+# worker is still the one it started. A worker killed by a signal (memory
+# pressure, a native segfault, kill -9) never reports; multiprocessing.Pool
+# quietly respawns it and imap blocks forever (CPython gh-66587, the fix
+# closed unmerged in 2026), so the parent must notice on its own.
+WORKER_POLL_S = 60.0
+LOCK_NAME = ".build.lock"
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _acquire_lock(dist: Path) -> Path:
+    """dist/.build.lock, created O_EXCL: one build per dist/ at a time.
+
+    Nothing else prevented a second build-all, the water build or the deploy
+    script's `rsync web/ dist/` from writing into a directory a build was
+    rewriting in place. A stale lock (its pid gone) is reported, not reused:
+    the owner removes it after checking what died.
+    """
+    dist.mkdir(parents=True, exist_ok=True)
+    lock = dist / LOCK_NAME
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        pid, started = None, "?"
+        try:
+            parts = lock.read_text().split()
+            pid, started = int(parts[0]), (parts[1] if len(parts) > 1 else "?")
+        except (OSError, ValueError, IndexError):
+            pass
+        if pid is not None and _pid_alive(pid):
+            raise SystemExit(f"{lock} is held by a running build (pid {pid}, started {started}); "
+                             "wait for it to finish") from None
+        raise SystemExit(f"{lock} is STALE: pid {pid} (started {started}) is gone; check what "
+                         "died, then remove the lock file to build again") from None
+    with os.fdopen(fd, "w") as fh:
+        fh.write(f"{os.getpid()} {datetime.now(UTC):%Y-%m-%dT%H:%M:%SZ}\n")
+    return lock
+
+
+def _other_builds() -> list[int]:
+    """Pids of other build-all processes on this machine, from ps."""
+    try:
+        out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True,
+                             text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return []
+    mine = os.getpid()
+    found = []
+    for line in out.splitlines():
+        pid, _, cmd = line.strip().partition(" ")
+        if "build-all" in cmd and ("transport_maps" in cmd or "transport-maps" in cmd):
+            if pid.isdigit() and int(pid) != mine:
+                found.append(int(pid))
+    return found
+
+
+def _watch_parent(parent_pid: int) -> None:
+    """Pool initializer: a worker whose parent has died exits instead of
+    living on under launchd. Eight idle workers from a killed build sat for
+    ten hours before this existed; macOS has no PR_SET_PDEATHSIG."""
+    def watch():
+        while True:
+            time.sleep(1.0)
+            if os.getppid() != parent_pid:
+                os._exit(1)
+    threading.Thread(target=watch, daemon=True).start()
 
 
 class GateFailure(RuntimeError):
@@ -156,6 +238,20 @@ def _build_all(limit: int | None = None) -> None:
     Aborts on the first failing gate -- a partially written dist/ is worse
     than none. `limit` restricts to the first N origins, for smoke-testing.
     """
+    lock = _acquire_lock(config.DIST)
+    try:
+        others = _other_builds()
+        if others:
+            logging.getLogger(__name__).warning(
+                "%d other build-all process(es) are running on this machine (pids %s); "
+                "if they are orphans of a killed build, reap them -- they hold graph memory",
+                len(others), ", ".join(map(str, others)))
+        _build_all_locked(limit)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _build_all_locked(limit: int | None) -> None:
     rail_routes = _load_rail()
     ferry_links = _load_ferries()
     idx = nodes.build_index(rail_routes=rail_routes)
@@ -210,12 +306,12 @@ def _build_all(limit: int | None = None) -> None:
         else:
             ctx = multiprocessing.get_context("fork")
             globals()["_CTX"] = (idx, csr, speeds, shared)
-            with ctx.Pool(workers) as pool:
+            with ctx.Pool(workers, initializer=_watch_parent, initargs=(os.getpid(),)) as pool:
                 # A GateFailure in a worker comes back out of imap here (see
                 # the class); leaving the block then runs Pool.__exit__, which
                 # is terminate(): the other workers are stopped mid-origin
                 # rather than left writing into dist/ while this exits.
-                for line in pool.imap(_solve_one_forked, origins):
+                for line in _consume(pool, pool.imap(_solve_one_forked, origins)):
                     print(line, flush=True)
     except GateFailure as exc:
         # The same exit from either path: the origin's message, status 1,
@@ -230,6 +326,27 @@ def _build_all(limit: int | None = None) -> None:
         print(f"--limit {limit}: index.json left untouched (partial build)")
         return
     index.write_index(origins, config.DIST / "index.json")
+
+
+def _consume(pool, results):
+    """Yield imap results, aborting when a worker has died without reporting.
+
+    The pool replaces a worker that exits for any reason, so the set of worker
+    pids changing is the signal that a task's result will never arrive.
+    """
+    expected = {p.pid for p in pool._pool}
+    while True:
+        try:
+            yield results.next(timeout=WORKER_POLL_S)
+        except StopIteration:
+            return
+        except multiprocessing.TimeoutError:
+            current = {p.pid for p in pool._pool}
+            if current != expected:
+                gone = sorted(expected - current)
+                raise GateFailure(
+                    f"worker(s) {gone} died without reporting (killed by a signal or the "
+                    "OS -- memory pressure, a native crash); aborting the build") from None
 
 
 def main() -> None:
