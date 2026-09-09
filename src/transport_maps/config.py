@@ -9,7 +9,10 @@ BUILD = DATA / "build"
 DIST = ROOT / "dist"
 
 # H3 resolution for the solver grid: 548,557 land cells at ~253 km^2 each (measured).
-SOLVE_RES = 5
+SOLVE_RES = 6
+# Dense regions are solved on the next resolution down: 1.2 km cells instead
+# of 3.2 km. Which cells count as dense is decided in graph/refine.py.
+FINE_RES = 7
 # H3 resolution for the shipped hover array: 82,983 cells -> 165,966 bytes as uint16.
 HOVER_RES = 4
 

@@ -52,6 +52,15 @@ class NodeIndex:
     # present. Empty stations means a road-and-air graph, which is a valid
     # build -- but callers are told which they got rather than left to guess.
     stations: tuple[str, ...] = ()
+    # The uniform resolution-6 grid the cells were refined from (graph/refine.py),
+    # the position in it of every cell's base self-or-parent, which cells are
+    # the finer children, and which base cells were split. Per-base-cell inputs
+    # (road class, urban mask) are expanded through base_index rather than
+    # recomputed for millions of children.
+    base_cells: list[str] = field(default_factory=list)
+    base_index: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
+    fine: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool))
+    _split: frozenset = frozenset()
     _station_pos: dict[str, int] = field(default_factory=dict)
     _station_cell: dict[str, int] = field(default_factory=dict)
 
@@ -69,6 +78,14 @@ class NodeIndex:
 
     def cell_index(self, cell: str) -> int:
         return self._cell_pos[cell]
+
+    def cell_at(self, lat: float, lon: float) -> str:
+        """The cell of this index at a point: the fine cell where the base
+        cell was split, else the base cell. May not be a land cell."""
+        base = h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
+        if base in self._split:
+            return h3.latlng_to_cell(lat, lon, config.FINE_RES)
+        return base
 
     def try_cell_index(self, cell: str) -> int | None:
         """Position of `cell`, or None when it is not a land cell."""
@@ -96,15 +113,26 @@ class NodeIndex:
 def build_index(rail_routes=None) -> NodeIndex:
     """Build the node index. `rail_routes` is an osm.rail_routes() frame, or
     None to build a road-and-air graph."""
-    cells = landmask.land_cells(config.SOLVE_RES)
+    base_cells = landmask.land_cells(config.SOLVE_RES)
+    from transport_maps.sources import roads, urban
+    from . import refine
+    split = refine.dense_mask(roads.cell_class(base_cells), urban.urban_mask(base_cells))
+    cells, base_index, fine = refine.refine(base_cells, split)
+    logger.info("%d of %d base cells split into %d fine cells; %d cells in all",
+                int(split.sum()), len(base_cells), int(fine.sum()), len(cells))
     cell_pos = {c: i for i, c in enumerate(cells)}
+    split_set = {base_cells[i] for i in np.flatnonzero(split)}
+
+    def cell_at(lat, lon):
+        base = h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
+        return h3.latlng_to_cell(lat, lon, config.FINE_RES) if base in split_set else base
 
     apts = airports.scheduled_airports()
     codes: list[str] = []
     dropped: list[str] = []
     airport_cell: dict[str, int] = {}
     for iata, lat, lon in zip(apts["iata"], apts["lat"], apts["lon"]):
-        cell = h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
+        cell = cell_at(lat, lon)
         pos = cell_pos.get(cell)
         if pos is None:
             # Airport on a cell the land mask missed; skip rather than corrupt
@@ -154,4 +182,6 @@ def build_index(rail_routes=None) -> NodeIndex:
                     len(station_keys), dropped_stations)
 
     return NodeIndex(cells, codes, cell_pos, airport_pos, airport_cell, tuple(dropped),
-                     tuple(station_keys), station_pos, station_cell)
+                     tuple(station_keys), station_pos, station_cell,
+                     base_cells=base_cells, base_index=base_index, fine=fine,
+                     _split=frozenset(split_set))
