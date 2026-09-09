@@ -2,7 +2,9 @@
 
 > An interactive globe showing expected door-to-door travel time from each of 157
 > origin cities to every land area on Earth, combining scheduled air routes,
-> ground speed derived from road density, and realistic transfer penalties.
+> rail from OpenStreetMap route relations, ferry crossings, and a road-speed model
+> calibrated against 2,998 real driving journeys, with check-in, border-control
+> and transfer penalties. Air times are fitted to 107,366 ADS-B flight legs.
 > Named after Francis Galton's "Isochronic Passage Chart for Travellers" (1881),
 > the first published travel-time map.
 

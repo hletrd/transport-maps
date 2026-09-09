@@ -15,6 +15,9 @@
 <meta property="og:description" content="Hours required to reach any point on Earth from 157 cities, by air, rail and road. Recomputed from open data, after Galton, 1881.">
 <meta property="og:url" content="https://worldmap.atik.kr/">
 <meta property="og:image" content="https://worldmap.atik.kr/preview.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A dark globe shaded by travel time from Seoul, brightest nearby and fading to violet at three days">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Isochronic Passage Chart">
 <meta name="twitter:description" content="Hours required to reach any point on Earth from 157 cities.">
@@ -28,19 +31,21 @@
       "@type": "Dataset",
       "@id": "https://worldmap.atik.kr/#dataset",
       "name": "Global travel-time isochrones from 157 cities",
-      "description": "Expected door-to-door travel time from each of 157 origin cities to every land area on Earth, combining scheduled air routes, ground transport speed derived from road density, and transfer penalties. Distributed as PMTiles isochrone bands plus a per-origin binary time array on an H3 resolution-5 grid.",
+      "description": "Expected door-to-door travel time from each of 157 origin cities to every land area on Earth, combining scheduled air routes, rail from OpenStreetMap route relations, ferry crossings, and a road-speed model calibrated against 2,998 real driving journeys, with check-in, border-control and transfer penalties. Distributed as PMTiles isochrone bands (37 continuous bands) plus per-origin binary arrays of time, arrival airport and surface mode on an H3 grid.",
       "url": "https://worldmap.atik.kr/",
       "keywords": ["isochrone", "travel time", "accessibility", "world map", "H3", "PMTiles", "aviation", "geography"],
       "spatialCoverage": { "@type": "Place", "name": "Earth" },
-      "measurementTechnique": "Single-source Dijkstra over a multi-modal graph of 548,557 hexagonal land cells and 3,983 airports",
+      "measurementTechnique": "Single-source Dijkstra over a multi-modal graph of 599,741 hexagonal land cells, 3,983 airports, 57,286 rail stations and 5,672 ferry crossings; air times fitted to 107,366 ADS-B flight legs, road speeds to 2,998 sampled driving journeys",
       "creator": { "@type": "Person", "name": "Jiyong Youn" },
       "isBasedOn": [
         "https://ourairports.com/data/",
+        "https://adsb.lol/",
         "https://www.openstreetmap.org/copyright",
         "https://www.globio.info/download-grip-dataset",
         "https://www.naturalearthdata.com/"
       ],
-      "license": "https://opendatacommons.org/licenses/odbl/1-0/"
+      "license": "https://opendatacommons.org/licenses/odbl/1-0/",
+      "dateModified": "2026-09-09"
     },
     {
       "@type": "WebApplication",
@@ -56,6 +61,13 @@
 }
 </script>
 
+<link rel="preload" href="./index.json" as="fetch" crossorigin>
+<link rel="preload" href="./hover_cells.bin" as="fetch" crossorigin>
+<link rel="preload" href="./vendor/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="./vendor/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="modulepreload" href="./vendor/maplibre-gl.js">
+<link rel="modulepreload" href="./vendor/pmtiles.js">
+<link rel="modulepreload" href="./vendor/h3.js">
 <link href="./vendor/fonts.css" rel="stylesheet">
 <link href="./vendor/maplibre-gl.css" rel="stylesheet">
 <style>
@@ -269,6 +281,14 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   .legs{max-height:20vh}
   .results{max-height:26vh}
   .lbl{font-size:10px}
+  /* grab handle; the sheet folds to just this strip */
+  .sheet-toggle{
+    display:block;width:100%;height:22px;flex:none;cursor:pointer;
+    background:var(--surface);border:0;border-bottom:1px solid var(--line);padding:0;
+  }
+  .sheet-toggle span{display:block;width:38px;height:4px;margin:9px auto;border-radius:2px;background:var(--line-2)}
+  .rail.folded > :not(.sheet-toggle){display:none}
+  .rail.folded{max-height:none}
 }
 /* phones on their side: too short for a bottom sheet; use a narrow right rail */
 @media (max-width:860px) and (orientation:landscape){

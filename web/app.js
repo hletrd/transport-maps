@@ -273,9 +273,15 @@ map.addLayer({ id: "me-dot", type: "circle", source: "me",
 fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
   if (!g) return;
   map.addSource("borders", { type: "geojson", data: g });
+  // Appended on top: this fetch resolves AFTER paintOrigin has added the
+  // bands, so inserting before "hover-line" put the borders under them and
+  // they were invisible. Add last, then lift the hover and position layers
+  // back above.
   map.addLayer({ id: "borders", type: "line", source: "borders",
-    paint: { "line-color": "#ffffff", "line-opacity": 0.28, "line-width": 0.8 } },
-    map.getLayer("hover-line") ? "hover-line" : undefined);
+    paint: { "line-color": "#ffffff", "line-opacity": 0.42,
+             "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.6, 5, 1.1] } });
+  for (const id of ["hover-fill", "hover-line", "me-halo", "me-dot"])
+    if (map.getLayer(id)) map.moveLayer(id);
 }).catch(() => {});
 
 let hoveredCell = null;
@@ -725,7 +731,20 @@ function layoutForSize() {
   const reading = document.querySelector(".reading");
   const rail = document.querySelector(".rail");
   if (SMALL.matches) {
-    if (reading.parentElement !== rail) rail.prepend(reading);
+    if (!document.getElementById("sheet-toggle")) {
+      // A grab handle that folds the whole sheet down to one strip, so the
+      // globe can have the entire phone when you want it to.
+      const t = document.createElement("button");
+      t.id = "sheet-toggle"; t.className = "sheet-toggle"; t.type = "button";
+      t.setAttribute("aria-label", "Collapse or expand the panel");
+      t.innerHTML = "<span></span>";
+      t.addEventListener("click", () => {
+        const folded = rail.classList.toggle("folded");
+        t.setAttribute("aria-expanded", String(!folded));
+      });
+      rail.prepend(t);
+    }
+    if (reading.parentElement !== rail) rail.insertBefore(reading, document.getElementById("sheet-toggle").nextSibling);
     for (const d of rail.querySelectorAll("details")) d.open = false;
   } else if (reading.parentElement === rail) {
     document.body.insertBefore(reading, document.getElementById("tip"));
