@@ -246,3 +246,20 @@ def test_antarctic_cells_are_excluded_from_the_coverage_denominator():
     # Counting Antarctica this would be 0.5; allowlisting it, the two temperate
     # cells are both reachable, so it is 1.0.
     assert validate.check_coverage(minutes, Idx()) == 1.0
+
+
+def test_an_all_excluded_universe_has_zero_coverage_not_nan():
+    """Every cell Antarctic, so nothing is reachable in principle. The mean of
+    the empty considered set is NaN, and `NaN < MIN_COVERAGE` is False -- which
+    would wave the origin through the gate in cli._solve_one. Zero fails it.
+    """
+    class Idx:
+        cells: ClassVar[list[str]] = [
+            h3.latlng_to_cell(-75.0, 0.0, 5),
+            h3.latlng_to_cell(-76.0, 0.0, 5),
+        ]
+        n_cells = 2
+
+    coverage = validate.check_coverage(np.array([10.0, 20.0]), Idx())
+    assert coverage == 0.0
+    assert coverage < validate.MIN_COVERAGE, "the gate must fail an unmeasurable universe"

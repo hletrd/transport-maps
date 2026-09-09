@@ -27,7 +27,7 @@ orchestrator are running; do not start/stop them, do not rewrite `dist/` or
       dataset; the cache key includes the URL. Test: with an empty cache dir
       and a stubbed download, `_places()` reads the zip it fetched. Mutation:
       revert to the `places_mod._download()` call → `TypeError`.
-- [ ] **A8** `validate.check_coverage` treats an empty considered set as
+- [x] **A8** `validate.check_coverage` treats an empty considered set as
       coverage 0.0 (fails the gate) rather than NaN (`validate.py:33-39`).
       Test: all-excluded universe → gate raises. Mutation: drop the guard →
       NaN passes.

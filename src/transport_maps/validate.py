@@ -36,6 +36,11 @@ def check_coverage(minutes: np.ndarray, idx) -> float:
         count=idx.n_cells,
     )
     considered = minutes[: idx.n_cells][reachable_in_principle]
+    # A universe with no reachable-in-principle cell at all cannot be measured.
+    # The mean of nothing is NaN, and `NaN < MIN_COVERAGE` is False, so the
+    # gate in cli._solve_one would wave such an origin through; zero fails it.
+    if considered.size == 0:
+        return 0.0
     return float(np.isfinite(considered).mean())
 
 
