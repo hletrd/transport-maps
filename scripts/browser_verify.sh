@@ -34,6 +34,18 @@ sleep 4
 L=$(agent-browser eval 'document.getElementById("legs").innerText.replace(/\n/g," | ")' 2>&1 | tail -1 | tr -d '\\')
 echo "  route: ${L:0:220}"
 echo "$L" | grep -qiE "by (highway|major road|minor road|rail|ferry|track)" || { echo "  !! no surface mode itemised"; fail=1; }
+# click to depart: an origin-city label is a button that switches the tiles
+agent-browser eval 'window.__map.jumpTo({center:[135,35],zoom:4.6});1' >/dev/null 2>&1; sleep 6
+C=$(agent-browser eval '(()=>{const b=document.querySelector(".lbl.origin");if(!b)return "no origin label";const n=b.textContent;b.click();return n})()' 2>&1 | tail -1 | tr -d '\\"')
+sleep 5
+SRC=$(agent-browser eval 'window.__map.getSource("bands").url' 2>&1 | tail -1 | tr -d '\\"')
+echo "  clicked label: $C -> $SRC"
+echo "$SRC" | grep -q "origins/seoul.pmtiles" && { echo "  !! clicking an origin label did not change the departure"; fail=1; }
+# low zoom: the coarse level must paint, and the coast must be there
+Z=$(agent-browser eval '(()=>{const m=window.__map;m.jumpTo({center:[127,36],zoom:3.4});return 1})()' >/dev/null 2>&1; sleep 7; agent-browser eval '(()=>{const m=window.__map;return JSON.stringify({z:m.getZoom(),bands:m.queryRenderedFeatures({layers:["bands"]}).length,water:m.queryRenderedFeatures({layers:["water"]}).length})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  zoom 3: $Z"
+echo "$Z" | grep -qE '"bands":[1-9]' && echo "$Z" | grep -qE '"water":[1-9]' || { echo "  !! nothing painted at zoom 3"; fail=1; }
+agent-browser screenshot /tmp/verify_zoom3.png >/dev/null 2>&1
 echo "=== console ==="; E=$(agent-browser console 2>/dev/null | grep -ciE "error|exception"); echo "  errors: $E"; [ "$E" -eq 0 ] || fail=1
 echo "=== viewports ==="
 CHECK='(()=>{const b=document.body,d=document.documentElement;const q=s=>document.querySelector(s).getBoundingClientRect();
