@@ -77,3 +77,53 @@ def universe(cells: list[str], rings: int = RINGS) -> tuple[list[str], np.ndarra
 
         _atomic_write(cached, _save)
     return allc, nb, ring_arr
+
+
+NATIVE_VERSION = "native-edges-v1"
+
+
+def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Raw adjacency of the index's own (mixed-resolution) cells:
+    (rows, cols, complete), directed both ways, no border cuts.
+
+    Fine cells touch the unsplit base cell beyond their ring the same way
+    graph/ground.py joins them. `complete[i]` says every ring neighbour of
+    cell i was resolved -- the cell is not on the land edge -- which is what
+    the coverage gate samples. Cached on the exact cell list.
+    """
+    cells = list(idx.cells)
+    key = hashlib.sha256(f"{NATIVE_VERSION}|{''.join(cells)}".encode()).hexdigest()[:24]
+    cached = config.BUILD / f"native-edges-{key}.npz"
+    if len(cells) >= MIN_CELLS_TO_CACHE and cached.exists():
+        z = np.load(cached, allow_pickle=False)
+        return z["rows"], z["cols"], z["complete"]
+
+    pos = {c: i for i, c in enumerate(cells)}
+    fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
+    fine = fine_attr if len(fine_attr) == len(cells) else np.zeros(len(cells), dtype=bool)
+    rows: list[int] = []
+    cols: list[int] = []
+    complete = np.ones(len(cells), dtype=bool)
+    cross: set[tuple[int, int]] = set()
+    for u, c in enumerate(cells):
+        for n in h3.grid_ring(c, 1):
+            v = pos.get(n)
+            if v is not None:
+                rows.append(u); cols.append(v)
+                continue
+            if fine[u]:
+                v = pos.get(h3.cell_to_parent(n, config.SOLVE_RES))
+                if v is not None:
+                    if (u, v) not in cross:
+                        cross.add((u, v))
+                        rows.append(u); cols.append(v)
+                        rows.append(v); cols.append(u)
+                    continue
+            complete[u] = False
+    out = (np.asarray(rows, dtype=np.int32), np.asarray(cols, dtype=np.int32), complete)
+    if len(cells) >= MIN_CELLS_TO_CACHE:
+        def _save(tmp):
+            with open(tmp, "wb") as fh:
+                np.savez(fh, rows=out[0], cols=out[1], complete=out[2])
+        _atomic_write(cached, _save)
+    return out

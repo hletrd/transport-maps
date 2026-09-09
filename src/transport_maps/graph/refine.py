@@ -56,3 +56,8 @@ def refine(base_cells: list[str], split: np.ndarray) -> tuple[list[str], np.ndar
 def base_parent(cell: str) -> str:
     """The base-resolution cell containing `cell` (itself when already base)."""
     return cell if h3.get_resolution(cell) == config.SOLVE_RES else h3.cell_to_parent(cell, config.SOLVE_RES)
+
+
+def expand(base_values: np.ndarray, idx) -> np.ndarray:
+    """Per-base-cell values carried down to every cell of the index."""
+    return np.asarray(base_values)[idx.base_index]

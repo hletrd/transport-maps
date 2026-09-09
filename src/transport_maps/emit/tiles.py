@@ -14,7 +14,9 @@ from pathlib import Path
 # z7 measured ~38% larger than z6 and keeps band edges crisp a zoom level
 # further in; MapLibre overzooms past the source maximum, so the map still
 # zooms to 11 without storing tiles for it.
-MIN_ZOOM, MAX_ZOOM = 0, 7
+# Fine cells are 2.1 km across; at zoom 8 the simplification tolerance is
+# ~0.3 km, which keeps them hexagons under overzoom.
+MIN_ZOOM, MAX_ZOOM = 0, 8
 LAYER = "bands"
 
 

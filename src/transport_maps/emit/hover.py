@@ -47,7 +47,11 @@ def _representative_children(idx, parents: list[str], cell_minutes: np.ndarray) 
             best_pos[p] = pos
     for p, parent in enumerate(parents):
         centre = h3.cell_to_center_child(parent, config.SOLVE_RES)
-        picked[p] = cell_pos.get(centre, best_pos[p])
+        pos = cell_pos.get(centre)
+        if pos is None:
+            # The base cell at the centre was split: take its own centre child.
+            pos = cell_pos.get(h3.cell_to_center_child(parent, config.FINE_RES))
+        picked[p] = best_pos[p] if pos is None else pos
     return picked
 
 

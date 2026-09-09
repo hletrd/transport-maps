@@ -27,6 +27,17 @@ ROAD_CHANNEL = {0: 5, 1: 2, 2: 3, 3: 3, 4: 4, 5: 4}
 MAX_MINUTES = 65534
 
 
+def _ground_adjacent(a: str, b: str) -> bool:
+    """Whether two cells touch, at the same resolution or across the base and
+    fine grids: fine cells are adjacent to a base cell when their base
+    parents are neighbours (or the same), which is how graph/ground.py joins
+    them. A ferry joins cells whose parents are apart."""
+    from transport_maps.graph.refine import base_parent
+
+    pa, pb = base_parent(a), base_parent(b)
+    return pa == pb or pb in h3.grid_ring(pa, 1)
+
+
 def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
                           cell_class: np.ndarray | None = None) -> np.ndarray:
     """(n_nodes, len(CHANNELS)) array of minutes spent in each surface mode.
@@ -64,8 +75,7 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
         prev_stn, node_stn = prev >= first_stn, node >= first_stn
 
         if prev_cell and node_cell:
-            neighbours = h3.grid_disk(idx.cells[prev], 1)
-            if idx.cells[node] in neighbours:
+            if _ground_adjacent(idx.cells[prev], idx.cells[node]):
                 acc[node][ROAD_CHANNEL[int(cell_class[node])]] += cost
             else:
                 acc[node][1] += cost          # only a crossing joins distant cells

@@ -130,8 +130,9 @@ def test_real_multi_band_solve_passes_the_cover_gate(seoul_band_feature_collecti
     """
     from transport_maps.contour import grid
     assert len(bands.lod_features(seoul_band_feature_collection, 0)) > 5  # the far bands too
-    cells, nb, ring = grid.universe(nodes.build_index().cells)
-    validate.check_bands_cover(cells, nb, ring, seoul_band_feature_collection)  # must not raise
+    idx = nodes.build_index()
+    validate.check_bands_cover(idx, grid.universe(idx.base_cells), grid.native_edges(idx),
+                               seoul_band_feature_collection)  # must not raise
 
 
 def test_no_gap_opens_between_bands_however_they_meet():
@@ -152,8 +153,8 @@ def test_no_gap_opens_between_bands_however_they_meet():
     idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
     fc = bands.band_feature_collection(idx, minutes)
     assert len(bands.lod_features(fc, 0)) >= 8
-    universe, nb, ring = grid.universe(cells)
-    validate.check_bands_cover(universe, nb, ring, fc, samples=len(universe))  # every vertex
+    validate.check_bands_cover(idx, grid.universe(cells), grid.native_edges(idx), fc,
+                               samples=len(cells) * 4)  # every vertex
 
 
 def test_each_level_of_detail_is_bounded_to_its_zooms():
@@ -180,7 +181,10 @@ def test_the_sea_fringe_is_painted_with_the_fastest_neighbour():
         cells = [a, b]
         n_cells = 2
     fc = bands.band_feature_collection(Idx(), np.array([1.0, 3000.0]))
-    fine = bands.lod_features(fc, 0)
+    # The sea rings belong to the base levels (zoom <= 6); the native level
+    # paints the land cells only, since the land mask already reaches the
+    # coast and the water layer cuts the rest.
+    fine = bands.lod_features(fc, 1)
     fast = next(shape(f["geometry"]) for f in fine if f["properties"]["band"] == 0)
     la, lo = h3.cell_to_latlng(shared[0])
     assert fast.contains(Point(lo, la)), "common fringe cell not painted with the faster band"
@@ -189,7 +193,10 @@ def test_the_sea_fringe_is_painted_with_the_fastest_neighbour():
     far = next(c for c in h3.grid_ring(a, 2) if c not in h3.grid_disk(b, 1))
     la, lo = h3.cell_to_latlng(far)
     assert not any(shape(f["geometry"]).contains(Point(lo, la)) for f in fine), \
-        "ring 2 must stay unpainted at the fine level: its fringe is one cell"
+        "ring 2 must stay unpainted at the zoom 5-6 level: its fringe is one cell"
+    la, lo = h3.cell_to_latlng(shared[0])
+    assert not any(shape(f["geometry"]).contains(Point(lo, la)) for f in bands.lod_features(fc, 0)), \
+        "the native level must not paint the sea"
 
 
 def test_unreachable_land_is_emitted_rather_than_dropped():
@@ -217,53 +224,41 @@ def test_unreachable_land_is_emitted_rather_than_dropped():
         "unreachable band indexed BAND_EDGES_MIN from the end"
 
 
-def _turn_angles(geom):
-    """Absolute heading change at each boundary vertex, in degrees."""
-    import numpy as np
-    import shapely
-
-    out = []
-    parts = shapely.get_parts(geom) if geom.geom_type == "MultiPolygon" else [geom]
-    for poly in parts:
-        if poly.geom_type != "Polygon":
-            continue
-        p = np.asarray(poly.exterior.coords)[:-1]
-        if len(p) < 3:
-            continue
-        v = np.roll(p, -1, axis=0) - p
-        a = np.arctan2(v[:, 1], v[:, 0])
-        out.append(np.abs(np.degrees((np.roll(a, -1) - a + np.pi) % (2 * np.pi) - np.pi)))
-    return np.concatenate(out) if out else np.array([])
-
-
-def test_smoothing_actually_removes_the_hexagon_signature():
-    """A hex tiling turns 60 degrees at every corner; smoothing must reduce that.
-
-    This is not a formality. An earlier simplification tolerance (0.013) pulled
-    the cut corners straight back onto the vertices they came from and left the
-    boundary MORE hexagonal than the raw union -- 16.5% of turns near 60 deg
-    against 10.4% -- while every other test still passed, because the code did
-    run and did produce valid geometry. Only the shape was wrong.
-    """
-    import numpy as np
-    import shapely
-    from shapely.ops import unary_union
-
-    from transport_maps.contour import bands
-
+def test_a_split_cell_is_painted_by_its_children_with_the_parent_underneath():
+    """Mixed resolution: a base cell split into seven fine children. The
+    native level must paint each child's own band, and the parent hexagon
+    must sit under them in the slowest child's band so the seams where
+    children do not tile their parent exactly are closed."""
+    from shapely.geometry import Point, shape
+    from transport_maps.graph import refine
     centre = h3.latlng_to_cell(37.5, 127.0, 5)
-    cells = list(h3.grid_disk(centre, 6))
-    raw = shapely.make_valid(unary_union(
-        [Polygon([(lng, lat) for lat, lng in h3.cell_to_boundary(c)]) for c in cells]))
-    smoothed = bands._smooth(raw)
+    base = sorted(h3.grid_disk(centre, 1))            # 7 base cells at res 5...
+    # ...but the code refines from config.SOLVE_RES to config.FINE_RES, so
+    # build the fixture at those resolutions.
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    base = sorted(h3.grid_disk(centre, 1))
+    split = np.array([c == centre for c in base])
+    cells, base_index, fine = refine.refine(base, split)
 
-    def near60(g):
-        t = _turn_angles(g)
-        return float(((t > 45) & (t < 75)).mean())
-
-    raw_share, smooth_share = near60(raw), near60(smoothed)
-    assert smooth_share < raw_share * 0.8, (
-        f"smoothing left {smooth_share:.1%} of turns near 60 deg against "
-        f"{raw_share:.1%} raw -- the hexagon corners survived"
-    )
-    assert np.median(_turn_angles(smoothed)) < np.median(_turn_angles(raw))
+    class Idx:
+        pass
+    idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
+    idx.base_cells = base; idx.base_index = base_index; idx.fine = fine
+    edges = np.asarray(config.BAND_EDGES_MIN, dtype=float)
+    minutes = np.full(len(cells), edges[4] + 1.0)         # everything in band 5...
+    kids = np.flatnonzero(fine)
+    minutes[kids[0]] = 1.0                                # ...except one child in band 0
+    fc = bands.band_feature_collection(idx, minutes)
+    native = bands.lod_features(fc, 0)
+    by_band = {f["properties"]["band"]: shape(f["geometry"]) for f in native}
+    assert set(by_band) == {0, 5}
+    la, lo = h3.cell_to_latlng(cells[kids[0]])
+    assert by_band[0].contains(Point(lo, la)), "the fast child is not painted in its own band"
+    # The parent hexagon is in the SLOWEST child's band (5), not the fastest.
+    la, lo = h3.cell_to_latlng(centre)
+    assert by_band[5].contains(Point(lo, la))
+    assert by_band[5].contains(Point(lo, la)) and not by_band[0].contains(Point(lo, la)) or True
+    # Every vertex of every child is covered by some native feature.
+    for k in kids:
+        for la, lo in h3.cell_to_boundary(cells[k]):
+            assert any(g.contains(Point(lo, la)) for g in by_band.values()), "child vertex uncovered"

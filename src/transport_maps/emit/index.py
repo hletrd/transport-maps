@@ -57,6 +57,18 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
         "usedFor": "coastlines (water polygons via osmdata.openstreetmap.de); rail route relations; upstream source of the GRIP4 road network",
     },
     {
+        "name": "GeoNames",
+        "licence": "CC BY 4.0",
+        "url": "https://www.geonames.org/",
+        "usedFor": "departure cities and the place names under the cursor",
+    },
+    {
+        "name": "HydroLAKES",
+        "licence": "CC BY 4.0",
+        "url": "https://www.hydrosheds.org/products/hydrolakes",
+        "usedFor": "lake outlines drawn on the map (Messager et al. 2016)",
+    },
+    {
         "name": "adsb.lol",
         "licence": "ODbL 1.0",
         "url": "https://adsb.lol/",
@@ -87,12 +99,33 @@ def write_hover_cells(idx, out: Path) -> None:
     out.write_bytes(ids.tobytes())
 
 
+def mode_detail() -> dict[str, str]:
+    """One sentence per surface mode, with the calibrated speeds it uses."""
+    from transport_maps.graph import ground
+    from transport_maps.sources import urban
+
+    kmh = ground.SPEED_BY_ROAD_CLASS_KMH
+    halved = f"halved inside cities (within {urban.URBAN_RADIUS_KM:.0f} km of a city over {urban.URBAN_POP_MIN:,})"
+    return {
+        "rail": "Scheduled trains from OpenStreetMap route relations, stop to stop; "
+                "high-speed lines at 200 km/h, conventional at 75 km/h along the track, plus boarding time.",
+        "ferry": "Scheduled ferry routes from OpenStreetMap, at 35 km/h plus 30 min at the terminals.",
+        "highway": f"Motorways and expressways (GRIP4 class 1), fitted at {kmh[1]:.0f} km/h free-flow, {halved}.",
+        "major road": f"Primary and secondary roads (GRIP4 classes 2-3), fitted at {kmh[2]:.0f}-{kmh[3]:.0f} km/h, {halved}.",
+        "minor road": f"Tertiary and local roads (GRIP4 classes 4-5), fitted at {kmh[4]:.0f}-{kmh[5]:.0f} km/h, {halved}.",
+        "track": f"No mapped road: {kmh[0]:.0f} km/h, walking pace.",
+    }
+
+
 def write_index(origins: list[dict], out: Path) -> None:
     payload = {
         "bandEdgesMin": list(config.BAND_EDGES_MIN),
         "unreachable": config.UNREACHABLE,
         "hoverRes": config.HOVER_RES,
         "solveRes": config.SOLVE_RES,
+        "fineRes": config.FINE_RES,
+        # How each surface mode was modelled, for the route's hover notes.
+        "modeDetail": mode_detail(),
         "hoverCellsUrl": "hover_cells.bin",
         "attribution": [dict(entry) for entry in ATTRIBUTION],
         "origins": [

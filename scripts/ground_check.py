@@ -42,8 +42,8 @@ def main() -> None:
     print(f"  {'route':18}{'model':>8}{'real':>7}{'ratio':>8}")
     ratios = []
     for label, la1, lo1, la2, lo2, real in CASES:
-        s = idx.try_cell_index(h3.latlng_to_cell(la1, lo1, config.SOLVE_RES))
-        t = idx.try_cell_index(h3.latlng_to_cell(la2, lo2, config.SOLVE_RES))
+        s = idx.try_cell_index(idx.cell_at(la1, lo1))
+        t = idx.try_cell_index(idx.cell_at(la2, lo2))
         if s is None or t is None:
             print(f"  {label:18}   (no land cell)")
             continue

@@ -35,8 +35,13 @@ def test_low_coverage_trips_the_publish_threshold():
 def _hex_universe():
     """A 19-cell disk with its sea rings, the shape the gate expects."""
     from transport_maps.contour import grid
-    centre = h3.latlng_to_cell(37.5, 127.0, 5)
-    return grid.universe(sorted(h3.grid_disk(centre, 2)))
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    cells = sorted(h3.grid_disk(centre, 2))
+
+    class Idx:
+        pass
+    idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
+    return idx, grid.universe(cells), grid.native_edges(idx)
 
 
 def _features(geom, band=0):
@@ -61,26 +66,27 @@ def _whole(cells):
 def test_a_hole_between_bands_is_rejected():
     """The gate must see a gap at an interior hex vertex, not just at centroids."""
     from shapely.geometry import Point
-    cells, nb, ring = _hex_universe()
+    idx, grid, native = _hex_universe()
+    cells6 = grid[0]
     # Punch out a disc around one vertex of the CENTRE land cell.
-    la, lo = h3.cell_to_boundary(cells[0])[0]
-    holed = _whole(cells).difference(Point(lo, la).buffer(0.002))
+    la, lo = h3.cell_to_boundary(idx.cells[len(idx.cells) // 2])[0]
+    holed = _whole(cells6).difference(Point(lo, la).buffer(0.0005))
     with pytest.raises(ValueError, match="between bands"):
-        validate.check_bands_cover(cells, nb, ring, {"features": _features(holed)}, samples=len(cells))
+        validate.check_bands_cover(idx, grid, native, {"features": _features(holed)}, samples=len(cells6))
 
 
 def test_a_level_with_no_features_is_rejected():
     """A missing level would leave those zooms blank without any error."""
-    cells, nb, ring = _hex_universe()
-    only_fine = _features(_whole(cells).buffer(1e-6))[:1]
+    idx, grid, native = _hex_universe()
+    only_native = _features(_whole(grid[0]).buffer(1e-6))[:1]
     with pytest.raises(ValueError, match="level 1"):
-        validate.check_bands_cover(cells, nb, ring, {"features": only_fine}, samples=len(cells))
+        validate.check_bands_cover(idx, grid, native, {"features": only_native}, samples=len(grid[0]))
 
 
 def test_full_coverage_is_accepted():
-    cells, nb, ring = _hex_universe()
-    validate.check_bands_cover(cells, nb, ring, {"features": _features(_whole(cells).buffer(1e-6))},
-                               samples=len(cells))  # must not raise
+    idx, grid, native = _hex_universe()
+    validate.check_bands_cover(idx, grid, native, {"features": _features(_whole(grid[0]).buffer(1e-6))},
+                               samples=len(grid[0]))  # must not raise
 
 
 class _TwoCellIdx:

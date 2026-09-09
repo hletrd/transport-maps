@@ -59,6 +59,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
     monkeypatch.setattr(cli.countries, "cell_country", lambda cells: np.array(["KOR"]))
     monkeypatch.setattr(cli.countries, "iso2", lambda a3: "KR")
     monkeypatch.setattr(cli.roads, "cell_class", lambda cells: np.array([1]))
+    monkeypatch.setattr(cli.ground, "cell_class", lambda idx: np.array([1]))
     monkeypatch.setattr(cli.dijkstra, "origin_node", lambda idx, lat, lon: 0)
     monkeypatch.setattr(
         cli.dijkstra, "solve_from",
@@ -71,7 +72,9 @@ def _stub_pipeline(monkeypatch, written, coverages):
         cli.validate, "check_monotonic_ground", lambda idx, minutes, speeds, **kw: None
     )
     monkeypatch.setattr(cli.bands, "band_feature_collection",
-                        lambda idx, minutes, grid=None: {"features": []})
+                        lambda idx, minutes, grid=None, native=None: {"features": []})
+    monkeypatch.setattr(cli.grid, "native_edges",
+                        lambda idx: (np.zeros(0, np.int32), np.zeros(0, np.int32), np.ones(1, bool)))
     monkeypatch.setattr(cli.validate, "check_bands_cover", lambda *a, **k: None)
     # The render grid is preloaded in the parent like the arrays above; the
     # fake index's cell is not a real H3 id, so it needs a stand-in too.

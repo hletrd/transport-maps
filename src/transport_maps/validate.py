@@ -45,34 +45,38 @@ def check_coverage(minutes: np.ndarray, idx) -> float:
 COVER_SAMPLE_CELLS = 20_000
 
 
-def check_bands_cover(cells: list[str], nb: np.ndarray, ring: np.ndarray,
-                      feature_collection: dict, samples: int = COVER_SAMPLE_CELLS,
-                      seed: int = 0) -> None:
+def check_bands_cover(idx, grid, native, feature_collection: dict,
+                      samples: int = COVER_SAMPLE_CELLS, seed: int = 0) -> None:
     """Every interior hex vertex must lie inside at least one emitted band,
     at every level of detail.
 
-    Bands are smoothed one at a time and smoothing moves boundaries, so two
-    bands that merely share an edge can open a hole between them. The
-    construction in `contour.bands` overlaps neighbours by whole cells so
-    that nothing can; this checks the promise on the emitted geometry, at the
-    hex VERTICES, which is where the holes used to appear. Interior cells
-    only: each level's outer edge is legitimately rounded off into the sea.
+    Bands overlap by whole cells (contour.bands) so that no gap can open
+    between neighbours; this checks that promise on the emitted geometry, at
+    the hex VERTICES, where holes used to appear. Interior cells only: each
+    level's outer edge is legitimately open sea.
     """
     import h3
     import shapely
 
     from transport_maps.contour import bands
 
+    cells6, nb6, ring6 = grid
+    _rows, _cols, complete = native
     for i, lod in enumerate(bands.LODS):
-        # Strictly inside this level's universe. The coarse level is built
-        # from parents, whose edges wander up to a child's width from the
-        # children's, and smoothing then cuts its corners by a few km more --
-        # measured: 6 of 120,165 vertices in ring 2 of a real solve -- so it
-        # is judged two rings further in, where the margin is over 16 km.
-        depth = lod["rings"] - (1 if lod["res"] == 5 else 3)
-        inside = (ring <= depth) & (nb >= 0).all(axis=1) \
-                 & (ring[np.maximum(nb, 0)] <= lod["rings"]).all(axis=1)
-        interior = np.flatnonzero(inside)
+        if lod["kind"] == "native":
+            cells = list(idx.cells)
+            interior = np.flatnonzero(complete)
+        else:
+            # Strictly inside this level's base universe. The coarse level is
+            # built from parents, whose edges wander from the children's, so
+            # it is judged further in.
+            depth = lod["rings"] - (1 if lod["kind"] == "base" else 3)
+            if lod["kind"] == "coarse":
+                depth = 1
+            inside = (ring6 <= depth) & (nb6 >= 0).all(axis=1) \
+                     & (ring6[np.maximum(nb6, 0)] <= lod.get("rings", 0)).all(axis=1)
+            cells = cells6
+            interior = np.flatnonzero(inside)
         if len(interior) == 0:
             continue
         rng = np.random.default_rng(seed)
@@ -88,7 +92,7 @@ def check_bands_cover(cells: list[str], nb: np.ndarray, ring: np.ndarray,
             n = int((~covered).sum())
             raise ValueError(
                 f"level {i} (zoom {lod['minzoom']}+): {n:,} of {len(pts):,} interior hex "
-                "vertices fall between bands; smoothing opened gaps")
+                "vertices fall between bands")
 
 
 def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,

@@ -5,7 +5,8 @@ import logging
 import h3
 import numpy as np
 
-from transport_maps.graph import transfers
+from transport_maps import config
+from transport_maps.graph import refine, transfers
 from transport_maps.graph.nodes import NodeIndex
 from transport_maps.sources import countries, roads, urban
 
@@ -33,12 +34,28 @@ def _land_border_min() -> float:
         return float(tomllib.load(fh)["land_border"]["crossing_min"])
 
 
+def cell_class(idx: NodeIndex) -> np.ndarray:
+    """GRIP4 road class per cell. Computed on the base grid and carried down to
+    the fine children: the rasters are 5 arc-minutes, coarser than either grid,
+    so a child's class is its parent's, and the per-cell footprint pass over
+    ten million cells would buy nothing."""
+    if len(getattr(idx, "base_cells", [])):
+        return refine.expand(roads.cell_class(idx.base_cells), idx)
+    return roads.cell_class(idx.cells)
+
+
+def urban_mask(idx: NodeIndex) -> np.ndarray:
+    if len(getattr(idx, "base_cells", [])):
+        return refine.expand(urban.urban_mask(idx.base_cells), idx)
+    return urban.urban_mask(idx.cells)
+
+
 def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
     """Effective ground speed per cell, indexed by cell position."""
     # Footprint aggregation, NOT centroid sampling: an H3 res-5 cell spans 3-6
     # GRIP4 cells, and sampling the centre alone reports 51.5% of land roadless
     # against a true 29.3%, depressing mean ground speed from 36.8 to 23.9 km/h.
-    classes = roads.cell_class(idx.cells)
+    classes = cell_class(idx)
     speeds = SPEED_BY_ROAD_CLASS_KMH[classes]
     # GRIP4 gives a cell the grade of its BEST road, so a dense city cell with a
     # motorway through it is charged at motorway speed. Measured over 112 real
@@ -49,7 +66,7 @@ def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
     # Only where there are roads to be congested. A roadless cell is already at
     # walking pace, and traffic does not make walking slower -- halving it to
     # 2.5 km/h would put the slowest terrain on Earth below its own floor.
-    congested = urban.urban_mask(idx.cells) & (classes > 0)
+    congested = urban_mask(idx) & (classes > 0)
     speeds = np.where(congested, speeds / urban.URBAN_CONGESTION_FACTOR, speeds)
     return speeds
 
@@ -79,23 +96,38 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     extra: list[float] = []
     blocked = 0
     crossings = 0
+    fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
+    fine = fine_attr if len(fine_attr) == len(idx.cells) else np.zeros(len(idx.cells), dtype=bool)
+
+    def add(u: int, v: int) -> None:
+        nonlocal blocked, crossings
+        if countries.is_closed(country[u], country[v]):
+            blocked += 1
+            return
+        rows.append(u)
+        cols.append(v)
+        if zone[u] and zone[v] and zone[u] != zone[v]:
+            extra.append(crossing_min)
+            crossings += 1
+        else:
+            extra.append(0.0)
+
+    # A fine cell's ring neighbour may lie in an unsplit base cell; then the
+    # fine cell and that base cell are adjacent, in both directions. Several
+    # of the ring neighbours can share one base parent, so the pair is added
+    # once -- coo_matrix SUMS duplicates, which would double the weight.
+    cross: set[tuple[int, int]] = set()
     for u, cell in enumerate(idx.cells):
-        for neighbour in h3.grid_disk(cell, 1):
-            if neighbour == cell:  # grid_disk includes the centre cell
-                continue
+        for neighbour in h3.grid_ring(cell, 1):
             v = idx.try_cell_index(neighbour)
-            if v is None:
-                continue
-            if countries.is_closed(country[u], country[v]):
-                blocked += 1
-                continue
-            rows.append(u)
-            cols.append(v)
-            if zone[u] and zone[v] and zone[u] != zone[v]:
-                extra.append(crossing_min)
-                crossings += 1
-            else:
-                extra.append(0.0)
+            if v is not None:
+                add(u, v)
+            elif fine[u]:
+                v = idx.try_cell_index(h3.cell_to_parent(neighbour, config.SOLVE_RES))
+                if v is not None and (u, v) not in cross:
+                    cross.add((u, v))
+                    add(u, v)
+                    add(v, u)
     if blocked:
         logger.info("%d ground edge(s) cut at closed land borders", blocked)
     if crossings:

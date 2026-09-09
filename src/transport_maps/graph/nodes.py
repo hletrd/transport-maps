@@ -170,7 +170,7 @@ def build_index(rail_routes=None) -> NodeIndex:
         base = len(cells) + 2 * len(codes)
         dropped_stations = 0
         for row in rail_mod.stations(rail_routes).iter_rows(named=True):
-            pos = cell_pos.get(row["cell"])
+            pos = cell_pos.get(cell_at(row["lat"], row["lon"]))
             if pos is None:
                 # Station on a cell the land mask lacks -- coastal or islet.
                 dropped_stations += 1

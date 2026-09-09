@@ -292,10 +292,8 @@ def _ferry_edges(idx: NodeIndex, links, cal) -> tuple[np.ndarray, np.ndarray, np
             np.array([[row["to_lat"], row["to_lon"]]]))[0])
         if not (osm.MIN_FERRY_KM <= km <= osm.MAX_FERRY_KM):
             continue
-        u = idx.try_cell_index(h3.latlng_to_cell(row["from_lat"], row["from_lon"],
-                                                 config.SOLVE_RES))
-        v = idx.try_cell_index(h3.latlng_to_cell(row["to_lat"], row["to_lon"],
-                                                 config.SOLVE_RES))
+        u = idx.try_cell_index(idx.cell_at(row["from_lat"], row["from_lon"]))
+        v = idx.try_cell_index(idx.cell_at(row["to_lat"], row["to_lon"]))
         # Same cell means the crossing is shorter than the grid can see; a
         # self-loop would be a zero-cost edge Dijkstra could sit on.
         if u is None or v is None or u == v:

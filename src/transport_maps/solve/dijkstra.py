@@ -22,7 +22,7 @@ def solve_from(csr: sp.csr_matrix, source: int, with_predecessors: bool = False)
 
 def origin_node(idx: NodeIndex, lat: float, lon: float) -> int:
     """Graph node for an origin city centre."""
-    cell = h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
+    cell = idx.cell_at(lat, lon)
     try:
         return idx.cell_index(cell)
     except KeyError as exc:

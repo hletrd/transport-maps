@@ -67,6 +67,13 @@ def _worker_count(n_origins: int) -> int:
     return max(1, min(cores - 2, 8, n_origins))
 
 
+def _worker_cap(n_cells: int) -> int:
+    """Fewer forks for a big grid. Each worker's refcount traffic copies the
+    cell-list pages it touches, and its own arrays scale with the graph; at
+    ten million cells eight workers exceed 32 GB."""
+    return 5 if n_cells > 3_000_000 else 8
+
+
 def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     """Solve and emit one origin. Returns the table row to print."""
     slug = origin["slug"]
@@ -81,8 +88,9 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     validate.check_monotonic_ground(idx, minutes, speeds,
                                     country=shared["country"], zone=shared["zone"])
 
-    fc = bands.band_feature_collection(idx, minutes[: idx.n_cells], grid=shared["grid"])
-    validate.check_bands_cover(*shared["grid"], fc)
+    fc = bands.band_feature_collection(idx, minutes[: idx.n_cells],
+                                       grid=shared["grid"], native=shared["native"])
+    validate.check_bands_cover(idx, shared["grid"], shared["native"], fc)
 
     out = config.DIST / "origins"
     tiles.write_pmtiles(fc, out / f"{slug}.pmtiles")
@@ -141,11 +149,14 @@ def _build_all(limit: int | None = None) -> None:
     country = countries.cell_country(idx.cells)
     zone = np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
                      for c in country])
-    cell_class = roads.cell_class(idx.cells)
+    cell_class = ground.cell_class(idx)
     # The render grid (land + sea fringe, neighbour table) is the same for
     # every origin; computed once here, inherited copy-on-write.
     shared = {"country": country, "zone": zone, "cell_class": cell_class,
-              "grid": grid.universe(idx.cells)}
+              # Base-grid rings for the zoom <= 6 levels, raw adjacency of the
+              # native (mixed-resolution) cells for the finest level.
+              "grid": grid.universe(getattr(idx, "base_cells", None) or idx.cells),
+              "native": grid.native_edges(idx)}
 
     origins = index.load_origins()
     if limit is not None:
@@ -164,7 +175,7 @@ def _build_all(limit: int | None = None) -> None:
     # than one core. Serially this build took nearly eight hours; the graph is
     # ~1 GB of scipy arrays, so workers are FORKED to inherit it copy-on-write
     # rather than spawned, which would rebuild it once per worker.
-    workers = _worker_count(len(origins))
+    workers = min(_worker_cap(len(idx.cells)), _worker_count(len(origins)))
     if workers <= 1:
         for origin in origins:
             print(_solve_one(origin, idx, csr, speeds, shared))

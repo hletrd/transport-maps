@@ -73,7 +73,7 @@ def main() -> None:
     with httpx.Client() as client:
         for s in range(args.sources):
             town = towns[rng.integers(0, len(towns))]
-            src = idx.try_cell_index(h3.latlng_to_cell(town[0], town[1], config.SOLVE_RES))
+            src = idx.try_cell_index(idx.cell_at(town[0], town[1]))
             if src is None:
                 continue
             minutes, pred = sp.csgraph.dijkstra(
@@ -98,7 +98,7 @@ def main() -> None:
             ]
             cand = []
             for t in near:
-                j = idx.try_cell_index(h3.latlng_to_cell(t[0], t[1], config.SOLVE_RES))
+                j = idx.try_cell_index(idx.cell_at(t[0], t[1]))
                 if j is not None and j in in_band:
                     cand.append(j)
             if not cand:
