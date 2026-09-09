@@ -5,3 +5,12 @@ dist/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+
+# Never commit credentials. The Routes API key lives in
+# ~/.config/transport-maps/env, outside the repo entirely.
+.env
+.env.*
+
+# Local fixtures used to validate parsers against real extracts. Large, and
+# reproducible from scripts/osm_rail.sh.
+data/validation/
