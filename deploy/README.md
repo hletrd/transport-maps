@@ -1,9 +1,22 @@
 # Deployment — worldmap.atik.kr
 
-Static hosting on nginx. `dist/` (the pipeline's output) plus `web/` (the page,
-its vendored libraries and fonts) are rsynced to `/var/www/worldmap`.
+Static hosting on nginx. `scripts/deploy_verify.sh` does the whole thing and
+refuses to ship an inconsistent build:
 
-    rsync -a --delete dist/ atik.kr:/var/www/worldmap/
+1. checks that every origin's arrays agree with `hover_cells.bin`, that the
+   gazetteer, airports, borders and water tiles exist, and that the page copy
+   does not state a city count that disagrees with `index.json`;
+2. copies the page into the build output — `rsync web/ dist/` (everything but
+   `web/README.md`), so `index.html`, `app.js`, `llms.txt`, `vendor/` sit beside
+   `index.json`, `hover_cells.bin` and `origins/`;
+3. rsyncs `dist/` to `/var/www/worldmap` with `--delete`;
+4. curls the live files, including a byte-range request against a `.pmtiles`.
+
+`scripts/browser_verify.sh` then opens the live site in a browser and checks
+the canvas, the city list and legend counts (read from the deployed
+`index.json`, never hard-coded), the coast layer, a route with surface modes
+and tooltips, address search, click-to-depart, zoom 3, the console, and four
+viewports. **A deploy is not done until that has passed** (CLAUDE.md).
 
 ## Caching is load-bearing, not an optimisation
 
@@ -16,10 +29,37 @@ Every artifact except the fonts is rewritten by a rebuild, and they must change
 A browser holding one old file and one new one renders a blank globe with no
 console error. That shipped once: after a redesign, visitors got new HTML with a
 cached old `app.js`, which threw on a missing element and killed the map before
-it was created. Hence `no-cache` on html/js/json/bin/pmtiles — ETags make the
-revalidation a 304, so the cost is a round trip, not a re-download.
+it was created. Hence `no-cache` on html/js/json/txt/xml/bin/pmtiles — ETags
+make the revalidation a 304, so the cost is a round trip, not a re-download.
 
 `.woff2` is the one genuinely immutable asset and is cached for a year.
+
+## Security headers: the `add_header` inheritance trap
+
+nginx `add_header` does **not** merge across levels. A `location` that sets any
+header of its own (here: `Cache-Control`) inherits **none** of the `add_header`
+lines from the `server` block. With the headers declared once at server level,
+the live site served no Content-Security-Policy, HSTS, `nosniff` or
+`X-Frame-Options` on `/`, `app.js`, `index.json`, any `.bin` or `.pmtiles` —
+only on files no location matched (`robots.txt`, `preview.png`, 404s).
+
+The headers therefore live in `deploy/worldmap-security-headers.conf` and are
+`include`d at server level **and** inside every location. Install both files:
+
+    scp deploy/worldmap-security-headers.conf atik.kr:/etc/nginx/snippets/
+    scp deploy/worldmap.atik.kr.conf atik.kr:/etc/nginx/sites-available/worldmap
+    ssh atik.kr 'nginx -t && systemctl reload nginx'
+
+and verify on a page asset, not on the root alone:
+
+    curl -sI https://worldmap.atik.kr/app.js | grep -iE 'content-security|strict-transport|x-frame|x-content'
+
+The CSP names exactly the two runtime calls the page makes — Nominatim (address
+search, only on request) and the Google tag (loader by host, inline bootstrap by
+hash, collection endpoints in `connect-src`/`img-src`) — plus `blob:` for
+MapLibre's workers. Changing the inline gtag snippet in `web/index.html` changes
+its hash; recompute it (`sha256` of the exact script text, base64) and update
+the snippet, or the tag stops loading silently.
 
 ## Range requests
 
