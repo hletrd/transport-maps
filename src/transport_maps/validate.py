@@ -68,7 +68,16 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray) -> None
     """
     import h3
 
-    from transport_maps.graph import ground
+    from transport_maps.graph import ground, transfers
+    from transport_maps.sources import countries
+
+    # The gate must charge what hex_edges charges. Two things it did not know
+    # about: a crossing between immigration zones, and a closed border, across
+    # which there is no edge at all -- so a neighbour can legitimately be far
+    # slower to reach and the invariant simply does not apply.
+    country = countries.cell_country(idx.cells)
+    zone = [transfers.immigration_zone(countries.iso2(c)) if c else "" for c in country]
+    crossing = ground._land_border_min()
 
     stride = 997  # sample; a full sweep is O(n * 7) and this gate runs per origin
     for pos in range(0, idx.n_cells, stride):
@@ -83,10 +92,14 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray) -> None
             q = idx.try_cell_index(neighbour)
             if q is None or not np.isfinite(minutes[q]):
                 continue
+            if countries.is_closed(country[pos], country[q]):
+                continue
             distance = ground.haversine_km(
                 origin_latlng, np.array([h3.cell_to_latlng(neighbour)])
             )[0]
             hop = distance / speeds[q] * 60.0
+            if zone[pos] and zone[q] and zone[pos] != zone[q]:
+                hop += crossing
             if minutes[q] > here + hop + 1e-6:
                 raise ValueError(
                     f"cell {neighbour} is {minutes[q]:.1f} min but its neighbour "

@@ -10,6 +10,31 @@ import * as h3 from "./vendor/h3.js";
 // Lightness is strictly monotonic in all three, which is what a sequential
 // ramp actually requires; hue rotation supplies the separation lightness
 // alone cannot.
+
+const BG = "#0a0b0d", SEA = "#0f1114";
+// Land no scheduled service reaches. A tone, not a colour: it must read as
+// "no route" rather than as the far end of the time ramp.
+const UNCHARTED = "#4a4d50";
+const UNREACHABLE_BAND = -1;
+
+const $ = (id) => document.getElementById(id);
+const proto = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", proto.tile);
+
+const meta = await (await fetch("./index.json")).json();
+const UNREACHABLE = meta.unreachable ?? 65535;
+const HOVER_RES = meta.hoverRes ?? 4;
+// The surface is solved per res-5 cell (~8 km); the readout array is res 4
+// (~22 km, the min of seven children) to stay small. The highlight must show
+// the SOLVED cell -- outlining the readout parent drew a hexagon seven times
+// the size of anything the map was actually computed from.
+const SOLVE_RES = meta.solveRes ?? 5;
+const EDGES = meta.bandEdgesMin ?? [];
+
+// shared, origin-independent cell ordering — fetched once
+const hoverCells = new BigUint64Array(
+  await (await fetch("./" + (meta.hoverCellsUrl || "hover_cells.bin"))).arrayBuffer()
+);
 const RAMPS = {
   // Adjacent-pair separation measured in OKLab (x100); below about 8 two bands
   // are hard to tell apart. Lightness is strictly monotonic in every ramp,
@@ -66,30 +91,7 @@ function expandRamp(control, n) {
 }
 const N_BANDS = (meta.bandEdgesMin?.length ?? 10) + 1;
 let BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
-const BG = "#0a0b0d", SEA = "#0f1114";
-// Land no scheduled service reaches. A tone, not a colour: it must read as
-// "no route" rather than as the far end of the time ramp.
-const UNCHARTED = "#4a4d50";
-const UNREACHABLE_BAND = -1;
 
-const $ = (id) => document.getElementById(id);
-const proto = new pmtiles.Protocol();
-maplibregl.addProtocol("pmtiles", proto.tile);
-
-const meta = await (await fetch("./index.json")).json();
-const UNREACHABLE = meta.unreachable ?? 65535;
-const HOVER_RES = meta.hoverRes ?? 4;
-// The surface is solved per res-5 cell (~8 km); the readout array is res 4
-// (~22 km, the min of seven children) to stay small. The highlight must show
-// the SOLVED cell -- outlining the readout parent drew a hexagon seven times
-// the size of anything the map was actually computed from.
-const SOLVE_RES = meta.solveRes ?? 5;
-const EDGES = meta.bandEdgesMin ?? [];
-
-// shared, origin-independent cell ordering — fetched once
-const hoverCells = new BigUint64Array(
-  await (await fetch("./" + (meta.hoverCellsUrl || "hover_cells.bin"))).arrayBuffer()
-);
 let hoverTimes = null;          // Uint16Array for the active origin
 let hoverAir = null;            // arrival-airport ordinal per hover cell
 let hoverModes = null;          // rail / ferry / road minutes per hover cell
@@ -715,6 +717,23 @@ $("ramps").addEventListener("click", (e) => {
 });
 
 applyLockNorth();
+
+// Small screens: the readout joins the bottom sheet and the panels start
+// closed, so the globe gets the screen. Re-evaluated on rotation.
+const SMALL = window.matchMedia("(max-width: 860px)");
+function layoutForSize() {
+  const reading = document.querySelector(".reading");
+  const rail = document.querySelector(".rail");
+  if (SMALL.matches) {
+    if (reading.parentElement !== rail) rail.prepend(reading);
+    for (const d of rail.querySelectorAll("details")) d.open = false;
+  } else if (reading.parentElement === rail) {
+    document.body.insertBefore(reading, document.getElementById("tip"));
+    $("departure").open = true;
+  }
+}
+layoutForSize();
+SMALL.addEventListener("change", layoutForSize);
 
 const FALLBACK = bySlug.get("seoul") ?? cities[0];
 

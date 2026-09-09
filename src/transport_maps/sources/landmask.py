@@ -7,6 +7,7 @@ import httpx
 import polars as pl
 import pyogrio
 import shapely
+from shapely import STRtree
 from shapely.geometry import box
 
 from transport_maps import config
@@ -17,6 +18,10 @@ LAND_URL = "https://naturalearth.s3.amazonaws.com/10m_physical/ne_10m_land.zip"
 # Antarctica with the Ross and Ronne shelves cut out of it -- the map answered
 # "not on land" over both. They are permanent traversable surface (McMurdo's
 # runway is on one), so they are unioned in.
+# ne_10m_land treats inland water as land: the Great Lakes, the Caspian and
+# Lake Victoria all rendered as solid ground with travel times painted across
+# them. The lakes layer is subtracted so they read as water.
+LAKES_URL = "https://naturalearth.s3.amazonaws.com/10m_physical/ne_10m_lakes.zip"
 ICE_URL = (
     "https://naturalearth.s3.amazonaws.com/10m_physical/"
     "ne_10m_antarctic_ice_shelves_polys.zip"
@@ -60,8 +65,41 @@ def _ice_shelf_parts() -> list[shapely.Geometry]:
     return [g for g in geoms if g is not None and not g.is_empty]
 
 
+def _lake_union() -> shapely.Geometry:
+    path = _download(LAKES_URL, "ne_10m_lakes.zip").resolve()
+    _meta, table = pyogrio.read_arrow(f"/vsizip/{path}")
+    geom_column = next(c for c in table.schema.names if "geom" in c.lower())
+    geoms = [g for g in shapely.from_wkb(table.column(geom_column).to_pylist())
+             if g is not None and not g.is_empty]
+    return shapely.make_valid(shapely.union_all(geoms))
+
+
+def _without_lakes(parts: list[shapely.Geometry]) -> list[shapely.Geometry]:
+    """Cut inland water out of the land parts that actually touch it.
+
+    Only parts whose bounds meet a lake are differenced; the other ~6,000
+    are returned untouched, which keeps this to a few seconds.
+    """
+    lakes = _lake_union()
+    tree = STRtree(list(shapely.get_parts(lakes)))
+    out: list[shapely.Geometry] = []
+    for part in parts:
+        if len(tree.query(part)) == 0:
+            out.append(part)
+            continue
+        cut = shapely.make_valid(shapely.difference(part, lakes))
+        if cut.geom_type == "MultiPolygon":
+            out.extend(g for g in shapely.get_parts(cut) if not g.is_empty)
+        elif cut.geom_type == "Polygon" and not cut.is_empty:
+            out.append(cut)
+        else:
+            out.extend(g for g in shapely.get_parts(cut)
+                       if g.geom_type == "Polygon" and not g.is_empty)
+    return out
+
+
 def _land_parts() -> list[shapely.Geometry]:
-    """Single polygons covering land, excluding Antarctica."""
+    """Single polygons covering land, excluding Antarctica and inland water."""
     path = _download().resolve()
     _meta, table = pyogrio.read_arrow(f"/vsizip/{path}")
     try:
@@ -87,7 +125,7 @@ def _land_parts() -> list[shapely.Geometry]:
         for q in (shapely.get_parts(g)
                   if shapely.get_type_id(g) == _MULTIPOLYGON_TYPE_ID else [g])
     )
-    kept = [p for p in parts if p.bounds[3] > ANTARCTICA_MAX_LAT]
+    kept = _without_lakes([p for p in parts if p.bounds[3] > ANTARCTICA_MAX_LAT])
     kept.extend(_antarctic_wedges(antarctic))
     if not kept:
         raise RuntimeError("no land parts parsed from Natural Earth archive")
@@ -135,8 +173,8 @@ def _cells_cache_path(res: int):
     the source archive were not, so changing either would have been read back
     from the file built under the old value.
     """
-    stamp = _params_hash(LAND_URL, ICE_URL, ANTARCTICA_MAX_LAT, POLE_CLIP_LAT,
-                         WEDGE_COUNT, "pole-cells+shelves")
+    stamp = _params_hash(LAND_URL, ICE_URL, LAKES_URL, ANTARCTICA_MAX_LAT,
+                         POLE_CLIP_LAT, WEDGE_COUNT, "pole-cells+shelves-lakes")
     return config.BUILD / f"land_cells_r{res}_{stamp}.parquet"
 
 

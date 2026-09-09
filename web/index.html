@@ -232,15 +232,50 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 
 #key p{margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--text-2)}
 #key .src{margin-top:8px;font-size:10px;color:var(--text-3);line-height:1.55}
+#key .disclaimer{border-top:1px solid var(--line);padding-top:8px}
+#key .disclaimer b{color:var(--text-2);font-weight:500}
 
+/* ---- small screens: the map is the page, everything else is a bottom sheet ----
+   Below 860px the desktop arrangement collapses: the right rail ate 79% of a
+   phone, the readout fell out of view and the compass sat on the title. Here
+   the readout moves INTO a bottom sheet with the panels (app.js relocates it),
+   panels start closed, and the sheet is capped so the globe keeps the rest. */
 @media (max-width:860px){
-  .mast{max-width:none;right:22px}
-  .rail{top:auto;bottom:14px;left:14px;right:14px;width:auto;flex-direction:column-reverse}
+  body{overflow:hidden}
+  .mast{top:10px;left:10px;max-width:58vw;padding:7px 10px 8px}
+  .mast h1{font-size:14px}
+  .mast p{display:none}
+  .compass{top:10px;right:10px;bottom:auto;left:auto;width:38px;height:38px}
+  .compass svg{width:22px;height:22px}
+  .tip{display:none}                    /* the sheet readout carries the value */
+  .rail{
+    top:auto;left:0;right:0;bottom:0;width:auto;max-height:52vh;
+    flex-direction:column;gap:0;padding:0;
+    background:var(--surface);border-top:1px solid var(--line);
+    overflow-y:auto;overscroll-behavior:contain;
+  }
   .rail .spacer{display:none}
-  .reading{position:static;width:auto;padding:14px 14px 0}
-  .compass{bottom:auto;top:16px;right:16px}
-  .results{max-height:30vh}
-  body{overflow:auto}
+  .rail > .panel{border:0;border-bottom:1px solid var(--line);border-radius:0;flex:none}
+  .rail > .panel:last-child{border-bottom:0}
+  /* the readout, once app.js moves it to the top of the sheet */
+  .rail > .reading{
+    position:static;width:auto;padding:12px 14px 10px;border-radius:0;
+    background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
+    border-bottom:1px solid var(--line);flex:none;
+  }
+  .reading .v{font-size:34px}
+  .reading .at{min-height:0}
+  .legend{margin-top:10px}
+  .legs{max-height:20vh}
+  .results{max-height:26vh}
+  .lbl{font-size:10px}
+}
+/* phones on their side: too short for a bottom sheet; use a narrow right rail */
+@media (max-width:860px) and (orientation:landscape){
+  .rail{top:0;bottom:0;left:auto;right:0;width:min(300px,46vw);max-height:none;
+    border-top:0;border-left:1px solid var(--line)}
+  .mast{max-width:40vw}
+  .compass{right:calc(min(300px,46vw) + 10px)}
 }
 </style>
 </head>
@@ -341,6 +376,8 @@ details[open] > summary{border-bottom:1px solid var(--line)}
     transfer times. It needs JavaScript and WebGL to draw the globe.</p>
     <p>Built from open data: OurAirports, Wikipedia, OpenStreetMap, GRIP4 road
     density and Natural Earth. After Francis Galton's isochronic passage chart of 1881.</p>
+    <p>For reference only. Estimates from a simplified model; no warranty of
+    accuracy and no liability for any use.</p>
   </div>
 </noscript>
 
