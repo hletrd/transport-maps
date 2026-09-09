@@ -224,7 +224,7 @@ def test_a_gate_failure_in_a_forked_worker_aborts_the_run(monkeypatch, tmp_path)
         raise TimeoutError("_build_all is hanging: the worker's gate failure never reached the parent")
 
     previous = signal.signal(signal.SIGALRM, hung)
-    signal.alarm(30)
+    signal.alarm(15)
     try:
         with pytest.raises(SystemExit, match="second"):
             cli._build_all()
@@ -256,7 +256,7 @@ def test_a_worker_killed_by_a_signal_aborts_the_run_instead_of_hanging(monkeypat
         raise TimeoutError("_build_all is hanging: the killed worker was never noticed")
 
     previous = signal.signal(signal.SIGALRM, hung)
-    signal.alarm(30)
+    signal.alarm(15)
     try:
         with pytest.raises(SystemExit, match="died without reporting"):
             cli._build_all()

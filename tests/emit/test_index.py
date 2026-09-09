@@ -149,3 +149,20 @@ def test_origin_slugs_are_validated_where_they_are_read(tmp_path):
         f.write_text(f'[[origin]]\nslug = "{bad}"\nname = "X"\nlat = 0.0\nlon = 0.0\n')
         with pytest.raises(ValueError, match="invalid origin slug"):
             index.load_origins(f)
+
+
+def test_the_page_credit_fallbacks_agree_with_the_emitters_licences():
+    """web/app.js repeats GeoNames and HydroLAKES in PAGE_CREDITS so a build
+    whose index.json predates their rows still credits them; the licence
+    strings must be the emitter's, not a second opinion."""
+    import re
+
+    app = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    block = app[app.index("const PAGE_CREDITS = ["):]
+    block = block[: block.index("];")]
+    page = dict(re.findall(r'name: "([^"]+)", licence: "([^"]+)"', block))
+    ours = {a["name"]: a["licence"] for a in index.ATTRIBUTION}
+    repeated = {n: lic for n, lic in page.items() if n in ours}
+    assert repeated, "PAGE_CREDITS no longer repeats an emitter source; drop this test"
+    for name, lic in repeated.items():
+        assert lic == ours[name], f"{name}: page says {lic}, emitter says {ours[name]}"
