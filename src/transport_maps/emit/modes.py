@@ -78,7 +78,8 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
     return acc
 
 
-def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) -> None:
+def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path,
+                cell_class: np.ndarray | None = None) -> None:
     """One uint16 channel per mode per hover cell, in `hover_cells` order.
 
     Taken from the same res-5 child the hover time came from, so the breakdown
@@ -87,7 +88,7 @@ def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) -
     parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
     position = {cell: i for i, cell in enumerate(parents)}
 
-    acc = mode_minutes_per_node(idx, minutes, predecessors)
+    acc = mode_minutes_per_node(idx, minutes, predecessors, cell_class=cell_class)
     best = np.full(len(parents), np.inf)
     picked = np.zeros((len(parents), len(CHANNELS)), dtype=np.float64)
     for pos, cell in enumerate(idx.cells):

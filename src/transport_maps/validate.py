@@ -47,7 +47,8 @@ def check_bands_disjoint(feature_collection: dict) -> None:
                 raise ValueError("isochrone bands overlap; dissolution is broken")
 
 
-def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray) -> None:
+def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
+                           country=None, zone=None) -> None:
     """Dijkstra's invariant: no cell beats reaching it via an adjacent cell.
 
     For adjacent p and q, minutes[q] must not exceed minutes[p] plus the ACTUAL
@@ -75,8 +76,12 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray) -> None
     # about: a crossing between immigration zones, and a closed border, across
     # which there is no edge at all -- so a neighbour can legitimately be far
     # slower to reach and the invariant simply does not apply.
-    country = countries.cell_country(idx.cells)
-    zone = [transfers.immigration_zone(countries.iso2(c)) if c else "" for c in country]
+    # Callers running under fork pass these in; loading them here would call
+    # polars and pyogrio from a forked child, which deadlocks.
+    if country is None:
+        country = countries.cell_country(idx.cells)
+    if zone is None:
+        zone = [transfers.immigration_zone(countries.iso2(c)) if c else "" for c in country]
     crossing = ground._land_border_min()
 
     stride = 997  # sample; a full sweep is O(n * 7) and this gate runs per origin

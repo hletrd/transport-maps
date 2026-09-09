@@ -1,16 +1,25 @@
 """Pipeline entry point."""
 
+import os
+
+# Must precede every import that pulls in polars. Its rayon thread pool does
+# not survive fork(): a child that touches polars blocks on the pool's lock
+# forever. Eight workers sat at 0% CPU for 37 minutes before this was found.
+# The parquet reads here are small; single-threaded costs nothing measurable.
+os.environ.setdefault("POLARS_MAX_THREADS", "1")
+
 import argparse
 import multiprocessing
-import os
 import re
+
+import numpy as np
 
 from transport_maps import config, validate
 from transport_maps.contour import bands
 from transport_maps.emit import hover, index, itinerary, modes, routes_json, tiles
-from transport_maps.graph import build, ground, nodes
+from transport_maps.graph import build, ground, nodes, transfers
 from transport_maps.solve import dijkstra
-from transport_maps.sources import osm
+from transport_maps.sources import countries, osm, roads
 
 # Origin slugs become filenames under config.DIST, so reject anything that
 # could escape that directory (path separators, "..", leading dots/dashes).
@@ -58,7 +67,7 @@ def _worker_count(n_origins: int) -> int:
     return max(1, min(cores - 2, 8, n_origins))
 
 
-def _solve_one(origin: dict, idx, csr, speeds) -> str:
+def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     """Solve and emit one origin. Returns the table row to print."""
     slug = origin["slug"]
     source = dijkstra.origin_node(idx, origin["lat"], origin["lon"])
@@ -69,7 +78,8 @@ def _solve_one(origin: dict, idx, csr, speeds) -> str:
         raise SystemExit(
             f"{slug}: coverage {coverage:.1%} below {validate.MIN_COVERAGE:.0%}"
         )
-    validate.check_monotonic_ground(idx, minutes, speeds)
+    validate.check_monotonic_ground(idx, minutes, speeds,
+                                    country=shared["country"], zone=shared["zone"])
 
     fc = bands.band_feature_collection(idx, minutes[: idx.n_cells])
     validate.check_bands_disjoint(fc)
@@ -87,8 +97,8 @@ def _solve_one(origin: dict, idx, csr, speeds) -> str:
 
 def _solve_one_forked(origin: dict) -> str:
     """Pool entry point. Reads the graph the fork inherited."""
-    idx, csr, speeds = globals()["_CTX"]
-    return _solve_one(origin, idx, csr, speeds)
+    idx, csr, speeds, shared = globals()["_CTX"]
+    return _solve_one(origin, idx, csr, speeds, shared)
 
 
 def _load_ferries():
@@ -125,6 +135,14 @@ def _build_all(limit: int | None = None) -> None:
     # speed grid does not change between origins, and re-deriving it per
     # origin cost ~4.8s x 157 origins for the same value.
     speeds = ground.cell_speed_kmh(idx)
+    # Everything a worker needs that comes from parquet or GDAL is loaded HERE,
+    # once, and inherited copy-on-write -- so no forked child ever calls into
+    # polars or pyogrio. (See the POLARS_MAX_THREADS note at the top.)
+    country = countries.cell_country(idx.cells)
+    zone = np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
+                     for c in country])
+    cell_class = roads.cell_class(idx.cells)
+    shared = {"country": country, "zone": zone, "cell_class": cell_class}
 
     origins = index.load_origins()
     if limit is not None:
@@ -146,10 +164,10 @@ def _build_all(limit: int | None = None) -> None:
     workers = _worker_count(len(origins))
     if workers <= 1:
         for origin in origins:
-            print(_solve_one(origin, idx, csr, speeds))
+            print(_solve_one(origin, idx, csr, speeds, shared))
     else:
         ctx = multiprocessing.get_context("fork")
-        globals()["_CTX"] = (idx, csr, speeds)
+        globals()["_CTX"] = (idx, csr, speeds, shared)
         with ctx.Pool(workers) as pool:
             for line in pool.imap(_solve_one_forked, origins):
                 print(line, flush=True)

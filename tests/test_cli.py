@@ -54,6 +54,11 @@ def _stub_pipeline(monkeypatch, written, coverages):
     # and blow up; _build_all now computes it once and threads it through to
     # check_monotonic_ground (M5), so this stub needs a stand-in too.
     monkeypatch.setattr(cli.ground, "cell_speed_kmh", lambda idx: np.array([1.0]))
+    # _build_all preloads these in the parent so forked workers never touch
+    # polars or GDAL; on a one-cell fake index they must be stand-ins too.
+    monkeypatch.setattr(cli.countries, "cell_country", lambda cells: np.array(["KOR"]))
+    monkeypatch.setattr(cli.countries, "iso2", lambda a3: "KR")
+    monkeypatch.setattr(cli.roads, "cell_class", lambda cells: np.array([1]))
     monkeypatch.setattr(cli.dijkstra, "origin_node", lambda idx, lat, lon: 0)
     monkeypatch.setattr(
         cli.dijkstra, "solve_from",
@@ -63,7 +68,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
     remaining = iter(coverages)
     monkeypatch.setattr(cli.validate, "check_coverage", lambda minutes, idx: next(remaining))
     monkeypatch.setattr(
-        cli.validate, "check_monotonic_ground", lambda idx, minutes, speeds: None
+        cli.validate, "check_monotonic_ground", lambda idx, minutes, speeds, **kw: None
     )
     monkeypatch.setattr(cli.bands, "band_feature_collection", lambda idx, minutes: {"features": []})
     monkeypatch.setattr(cli.validate, "check_bands_disjoint", lambda fc: None)
@@ -82,7 +87,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
         cli.itinerary, "write_itinerary", lambda idx, minutes, pred, out: _fake_write(out)
     )
     monkeypatch.setattr(
-        cli.modes, "write_modes", lambda idx, minutes, pred, out: _fake_write(out)
+        cli.modes, "write_modes", lambda idx, minutes, pred, out, **kw: _fake_write(out)
     )
 
 
