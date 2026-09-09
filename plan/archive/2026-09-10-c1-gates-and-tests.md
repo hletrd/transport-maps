@@ -1,3 +1,8 @@
+> Archived 2026-09-10 (cycle 2). Every cycle-1 task in this plan is done; every
+> unfinished cycle-2/3 task was carried into `plan/2026-09-10-c2-gates-and-tests.md`
+> under its original ID (see `.context/reviews/_aggregate.md` for the cycle-2
+> evidence). This file is kept for provenance and is not updated further.
+
 # Plan: lint and test gates
 
 Source findings: `_aggregate.md` section F (F1–F14) and E2's README test.

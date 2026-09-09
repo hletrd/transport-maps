@@ -1,3 +1,8 @@
+> Archived 2026-09-10 (cycle 2). Every cycle-1 task in this plan is done; every
+> unfinished cycle-2/3 task was carried into `plan/2026-09-10-c2-web-ui-detail.md`
+> under its original ID (see `.context/reviews/_aggregate.md` for the cycle-2
+> evidence). This file is kept for provenance and is not updated further.
+
 # Plan: page detail, ease of use, UI and accessibility
 
 Source findings: `.context/reviews/_aggregate.md` sections C and D, plus E1
@@ -110,7 +115,7 @@ viewports; each task lists its own text-extractable check.
 - [ ] **D4 (semantics)** `#map` role, listbox/option semantics for results,
       radiogroup for schemes, an `aria-live="polite"` region for the reading
       (`index.html:329,336-347,365-366,396`, `app.js:893-908`).
-- [ ] **D17** Find and label the seven `console.error("Error")` entries on load.
+- [x] **D17** Closed in cycle 2: 0 console entries across load, hover, click, three origin switches and a scheme change (designer); the seven entries were the `.rail.*` 404s C12 removed.
 
 ## Cycle 3+
 
@@ -138,4 +143,4 @@ viewports; each task lists its own text-extractable check.
 ## Progress
 
 - 2026-09-10 cycle 1: plan written. Cycle-1 tasks implemented in the cycle-1 commits (see git log for `web/`); each check recorded in the commit body.
-- 2026-09-10 cycle 1 done: all twenty cycle-1 tasks shipped in a261141, b7da35f, 1305ba7, d84217f, f943964, e11c830 (web/); verified on the local preview with agent-browser (fonts, ticks, keys, labels, Enter, address search, route tooltips, console clean) and by scripts/browser_verify.sh after deploy.
+- 2026-09-10 cycle 1 done: all twenty cycle-1 tasks shipped in a261141, b7da35f, 1305ba7, d84217f, f943964, e11c830 (web/); verified on the local preview with agent-browser (fonts, ticks, keys, labels, Enter, address search, route tooltips, console clean); **not deployed** (the consistency gate refused mid-rebuild, see the build plan) — the post-deploy `browser_verify.sh` run is still owed. Corrected in cycle 2 (VER-28, DOC-6).

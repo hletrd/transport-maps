@@ -1,0 +1,116 @@
+# Plan (cycle 2): lint and test gates
+
+Source findings: `.context/reviews/_aggregate.md` section P, K2, L4, L13, plus
+every unfinished task carried from
+`plan/archive/2026-09-10-c1-gates-and-tests.md` (F3, F4a, F4b, F6, F8, F9, W1;
+cycle 3: F5, F7, F10, F11, F13 rest, B3). Per-agent detail: `test-engineer.md`
+(TE-1…18 with the mutation table), `verifier.md` (gate results, VER-24, VER-27),
+`critic.md` (CRIT-1, CRIT-3), `code-reviewer.md` (CR-3), `architect.md`
+(ARCH-9, ARCH-11, ARCH-13), `document-specialist.md` (DOC-24).
+
+Gates for this run: `uv run ruff check .` and `uv run pytest` (default
+`addopts` deselects `network` and `real_multi_band`). CLAUDE.md testing rule:
+after adding a guard, mutate the code and confirm the test goes red; every task
+names its mutation.
+
+Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
+4 deselected / 1 warning in 26 min 30 s under the rebuild's load.
+
+## Cycle 2 (this run)
+
+- [ ] **P1** Restore `for a, b in pairwise(st)` in `emit/rail_detail.py:55`
+      (the import at :12 is then used); `uv run ruff check .` exits 0.
+- [ ] **P2 / F3** Build both DMZ chains with `h3.grid_path_cells(south, north)`
+      and assert every consecutive pair is adjacent inside the fixture; replace
+      the Schengen `if` with a fixture that resolves the FR cell by
+      `countries.cell_country` (TE-1). Mutation: delete the `is_closed` block
+      in `ground.hex_edges` → both DMZ tests red; `immigration_zone("CH") →
+      "CH"` → Schengen red.
+- [ ] **P5 / F6** `split[2] = True; values = arange * 10 + 7`; assert seven
+      children equal `values[2]` (TE-5). Mutation: zero-fill → red.
+- [ ] **P6 / F11** Pass a synthetic `cell_class` and pin `ROAD_CHANNEL`
+      (class 1 → channel 2, class 0 → 5, class 4 → 4); rename the byte-count
+      test to say `len(CHANNELS)` (TE-6). Mutation: swap two channels → red.
+- [ ] **P8 / F4b** `tests/conftest.py` with an autouse fixture redirecting
+      `config.CACHE` to `tmp_path / "cache"` for every test not marked
+      `integration`, seeded once per session with copies of the two Natural
+      Earth archives (chmod 644) (TE-8). Check: `data/cache` file count is
+      unchanged after a run of the fast subset. List the 475 existing droppings
+      for the owner (not deleted this cycle — orchestrator rule on `data/`).
+- [ ] **P10 / F4a** Register `integration` (and `--strict-markers`); mark the
+      `build_index()`-backed modules (`tests/graph/test_{build,ground,nodes}.py`,
+      `tests/sources/test_{roads,landmask}.py`, `tests/test_golden.py`, the
+      full-universe countries test). **Not** added to the default deselection:
+      `uv run pytest` stays the whole gate; `-m "not integration"` is the fast
+      loop (documented in README). Add `tests/__init__.py`; import
+      `check_ramps` through a conftest fixture instead of `sys.path` (TE-11).
+- [ ] **P9 / F8** `_stub_pipeline` stubs `cli.osm.rail_routes` and `ferry_links`
+      (`FileNotFoundError`); tests for `build-all --only` (build plan A7) and
+      `_worker_cap` (TE-9). The `index`-subcommand refusal test becomes a
+      `check_dist` test (L4).
+- [ ] **L4 / F9** `tests/web/test_check_dist.py` on a synthetic dist (build plan
+      L4). Mutation: widen `.modes.bin`'s width → red.
+- [ ] **K2** The two bf9e5cc tests made real (build plan K1/K2).
+- [ ] **P4 (parity half)** `tests/web/test_app_constants.py`: regex-extract from
+      `app.js` and assert `names == list(modes.CHANNELS)`, `NO_AIRPORT`,
+      `NO_RAIL`, `UNREACHABLE_BAND`, `"source-layer": "bands" == tiles.LAYER`,
+      the `airports.json` column order, and that every `meta.<key>` the page
+      reads is written by `write_index` (TE-3, TE-15). Mutation: reorder
+      `CHANNELS` → red. A Python port of the tick rule asserting the eight tick
+      edges (after the web plan's N3 lands the new formatter).
+- [ ] **P11** A test that `app.js` sets `attributionControl: false`, constructs
+      no `AttributionControl`, and that `web/vendor/maplibre-gl.js` contains the
+      patched `Array.from(t.attributes)` loop (security plan Q3) (SEC-22).
+      Mutation: revert the vendored token → red.
+- [ ] **L13** `tests/web/test_csp.py`: sha256 of the first inline `<script>` in
+      `index.html` appears in `deploy/worldmap-security-headers.conf` (ARCH-9).
+      Mutation: change one character of the snippet → red.
+- [ ] **P10 (small)** `REQUIRED_ATTRIBUTION` gains GeoNames and HydroLAKES
+      (DOC-24); the README test also fails when `app.js`'s `PAGE_CREDITS`
+      repeats an `ATTRIBUTION` name other than Nominatim (ARCH-11); the umask
+      test sets `umask(0o022)` around itself (TE-12); the mtime fingerprint test
+      bumps `st_mtime_ns` explicitly (TE-13); `test_tiles` skips when
+      tippecanoe is absent and checks the layer name (TE-18).
+- [ ] **W1 (gate warning, recorded)** One `DeprecationWarning` (fork of a
+      multi-threaded process) from
+      `tests/test_cli.py::test_a_gate_failure_in_a_forked_worker_aborts_the_run`.
+      Severity Low, confidence High. Still not suppressed: the production build
+      forks on purpose and the test exercises that path; the alarm is halved
+      (TE-14). Exit criterion unchanged: `_build_all` moves to a
+      `forkserver`/`spawn` context with the graph passed explicitly (S2 in the
+      build plan), or the test carries a `filterwarnings` limited to itself
+      quoting this entry.
+- [ ] Run the full suite once at the end of the cycle and record the outcome.
+
+## Cycle 3
+
+- [ ] **P3 / F7** `tests/emit/test_layout_contract.py`: one index at real
+      resolutions, a predecessor chain through a sibling, all five files
+      written; equal lengths, the hover value is the centre's, `.air.bin`
+      decodes to the centre's arrival node, `.modes.bin` row equals the
+      centre's accumulator, `.rail.bin` indexes a row naming the centre's
+      station (TE-2). Lands with R3's `HoverGrid`. Mutation: fastest-child in
+      each writer separately → red.
+- [ ] **P4 (node half) / F5** `web/tests/app_pure.test.mjs` (`esc`, `fmtTime`
+      boundaries incl. the 119.6 seam, `cellIndex`, `legsTo` round trip from a
+      Python-written fixture) run by `tests/web/test_app_pure.py` with a visible
+      skip when `node` is absent (TE-3).
+- [ ] **F10** Unit tests for `_air_edges` border charge, `_access_edges`
+      direction, `_transfer_edges` `max(conn, wait)` and "nothing departs → no
+      edge".
+- [ ] **F13 rest** TE-18 c1 (implied assertion, double graph build), TE-19 c1
+      (Antarctica in the golden threshold), TE-20 c1 (ramps parser count
+      guard), TE-26 c1 (44-second bound tests); **S5** `native_edges` cache
+      branch reachable by a `cache=` parameter (ARCH-13).
+- [ ] **B3** Golden bounds tightened to the shipped values ± a documented
+      tolerance once the 553-origin build ships.
+- [ ] **K3 test**, **K4 test**, **G1 tests** — with their build-plan tasks if
+      they do not land in cycle 2.
+
+## Progress
+
+- 2026-09-10 cycle 2: plan written from the cycle-2 aggregate; carries every
+  unfinished task from the cycle-1 gates plan (now archived) under its original
+  ID. Vacuity audit at HEAD (test-engineer): 17 mutations run, 15 turned their
+  target red, 4 tests shown vacuous (F3 eastern DMZ, F6, F11 mapping, the
+  bf9e5cc "nearest" claim).

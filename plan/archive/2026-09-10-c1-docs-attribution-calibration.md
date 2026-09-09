@@ -1,3 +1,8 @@
+> Archived 2026-09-10 (cycle 2). Every cycle-1 task in this plan is done; every
+> unfinished cycle-2/3 task was carried into `plan/2026-09-10-c2-docs-attribution-calibration.md`
+> under its original ID (see `.context/reviews/_aggregate.md` for the cycle-2
+> evidence). This file is kept for provenance and is not updated further.
+
 # Plan: attribution, stale docs and comments, calibration provenance
 
 Source findings: `_aggregate.md` E2, E5–E14, B2, D20, J1, J5. Per-agent
@@ -77,4 +82,4 @@ detail: `document-specialist.md` (DOC-*), `critic.md`, `verifier.md`,
 ## Progress
 
 - 2026-09-10 cycle 1: plan written; cycle-1 tasks implemented in the cycle-1 commits.
-- 2026-09-10 cycle 1 done: E2 (662f5d3 README, d84217f page, e11c830 llms.txt), E5/E7/E8/D20 (e11c830), E9 (fa89fbc Python half, e11c830 app.js half), E12 (e1b9558 README claims reworded per DOC-16).
+- 2026-09-10 cycle 1 done: E2 (662f5d3 README, d84217f page, e11c830 llms.txt), E5/E7/D20 (e11c830), E8 partial (config.py, llms.txt, app.js, web/README in e11c830; the JSON-LD and ten code comments remain — O3 in the c2 docs plan), E9 (fa89fbc Python half, e11c830 app.js half), E12 (e1b9558 README claims reworded per DOC-16).

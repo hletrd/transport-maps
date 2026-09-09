@@ -1,3 +1,8 @@
+> Archived 2026-09-10 (cycle 2). Every cycle-1 task in this plan is done; every
+> unfinished cycle-2/3 task was carried into `plan/2026-09-10-c2-build-robustness.md`
+> under its original ID (see `.context/reviews/_aggregate.md` for the cycle-2
+> evidence). This file is kept for provenance and is not updated further.
+
 # Plan: build-all failure modes, artifact consistency, verification scripts
 
 Source findings: `_aggregate.md` section A (A3–A18), E1 (verify half), E15,
@@ -76,11 +81,7 @@ orchestrator are running; do not start/stop them, do not rewrite `dist/` or
       land-cell stamp names the polyfill method (`landmask.py:176-178`).
       Each gets a `test_cache_provenance.py` case whose mutation is "change
       the constant, cache still hits".
-- [ ] **H2** Hoist `stop_names` and `_line_between(routes)` into `_build_all`'s
-      `shared` (computed once in the parent) so no polars runs inside forked
-      workers (`rail_detail.py:43-75`, `cli.py:102-103,149-151`); likewise
-      hover parents / representative children (`hover.py`, `itinerary.py:57-58`,
-      `modes.py:98-99`).
+- [~] **H2** Rail half done in `bf9e5cc` (`rail_detail.lookup_tables` built once in the parent, workers receive plain dicts); the hover-parents / representative-children half is R3 in the c2 build plan (cycle 3).
 - [ ] **H10** `tiles.py`: write tippecanoe input under `data/build/tmp/`, always
       delete it in `finally`, and cap tippecanoe threads to the worker budget.
 - [ ] **A12** Count and log dropped ferry crossings; fail above a bound like the
@@ -123,4 +124,4 @@ orchestrator are running; do not start/stop them, do not rewrite `dist/` or
 
 - 2026-09-10 cycle 1: plan written; cycle-1 tasks implemented in the cycle-1 commits.
 - 2026-09-10 cycle 1 done: A3 (b030d38), A5 (599dc60), A8 (be2cc94), A4 (b38fb8b, superseding 3487081), E1 verify half + FD-5 (cea16ca, 4d74cbe). Each guard shown red under its mutation, then reverted.
-- 2026-09-10 deploy attempt: the consistency gate refused mid-rebuild (new origin arrays at 90,659 entries against a 90,740-entry hover_cells.bin) -- live evidence for A6b/A6c (write hover_cells.bin and index.json last; build identity per origin). No files were copied.
+- 2026-09-10 deploy attempt: the consistency gate refused mid-rebuild (the *old* res-5 origin arrays at 90,659 entries against the *new* res-6 90,740-entry hover_cells.bin the running build had already written) -- live evidence for A6b/A6c (write hover_cells.bin and index.json last; build identity per origin). No files were copied. (Direction corrected in cycle 2, VER-25.)
