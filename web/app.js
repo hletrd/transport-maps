@@ -15,6 +15,9 @@ const BG = "#0a0b0d", SEA = "#0f1114";
 // Land no scheduled service reaches. A tone, not a colour: it must read as
 // "no route" rather than as the far end of the time ramp.
 const UNCHARTED = "#4a4d50";
+// Space behind the globe: darker than every scheme's sea (measured by
+// scripts/check_ramps.py), which is what lets the globe's edge be seen.
+const SPACE = "#050609";
 const UNREACHABLE_BAND = -1;
 
 const $ = (id) => document.getElementById(id);
@@ -267,6 +270,14 @@ await new Promise((r) => map.on("load", r));
 window.__map = map;
 // MapLibre is pinned to 5.24 (see web/README.md); this is its projection API.
 map.setProjection({ type: "globe" });
+// A faint atmosphere at the limb, so the globe's edge reads against space
+// even where the sea is nearly as dark. Fades out once the horizon leaves
+// the screen.
+map.setSky({
+  "sky-color": SPACE, "horizon-color": "#2a3346", "fog-color": SPACE,
+  "fog-ground-blend": 0, "horizon-fog-blend": 0.8, "sky-horizon-blend": 0.9,
+  "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.75, 3, 0.6, 6, 0]
+});
 
 map.addSource("sphere", { type: "geojson", data: { type: "Feature", geometry: { type: "Polygon",
   coordinates: [[[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]]] } } });
@@ -665,6 +676,7 @@ map.on("click", (e) => {
   $("route").open = true;
   renderPins();
   renderLegs();
+  reverseGeocode(lat, lng);
 });
 
 function haversineKm(la1, lo1, la2, lo2) {
@@ -736,8 +748,90 @@ function render(filter = "") {
   }
   if (!(f.length === 3 && apHits.some((a) => a[0].toLowerCase() === f))) list.append(...airportRows);
   $("results").replaceChildren(list);
+  scheduleAddressSearch(filter.trim());
+}
+
+// ---- address search ----
+// Anything the local lists cannot answer goes to OpenStreetMap's Nominatim:
+// a street, a landmark, a village. One request per pause in typing, never
+// more than one a second, which is what its usage policy asks.
+const NOMINATIM = "https://nominatim.openstreetmap.org";
+let addressTimer = null, addressSeq = 0;
+function scheduleAddressSearch(q) {
+  clearTimeout(addressTimer);
+  const old = $("results").querySelector(".addresses");
+  if (old) old.remove();
+  if (q.length < 4) return;
+  addressTimer = setTimeout(() => searchAddress(q), 900);
+}
+async function searchAddress(q) {
+  const seq = ++addressSeq;
+  let hits = [];
+  try {
+    const r = await fetch(`${NOMINATIM}/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`,
+                          { headers: { "Accept-Language": navigator.language || "en" } });
+    if (r.ok) hits = await r.json();
+  } catch { return; }
+  if (seq !== addressSeq || $("q").value.trim() !== q) return;   // stale
+  const box = $("results");
+  const old = box.querySelector(".addresses");
+  if (old) old.remove();
+  if (!hits.length) return;
+  const ul = document.createElement("ul");
+  ul.className = "addresses";
+  const head = document.createElement("li");
+  head.className = "head";
+  head.textContent = "Addresses";
+  ul.append(head);
+  for (const h of hits) {
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.geo = `${h.lat},${h.lon}`;
+    b.dataset.label = h.display_name;
+    const name = document.createElement("span");
+    name.textContent = h.display_name.split(",").slice(0, 3).join(",");
+    const coord = document.createElement("span");
+    coord.className = "coord";
+    coord.textContent = h.display_name.split(",").slice(3).join(",").trim() || h.type;
+    b.append(name, coord); li.append(b); ul.append(li);
+  }
+  const credit = document.createElement("li");
+  credit.className = "credit";
+  credit.textContent = "Search by Nominatim © OpenStreetMap contributors";
+  ul.append(credit);
+  box.append(ul);
+}
+
+// A clicked point gets a proper address, one request per click.
+let reverseSeq = 0;
+async function reverseGeocode(lat, lon) {
+  const seq = ++reverseSeq;
+  try {
+    const r = await fetch(`${NOMINATIM}/reverse?format=jsonv2&zoom=14&lat=${lat}&lon=${lon}`,
+                          { headers: { "Accept-Language": navigator.language || "en" } });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (seq !== reverseSeq || !pinB || pinB.lat !== lat) return;
+    if (j.display_name) {
+      const a = j.address || {};
+      const short = [a.road || a.neighbourhood || a.suburb, a.city || a.town || a.village || a.county, a.state, a.country]
+        .filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i).join(", ");
+      pinB.label = short || j.display_name;
+      renderPins();
+    }
+  } catch { /* offline or rate-limited: the gazetteer name stays */ }
 }
 $("results").addEventListener("click", (e) => {
+  const gb = e.target.closest("button[data-geo]");
+  if (gb) {
+    const [lat, lon] = gb.dataset.geo.split(",").map(Number);
+    pinB = { lat, lon, label: gb.dataset.label.split(",").slice(0, 3).join(",") };
+    map.flyTo({ center: [lon, lat], zoom: 8, speed: 0.9 });
+    $("route").open = true;
+    renderPins(); renderLegs();
+    return;
+  }
   const ab = e.target.closest("button[data-airport]");
   if (ab) {
     const a = airports.find((x) => x[0] === ab.dataset.airport);
