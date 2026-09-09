@@ -8,8 +8,6 @@
 # Sequential on purpose: Geofabrik is a free mirror, not a CDN to hammer.
 # Rate-limited and niced because this host also serves the live site: an
 # unthrottled 33 GB pull plus a CPU-bound filter made the site time out.
-# curl -C - resumes a partial download -- without it a dropped connection
-# 14 GB into a 15 GB extract silently threw the whole thing away.
 # Resumable at two levels: an existing *-rail.osm.pbf is skipped entirely, and
 # curl -C - continues a partial download instead of starting over. Without the
 # resume flag a dropped connection 14 GB into a 15 GB extract silently threw

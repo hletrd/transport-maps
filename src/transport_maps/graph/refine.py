@@ -1,10 +1,11 @@
 """Where the grid is finer.
 
-The base grid is resolution 6, cells about 5.6 km across. Where people
-actually are -- East Asia, South Asia, Europe, the United States and every
-other built-up region -- that is coarse: a city block of Seoul and the hill
-behind it share one cell, and a border or a coast steps by 5 km. Those cells
-are split into their seven resolution-7 children, 2.1 km across.
+The base grid is resolution 6, cells about 36 km2 and 6.5 km across. Where
+people actually are -- East Asia, South Asia, Europe, the United States and
+every other built-up region -- that is coarse: a city block of Seoul and the
+hill behind it share one cell, and a border or a coast steps by 6 km. Those
+cells are split into their seven resolution-7 children, about 5 km2 and
+2.4 km across.
 
 "Dense" is decided by data, not by drawing boxes around continents: a cell is
 split where the road network reaches highway, primary or secondary grade

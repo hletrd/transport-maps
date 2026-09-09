@@ -1,6 +1,6 @@
 """A gazetteer so the readout can name the place under the cursor.
 
-GeoNames cities15000 -- every place over 15,000 people, about 31,000 of them
+GeoNames cities15000 -- every place over 15,000 people, about 34,000 (2026-09)
 -- reduced to name, region, country and position. Shipped as one JSON the page
 loads once: half a megabyte gzipped buys a name for every hover, where a
 reverse-geocoding request would cost a round trip per pointer move and a

@@ -21,7 +21,7 @@ import polars as pl
 
 from .. import config
 
-# ~174 m edge length: comfortably merges the platforms of one station while
+# ~200 m edge (0.35 km across): comfortably merges the platforms of one station while
 # keeping genuinely separate city stations apart.
 STATION_RES = 9
 

@@ -10,11 +10,13 @@ in web/app.js), and the visible boundary between k-1 and k is always k-1's
 own outer edge.
 
 The overlap is the whole point. Smoothing moves a boundary by up to a quarter
-of a hex edge (about 2 km at resolution 5), and moves it differently for each
+of a hex edge (about 0.9 km at resolution 6, 0.35 km at 7), and moves it
+differently for each
 polygon it is applied to: where three bands met, two independently rounded
 curves diverged and left a triangular hole. With 37 bands, most of them one
 cell wide, those junctions were everywhere and the map read as hexagons with
-gaps between them. A one-cell rim (7 km at the least) puts the hidden edge far
+gaps between them. A one-cell rim (2.4 km at the least, where the grid is
+refined to resolution 7; 6.5 km on the base grid) puts the hidden edge far
 beyond anything smoothing can reach, so a gap is geometrically impossible
 rather than merely unlikely. `validate.check_bands_cover` checks that promise
 on the emitted geometry.
@@ -22,7 +24,7 @@ on the emitted geometry.
 The bands are NOT clipped to the coast here. They run one cell into the sea
 (contour/grid.py adds the fringe) and the static water layer drawn above them
 cuts them back to the real shoreline, at whatever precision that layer
-carries -- far beyond what clipping 157 origins against a land mask could
+carries -- far beyond what clipping 553 origins against a land mask could
 afford, and independent of it.
 """
 
@@ -145,16 +147,18 @@ def _dissolve(cells: list[str]):
 # fringe along the coast, which Douglas-Peucker turned into a sawtooth of
 # black teeth. Each band is therefore emitted once per level, and
 # tippecanoe's per-feature `tippecanoe.minzoom/maxzoom` keeps the copies
-# apart. Margins are in whole cells (a base cell is 5.6 km across, a fine one
-# 2.1 km); nothing is smoothed, so a margin is exactly its cell count.
+# apart. Margins are in whole cells (a resolution-6 base cell is 6.5 km
+# across, a resolution-7 fine one 2.4 km, a resolution-4 parent 45 km; h3
+# 4.5.0 figures); nothing is smoothed, so a margin is exactly its cell count.
 #
-#   z7+  : the native, mixed-resolution grid, two-cell rim (4 km at least,
+#   z7+  : the native, mixed-resolution grid, two-cell rim (4.8 km at least,
 #          against 0.6 km at zoom 7).
-#   z5-6 : the base grid, one-cell rim and one ring out to sea (5.6 km
+#   z5-6 : the base grid, one-cell rim and one ring out to sea (6.5 km
 #          against 2.4 km at zoom 5).
-#   z3-4 : the base grid, three-cell rim and three rings (17 km against 10).
+#   z3-4 : the base grid, three-cell rim and three rings (19 km against 10).
 #   z0-2 : resolution-4 parents, fully cumulative (overlap is free at world
-#          scale), two rings at that resolution (45 km against 39 at zoom 1).
+#          scale), two rings at that resolution (two 45 km cells against 39
+#          at zoom 1).
 #
 # A sea margin bleeds across a strait onto the far shore by up to its own
 # width, one to three pixels at these zooms; the water layer hides the rest.

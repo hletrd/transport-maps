@@ -4,9 +4,14 @@
     source ~/.config/transport-maps/env
     uv run python scripts/calibrate_ground.py --sources 50 --per-source 40
 
-One Dijkstra per SOURCE, not per sample: the ground graph has 600k nodes, so
-solving once and taking many destinations off the same tree turns a
-prohibitive 2,000 solves into 50.
+One Dijkstra per SOURCE, not per sample: the ground graph has about 10 M
+cells (resolution 6, refined to 7), so solving once and taking many
+destinations off the same tree turns a prohibitive 2,000 solves into 50.
+
+Run twice so far: 1,383 journeys (data/build/ground_samples.json) fitted the
+urban factor in sources/urban.py, then 2,998 (ground_samples2.json) fitted
+the per-class speeds shipped in graph/ground.py. The samples stay in
+data/build/ (gitignored); nothing from them reaches dist/.
 
 For each sampled journey the path is walked to accumulate kilometres per GRIP4
 road class, which is exactly the design matrix the fit needs -- the model's
@@ -44,8 +49,10 @@ def main() -> None:
     # Sample between REAL TOWNS, not random land cells. A pilot over uniform
     # land cells came back 73% unrouteable: most of Earth's land is Siberia,
     # Sahara and small islands, where Google has no road network to route on.
-    # The shipped gazetteer is 7,342 populated places, which is exactly the
-    # population of journeys the ground model is meant to predict.
+    # The shipped gazetteer is 34,135 GeoNames places (cities15000, 2026-09;
+    # the two sample runs above drew from the 7,342-place Natural Earth list it
+    # replaced), which is exactly the population of journeys the ground model
+    # is meant to predict.
     gaz = json.loads((config.DIST / "places.json").read_text(encoding="utf-8"))
     towns = np.array([[r[3], r[4]] for r in gaz["places"]], dtype=float)
     print(f"  sampling between {len(towns):,} populated places")

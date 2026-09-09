@@ -377,8 +377,9 @@ def build_graph(
     # minimum -- two edges between the same pair of nodes would silently
     # become one edge weighing more than either original, and Dijkstra would
     # never see the cheaper of the two. No part builds a duplicate today, but
-    # nothing enforces that either, and Task 9's future station edges are the
-    # obvious way one could sneak in later. Encoding (row, col) as a single
+    # nothing enforces that either, and the rail and ferry station edges
+    # (_rail_edges, _ferry_edges) are the obvious way one could sneak in later.
+    # Encoding (row, col) as a single
     # int64 key keeps this an O(n log n) check instead of an O(n^2) one.
     keys = rows.astype(np.int64) * idx.n + cols.astype(np.int64)
     if keys.size != np.unique(keys).size:

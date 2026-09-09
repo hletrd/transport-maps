@@ -88,7 +88,8 @@ def cell_country(cells: list[str]) -> np.ndarray:
     Centroid rather than footprint on purpose: a cell straddling a border has
     to be assigned to ONE side, and the centroid is the defensible choice. The
     consequence is that a closed border is cut with cell-sized granularity,
-    which at resolution 5 is about 8 km -- finer than the feature it models.
+    which at resolution 6 is about 6.5 km (2.4 km where refined) -- finer than
+    the feature it models.
     """
     # Hash every cell, not just the count and the ends: two different cell
     # universes of the same length would otherwise share a cache entry, which

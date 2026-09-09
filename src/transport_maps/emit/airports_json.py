@@ -1,6 +1,7 @@
 """The airport list, so the search box can find JFK as readily as New York.
 
-Compact columnar JSON: 3,983 rows of code, name, country, lat, lon. The IATA
+Compact columnar JSON: 4,008 rows (scheduled-service airports; the graph drops
+a few) of code, name, country, lat, lon. The IATA
 code is what people type; the name is what they need to recognise the answer.
 """
 
