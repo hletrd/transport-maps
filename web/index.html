@@ -217,6 +217,13 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 /* Place labels: DOM markers in the page's own typeface. */
 .lbl{font-size:11px;color:var(--text-2);white-space:nowrap;pointer-events:none;
   text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 0 3px var(--bg)}
+/* A label that names a departure city is a button. */
+.lbl.origin{pointer-events:auto;cursor:pointer;background:none;border:0;padding:0;margin:0;
+  font:inherit;font-weight:500;color:var(--text);text-shadow:inherit}
+.lbl.origin:hover,.lbl.origin:focus-visible{text-decoration:underline;outline:none}
+.pins .depart{margin-top:8px;padding:5px 10px;font:inherit;font-size:12px;color:var(--text);
+  background:var(--surface-2);border:1px solid var(--line, #2a2e36);border-radius:6px;cursor:pointer}
+.pins .depart:hover{background:var(--surface)}
 .tip i{font-style:normal;color:var(--text-3)}
 .row label{cursor:pointer}
 .hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}

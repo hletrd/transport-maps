@@ -39,17 +39,17 @@ const RAMPS = {
   // Adjacent-pair separation measured in OKLab (x100); below about 8 two bands
   // are hard to tell apart. Lightness is strictly monotonic in every ramp,
   // which is what a sequential scale actually requires.
-  muted:  { name: "Muted",  c: ["#faefc5","#f6d49c","#f5b77b","#ef9a69","#e27e65","#cd686a",
+  muted:  { name: "Muted",  sea: "#0a0b0d", c: ["#faefc5","#f6d49c","#f5b77b","#ef9a69","#e27e65","#cd686a",
                                 "#b0586f","#8f4d6e","#6d4464","#503955","#392b49"] },
-  vivid:  { name: "Vivid",  c: ["#fff7a8","#ffd453","#ffa600","#ff7100","#ff3833","#fd0066",
+  vivid:  { name: "Vivid",  sea: "#0a0916", c: ["#fff7a8","#ffd453","#ffa600","#ff7100","#ff3833","#fd0066",
                                 "#d10885","#9f268f","#6e3283","#46316c","#26245e"] },
-  warm:   { name: "Warm",   c: ["#fbeec9","#f4d59d","#eebc74","#e6a153","#da883c","#c87134",
+  warm:   { name: "Warm",   sea: "#100b08", c: ["#fbeec9","#f4d59d","#eebc74","#e6a153","#da883c","#c87134",
                                 "#b15e36","#95503b","#77443c","#5b3837","#49282b"] },
-  ice:    { name: "Ice",    c: ["#eaf6fb","#c9e7f5","#a4d6ee","#7cc2e5","#55acd9","#3792c7",
+  ice:    { name: "Ice",    sea: "#060b14", c: ["#eaf6fb","#c9e7f5","#a4d6ee","#7cc2e5","#55acd9","#3792c7",
                                 "#2477ad","#1d5d8f","#1a4570","#182f51","#141d33"] },
-  forest: { name: "Forest", c: ["#f2f6da","#dcecb4","#bfdd90","#9ccb72","#77b75d","#549f52",
+  forest: { name: "Forest", sea: "#070d0a", c: ["#f2f6da","#dcecb4","#bfdd90","#9ccb72","#77b75d","#549f52",
                                 "#3a8549","#2c6a40","#245036","#1d3829","#16231c"] },
-  mono:   { name: "Mono",   c: ["#f4f4f4","#dcdcdc","#c4c4c4","#ababab","#939393","#7b7b7b",
+  mono:   { name: "Mono",   sea: "#0a0a0a", c: ["#f4f4f4","#dcdcdc","#c4c4c4","#ababab","#939393","#7b7b7b",
                                 "#646464","#4e4e4e","#3a3a3a","#282828","#191919"] },
 };
 let rampName = "muted";
@@ -158,9 +158,22 @@ fetch("./places.json")
     // ordered largest-first, so rank is the row index; more labels appear as
     // the zoom rises.
     const labelPool = p.places.slice(0, 900).map((r, i) => {
-      const el = document.createElement("div");
-      el.className = "lbl";
+      // A label that names one of the departure cities is a button: clicking
+      // it departs from there. Matched by distance, since the gazetteer and
+      // origins.toml spell a few names differently.
+      const origin = originNear(r[3], r[4]);
+      const el = document.createElement(origin ? "button" : "div");
+      el.className = origin ? "lbl origin" : "lbl";
       el.textContent = r[0];
+      if (origin) {
+        el.type = "button";
+        el.title = `Depart from ${origin.name}`;
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();            // not a destination pin
+          $("here").textContent = "";
+          if (origin.slug !== active?.slug) paintOrigin(origin);
+        });
+      }
       const m = new maplibregl.Marker({ element: el, anchor: "top" })
         .setLngLat([r[4], r[3]]);
       return { m, rank: i, on: false };
@@ -264,6 +277,14 @@ map.addLayer({ id: "sphere", type: "fill", source: "sphere",
 map.addSource("water", { type: "vector", url: "pmtiles://./water.pmtiles" });
 map.addLayer({ id: "water", type: "fill", source: "water", "source-layer": "water",
   paint: { "fill-color": SEA, "fill-opacity": 1 } });
+// Sea and lakes take the colour scheme's own ground, so switching schemes
+// recolours the water as well as the land.
+function paintSea() {
+  const sea = RAMPS[rampName]?.sea ?? SEA;
+  for (const id of ["sphere", "water"])
+    if (map.getLayer(id)) map.setPaintProperty(id, "fill-color", sea);
+}
+paintSea();
 
 // The hovered cell, outlined so the reading has a visible footprint.
 map.addSource("hover", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
@@ -606,6 +627,20 @@ function renderPins() {
     const vs = document.createElement("span"); vs.className = "val"; vs.textContent = v;
     d.append(ks, vs); return d;
   }));
+  // The clicked point can also become the departure, when a departure city
+  // is near it. This is how you pick a city by clicking the chart.
+  const near = pinB && originNear(pinB.lat, pinB.lon);
+  if (near && near.slug !== active.slug) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "depart";
+    b.textContent = `Depart from ${near.name}`;
+    b.addEventListener("click", () => {
+      $("here").textContent = "";
+      pinB = null;
+      paintOrigin(near);
+    });
+    box.append(b);
+  }
 }
 
 map.on("click", (e) => {
@@ -617,6 +652,22 @@ map.on("click", (e) => {
   renderPins();
   renderLegs();
 });
+
+function haversineKm(la1, lo1, la2, lo2) {
+  const r = Math.PI / 180, dLa = (la2 - la1) * r, dLo = (lo2 - lo1) * r;
+  const a = Math.sin(dLa / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin(dLo / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+// Departure city within reach of a point, if any. 80 km covers a metro area
+// without claiming the next city over.
+function originNear(lat, lon, maxKm = 80) {
+  let best = null, bestKm = maxKm;
+  for (const o of meta.origins) {
+    const km = haversineKm(lat, lon, o.lat, o.lon);
+    if (km < bestKm) { best = o; bestKm = km; }
+  }
+  return best;
+}
 
 $("clear-pins").addEventListener("click", () => { pinB = null; renderPins(); renderLegs(); });
 
@@ -742,6 +793,7 @@ $("ramps").addEventListener("click", (e) => {
   // Repaint in place; the tiles are already loaded.
   if (map.getLayer("bands"))
     map.setPaintProperty("bands", "fill-color", bandColorExpression());
+  paintSea();
   if (map.getLayer("band-seams"))
     map.setPaintProperty("band-seams", "line-color", bandColorExpression());
 });
