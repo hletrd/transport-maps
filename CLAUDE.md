@@ -61,3 +61,8 @@ arrays; a static page renders them on a globe.
   close` ends the page but leaves the daemon and browser running.
 - **Never deploy a partial `dist/`.** The per-origin arrays and `hover_cells.bin`
   must come from the same build; mixing them renders a blank globe with no error.
+- **`dist/water.pmtiles` is static and not produced by `build-all`.** It is the
+  coastline drawn above the bands (`scripts/build_water_tiles.py`). Without it
+  the page shows no error -- the shore just goes back to being hex-shaped one
+  cell out to sea. `deploy_verify.sh` refuses to deploy without it and
+  `browser_verify.sh` asks the map whether water features actually rendered.
