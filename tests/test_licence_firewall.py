@@ -1,4 +1,10 @@
-"""Nothing derived from FR24 or FlightAware may reach the published artifact."""
+"""Nothing derived from a commercial provider may reach the published artifact.
+
+FR24 and FlightAware were the providers the design once named; Google Routes
+is the one calibration actually uses (scripts/calibrate_ground.py), so its
+fingerprints are forbidden too. The scan runs on the deploy path
+(scripts/deploy_verify.sh) as well as in the suite.
+"""
 
 import json
 import tomllib
@@ -8,11 +14,12 @@ import pytest
 
 from transport_maps import config
 
-FORBIDDEN = ("fr24", "flightradar", "flightaware", "aeroapi", "fa_flight_id")
+FORBIDDEN = ("fr24", "flightradar", "flightaware", "aeroapi", "fa_flight_id",
+             "routes.googleapis.com", "x-goog-api-key", "computeroutes", "google_routes")
 # The formats this firewall actually inspects. If this set is narrowed later
 # such that nothing under dist/ matches it, `_check_no_provider_fingerprints`
 # must SKIP visibly -- not silently pass having scanned zero files.
-SCANNED_SUFFIXES = {".json", ".geojson", ".toml"}
+SCANNED_SUFFIXES = {".json", ".geojson", ".toml", ".txt", ".md", ".html", ".js", ".xml"}
 
 
 def _check_no_provider_fingerprints(root: Path) -> None:
@@ -25,7 +32,8 @@ def _check_no_provider_fingerprints(root: Path) -> None:
     assert the scanned count is positive on the path that does run, so this
     can never again pass vacuously.
     """
-    files = [p for p in root.rglob("*") if p.is_file() and p.suffix in SCANNED_SUFFIXES]
+    files = [p for p in root.rglob("*") if p.is_file() and p.suffix in SCANNED_SUFFIXES
+             and "vendor" not in p.parts]           # third-party bundles are not our output
     if not files:
         pytest.skip(f"no scannable files under {root}; nothing built yet")
     assert len(files) > 0

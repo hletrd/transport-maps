@@ -1,0 +1,13 @@
+# Never published: an aborted writer's leftovers, dotfiles, the build lock.
+# Used by scripts/deploy_verify.sh for the server rsync. check_dist.py REFUSES
+# a dist/ that contains any of these rather than merely skipping them -- a
+# stray means the file beside it may be partial.
+.*
+*-journal
+*.tmp
+*.part
+*.partial
+tmp*
+.build-*
+.release-*
+README.md

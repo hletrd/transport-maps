@@ -1,62 +1,65 @@
 #!/usr/bin/env bash
 # Deploy the rebuilt dist and verify it end to end. Refuses to deploy a build
 # whose artifacts disagree with each other -- a mismatched hover array and cell
-# ordering renders a blank globe with no console error, which has shipped once.
+# ordering renders a blank globe with no error, which has shipped once.
+#
+#   scripts/deploy_verify.sh               # full: gate dist/, sync web/ into it, rsync, live checks
+#   scripts/deploy_verify.sh --page-only   # web/ only: no dist gate, no --delete (a page fix
+#                                          # while a rebuild owns dist/); the page reads every
+#                                          # new index.json field with a fallback, so it is safe
+#
+# Host, server root and URL come from deploy/.env (see deploy/.env.example).
 set -euo pipefail
-cd /Users/hletrd/flash-shared/transport-maps
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+[ -f deploy/.env ] && source deploy/.env
+: "${DEPLOY_HOST:=atik.kr}" "${DEPLOY_ROOT:=/var/www/worldmap}" "${SITE_URL:=https://worldmap.atik.kr}"
+MODE=full
+[ "${1:-}" = "--page-only" ] && MODE=page
+LOG="$(mktemp -t deploy_verify.XXXXXX).log"
+RSYNC_COMMON=(-a --chmod=D755,F644 --exclude-from=deploy/rsync-excludes.txt)
 
-echo "=== 1. artifact consistency ==="
-python3 - <<'PY'
-import json, pathlib, sys
-d = pathlib.Path("dist")
-n_cells = (d/"hover_cells.bin").stat().st_size // 8
-idx = json.load(open(d/"index.json"))
-bad = []
-warn = []
-for o in idx["origins"]:
-    s = o["slug"]
-    for suffix, width in ((".bin", 2), (".air.bin", 2), (".modes.bin", 12), (".rail.bin", 2)):
-        p = d/"origins"/f"{s}{suffix}"
-        if not p.exists():
-            # The rail detail is optional on the page (it appears when present);
-            # every other array is required and must agree in length.
-            (warn if suffix == ".rail.bin" else bad).append(f"{s}{suffix} missing"); continue
-        if p.stat().st_size // width != n_cells:
-            bad.append(f"{s}{suffix} has {p.stat().st_size//width} entries, expected {n_cells}")
-    if not (d/"origins"/f"{s}.pmtiles").exists():
-        bad.append(f"{s}.pmtiles missing")
-print(f"  hover cells {n_cells:,} | origins {len(idx['origins'])} | bands {len(idx['bandEdgesMin'])+1} | solveRes {idx.get('solveRes')}")
-for extra in ("places.json", "airports.json", "borders.json", "water.pmtiles"):
-    if not (d/extra).exists(): bad.append(f"{extra} missing")
-print(f"  attribution {[a['name'] for a in idx['attribution']]}")
-if warn:
-    print(f"  note: {len(warn)} optional file(s) absent, e.g. {warn[0]} (rail detail ships with the next full build)")
-if bad:
-    print("  MISMATCHES:", *bad[:10], sep="\n    "); sys.exit(1)
-print("  every origin has pmtiles + bin + air.bin + modes.bin, all lengths agree; gazetteer, airports, borders, water tiles present")
-PY
-
-echo "=== 1b. page copy agrees with index.json ==="
-# The page must not state a city count the data contradicts: the copy said
-# 553 cities while index.json listed 157. Any three-digit "N cities" or
-# "N departures" in the page has to equal the number of origins.
-N=$(python3 -c 'import json; print(len(json.load(open("dist/index.json"))["origins"]))')
-stated=$(grep -oE '[0-9]{3} (cities|departure)' web/index.html | grep -oE '^[0-9]{3}' | sort -u || true)
-for s in $stated; do
-  if [ "$s" != "$N" ]; then
-    echo "  web/index.html says '$s cities/departures' but index.json lists $N origins; fix the copy before deploying"
+if [ "$MODE" = full ]; then
+  echo "=== 1. artifact consistency ==="
+  # A build rewrites dist/origins in place; its lock (or, for a build started
+  # before the lock existed, its process) means dist/ is a mixed generation.
+  if [ -e dist/.build.lock ] || pgrep -f "transport-maps build-all|transport_maps.cli build-all" >/dev/null; then
+    echo "  a build-all is running (or died holding dist/.build.lock); refusing to deploy a mixed dist/"
     exit 1
   fi
-done
-echo "  index.html city count (${stated:-none stated}) agrees with index.json ($N origins)"
-
-echo "=== 2. copy web assets and deploy ==="
-rsync -a --exclude 'README.md' web/ dist/
-rsync -a --delete --info=progress2 dist/ atik.kr:/var/www/worldmap/ 2>&1 | tail -c 200; echo
+  uv run python scripts/check_dist.py --dist dist --web web
+  echo "=== 1b. licence firewall on the artifact ==="
+  uv run pytest -q -p no:cacheprovider tests/test_licence_firewall.py
+  echo "=== 2. assemble and deploy ==="
+  # The page-owned subtrees are mirrored WITH --delete so a removed vendor
+  # file does not linger in dist/ (14 dead woff2 did, cached for a year).
+  rsync -a --delete web/vendor/ dist/vendor/
+  rsync "${RSYNC_COMMON[@]}" --exclude 'vendor/' web/ dist/
+  # --delete-delay and --delay-updates: every file is uploaded to a temp name
+  # first and the renames happen at the end, so the window in which a visitor
+  # sees a new index.json beside old origin arrays is seconds, not minutes.
+  if ! rsync "${RSYNC_COMMON[@]}" --delete --delete-delay --delay-updates \
+        dist/ "$DEPLOY_HOST:$DEPLOY_ROOT/" >"$LOG" 2>&1; then
+    echo "  rsync failed; log: $LOG"; tail -20 "$LOG"; exit 1
+  fi
+  echo "  synced $(grep -c . "$LOG" || true) rsync lines; log: $LOG"
+else
+  echo "=== page-only deploy: web/ without the dist gate and without --delete ==="
+  uv run python scripts/check_dist.py --web web --copy-only
+  if ! rsync "${RSYNC_COMMON[@]}" web/ "$DEPLOY_HOST:$DEPLOY_ROOT/" >"$LOG" 2>&1; then
+    echo "  rsync failed; log: $LOG"; tail -20 "$LOG"; exit 1
+  fi
+fi
 
 echo "=== 3. live checks ==="
 for f in index.json app.js index.html places.json airports.json borders.json origins/seoul.air.bin origins/seoul.modes.bin; do
-  printf "  %-26s %s\n" "$f" "$(curl -s -o /dev/null -w '%{http_code}' "https://worldmap.atik.kr/$f")"
+  printf "  %-26s %s\n" "$f" "$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/$f")"
 done
-printf "  %-26s %s\n" "seoul.pmtiles range" "$(curl -s -o /dev/null -w '%{http_code}' -r 0-99 https://worldmap.atik.kr/origins/seoul.pmtiles)"
-printf "  %-26s %s\n" "water.pmtiles range" "$(curl -s -o /dev/null -w '%{http_code}' -r 0-99 https://worldmap.atik.kr/water.pmtiles)"
+printf "  %-26s %s\n" "seoul.pmtiles range" "$(curl -s -o /dev/null -w '%{http_code}' -r 0-99 "$SITE_URL/origins/seoul.pmtiles")"
+printf "  %-26s %s\n" "water.pmtiles range" "$(curl -s -o /dev/null -w '%{http_code}' -r 0-99 "$SITE_URL/water.pmtiles")"
+# Report (not yet assert -- the corrected nginx conf is an owner install) the
+# security headers on the page assets; absent CSP means the old conf is live.
+for f in "" app.js index.json; do
+  h=$(curl -sI "$SITE_URL/$f" | tr -d '\r' | grep -ci "^content-security-policy:" || true)
+  printf "  %-26s CSP header: %s\n" "/${f}" "$([ "$h" -gt 0 ] && echo present || echo ABSENT)"
+done
