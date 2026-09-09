@@ -86,13 +86,28 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
             continue
         rng = np.random.default_rng(seed)
         pick = rng.choice(interior, size=min(samples, len(interior)), replace=False)
-        pts = np.array([(lon, lat) for c in pick for lat, lon in h3.cell_to_boundary(cells[c])])
+        # Each vertex pulled 3% of the way to its cell's centre. A vertex that
+        # sits exactly on a shared edge is inside neither polygon by strict
+        # containment even when the two meet perfectly -- on the mixed grid a
+        # fine cell's corner lies on the seam between its parent and the next
+        # base cell -- while the holes this gate exists for are cells wide.
+        pts = []
+        for c in pick:
+            clat, clon = h3.cell_to_latlng(cells[c])
+            for lat, lon in h3.cell_to_boundary(cells[c]):
+                pts.append((clon + 0.97 * (lon - clon), clat + 0.97 * (lat - clat)))
+        pts = np.array(pts)
 
+        # Features are multipolygons whose parts may overlap (contour.bands),
+        # which GEOS predicates do not accept on the whole; the parts are
+        # indexed and tested one by one.
+        parts = [g for f in bands.lod_features(feature_collection, i)
+                 for g in shapely.get_parts(shape(f["geometry"]))]
         covered = np.zeros(len(pts), dtype=bool)
-        for f in bands.lod_features(feature_collection, i):
-            g = shape(f["geometry"])
-            shapely.prepare(g)
-            covered |= shapely.contains_xy(g, pts[:, 0], pts[:, 1])
+        if parts:
+            tree = shapely.STRtree(parts)
+            hit_pts, _ = tree.query(shapely.points(pts), predicate="within")
+            covered[np.unique(hit_pts)] = True
         if not covered.all():
             n = int((~covered).sum())
             raise ValueError(

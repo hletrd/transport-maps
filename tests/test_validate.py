@@ -73,7 +73,7 @@ def test_a_hole_between_bands_is_rejected():
     cells6 = grid[0]
     # Punch out a disc around one vertex of the CENTRE land cell.
     la, lo = h3.cell_to_boundary(idx.cells[len(idx.cells) // 2])[0]
-    holed = _whole(cells6).difference(Point(lo, la).buffer(0.0005))
+    holed = _whole(cells6).difference(Point(lo, la).buffer(0.004))   # ~440 m, past the 3% pull-in
     with pytest.raises(ValueError, match="between bands"):
         validate.check_bands_cover(idx, grid, native, {"features": _features(holed)}, samples=len(cells6))
 

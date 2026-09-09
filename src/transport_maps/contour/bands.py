@@ -119,17 +119,23 @@ def _dissolve(cells: list[str]):
     """
     normal = [c for c in cells if not _crosses_antimeridian(c)]
     wrapping = [c for c in cells if _crosses_antimeridian(c)]
-    geoms = []
+    parts = []
     by_res: dict[int, list[str]] = {}
     for c in normal:
         by_res.setdefault(h3.get_resolution(c), []).append(c)
     for group in by_res.values():
-        geoms.append(shape(h3.h3shape_to_geo(h3.cells_to_h3shape(group, tight=True))))
+        parts.extend(shapely.get_parts(shape(h3.h3shape_to_geo(h3.cells_to_h3shape(group, tight=True)))))
     for cell in wrapping:
-        geoms.extend(_split_at_antimeridian(cell))
-    if not geoms:
+        parts.extend(shapely.get_parts(shapely.make_valid(unary_union(_split_at_antimeridian(cell)))))
+    parts = [g for g in parts if g.geom_type == "Polygon" and not g.is_empty]
+    if not parts:
         return None
-    return _polygonal(shapely.make_valid(unary_union(geoms)))
+    # The resolution groups (and a split cell's parent under its children)
+    # overlap along their seams and are NOT unioned: a GEOS overlay of two
+    # hundred-thousand-vertex multipolygons per band cost minutes per origin,
+    # and neither the renderer nor tippecanoe needs it -- overlapping parts of
+    # one feature paint the same colour twice.
+    return shapely.multipolygons(parts) if len(parts) > 1 else parts[0]
 
 
 # Levels of detail. tippecanoe simplifies in TILE space, so its tolerance at
