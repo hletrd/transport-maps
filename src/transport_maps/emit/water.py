@@ -8,9 +8,10 @@ coastline is drawn from imagery at tens of metres, where Natural Earth 10m is
 generalised for a 1:10,000,000 map.
 
 Ocean: the OSM water polygons published by osmdata.openstreetmap.de (the
-coastline, closed and split on a grid so no polygon is huge). Lakes: Natural
-Earth 10m, the same set the land mask cuts out, so a lake shore the solver
-knows about is drawn and one it does not is not.
+coastline, closed and split on a grid so no polygon is huge). Lakes:
+HydroLAKES (Messager et al. 2016, CC BY 4.0), 1.4 million lakes over 10 ha
+with outlines from the SRTM water body data and national surveys -- Natural
+Earth 10m had a few hundred, drawn for a 1:10,000,000 map.
 """
 
 from __future__ import annotations
@@ -27,13 +28,22 @@ import httpx
 from transport_maps import config
 
 WATER_URL = "https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip"
+LAKES_URL = "https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v10_shp.zip"
 LAYER = "water"
-MIN_ZOOM, MAX_ZOOM = 0, 11
-# Tile-space tolerance. At zoom 11 one unit is ~4.8 m, so 6 keeps the coast
-# within ~29 m -- well under a screen pixel at the page's maximum zoom of 11,
-# so the shore never shows facets. (10 / 8, about 76 m, was one pixel and
-# read as slightly soft.)
-SIMPLIFICATION = 6
+MIN_ZOOM, MAX_ZOOM = 0, 12
+# Tile-space tolerance. At zoom 12 one unit is ~2.4 m, so 4 keeps the coast
+# within ~10 m -- a quarter of a screen pixel at the page's maximum zoom of
+# 11, and about the precision of the OSM coastline itself.
+SIMPLIFICATION = 4
+LAKE_ZOOM_FILTER = (
+    '{"*": ["any", ["!has", "Lake_area"], '
+    '[">=", "Lake_area", 2000], '
+    '["all", [">=", "$zoom", 3], [">=", "Lake_area", 200]], '
+    '["all", [">=", "$zoom", 5], [">=", "Lake_area", 20]], '
+    '["all", [">=", "$zoom", 7], [">=", "Lake_area", 2]], '
+    '["all", [">=", "$zoom", 9], [">=", "Lake_area", 0.2]], '
+    '[">=", "$zoom", 11]]}'
+)
 
 
 def _download(url: str = WATER_URL) -> Path:
@@ -49,20 +59,21 @@ def _download(url: str = WATER_URL) -> Path:
     return cached
 
 
-def _ocean_flatgeobuf() -> Path:
-    """The ocean shapefile as FlatGeobuf, which tippecanoe reads directly.
+def _flatgeobuf(url: str) -> Path:
+    """A zipped shapefile as FlatGeobuf, which tippecanoe reads directly.
 
-    Converted with GDAL through pyogrio, streaming batch by batch: the
+    Converted with GDAL through pyogrio, streaming batch by batch: the ocean
     shapefile is about 1.5 GB and 60 million vertices, which is not something
     to hold as GeoJSON text.
     """
     import pyogrio
 
-    out = config.CACHE / "water-polygons-split-4326.fgb"
+    stem = url.rsplit("/", 1)[-1].removesuffix(".zip")
+    out = config.CACHE / f"{stem}.fgb"
     if out.exists():
         return out
-    archive = _download()
-    folder = config.CACHE / "water-polygons-split-4326"
+    archive = _download(url)
+    folder = config.CACHE / stem
     if not any(folder.glob("**/*.shp")):
         with zipfile.ZipFile(archive) as z:
             z.extractall(folder)
@@ -75,31 +86,15 @@ def _ocean_flatgeobuf() -> Path:
     return out
 
 
-def _lakes_geojson(tmpdir: Path) -> Path:
-    """Natural Earth lakes, attributes dropped, as a temporary GeoJSON."""
-    import pyogrio
-
-    from transport_maps.sources import landmask
-
-    path = landmask._download(landmask.LAKES_URL, "ne_10m_lakes.zip").resolve()
-    meta, table = pyogrio.read_arrow(f"/vsizip/{path}")
-    geom = meta["geometry_name"] or "wkb_geometry"
-    out = tmpdir / "lakes.geojson"
-    pyogrio.write_arrow(table.select([geom]), out, driver="GeoJSON",
-                        geometry_name=geom, geometry_type=meta["geometry_type"],
-                        crs=meta["crs"])
-    return out
-
-
 def build(out: Path) -> Path:
     """Build dist/water.pmtiles. Returns the output path."""
     if shutil.which("tippecanoe") is None:
         raise RuntimeError("tippecanoe not on PATH; run: brew install tippecanoe")
-    ocean = _ocean_flatgeobuf()
+    ocean = _flatgeobuf(WATER_URL)
+    lakes = _flatgeobuf(LAKES_URL)
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as td:
         tmpdir = Path(td)
-        lakes = _lakes_geojson(tmpdir)
         # Local disk, then move: tippecanoe writes through sqlite, whose
         # locking is unreliable on the NFS mount this repo lives on.
         staged = tmpdir / "water.pmtiles"
@@ -118,7 +113,12 @@ def build(out: Path) -> Path:
             "--visvalingam",
             # A bay too small to draw should vanish, not become a square.
             "--no-tiny-polygon-reduction",
-            "--exclude-all",                     # geometry only; no attributes
+            # 1.4 million lakes exceed tippecanoe's per-tile feature limit at
+            # low zoom. A lake appears once it is a few pixels across: the
+            # filter keys on HydroLAKES' area (km^2) against the zoom. Ocean
+            # pieces carry no Lake_area and pass everywhere.
+            "-j", LAKE_ZOOM_FILTER,
+            "--include=Lake_area",               # the only attribute kept
             str(ocean), str(lakes),
         ], check=True, capture_output=True, text=True)
         shutil.move(str(staged), out)

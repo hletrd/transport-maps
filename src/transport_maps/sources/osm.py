@@ -30,6 +30,9 @@ MIN_STOPS = 2
 SCHEMA = {
     "route_id": pl.Int64, "seq": pl.Int64, "stop_id": pl.Int64,
     "lat": pl.Float64, "lon": pl.Float64, "name": pl.Utf8, "highspeed": pl.Boolean,
+    # The relation's own name -- "KTX 경부선", "ICE 12" -- so the page can say
+    # which line a journey rode, not just that it rode one.
+    "route_name": pl.Utf8,
 }
 
 
@@ -84,7 +87,8 @@ def _parse(path) -> list[dict]:
             rows.append({"route_id": route_id, "seq": seq, "stop_id": sid,
                          "lat": lat, "lon": lon,
                          "name": node_name or r["name"],
-                         "highspeed": r["highspeed"]})
+                         "highspeed": r["highspeed"],
+                         "route_name": r["name"]})
     return rows
 
 
@@ -175,7 +179,7 @@ def rail_routes(*, extracts_dir=None) -> pl.DataFrame:
     # results. Size and mtime are what change when a file is replaced.
     fingerprint = [(str(extracts_dir), p.name, p.stat().st_size, p.stat().st_mtime_ns)
                    for p in paths]
-    key = _params_hash(fingerprint, STOP_ROLES, PLATFORM_ROLES, MIN_STOPS)
+    key = _params_hash(fingerprint, STOP_ROLES, PLATFORM_ROLES, MIN_STOPS, sorted(SCHEMA))
     cached = config.CACHE / f"rail_routes-{key}.parquet"
     if cached.exists():
         return pl.read_parquet(cached)

@@ -1,75 +1,75 @@
-"""A small gazetteer so the readout can name the place under the cursor.
+"""A gazetteer so the readout can name the place under the cursor.
 
-Natural Earth's populated-places set, reduced to name, country and position.
-Shipped as one JSON the page loads once: a few hundred kilobytes buys a
-name for every hover, where a reverse-geocoding request would cost a round
-trip per pointer move and a dependency on somebody else's uptime.
+GeoNames cities15000 -- every place over 15,000 people, about 31,000 of them
+-- reduced to name, region, country and position. Shipped as one JSON the page
+loads once: half a megabyte gzipped buys a name for every hover, where a
+reverse-geocoding request would cost a round trip per pointer move and a
+dependency on somebody else's uptime. (The page does ask Nominatim for a
+proper address when a point is CLICKED; that is one request, not hundreds.)
+
+Natural Earth's populated places, used before, had 7,342 entries and named
+the nearest of them however far away it was.
 """
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import pathlib
+import zipfile
 
 import httpx
-import pyogrio
 
 from .. import config
 from ..sources._utils import _atomic_write
 
-PLACES_URL = "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_populated_places_simple.zip"
-# Rank 1 is a world city, 10 a village. Everything is kept: the point of the
-# gazetteer is to name remote places, which is exactly where the big cities
-# are not.
-FIELDS = ("name", "adm0name", "adm1name", "latitude", "longitude", "pop_max")
+CITIES_URL = "https://download.geonames.org/export/dump/cities15000.zip"
+ADMIN1_URL = "https://download.geonames.org/export/dump/admin1CodesASCII.txt"
+COUNTRY_URL = "https://download.geonames.org/export/dump/countryInfo.txt"
+
+COLS = ("id", "name", "ascii", "alt", "lat", "lon", "fclass", "fcode", "cc", "cc2",
+        "a1", "a2", "a3", "a4", "pop", "elev", "dem", "tz", "mod")
 
 
-def _download() -> pathlib.Path:
-    cached = config.CACHE / "ne_10m_populated_places_simple.zip"
+def _download(url: str) -> pathlib.Path:
+    cached = config.CACHE / url.rsplit("/", 1)[-1]
     if not cached.exists():
-        r = httpx.get(PLACES_URL, follow_redirects=True, timeout=180)
+        r = httpx.get(url, follow_redirects=True, timeout=180)
         r.raise_for_status()
         _atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
     return cached
 
 
+def _tsv(text: str) -> list[list[str]]:
+    return [row for row in csv.reader(io.StringIO(text), delimiter="\t", quoting=csv.QUOTE_NONE)
+            if row and not row[0].startswith("#")]
+
+
 def build(out: pathlib.Path) -> int:
-    path = _download().resolve()
-    _meta, table = pyogrio.read_arrow(f"/vsizip/{path}")
-    cols = {name: table.column(name).to_pylist()
-            for name in FIELDS if name in table.schema.names}
+    with zipfile.ZipFile(_download(CITIES_URL)) as z:
+        cities = _tsv(z.read("cities15000.txt").decode("utf-8"))
+    admin1 = {row[0]: row[1] for row in _tsv(_download(ADMIN1_URL).read_text(encoding="utf-8"))}
+    countries = {row[0]: row[4] for row in _tsv(_download(COUNTRY_URL).read_text(encoding="utf-8"))
+                 if len(row) > 4}
 
-    rows = []
-    kept_pop = []
-    for i in range(len(cols["name"])):
-        lat, lon = cols["latitude"][i], cols["longitude"][i]
-        if lat is None or lon is None:
+    rows, pops = [], []
+    for raw in cities:
+        r = dict(zip(COLS, raw))
+        try:
+            lat, lon = float(r["lat"]), float(r["lon"])
+        except ValueError:
             continue
-        kept_pop.append(cols.get("pop_max", [0] * (i + 1))[i] or 0)
-        rows.append([
-            cols["name"][i] or "",
-            cols.get("adm1name", [None] * (i + 1))[i] or "",
-            cols.get("adm0name", [None] * (i + 1))[i] or "",
-            round(float(lat), 3),
-            round(float(lon), 3),
-        ])
+        region = admin1.get(f"{r['cc']}.{r['a1']}", "")
+        rows.append([r["name"], region, countries.get(r["cc"], r["cc"]),
+                     round(lat, 3), round(lon, 3)])
+        pops.append(int(r["pop"] or 0))
     if not rows:
-        raise RuntimeError("populated-places extract yielded no usable rows")
-
-    # Largest first, so a consumer can treat row index as rank. Natural Earth
-    # does not ship the file in that order -- its first rows are Uruguayan
-    # towns -- and the first attempt at labels put Fray Bentos on the map
-    # before Tokyo.
-    order = sorted(range(len(rows)), key=lambda i: -kept_pop[i])
+        raise RuntimeError("GeoNames extract yielded no usable rows")
+    # Largest first, so a consumer can treat row index as rank.
+    order = sorted(range(len(rows)), key=lambda i: -pops[i])
     rows = [rows[i] for i in order]
-
-    # Columnar, not a list of objects: the same data as records is roughly
-    # three times the bytes over the wire for no gain on the client.
-    payload = {
-        "fields": ["name", "region", "country", "lat", "lon"],
-        "places": rows,
-    }
+    payload = {"fields": ["name", "region", "country", "lat", "lon"], "places": rows}
     _atomic_write(out, lambda tmp: tmp.write_text(
-        json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-        encoding="utf-8"))
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"))
     return len(rows)
