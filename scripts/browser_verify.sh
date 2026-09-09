@@ -6,8 +6,8 @@ set -u
 URL="${1:-https://worldmap.atik.kr/}"
 # Expected counts come from the deployed index.json, never from a literal:
 # 157 cities and 37 swatches were hard-coded here and would have blocked the
-# correct 553-origin deploy. The legend shows one swatch per band plus two
-# more, for "no scheduled route" and "open water".
+# correct 553-origin deploy. The legend shows one swatch per band in .tints
+# plus two keys in .keys, for "no scheduled route" and "open water".
 IDX=$(curl -sf "${URL%/}/index.json") || { echo "!! could not fetch ${URL%/}/index.json"; exit 1; }
 read -r CITIES BANDS < <(printf '%s' "$IDX" | python3 -c 'import json, sys
 d = json.load(sys.stdin); print(len(d["origins"]), len(d["bandEdgesMin"]) + 1)')
@@ -22,7 +22,7 @@ fail=0
 echo "=== data-level checks (desktop) ==="
 R=$(agent-browser eval '(()=>{const q=s=>document.querySelector(s);return JSON.stringify({
   canvas:!!q("#map canvas"), cities:document.querySelectorAll(".results button").length,
-  tints:document.querySelectorAll(".tints span").length, ramps:document.querySelectorAll("#ramps button").length,
+  tints:document.querySelectorAll(".tints span, .keys .sw").length, ramps:document.querySelectorAll("#ramps button").length,
   borders:!!q(".maplibregl-canvas"), disclaimer:!!q(".disclaimer") && q(".disclaimer").offsetParent !== null})})()' 2>&1 | tail -1 | tr -d '\\')
 echo "  $R"
 echo "$R" | grep -q '"canvas":true' || fail=1
@@ -53,8 +53,9 @@ T=$(agent-browser eval '(()=>JSON.stringify({ap:document.querySelectorAll("#legs
 echo "  tooltips/schemes: ${T:0:200}"
 echo "$T" | grep -qE '"ap":[1-9]' && echo "$T" | grep -qE '"mode":[1-9]' || { echo "  !! route lacks airport/mode explanations"; fail=1; }
 echo "$T" | grep -q "\"schemes\":$SCHEMES," || { echo "  !! expected $SCHEMES colour schemes"; fail=1; }
-# address search reaches Nominatim and lists results
-agent-browser eval '(()=>{const q=document.getElementById("q");q.value="Gangnam-daero, Seoul";q.dispatchEvent(new Event("input",{bubbles:true}));return 1})()' >/dev/null 2>&1; sleep 5
+# address search reaches Nominatim and lists results. It runs only on an explicit
+# search (Enter with no city match, or the button), never per keystroke.
+agent-browser eval '(()=>{const q=document.getElementById("q");q.value="Gangnam-daero, Seoul";q.dispatchEvent(new Event("input",{bubbles:true}));q.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));return 1})()' >/dev/null 2>&1; sleep 6
 A=$(agent-browser eval 'document.querySelectorAll(".results .addresses button[data-geo]").length' 2>&1 | tail -1 | tr -d '\\"')
 echo "  address results: $A"
 [ "${A:-0}" -ge 1 ] || { echo "  !! address search returned nothing"; fail=1; }
