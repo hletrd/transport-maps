@@ -50,3 +50,40 @@ def _metadata(path) -> bytes:
         fh.seek(meta_off)
         raw = fh.read(meta_len)
     return gzip.decompress(raw) if head[97] == 2 else raw
+
+
+@needs_tippecanoe
+def test_the_archive_is_published_by_rename_in_its_own_directory(monkeypatch, tmp_path):
+    """shutil.move across filesystems is a copy plus unlink: the target was
+    truncated for the seconds a 27 MB copy took, and a worker killed mid-copy
+    left a partial archive the deploy gate accepted."""
+    import os
+    seen = []
+    real = os.replace
+
+    def spy(src, dst):
+        seen.append((str(src), str(dst)))
+        return real(src, dst)
+    monkeypatch.setattr(os, "replace", spy)
+    out = tmp_path / "t.pmtiles"
+    tiles.write_pmtiles(SQUARE, out)
+    publishes = [(s, d) for s, d in seen if d == str(out)]
+    assert publishes, "the archive was not published with os.replace"
+    src, _ = publishes[-1]
+    assert str(tmp_path) == os.path.dirname(src), f"rename source {src} is not beside the target"
+
+
+@needs_tippecanoe
+def test_the_archive_metadata_carries_no_local_path(tmp_path):
+    out = tmp_path / "seoul.pmtiles"
+    tiles.write_pmtiles(SQUARE, out)
+    meta = _metadata(out).decode()
+    assert "/Users/" not in meta and "/var/folders" not in meta and "/tmp/" not in meta, meta[:300]
+    assert '"name":"seoul"' in meta or '"name": "seoul"' in meta
+
+
+def test_sweep_removes_stale_staging_files():
+    stale = tiles.scratch_dir() / "stale-test.geojson"
+    stale.write_text("{}")
+    assert tiles.sweep_scratch() >= 1
+    assert not stale.exists()

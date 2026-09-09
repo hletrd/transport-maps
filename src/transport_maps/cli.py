@@ -197,7 +197,7 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     validate.check_bands_cover(idx, shared["grid"], shared["native"], fc)
 
     out = config.DIST / "origins"
-    tiles.write_pmtiles(fc, out / f"{slug}.pmtiles")
+    tiles.write_pmtiles(fc, out / f"{slug}.pmtiles", workers=shared.get("workers"))
     hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
     routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
     itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
@@ -240,6 +240,10 @@ def _build_all(limit: int | None = None) -> None:
     """
     lock = _acquire_lock(config.DIST)
     try:
+        swept = tiles.sweep_scratch()
+        if swept:
+            logging.getLogger(__name__).warning(
+                "removed %d stale tippecanoe staging file(s) left by an earlier run", swept)
         others = _other_builds()
         if others:
             logging.getLogger(__name__).warning(
@@ -299,6 +303,7 @@ def _build_all_locked(limit: int | None) -> None:
     # ~1 GB of scipy arrays, so workers are FORKED to inherit it copy-on-write
     # rather than spawned, which would rebuild it once per worker.
     workers = min(_worker_cap(len(idx.cells)), _worker_count(len(origins)))
+    shared["workers"] = workers
     try:
         if workers <= 1:
             for origin in origins:

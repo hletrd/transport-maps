@@ -25,7 +25,7 @@ from pathlib import Path
 
 import httpx
 
-from transport_maps import config
+from transport_maps import _io, config
 
 WATER_URL = "https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip"
 LAKES_URL = "https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v10_shp.zip"
@@ -95,17 +95,25 @@ def build(out: Path) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as td:
         tmpdir = Path(td)
-        # Local disk, then move: tippecanoe writes through sqlite, whose
-        # locking is unreliable on the NFS mount this repo lives on.
+        # Local disk, then an atomic publish: tippecanoe writes through
+        # sqlite, whose locking is unreliable on the NFS mount this repo
+        # lives on. Inputs are symlinked under short names and the command
+        # runs with cwd=tmpdir, because tippecanoe records its command line
+        # in the archive's metadata and the page fetches that metadata --
+        # absolute paths here were local paths served to every visitor.
+        (tmpdir / "ocean.fgb").symlink_to(ocean)
+        (tmpdir / "lakes.fgb").symlink_to(lakes)
         staged = tmpdir / "water.pmtiles"
         t = time.perf_counter()
         subprocess.run([
-            "tippecanoe", "-o", str(staged), "--force",
-            "-l", LAYER, "-Z", str(MIN_ZOOM), "-z", str(MAX_ZOOM),
+            "tippecanoe", "-o", staged.name, "--force",
+            "-l", LAYER, "-n", "water", "-N", "coastline and lakes",
+            "-Z", str(MIN_ZOOM), "-z", str(MAX_ZOOM),
             f"--simplification={SIMPLIFICATION}",
             # The split ocean polygons abut along grid lines; without this the
-            # shared edges simplify differently and hairlines open between them.
-            "--detect-shared-borders",
+            # shared edges simplify differently and hairlines open between
+            # them. (--detect-shared-borders is the deprecated spelling.)
+            "--no-simplification-of-shared-nodes",
             # Visvalingam drops the smallest bumps first, which is what a
             # generalised coast should look like. Douglas-Peucker keeps the
             # farthest-out vertices and leaves a sawtooth of spikes at low
@@ -119,9 +127,12 @@ def build(out: Path) -> Path:
             # pieces carry no Lake_area and pass everywhere.
             "-j", LAKE_ZOOM_FILTER,
             "--include=Lake_area",               # the only attribute kept
-            str(ocean), str(lakes),
-        ], check=True, capture_output=True, text=True)
-        shutil.move(str(staged), out)
+            "ocean.fgb", "lakes.fgb",
+        ], check=True, capture_output=True, text=True, cwd=tmpdir)
+        # Same-directory temp + rename: shutil.move across filesystems is a
+        # copy plus unlink, which left a truncated archive for the seconds
+        # (minutes, at 867 MB) the copy took.
+        _io.atomic_write(out, lambda tmp: shutil.copyfile(staged, tmp))
         print(f"  water tiles: {out.stat().st_size / 1e6:,.0f} MB in "
               f"{(time.perf_counter() - t) / 60:.1f} min")
     return out

@@ -98,7 +98,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
         out.write_bytes(b"x")
         written.append(out)
 
-    monkeypatch.setattr(cli.tiles, "write_pmtiles", lambda fc, out: _fake_write(out))
+    monkeypatch.setattr(cli.tiles, "write_pmtiles", lambda fc, out, **kw: _fake_write(out))
     monkeypatch.setattr(cli.hover, "write_hover", lambda idx, minutes, out: _fake_write(out))
     monkeypatch.setattr(
         cli.routes_json, "write_routes", lambda idx, minutes, pred, out: _fake_write(out)

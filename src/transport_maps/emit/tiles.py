@@ -1,47 +1,79 @@
 """Band GeoJSON -> PMTiles via tippecanoe."""
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
+from transport_maps import _io
+
 # Measured on a real Seoul band set: Z0-7 gives 3.84 MB, Z0-6 gives 2.38 MB
 # (-38%), while quadrupling simplification only saves 12%. Max zoom is the
-# dominant size lever. The source is H3 res-5 hexes (~8.5 km edge), and at
-# zoom 6 that is already ~3.5 px, so zoom 7 spends bytes on detail finer than
-# the underlying data. Do not raise this without re-measuring.
-# z7 measured ~38% larger than z6 and keeps band edges crisp a zoom level
-# further in; MapLibre overzooms past the source maximum, so the map still
-# zooms to 11 without storing tiles for it.
-# Fine cells are 2.1 km across; at zoom 8 the simplification tolerance is
-# ~0.3 km, which keeps them hexagons under overzoom.
+# dominant size lever. At zoom 8 the simplification tolerance is ~0.3 km,
+# which keeps the 2.4 km fine cells hexagons under overzoom; z7 measured ~38%
+# larger than z6 and keeps band edges crisp a zoom level further in, and
+# MapLibre overzooms past the source maximum, so the map still zooms to 11
+# without storing tiles for it. Do not raise this without re-measuring.
 MIN_ZOOM, MAX_ZOOM = 0, 8
 LAYER = "bands"
 
 
-def write_pmtiles(feature_collection: dict, out: Path) -> None:
+def scratch_dir() -> Path:
+    """Where tippecanoe's input and output are staged: LOCAL disk, in one
+    named directory. tippecanoe writes its output through sqlite3, whose file
+    locking is unreliable over NFS -- and this repo lives on an NFS mount;
+    writing straight to dist/ survived 111 origins of a 157-origin build and
+    then died with "sqlite3 map insert failed: disk I/O error". A named
+    directory (rather than bare tempfile names) is what lets sweep_scratch()
+    remove what a killed worker left behind: 650 MB per origin at res 6/7."""
+    d = Path(tempfile.gettempdir()) / "transport-maps"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def sweep_scratch() -> int:
+    """Delete stale staging files from earlier runs; returns the count."""
+    n = 0
+    d = scratch_dir()
+    for p in d.iterdir():
+        if p.is_file():
+            p.unlink(missing_ok=True)
+            n += 1
+    return n
+
+
+def _threads(workers: int | None) -> dict[str, str]:
+    """tippecanoe uses every core by default; with several workers each
+    running one, cap it to the worker's share (it honours this variable)."""
+    if not workers or workers <= 1:
+        return {}
+    cores = os.cpu_count() or 1
+    return {"TIPPECANOE_MAX_THREADS": str(max(1, cores // workers))}
+
+
+def write_pmtiles(feature_collection: dict, out: Path, *, workers: int | None = None) -> None:
     if shutil.which("tippecanoe") is None:
         raise RuntimeError("tippecanoe not on PATH; run: brew install tippecanoe")
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", suffix=".geojson", delete=False) as fh:
+    out = Path(out)
+    scratch = scratch_dir()
+    fd, src_name = tempfile.mkstemp(dir=scratch, prefix=f"{out.stem}.", suffix=".geojson")
+    src = Path(src_name)
+    with os.fdopen(fd, "w") as fh:
         json.dump(feature_collection, fh)
-        src = Path(fh.name)
-
-    # Build on LOCAL disk, then move. tippecanoe writes its output through
-    # sqlite3, whose file locking is unreliable over NFS -- and this repo lives
-    # on an NFS mount. Writing straight to `out` survived 111 origins of a
-    # 157-origin build and then died with "sqlite3 map insert failed: disk I/O
-    # error", which is the intermittency that diagnosis predicts. The temp file
-    # sits next to the geojson, in the system temp directory, which is local.
     staged = src.with_suffix(".pmtiles")
 
     try:
+        # Relative paths and cwd=scratch: tippecanoe records its whole command
+        # line in the archive's metadata, which the page fetches on every
+        # source load, so an absolute path here is a local path served to
+        # every visitor (CRIT-17).
         result = subprocess.run([
             "tippecanoe",
-            "-o", str(staged), "--force",
-            "-l", LAYER,
+            "-o", staged.name, "--force",
+            "-l", LAYER, "-n", out.stem, "-N", f"{out.stem} travel-time bands",
             "-Z", str(MIN_ZOOM), "-z", str(MAX_ZOOM),
             # Tippecanoe simplifies in TILE space, so its tolerance scales with
             # zoom and cannot pull a rounded corner back onto a hex vertex the
@@ -57,17 +89,23 @@ def write_pmtiles(feature_collection: dict, out: Path) -> None:
             "--no-tiny-polygon-reduction",
             "--coalesce-densest-as-needed",
             "--extend-zooms-if-still-dropping",
-            str(src),
-        ], check=True, capture_output=True, text=True)
+            src.name,
+        ], check=True, capture_output=True, text=True, cwd=scratch,
+            env={**os.environ, **_threads(workers)})
+        # The 650 MB input is done with as soon as tippecanoe returns.
+        src.unlink(missing_ok=True)
         # tippecanoe says when it had to coarsen a tile to make it fit, and
         # nothing else does: a coarsened tile is what turns a coast into teeth.
         notes = [l for l in result.stderr.splitlines()
                  if "tile " in l and ("too large" in l or "detail" in l or "dropping" in l)]
         for note in notes[:3]:
             print(f"  tippecanoe: {note.strip()[:140]}")
-        # shutil.move handles the cross-filesystem case (local -> NFS) that
-        # os.replace cannot.
-        shutil.move(str(staged), str(out))
+        # Publish by copying into a same-directory temp file and renaming it
+        # over the target. shutil.move across filesystems is a copy PLUS an
+        # unlink: the destination was truncated for the seconds the copy took,
+        # and a worker killed mid-copy left a partial archive that the deploy
+        # gate (existence only) shipped.
+        _io.atomic_write(out, lambda tmp: shutil.copyfile(staged, tmp))
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(f"tippecanoe failed: {exc.stderr}") from exc
     finally:
