@@ -36,6 +36,20 @@ if bad:
 print("  every origin has pmtiles + bin + air.bin + modes.bin, all lengths agree; gazetteer, airports, borders, water tiles present")
 PY
 
+echo "=== 1b. page copy agrees with index.json ==="
+# The page must not state a city count the data contradicts: the copy said
+# 553 cities while index.json listed 157. Any three-digit "N cities" or
+# "N departures" in the page has to equal the number of origins.
+N=$(python3 -c 'import json; print(len(json.load(open("dist/index.json"))["origins"]))')
+stated=$(grep -oE '[0-9]{3} (cities|departure)' web/index.html | grep -oE '^[0-9]{3}' | sort -u || true)
+for s in $stated; do
+  if [ "$s" != "$N" ]; then
+    echo "  web/index.html says '$s cities/departures' but index.json lists $N origins; fix the copy before deploying"
+    exit 1
+  fi
+done
+echo "  index.html city count (${stated:-none stated}) agrees with index.json ($N origins)"
+
 echo "=== 2. copy web assets and deploy ==="
 rsync -a --exclude 'README.md' web/ dist/
 rsync -a --delete --info=progress2 dist/ atik.kr:/var/www/worldmap/ 2>&1 | tail -c 200; echo

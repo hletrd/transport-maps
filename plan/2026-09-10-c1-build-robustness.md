@@ -38,13 +38,13 @@ orchestrator are running; do not start/stop them, do not rewrite `dist/` or
       edge (`build.py:301-307`). Test: the tracer's 7-cell synthetic fixture
       builds. Mutation: restore same-resolution `grid_disk` only → duplicate
       pair `RuntimeError`.
-- [ ] **E1 (verify half)** `scripts/browser_verify.sh` derives the expected city
+- [x] **E1 (verify half)** `scripts/browser_verify.sh` derives the expected city
       count and band count from the deployed `index.json` (`curl` it) instead
       of hard-coding 157/37; the scheme count stays a page fact (12) but is
       read from a single place. `scripts/deploy_verify.sh` checks that
       `web/index.html` does not state a city count that disagrees with
       `index.json` (grep) before rsync.
-- [ ] **D14/FD-5** `browser_verify.sh` asserts on `borders` and on a *visible*
+- [x] **D14/FD-5** `browser_verify.sh` asserts on `borders` and on a *visible*
       disclaimer element, not the `<noscript>` text.
 
 ## Cycle 2
