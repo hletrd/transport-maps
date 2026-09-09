@@ -12,7 +12,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Isochronic Passage Chart — travel time to anywhere on Earth</title>
-<meta name="description" content="How many hours it takes to reach any point on Earth from 157 cities, by air, rail and road. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
+<meta name="description" content="How many hours it takes to reach any point on Earth from 553 cities, by air, rail and road. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
 <link rel="canonical" href="https://worldmap.atik.kr/">
 <meta name="theme-color" content="#0a0b0d">
 <meta name="robots" content="index,follow,max-image-preview:large">
@@ -20,7 +20,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Isochronic Passage Chart">
 <meta property="og:title" content="Isochronic Passage Chart — travel time to anywhere on Earth">
-<meta property="og:description" content="Hours required to reach any point on Earth from 157 cities, by air, rail and road. Recomputed from open data, after Galton, 1881.">
+<meta property="og:description" content="Hours required to reach any point on Earth from 553 cities, by air, rail and road. Recomputed from open data, after Galton, 1881.">
 <meta property="og:url" content="https://worldmap.atik.kr/">
 <meta property="og:image" content="https://worldmap.atik.kr/preview.png">
 <meta property="og:image:width" content="1200">
@@ -28,7 +28,7 @@
 <meta property="og:image:alt" content="A dark globe shaded by travel time from Seoul, brightest nearby and fading to violet at three days">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Isochronic Passage Chart">
-<meta name="twitter:description" content="Hours required to reach any point on Earth from 157 cities.">
+<meta name="twitter:description" content="Hours required to reach any point on Earth from 553 cities.">
 <meta name="twitter:image" content="https://worldmap.atik.kr/preview.png">
 
 <script type="application/ld+json">
@@ -38,12 +38,12 @@
     {
       "@type": "Dataset",
       "@id": "https://worldmap.atik.kr/#dataset",
-      "name": "Global travel-time isochrones from 157 cities",
-      "description": "Expected door-to-door travel time from each of 157 origin cities to every land area on Earth, combining scheduled air routes, rail from OpenStreetMap route relations, ferry crossings, and a road-speed model calibrated against 2,998 real driving journeys, with check-in, border-control and transfer penalties. Distributed as PMTiles isochrone bands (37 continuous bands) plus per-origin binary arrays of time, arrival airport and surface mode on an H3 grid.",
+      "name": "Global travel-time isochrones from 553 cities",
+      "description": "Expected door-to-door travel time from each of 553 origin cities to every land area on Earth, combining scheduled air routes, rail from OpenStreetMap route relations, ferry crossings, and a road-speed model calibrated against 2,998 real driving journeys, with check-in, border-control and transfer penalties. Distributed as PMTiles isochrone bands (37 continuous bands at four levels of detail) plus per-origin binary arrays of time, arrival airport, surface mode and rail station on an H3 grid, with coastlines from OpenStreetMap and lakes from HydroLAKES.",
       "url": "https://worldmap.atik.kr/",
       "keywords": ["isochrone", "travel time", "accessibility", "world map", "H3", "PMTiles", "aviation", "geography"],
       "spatialCoverage": { "@type": "Place", "name": "Earth" },
-      "measurementTechnique": "Single-source Dijkstra over a multi-modal graph of 599,741 hexagonal land cells, 3,983 airports, 57,286 rail stations and 5,672 ferry crossings; air times fitted to 107,366 ADS-B flight legs, road speeds to 2,998 sampled driving journeys",
+      "measurementTechnique": "Single-source Dijkstra over a multi-modal graph of H3 hexagonal land cells at resolution 6 (5.6 km across), refined to resolution 7 (2.1 km) wherever the road network reaches secondary grade or a metropolitan area lies, joined to 3,983 airports, 57,286 rail stations and 5,672 ferry crossings; air times fitted to 107,366 ADS-B flight legs, road speeds to 2,998 sampled driving journeys",
       "creator": { "@type": "Person", "name": "Jiyong Youn" },
       "isBasedOn": [
         "https://ourairports.com/data/",
@@ -53,7 +53,7 @@
         "https://www.naturalearthdata.com/"
       ],
       "license": "https://opendatacommons.org/licenses/odbl/1-0/",
-      "dateModified": "2026-09-09"
+      "dateModified": "2026-09-10"
     },
     {
       "@type": "WebApplication",
@@ -372,7 +372,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
     <div class="body">
       <p class="hint" style="margin-top:0">Click the chart to drop an origin, then click again for a
         destination. The origin snaps to the nearest charted city, because only those
-        157 have a computed surface.</p>
+        553 have a computed surface.</p>
       <div class="pins" id="pins"></div>
       <button class="btn" id="clear-pins" style="margin-top:10px">Clear</button>
     </div>
@@ -418,7 +418,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   <div style="position:fixed;inset:0;background:#0a0b0d;color:#e9e7e4;z-index:20;padding:40px;max-width:62ch">
     <h1 style="font-weight:600">Isochronic Passage Chart</h1>
     <p>An interactive world map showing how many hours it takes to reach any point
-    on Earth from each of 157 cities, combining scheduled flights, road speed and
+    on Earth from each of 553 cities, combining scheduled flights, road speed and
     transfer times. It needs JavaScript and WebGL to draw the globe.</p>
     <p>Built from open data: OurAirports, Wikipedia, OpenStreetMap, GRIP4 road
     density and Natural Earth. After Francis Galton's isochronic passage chart of 1881.</p>

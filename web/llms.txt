@@ -1,6 +1,6 @@
 # Isochronic Passage Chart
 
-> An interactive globe showing expected door-to-door travel time from each of 157
+> An interactive globe showing expected door-to-door travel time from each of 553
 > origin cities to every land area on Earth, combining scheduled air routes,
 > rail from OpenStreetMap route relations, ferry crossings, and a road-speed model
 > calibrated against 2,998 real driving journeys, with check-in, border-control
@@ -49,3 +49,11 @@ Wikidata property P238, with block time modelled from great-circle distance.
 ## Disclaimer
 
 For reference only. All figures are estimates computed from open data and a simplified model. They carry no warranty of accuracy, are not travel advice, and must not be relied on for any journey, booking, or decision. The author accepts no liability for any use.
+
+## Grid and geometry (2026-09-10)
+
+- H3 resolution 6 (5.6 km across) everywhere, refined to resolution 7 (2.1 km) where roads reach secondary grade or a metropolitan area lies (East Asia, South Asia, Europe, North America and every other built-up region).
+- Hexagons are drawn unrounded; bands are emitted at four levels of detail so no gap can open at any zoom.
+- Coastlines: OpenStreetMap water polygons at zoom 12 (~10 m). Lakes: HydroLAKES (CC BY 4.0).
+- Place names under the cursor: GeoNames cities15000 (CC BY 4.0). Address search and click-to-address: OpenStreetMap Nominatim; queries are sent to nominatim.openstreetmap.org only when typed or clicked.
+- Rail legs name the station and line (OpenStreetMap route relations).

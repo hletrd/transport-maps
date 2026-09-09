@@ -34,6 +34,17 @@ sleep 4
 L=$(agent-browser eval 'document.getElementById("legs").innerText.replace(/\n/g," | ")' 2>&1 | tail -1 | tr -d '\\')
 echo "  route: ${L:0:220}"
 echo "$L" | grep -qiE "by (highway|major road|minor road|rail|ferry|track)" || { echo "  !! no surface mode itemised"; fail=1; }
+# airport codes and modes in the route carry explanations; schemes number twelve
+T=$(agent-browser eval '(()=>JSON.stringify({ap:document.querySelectorAll("#legs .ap").length,mode:document.querySelectorAll("#legs .mode").length,tip:(document.querySelector("#legs .ap")||{}).dataset?.tip||"",schemes:document.querySelectorAll("#ramps button").length,sky:!!(window.__map.getSky&&window.__map.getSky())}))()' 2>&1 | tail -1 | tr -d '\\')
+echo "  tooltips/schemes: ${T:0:200}"
+echo "$T" | grep -qE '"ap":[1-9]' && echo "$T" | grep -qE '"mode":[1-9]' || { echo "  !! route lacks airport/mode explanations"; fail=1; }
+echo "$T" | grep -q '"schemes":12' || { echo "  !! expected 12 colour schemes"; fail=1; }
+# address search reaches Nominatim and lists results
+agent-browser eval '(()=>{const q=document.getElementById("q");q.value="Gangnam-daero, Seoul";q.dispatchEvent(new Event("input",{bubbles:true}));return 1})()' >/dev/null 2>&1; sleep 5
+A=$(agent-browser eval 'document.querySelectorAll(".results .addresses button[data-geo]").length' 2>&1 | tail -1 | tr -d '\\"')
+echo "  address results: $A"
+[ "${A:-0}" -ge 1 ] || { echo "  !! address search returned nothing"; fail=1; }
+agent-browser eval '(()=>{const q=document.getElementById("q");q.value="";q.dispatchEvent(new Event("input",{bubbles:true}));return 1})()' >/dev/null 2>&1
 # click to depart: an origin-city label is a button that switches the tiles
 agent-browser eval 'window.__map.jumpTo({center:[135,35],zoom:4.6});1' >/dev/null 2>&1; sleep 6
 C=$(agent-browser eval '(()=>{const b=document.querySelector(".lbl.origin");if(!b)return "no origin label";const n=b.textContent;b.click();return n})()' 2>&1 | tail -1 | tr -d '\\"')
