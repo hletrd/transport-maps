@@ -236,10 +236,8 @@ def test_a_split_cell_is_painted_by_its_children_with_the_parent_underneath():
     from shapely.geometry import Point, shape
 
     from transport_maps.graph import refine
-    centre = h3.latlng_to_cell(37.5, 127.0, 5)
-    base = sorted(h3.grid_disk(centre, 1))            # 7 base cells at res 5...
-    # ...but the code refines from config.SOLVE_RES to config.FINE_RES, so
-    # build the fixture at those resolutions.
+    # The code refines from config.SOLVE_RES to config.FINE_RES, so the
+    # fixture is built at those resolutions.
     centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
     base = sorted(h3.grid_disk(centre, 1))
     split = np.array([c == centre for c in base])
@@ -260,9 +258,23 @@ def test_a_split_cell_is_painted_by_its_children_with_the_parent_underneath():
     la, lo = h3.cell_to_latlng(cells[kids[0]])
     assert by_band[0].contains(Point(lo, la)), "the fast child is not painted in its own band"
     # The parent hexagon is in the SLOWEST child's band (5), not the fastest.
-    la, lo = h3.cell_to_latlng(centre)
-    assert by_band[5].contains(Point(lo, la))
-    assert by_band[5].contains(Point(lo, la)) and not by_band[0].contains(Point(lo, la)) or True
+    # Its centroid proves nothing: the centre child (band 0) covers it, and
+    # band 5's two-cell rim covers that child anyway, so every variant of the
+    # code agrees there. The evidence is the corners of the parent hexagon
+    # that no child covers -- seven children do not tile their parent
+    # exactly, and closing those slivers is what the underlying hexagon is
+    # for. Painted in the fastest band, or not painted, they leave band 5.
+    from shapely.ops import unary_union
+
+    def hexagon(cell):
+        return Polygon([(lo, la) for la, lo in h3.cell_to_boundary(cell)])
+    uncovered = hexagon(centre).difference(unary_union([hexagon(cells[k]) for k in kids]))
+    slivers = [p for p in shapely.get_parts(uncovered) if p.area > 1e-8]
+    assert slivers, "fixture: the children tile their parent exactly, nothing to close"
+    for sliver in slivers:
+        pt = sliver.representative_point()
+        assert by_band[5].contains(pt), "a parent corner no child covers is not in the slowest band"
+        assert not by_band[0].contains(pt), "the parent hexagon was painted in the fastest child's band"
     # Every vertex of every child is covered by some native feature.
     for k in kids:
         for la, lo in h3.cell_to_boundary(cells[k]):

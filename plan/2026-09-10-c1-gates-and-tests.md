@@ -30,7 +30,7 @@ test goes red. Every task below names its mutation.
       HydroLAKES (CC BY 4.0) so `tests/emit/test_index.py::test_readme_documents_the_same_sources`
       is green for the right reason (the test already compares against
       `index.ATTRIBUTION`).
-- [ ] **F12** Remove the `… or True` from `tests/contour/test_bands.py:260` and
+- [x] **F12** Remove the `… or True` from `tests/contour/test_bands.py:260` and
       make the assertion real (or delete the test if the property cannot be
       asserted on the fixture).
 - [ ] **F2** `tests/emit/test_hover.py` — fixtures at `config.SOLVE_RES` so the
