@@ -24,7 +24,7 @@ test goes red. Every task below names its mutation.
       or better, compare against the measured baseline stored beside the
       cache stamp. Mutation: flip `config.SOLVE_RES` in a monkeypatch and the
       bound must change.
-- [ ] **F1b** `tests/graph/test_build.py:61-65` — use `idx.cell_at(lat, lon)`
+- [x] **F1b** `tests/graph/test_build.py:61-65` — use `idx.cell_at(lat, lon)`
       instead of a hard-coded res-5 cell.
 - [ ] **F1c / E2** README attribution rows for GeoNames (CC BY 4.0) and
       HydroLAKES (CC BY 4.0) so `tests/emit/test_index.py::test_readme_documents_the_same_sources`

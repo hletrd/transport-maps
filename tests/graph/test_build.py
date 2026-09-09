@@ -59,8 +59,10 @@ def test_duplicate_row_col_pairs_across_edge_parts_are_rejected(monkeypatch):
 
 
 def test_neighbouring_land_cells_are_connected(csr, idx):
-    import h3
-    seoul = h3.latlng_to_cell(37.5665, 126.9780, 5)
+    # The index decides whether Seoul's cell is a base cell or a fine child
+    # of a split one; a literal resolution here went stale when the grid
+    # moved from res 5 to res 6/7.
+    seoul = idx.cell_at(37.5665, 126.9780)
     u = idx.cell_index(seoul)
     assert csr[u].nnz >= 2
 
