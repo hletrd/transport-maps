@@ -1,12 +1,11 @@
-"""Every colour scheme shipped in web/app.js is measured, not eyeballed."""
-import sys
-from pathlib import Path
+"""Every colour scheme shipped in web/app.js is measured, not eyeballed.
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-import check_ramps  # noqa: E402
+`check_ramps` is the scripts/check_ramps.py module, loaded by a conftest
+fixture rather than by mutating sys.path for the whole session.
+"""
 
 
-def test_every_ramp_is_monotonic_and_separable():
+def test_every_ramp_is_monotonic_and_separable(check_ramps):
     found = check_ramps.ramps()
     assert len(found) >= 6, "RAMPS not parsed from app.js"
     for key, r in found.items():
@@ -14,19 +13,19 @@ def test_every_ramp_is_monotonic_and_separable():
         assert not check_ramps.problems(r["c"]), f"{key}: {check_ramps.problems(r['c'])}"
 
 
-def test_a_ramp_with_a_lightness_reversal_is_caught():
+def test_a_ramp_with_a_lightness_reversal_is_caught(check_ramps):
     bad = ["#faefc5", "#f6d49c", "#f5b77b", "#ef9a69", "#e27e65", "#cd686a",
            "#b0586f", "#8f4d6e", "#6d4464", "#503955", "#6d4464"]  # last is lighter again
     assert any("decreasing" in p for p in check_ramps.problems(bad))
 
 
-def test_two_near_identical_anchors_are_caught():
+def test_two_near_identical_anchors_are_caught(check_ramps):
     bad = ["#faefc5", "#f9eec4", "#f5b77b", "#ef9a69", "#e27e65", "#cd686a",
            "#b0586f", "#8f4d6e", "#6d4464", "#503955", "#392b49"]
     assert any("under" in p for p in check_ramps.problems(bad))
 
 
-def test_every_sea_is_darker_than_the_darkest_band_and_lighter_than_space():
+def test_every_sea_is_darker_than_the_darkest_band_and_lighter_than_space(check_ramps):
     """The globe must stand off the page: sea above the ground's lightness,
     and below every band so the darkest band still reads as land."""
     space_l = check_ramps.srgb_to_oklab("#0a0b0d")[0]

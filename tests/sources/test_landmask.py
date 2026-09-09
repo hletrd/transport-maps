@@ -5,6 +5,9 @@ import shapely
 from transport_maps import config
 from transport_maps.sources import landmask
 
+# Builds the full node index from the cached universe: minutes, real caches.
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(scope="module")
 def cells() -> set[str]:

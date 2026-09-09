@@ -10,6 +10,9 @@ import pytest
 from transport_maps.graph import build, nodes
 from transport_maps.solve import dijkstra
 
+# Builds the full node index from the cached universe: minutes, real caches.
+pytestmark = pytest.mark.integration
+
 SEOUL = (37.5665, 126.9780)
 TOKYO = (35.6762, 139.6503)
 LONDON = (51.5072, -0.1276)

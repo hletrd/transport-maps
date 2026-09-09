@@ -2,6 +2,9 @@ import pytest
 
 from transport_maps.graph import nodes
 
+# Builds the full node index from the cached universe: minutes, real caches.
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(scope="module")
 def idx():

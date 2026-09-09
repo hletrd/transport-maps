@@ -38,10 +38,14 @@ dev = [
 markers = [
     "network: hits a live API",
     "real_multi_band: solves a real origin over the full graph (minutes, and needs the built caches)",
+    "integration: builds the full node index or graph from the cached universe (minutes each); part of the gate, skippable with -m 'not integration' for a fast loop",
 ]
-# Excluded by default so a plain `uv run pytest` is the gate; run them on
-# purpose with `-m network` / `-m real_multi_band`.
-addopts = "-m 'not network and not real_multi_band'"
+# network and real_multi_band are excluded by default so a plain `uv run
+# pytest` is the gate; run them on purpose with `-m network` /
+# `-m real_multi_band`. `integration` is NOT excluded: the gate is the whole
+# suite. --strict-markers turns a mistyped marker into an error instead of a
+# silently unfiltered test.
+addopts = "--strict-markers -m 'not network and not real_multi_band'"
 
 [tool.ruff]
 target-version = "py314"
