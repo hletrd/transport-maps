@@ -392,6 +392,13 @@ function paintOrigin(o) {
   }, "water");
 
   hoverTimes = null;
+  railDetail = null;
+  Promise.all([
+    fetch(`./origins/${o.slug}.rail.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)),
+    fetch(`./origins/${o.slug}.rail.json`).then((r) => (r.ok ? r.json() : null)),
+  ]).then(([b, j]) => {
+    if (b && j && active === o) { railDetail = { idx: new Uint16Array(b), table: j.stations }; renderLegs(); }
+  }).catch(() => {});
   fetch(`./origins/${o.slug}.bin`)
     .then((r) => {
       if (!r.ok) throw new Error(`${r.status} fetching ${o.slug}.bin`);
@@ -515,7 +522,7 @@ function renderLegs() {
     return names.map((name, k) => [name, hoverModes[i * n + k]])
       .filter(([, m]) => m >= 1)
       .sort((a, b) => b[1] - a[1])
-      .map(([name, m]) => [dur(m), `by <b>${mode(name)}</b>`]);
+      .map(([name, m]) => [dur(m), `by <b>${mode(name)}</b>${name === "rail" ? esc(railVia(i)) : ""}`]);
   };
 
   if (chain.length === 0) {
@@ -633,6 +640,17 @@ map.on("mousemove", (e) => {
 
 // ---- point to point ----
 let pinB = null;
+// Per hover cell, the last rail station and line the journey used.
+let railDetail = null;
+const NO_RAIL = 0xFFFF;
+function railVia(i) {
+  if (!railDetail || i < 0) return "";
+  const k = railDetail.idx[i];
+  if (k === NO_RAIL || !railDetail.table[k]) return "";
+  const [station, line] = railDetail.table[k];
+  if (!station && !line) return "";
+  return ` via ${station || "a station"}${line ? ` (${line})` : ""}`;
+}
 
 function renderPins() {
   const box = $("pins");

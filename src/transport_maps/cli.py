@@ -16,7 +16,7 @@ import numpy as np
 
 from transport_maps import config, validate
 from transport_maps.contour import bands, grid
-from transport_maps.emit import hover, index, itinerary, modes, routes_json, tiles
+from transport_maps.emit import rail_detail, hover, index, itinerary, modes, routes_json, tiles
 from transport_maps.graph import build, ground, nodes, transfers
 from transport_maps.solve import dijkstra
 from transport_maps.sources import countries, osm, roads
@@ -97,7 +97,10 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
     routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
     itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
-    modes.write_modes(idx, minutes, predecessors, out / f"{slug}.modes.bin")
+    modes.write_modes(idx, minutes, predecessors, out / f"{slug}.modes.bin",
+                      cell_class=shared["cell_class"])
+    rail_detail.write_rail_detail(idx, minutes, predecessors, shared.get("rail_routes"),
+                                  out / f"{slug}.rail.bin", out / f"{slug}.rail.json")
 
     size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
     return f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}"
@@ -156,7 +159,8 @@ def _build_all(limit: int | None = None) -> None:
               # Base-grid rings for the zoom <= 6 levels, raw adjacency of the
               # native (mixed-resolution) cells for the finest level.
               "grid": grid.universe(getattr(idx, "base_cells", None) or idx.cells),
-              "native": grid.native_edges(idx)}
+              "native": grid.native_edges(idx),
+              "rail_routes": rail_routes}
 
     origins = index.load_origins()
     if limit is not None:

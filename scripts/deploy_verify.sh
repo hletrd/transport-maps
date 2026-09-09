@@ -14,7 +14,7 @@ idx = json.load(open(d/"index.json"))
 bad = []
 for o in idx["origins"]:
     s = o["slug"]
-    for suffix, width in ((".bin", 2), (".air.bin", 2), (".modes.bin", 12)):
+    for suffix, width in ((".bin", 2), (".air.bin", 2), (".modes.bin", 12), (".rail.bin", 2)):
         p = d/"origins"/f"{s}{suffix}"
         if not p.exists():
             bad.append(f"{s}{suffix} missing"); continue

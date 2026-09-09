@@ -18,10 +18,16 @@ arrays; a static page renders them on a globe.
   terminal, not a chart. Plex Sans' proportional figures suit the prose; if a
   column needs aligning, set a width.
 - **Dark theme.** Near-black ground (`--bg`), not a light or sepia palette.
-- **Band colours must be measurably separable.** Adjacent bands need OKLab ΔE
-  of roughly 8; below that they read as one mass. A single hue cannot achieve
-  it across eleven bands on a dark ground — rotate hue as well as lightness,
-  and keep lightness strictly monotonic. Measure it, do not eyeball it.
+- **Band colours must be measurably separable.** Each scheme is eleven
+  anchors interpolated to the 37 bands; adjacent ANCHORS need OKLab ΔE of at
+  least 6 (eleven anchors from near-white to near-black span about 70, so ~7
+  per step is the ceiling), lightness strictly monotonic, and the scheme's sea
+  colour between space and its darkest band. `scripts/check_ramps.py`
+  measures all of it and `tests/web/test_ramps.py` enforces it; `--respace`
+  re-samples a ramp evenly along its own path. Measure it, do not eyeball it.
+- **Hexagons are drawn as hexagons.** No corner rounding: it moved every band
+  boundary differently per polygon and opened gaps. The margins that keep
+  bands overlapping are counted in whole cells (`contour/bands.py` LODS).
 - **The legend is always visible**, never folded into a panel, and its ticks sit
   at their true band boundaries — the bands are equal width but the time scale
   is not linear, so evenly spaced labels would misstate the scale.
