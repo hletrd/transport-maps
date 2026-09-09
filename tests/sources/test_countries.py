@@ -58,8 +58,13 @@ def test_a_land_border_between_immigration_zones_costs_a_crossing():
     edges paid nothing, which made the causeway free.
     """
     sg = h3.latlng_to_cell(1.44, 103.78, config.SOLVE_RES)      # Woodlands
-    jb = h3.latlng_to_cell(1.49, 103.74, config.SOLVE_RES)      # Johor Bahru
-    assert jb in h3.grid_disk(sg, 1), "fixture cells must be adjacent"
+    # The Malaysian cell across the strait is found by country rather than by
+    # a coordinate: a Johor Bahru point one cell away at res 5 is two away at
+    # res 6, and only an adjacent pair has a ground edge to charge.
+    ring = h3.grid_ring(sg, 1)
+    codes = countries.cell_country([sg, *ring])
+    assert codes[0] == "SGP", codes
+    jb = next(c for c, code in zip(ring, codes[1:]) if code == "MYS")
     idx = NodeIndex([sg, jb], [], {sg: 0, jb: 1}, {}, {}, ())
     r, c, d = ground.hex_edges(idx)
     edge = {(int(a), int(b)): float(m) for a, b, m in zip(r, c, d)}
