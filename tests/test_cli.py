@@ -81,6 +81,9 @@ def _stub_pipeline(monkeypatch, written, coverages):
     monkeypatch.setattr(
         cli.itinerary, "write_itinerary", lambda idx, minutes, pred, out: _fake_write(out)
     )
+    monkeypatch.setattr(
+        cli.modes, "write_modes", lambda idx, minutes, pred, out: _fake_write(out)
+    )
 
 
 def test_index_json_is_not_written_when_an_origin_aborts_partway(monkeypatch, tmp_path):
@@ -101,7 +104,7 @@ def test_index_json_is_not_written_when_an_origin_aborts_partway(monkeypatch, tm
         cli._build_all()
 
     assert index_calls == []  # never reached: aborted before the write
-    assert len(written) == 4  # "first"'s pmtiles/hover/routes/air did get written
+    assert len(written) == 5  # "first"'s pmtiles/hover/routes/air/modes
 
 
 def test_index_json_is_written_once_every_origin_succeeds(monkeypatch, tmp_path):
@@ -121,7 +124,7 @@ def test_index_json_is_written_once_every_origin_succeeds(monkeypatch, tmp_path)
 
     assert len(index_calls) == 1
     assert [o["slug"] for o in index_calls[0]] == ["first", "second"]
-    assert len(written) == 8  # both origins' pmtiles/hover/routes/air
+    assert len(written) == 10  # both origins' pmtiles/hover/routes/air/modes
 
 
 def test_a_limited_build_does_not_rewrite_index_json(monkeypatch, tmp_path):

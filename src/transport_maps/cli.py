@@ -5,7 +5,7 @@ import re
 
 from transport_maps import config, validate
 from transport_maps.contour import bands
-from transport_maps.emit import hover, index, itinerary, routes_json, tiles
+from transport_maps.emit import hover, index, itinerary, modes, routes_json, tiles
 from transport_maps.graph import build, ground, nodes
 from transport_maps.solve import dijkstra
 from transport_maps.sources import osm
@@ -107,6 +107,7 @@ def _build_all(limit: int | None = None) -> None:
         hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
         routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
         itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
+        modes.write_modes(idx, minutes, predecessors, out / f"{slug}.modes.bin")
 
         size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
         print(f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}")

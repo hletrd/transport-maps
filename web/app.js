@@ -44,6 +44,7 @@ const hoverCells = new BigUint64Array(
 );
 let hoverTimes = null;          // Uint16Array for the active origin
 let hoverAir = null;            // arrival-airport ordinal per hover cell
+let hoverModes = null;          // rail / ferry / road minutes per hover cell
 let routes = null;              // {offsets, byId} for walking the leg chain
 let active = null;
 const NO_AIRPORT = 0xFFFF;
@@ -198,7 +199,11 @@ function paintOrigin(o) {
 
   // The leg breakdown is a progressive extra: an origin built before these
   // files existed still shows times, just without the itinerary.
-  hoverAir = null; routes = null;
+  hoverAir = null; routes = null; hoverModes = null;
+  fetch(`./origins/${o.slug}.modes.bin`)
+    .then((r) => (r.ok ? r.arrayBuffer() : null))
+    .then((b) => { if (b) hoverModes = new Uint16Array(b); renderLegs(); })
+    .catch(() => {});
   fetch(`./origins/${o.slug}.air.bin`)
     .then((r) => (r.ok ? r.arrayBuffer() : null))
     .then((b) => { if (b) hoverAir = new Uint16Array(b); renderLegs(); })
@@ -281,12 +286,27 @@ function renderLegs() {
   const rows = [];
   const dur = (m) => { const [b, u] = fmtTime(m); return `${b}${u ? " " + u : ""}`; };
 
+  // "Surface transport, 5 h" says nothing useful. Rail, road and ferry differ
+  // enormously in what they imply, and the surface leg is a large share of most
+  // journeys, so name the three separately when the data is there.
+  const surface = () => {
+    if (!hoverModes) return [];
+    const i = cellIndex(pinB.lat, pinB.lon);
+    if (i < 0) return [];
+    const [rail, ferry, road] = [hoverModes[i*3], hoverModes[i*3+1], hoverModes[i*3+2]];
+    return [["rail", rail], ["ferry", ferry], ["road", road]]
+      .filter(([, m]) => m >= 1)
+      .map(([name, m]) => [dur(m), `Surface travel by <b>${name}</b>`]);
+  };
+
   if (chain.length === 0) {
     // No flight was involved. Saying "overland" would be a claim we cannot
     // support: the journey may well have gone by rail or ferry, both of which
     // are in the graph but are not itemised here -- listing them would mean
     // shipping 57,000 station nodes per origin to name a handful of them.
-    rows.push([dur(total), "No flight on this route — surface travel"]);
+    const parts = surface();
+    if (parts.length) rows.push(...parts);
+    else rows.push([dur(total), "No flight on this route — surface travel"]);
   } else {
     rows.push([dur(chain[0].min), `To <b>${chain[0].code}</b>, and through the airport`]);
     for (let k = 1; k < chain.length; k++) {
@@ -296,9 +316,16 @@ function renderLegs() {
       else rows.push([t, `Connect at <b>${b.code}</b>`]);
     }
     const landed = chain[chain.length - 1];
-    if (total > landed.min)
-      rows.push([dur(total - landed.min),
-                 `From <b>${landed.code}</b> onward by surface transport`]);
+    if (total > landed.min) {
+      const parts = surface();
+      if (parts.length) {
+        rows.push([dur(total - landed.min), `Onward from <b>${landed.code}</b>, of which:`]);
+        rows.push(...parts);
+      } else {
+        rows.push([dur(total - landed.min),
+                   `From <b>${landed.code}</b> onward by surface transport`]);
+      }
+    }
   }
   rows.push([dur(total), "Door to door", true]);
 

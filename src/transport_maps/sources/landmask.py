@@ -13,6 +13,14 @@ from transport_maps import config
 from transport_maps.sources._utils import _atomic_write, _params_hash
 
 LAND_URL = "https://naturalearth.s3.amazonaws.com/10m_physical/ne_10m_land.zip"
+# Natural Earth keeps floating ice off the land layer, so ne_10m_land has
+# Antarctica with the Ross and Ronne shelves cut out of it -- the map answered
+# "not on land" over both. They are permanent traversable surface (McMurdo's
+# runway is on one), so they are unioned in.
+ICE_URL = (
+    "https://naturalearth.s3.amazonaws.com/10m_physical/"
+    "ne_10m_antarctic_ice_shelves_polys.zip"
+)
 
 # A part is Antarctic when its northernmost point (bounds[3], the max latitude)
 # does not exceed this value. Such parts are not dropped -- they are rebuilt as
@@ -22,20 +30,34 @@ LAND_URL = "https://naturalearth.s3.amazonaws.com/10m_physical/ne_10m_land.zip"
 ANTARCTICA_MAX_LAT = -60.0
 # H3 cannot polyfill a pole-enclosing ring, so the pole itself is clipped away
 # and the remainder cut into wedges.
-POLE_CLIP_LAT = -84.5
+# Clipping at -84.5 left everything beyond it -- the Ross Ice Shelf, the South
+# Pole itself -- with no cell at all, so the map answered "not on land" there.
+# -89.9 keeps the wedge a valid lat/lon polygon (the pole is a singularity in
+# this projection) while covering all but a ~11 km cap, which _pole_cells adds
+# explicitly.
+POLE_CLIP_LAT = -89.9
 WEDGE_COUNT = 12
 
 _MULTIPOLYGON_TYPE_ID = 6
 
 
-def _download() -> pathlib.Path:
+def _download(url: str = LAND_URL, name: str = "ne_10m_land.zip") -> pathlib.Path:
     config.ensure_dirs()
-    cached = config.CACHE / "ne_10m_land.zip"
+    cached = config.CACHE / name
     if not cached.exists():
-        r = httpx.get(LAND_URL, follow_redirects=True, timeout=180)
+        r = httpx.get(url, follow_redirects=True, timeout=180)
         r.raise_for_status()
         _atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
     return cached
+
+
+def _ice_shelf_parts() -> list[shapely.Geometry]:
+    """Antarctic ice shelves, which the land layer omits."""
+    path = _download(ICE_URL, "ne_10m_antarctic_ice_shelves_polys.zip").resolve()
+    _meta, table = pyogrio.read_arrow(f"/vsizip/{path}")
+    geom_column = next(c for c in table.schema.names if "geom" in c.lower())
+    geoms = shapely.from_wkb(table.column(geom_column).to_pylist())
+    return [g for g in geoms if g is not None and not g.is_empty]
 
 
 def _land_parts() -> list[shapely.Geometry]:
@@ -57,11 +79,31 @@ def _land_parts() -> list[shapely.Geometry]:
         else:
             parts.append(g)
 
+    antarctic = [p for p in parts if p.bounds[3] <= ANTARCTICA_MAX_LAT]
+    # The shelves are wedged with the rest of Antarctica, so they inherit the
+    # same pole handling instead of needing their own.
+    antarctic.extend(
+        q for g in _ice_shelf_parts()
+        for q in (shapely.get_parts(g)
+                  if shapely.get_type_id(g) == _MULTIPOLYGON_TYPE_ID else [g])
+    )
     kept = [p for p in parts if p.bounds[3] > ANTARCTICA_MAX_LAT]
-    kept.extend(_antarctic_wedges([p for p in parts if p.bounds[3] <= ANTARCTICA_MAX_LAT]))
+    kept.extend(_antarctic_wedges(antarctic))
     if not kept:
         raise RuntimeError("no land parts parsed from Natural Earth archive")
     return kept
+
+
+def _pole_cells(res: int) -> set[str]:
+    """The cell over the South Pole and its ring.
+
+    A lat/lon wedge cannot close over the pole, so the last few kilometres are
+    added by cell id instead of by geometry.
+    """
+    import h3
+
+    centre = h3.latlng_to_cell(-90.0, 0.0, res)
+    return set(h3.grid_disk(centre, 2))
 
 
 def _antarctic_wedges(antarctic: list) -> list:
@@ -93,7 +135,8 @@ def _cells_cache_path(res: int):
     the source archive were not, so changing either would have been read back
     from the file built under the old value.
     """
-    stamp = _params_hash(LAND_URL, ANTARCTICA_MAX_LAT, POLE_CLIP_LAT, WEDGE_COUNT)
+    stamp = _params_hash(LAND_URL, ICE_URL, ANTARCTICA_MAX_LAT, POLE_CLIP_LAT,
+                         WEDGE_COUNT, "pole-cells+shelves")
     return config.BUILD / f"land_cells_r{res}_{stamp}.parquet"
 
 
@@ -104,7 +147,7 @@ def land_cells(res: int) -> list[str]:
     if out.exists():
         return pl.read_parquet(out)["cell"].to_list()
 
-    cells: set[str] = set()
+    cells: set[str] = _pole_cells(res)
     failures: list[tuple[tuple[float, ...], str, str]] = []
     for poly in _land_parts():
         try:
