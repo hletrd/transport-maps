@@ -40,10 +40,12 @@ def build(out: pathlib.Path) -> int:
             for name in FIELDS if name in table.schema.names}
 
     rows = []
+    kept_pop = []
     for i in range(len(cols["name"])):
         lat, lon = cols["latitude"][i], cols["longitude"][i]
         if lat is None or lon is None:
             continue
+        kept_pop.append(cols.get("pop_max", [0] * (i + 1))[i] or 0)
         rows.append([
             cols["name"][i] or "",
             cols.get("adm1name", [None] * (i + 1))[i] or "",
@@ -53,6 +55,13 @@ def build(out: pathlib.Path) -> int:
         ])
     if not rows:
         raise RuntimeError("populated-places extract yielded no usable rows")
+
+    # Largest first, so a consumer can treat row index as rank. Natural Earth
+    # does not ship the file in that order -- its first rows are Uruguayan
+    # towns -- and the first attempt at labels put Fray Bentos on the map
+    # before Tokyo.
+    order = sorted(range(len(rows)), key=lambda i: -kept_pop[i])
+    rows = [rows[i] for i in order]
 
     # Columnar, not a list of objects: the same data as records is roughly
     # three times the bytes over the wire for no gain on the client.
