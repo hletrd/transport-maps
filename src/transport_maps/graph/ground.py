@@ -88,29 +88,29 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                      for c in country])
     crossing_min = _land_border_min()
 
-    rows: list[int] = []
-    cols: list[int] = []
-    # Extra minutes per edge, over and above the distance cost: a passport
-    # desk on every ground edge that leaves an immigration zone. Without this
-    # Singapore to Johor Bahru was a fifteen-minute drive.
-    extra: list[float] = []
+    # Preallocated: at 82 million edges, three Python lists peaked at 19 GB
+    # in the build's parent process, which five forked workers then inherit.
+    cap = 8 * len(idx.cells)                 # six ring edges plus cross-resolution pairs
+    rows = np.empty(cap, dtype=np.int32)
+    cols = np.empty(cap, dtype=np.int32)
+    extra = np.zeros(cap, dtype=np.float64)
+    m = 0
     blocked = 0
     crossings = 0
     fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
     fine = fine_attr if len(fine_attr) == len(idx.cells) else np.zeros(len(idx.cells), dtype=bool)
 
     def add(u: int, v: int) -> None:
-        nonlocal blocked, crossings
+        nonlocal blocked, crossings, m
         if countries.is_closed(country[u], country[v]):
             blocked += 1
             return
-        rows.append(u)
-        cols.append(v)
+        rows[m] = u
+        cols[m] = v
         if zone[u] and zone[v] and zone[u] != zone[v]:
-            extra.append(crossing_min)
+            extra[m] = crossing_min
             crossings += 1
-        else:
-            extra.append(0.0)
+        m += 1
 
     # A fine cell's ring neighbour may lie in an unsplit base cell; then the
     # fine cell and that base cell are adjacent, in both directions. Several
@@ -128,16 +128,17 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                     cross.add((u, v))
                     add(u, v)
                     add(v, u)
+    rows, cols, extra = rows[:m], cols[:m], extra[:m]
     if blocked:
         logger.info("%d ground edge(s) cut at closed land borders", blocked)
     if crossings:
         logger.info("%d ground edge(s) charged %.0f min for a border crossing",
                     crossings, crossing_min)
 
-    r = np.asarray(rows, dtype=np.int64)
-    c = np.asarray(cols, dtype=np.int64)
+    r = rows.astype(np.int64)
+    c = cols.astype(np.int64)
     dist_km = haversine_km(centroids[r], centroids[c])
-    minutes = dist_km / speeds[c] * 60.0 + np.asarray(extra, dtype=np.float64)
+    minutes = dist_km / speeds[c] * 60.0 + extra
     return r, c, minutes
 
 

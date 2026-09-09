@@ -188,18 +188,19 @@ def _feature(k: int, geometry, lod: dict) -> dict:
     }
 
 
-def _interior(band: np.ndarray, k: int, rows: np.ndarray, cols: np.ndarray, rim: int) -> np.ndarray:
-    """Cells safely inside "everything faster than band k": their own band is
-    faster and so is every neighbour's, `rim` cells deep. Neighbours are an
-    edge list, so a cell may have any number of them."""
+def _slowest_within(band: np.ndarray, rows: np.ndarray, cols: np.ndarray, rim: int) -> np.ndarray:
+    """For each cell, the slowest band within `rim` steps over the edge list
+    (excluding the cell itself). Band-independent, so computed once per level:
+    a cell is safely inside "everything faster than band k" exactly when its
+    own band and this value are both below k. Neighbours are an edge list, so
+    a cell may have any number of them."""
     slowest = np.full(len(band), -1, dtype=np.int64)
     np.maximum.at(slowest, rows, band[cols])
-    interior = (band <= k - 1) & (slowest <= k - 1)
     for _ in range(rim - 1):
-        bad = np.zeros(len(band), dtype=bool)
-        np.logical_or.at(bad, rows, ~interior[cols])
-        interior &= ~bad
-    return interior
+        wider = slowest.copy()
+        np.maximum.at(wider, rows, slowest[cols])
+        slowest = wider
+    return slowest
 
 
 def _edges_from_table(nb: np.ndarray, sub: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -214,9 +215,10 @@ def _base_features(lod: dict, cells_arr, nb, ring, band) -> list[dict]:
     """Base-grid bands with a rim of `lod['rim']` cells over the faster ones."""
     sub = ring <= lod["rings"]
     rows, cols = _edges_from_table(nb, sub)
+    slowest = _slowest_within(band, rows, cols, lod["rim"])
     out = []
     for k in np.unique(band[sub]).tolist():
-        keep = sub & (band <= k) & ~_interior(band, k, rows, cols, lod["rim"])
+        keep = sub & (band <= k) & ~((band <= k - 1) & (slowest <= k - 1))
         geometry = _dissolve(cells_arr[keep].tolist())
         if geometry is not None and not geometry.is_empty:
             out.append(_feature(k, geometry, lod))
@@ -242,9 +244,10 @@ def _native_features(lod: dict, idx, band: np.ndarray, native) -> list[dict]:
         parent_band = np.full(len(idx.base_cells), -1, dtype=np.int64)
         np.maximum.at(parent_band, idx.base_index[fine], band[fine])
         base_arr = np.array(idx.base_cells, dtype=object)
+    slowest = _slowest_within(band, rows, cols, lod["rim"])
     out = []
     for k in np.unique(band).tolist():
-        keep = (band <= k) & ~_interior(band, k, rows, cols, lod["rim"])
+        keep = (band <= k) & ~((band <= k - 1) & (slowest <= k - 1))
         cells = cells_arr[keep].tolist()
         if fine.any():
             cells += base_arr[split_parents[parent_band[split_parents] == k]].tolist()
