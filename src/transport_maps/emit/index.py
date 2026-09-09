@@ -126,6 +126,9 @@ def write_index(origins: list[dict], out: Path) -> None:
         "fineRes": config.FINE_RES,
         # How each surface mode was modelled, for the route's hover notes.
         "modeDetail": mode_detail(),
+        # This emitter writes {slug}.rail.bin/.rail.json; the page asks for them
+        # only when this is present, so an older build is not two 404s per origin.
+        "railDetail": True,
         "hoverCellsUrl": "hover_cells.bin",
         "attribution": [dict(entry) for entry in ATTRIBUTION],
         "origins": [
