@@ -22,6 +22,7 @@ import logging
 from dataclasses import dataclass, field
 
 import h3
+import numpy as np
 
 from transport_maps import config
 from transport_maps.sources import airports, landmask
