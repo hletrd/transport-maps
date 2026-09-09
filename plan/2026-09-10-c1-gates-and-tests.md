@@ -33,7 +33,7 @@ test goes red. Every task below names its mutation.
 - [x] **F12** Remove the `… or True` from `tests/contour/test_bands.py:260` and
       make the assertion real (or delete the test if the property cannot be
       asserted on the fixture).
-- [ ] **F2** `tests/emit/test_hover.py` — fixtures at `config.SOLVE_RES` so the
+- [x] **F2** `tests/emit/test_hover.py` — fixtures at `config.SOLVE_RES` so the
       centre-child rule is exercised; assert the centre child's value is
       reported when it differs from the minimum. Mutation: replace
       `_representative_children` with min-over-children and the test must
