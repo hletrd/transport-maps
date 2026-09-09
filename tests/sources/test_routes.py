@@ -141,7 +141,7 @@ def test_route_network_refuses_to_persist_a_partial_crawl(tmp_path, monkeypatch)
     with pytest.raises(RuntimeError, match="refusing to persist a partial route network"):
         routes.route_network()
 
-    assert not (tmp_path / "routes.parquet").exists()
+    assert not routes._network_cache_path().exists()
 
 
 def test_route_network_names_the_unresolved_count_and_a_sample(tmp_path, monkeypatch):
@@ -179,7 +179,7 @@ def test_route_network_still_builds_when_nothing_is_unresolved(tmp_path, monkeyp
 
     df = routes.route_network()
 
-    assert (tmp_path / "routes.parquet").exists()
+    assert routes._network_cache_path().exists()
     assert len(df) == len(codes) * (len(codes) - 1)
 
 

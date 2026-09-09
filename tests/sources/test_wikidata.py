@@ -65,8 +65,7 @@ def test_everything_resolved_before_the_failure_is_still_cached(tmp_path, monkey
         wikidata.iata_for_titles(["Alpha", "Beta"])
 
     assert (tmp_path / "wikidata_iata.json").exists()
-    import json
-    assert json.loads((tmp_path / "wikidata_iata.json").read_text())["Alpha"] == "AAA"
+    assert wikidata._load_cache()["Alpha"] == "AAA"
 
 
 def test_a_fully_resolved_run_returns_normally(tmp_path, monkeypatch):
