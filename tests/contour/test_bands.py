@@ -124,6 +124,7 @@ def seoul_band_feature_collection():
     return bands.band_feature_collection(idx, minutes[: idx.n_cells])
 
 
+@pytest.mark.real_multi_band
 def test_real_multi_band_solve_passes_the_cover_gate(seoul_band_feature_collection):
     """A real Seoul solve -- far bands with hundreds of globe-scattered
     components, antimeridian-crossing cells, one-cell-wide bands everywhere --

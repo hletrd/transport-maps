@@ -38,10 +38,10 @@ test goes red. Every task below names its mutation.
       reported when it differs from the minimum. Mutation: replace
       `_representative_children` with min-over-children and the test must
       fail (the test-engineer's scratchpad mutation was green before).
-- [ ] **F13/TE-23** Register `real_multi_band` as a pytest marker, mark the
+- [x] **F13/TE-23** Register `real_multi_band` as a pytest marker, mark the
       test, and add it to `addopts` beside `network`, so a plain
       `uv run pytest` is the gate and no one has to remember `-k`.
-- [ ] **F13/TE-22** Add the missing `__init__.py` to `tests/cli/` and `tests/web/`
+- [x] **F13/TE-22** Add the missing `__init__.py` to `tests/cli/` and `tests/web/`
       (and `tests/` if needed for the rootdir import mode).
 - [ ] Run the full suite (`uv run pytest -q`) and record the outcome in the
       cycle report; every failure must be fixed at the root, not skipped.
