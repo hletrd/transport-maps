@@ -9,6 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
+from transport_maps.emit.hover import MAX_MINUTES
+
 # scipy marks "no predecessor" with -9999.
 NO_PREDECESSOR = -9999
 
@@ -17,7 +19,10 @@ def write_routes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) 
     nodes = []
 
     def add(node_id: int, kind: str, code: str) -> None:
-        if not np.isfinite(minutes[node_id]):
+        # Unreachable, or so far out (45 days) that the hover array calls it
+        # unreachable: the page would otherwise print a finite leg under an
+        # infinite total.
+        if not np.isfinite(minutes[node_id]) or minutes[node_id] >= MAX_MINUTES:
             return
         prev = int(predecessors[node_id])
         nodes.append({

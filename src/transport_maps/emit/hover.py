@@ -19,7 +19,9 @@ import numpy as np
 
 from transport_maps import config
 
-# Reserve the sentinel; anything slower is clamped to just below it.
+# uint16 holds 65,535, the sentinel. Anything at or beyond 65,534 minutes (45
+# days) is emitted AS the sentinel: a journey that long is "no route" on the
+# page, not "45 days 12 h", and the page treats >= MAX_MINUTES the same way.
 MAX_MINUTES = config.UNREACHABLE - 1
 
 
@@ -65,7 +67,7 @@ def write_hover(idx, cell_minutes: np.ndarray, out: Path) -> None:
         best[p] = cell_minutes[pos]
 
     encoded = np.where(
-        np.isfinite(best), np.minimum(best, MAX_MINUTES), config.UNREACHABLE
+        np.isfinite(best) & (best < MAX_MINUTES), best, config.UNREACHABLE
     ).astype("<u2")
 
     out.parent.mkdir(parents=True, exist_ok=True)

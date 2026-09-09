@@ -47,3 +47,14 @@ def test_scipy_sentinel_becomes_null_not_the_literal_number(tmp_path):
                if n["code"] == "ICN" and n["kind"] == "dep")
     assert icn["prev"] is None  # scipy's -9999 sentinel must become null, not -9999
     assert icn["min"] == 30
+
+
+def test_a_node_beyond_the_hover_ceiling_is_left_out(tmp_path):
+    """The hover array calls >= 65,534 minutes unreachable; a routes.json leg
+    at 70,000 minutes would print a finite leg under an infinite total."""
+    out = tmp_path / "routes.json"
+    minutes = np.array([0.0, 10.0, 20.0, 30.0, 70_000.0, np.inf, 95.0])
+    predecessors = np.array([-9999, 0, 0, 0, 0, -9999, 3])
+    routes_json.write_routes(FakeIndex(), minutes, predecessors, out)
+    codes = {(n["code"], n["kind"]) for n in json.loads(out.read_text())["nodes"]}
+    assert ("GMP", "dep") not in codes and ("ICN", "dep") in codes

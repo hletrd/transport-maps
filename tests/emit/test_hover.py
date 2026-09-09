@@ -88,8 +88,24 @@ def test_unreachable_becomes_the_sentinel(tmp_path):
     assert (values == config.UNREACHABLE).all()
 
 
-def test_values_are_clamped_below_the_sentinel(tmp_path):
+def test_values_beyond_the_uint16_ceiling_become_the_sentinel(tmp_path):
+    """They used to be clamped to 65,534, which the page printed as a real
+    duration ("45 days 12 h"); a journey that long is no route (A13)."""
     out = tmp_path / "h.bin"
     hover.write_hover(FakeIndex(), np.array([99_999.0, 99_999.0, 99_999.0]), out)
     values = np.frombuffer(out.read_bytes(), dtype="<u2")
-    assert (values < config.UNREACHABLE).all()
+    assert (values == config.UNREACHABLE).all()
+
+
+def test_forty_five_days_is_no_route_not_a_duration(tmp_path):
+    """65,534 minutes used to be the clamp value, which the page printed as
+    "45 days 12 h"; at and beyond it the emitter now writes the sentinel."""
+    class Idx:
+        def __init__(self):
+            self.cells = [h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)]
+            self.n_cells = 1
+
+    for minutes, expected in ((65533.0, 65533), (65534.0, config.UNREACHABLE), (99999.0, config.UNREACHABLE)):
+        out = tmp_path / "x.bin"
+        hover.write_hover(Idx(), np.array([minutes]), out)
+        assert np.frombuffer(out.read_bytes(), dtype="<u2")[0] == expected
