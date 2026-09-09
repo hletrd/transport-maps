@@ -18,7 +18,7 @@ test goes red. Every task below names its mutation.
       without suppressions. Unused locals in `emit/hover.py:60`,
       `itinerary.py:58`, `modes.py:53,99` are removed, not renamed.
       Gate: `uv run ruff check .` exits 0.
-- [ ] **F1a** `tests/sources/test_landmask.py:14-16` — replace the res-5 bound
+- [x] **F1a** `tests/sources/test_landmask.py:14-16` — replace the res-5 bound
       with a bound derived from the resolution actually configured
       (`config.SOLVE_RES`): expect 500k–620k at res 5 and 3.5M–4.5M at res 6,
       or better, compare against the measured baseline stored beside the

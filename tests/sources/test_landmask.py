@@ -11,9 +11,21 @@ def cells() -> set[str]:
     return set(landmask.land_cells(config.SOLVE_RES))
 
 
+# Measured land-cell counts per solver resolution, non-Antarctic parts at
+# contain="overlap": 599,741 at res 5 and 4,091,715 at res 6 with the current
+# stamp (548,557 at res 5 before the lake and ice-shelf sources landed). Keyed
+# on the configured resolution so the bound moves with the grid instead of
+# silently asserting the res-5 range against a res-6 universe.
+MEASURED_CELL_COUNT_BOUNDS = {5: (500_000, 620_000), 6: (3_800_000, 4_400_000)}
+
+
 def test_cell_count_matches_measured_baseline(cells):
-    # Measured: 548,557 cells from 6,657 non-Antarctic parts at contain="overlap".
-    assert 500_000 < len(cells) < 620_000
+    res = config.SOLVE_RES
+    if res not in MEASURED_CELL_COUNT_BOUNDS:
+        pytest.fail(f"no measured cell-count baseline for SOLVE_RES={res}; "
+                    "measure the universe and add its bound here")
+    lo, hi = MEASURED_CELL_COUNT_BOUNDS[res]
+    assert lo < len(cells) < hi, f"{len(cells):,} cells at res {res}, expected {lo:,}-{hi:,}"
 
 
 @pytest.mark.parametrize("name,lat,lon", [
