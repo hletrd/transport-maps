@@ -43,6 +43,12 @@ def _stub_pipeline(monkeypatch, written, coverages):
         airports: ClassVar[list[str]] = []  # check_airport_connectivity runs for real below
 
     monkeypatch.setattr(cli.nodes, "build_index", lambda **kw: FakeIdx())
+    # The OSM extracts are a real, multi-gigabyte cache: the sequencing tests
+    # must not depend on them (nor pay the 2.75 s polars UDF per _build_all).
+    monkeypatch.setattr(cli.osm, "rail_routes",
+                        lambda **kw: (_ for _ in ()).throw(FileNotFoundError("stubbed: no extracts")))
+    monkeypatch.setattr(cli.osm, "ferry_links",
+                        lambda **kw: (_ for _ in ()).throw(FileNotFoundError("stubbed: no extracts")))
     # check_airport_connectivity is NOT mocked (it's a graph-level gate this
     # stub is meant to exercise honestly), so it feeds this straight into
     # scipy's connected_components -- a plain object() blows up there with
@@ -57,6 +63,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
         ],
     )
     monkeypatch.setattr(cli.index, "write_hover_cells", lambda idx, out: None)
+    monkeypatch.setattr(cli.hover, "hover_cells", lambda idx: ["dummy-parent"])
     # cell_speed_kmh would otherwise call h3.cell_to_boundary("dummy") for real
     # and blow up; _build_all now computes it once and threads it through to
     # check_monotonic_ground (M5), so this stub needs a stand-in too.
@@ -125,7 +132,7 @@ def test_index_json_is_not_written_when_an_origin_aborts_partway(monkeypatch, tm
     written: list = []
     index_calls: list = []
     monkeypatch.setattr(
-        cli.index, "write_index", lambda origins, out: index_calls.append(list(origins))
+        cli.index, "write_index", lambda origins, out, **kw: index_calls.append(list(origins))
     )
     _stub_pipeline(monkeypatch, written, coverages=[1.0, 0.0])  # "second" fails coverage
 
@@ -145,7 +152,7 @@ def test_index_json_is_written_once_every_origin_succeeds(monkeypatch, tmp_path)
     written: list = []
     index_calls: list = []
     monkeypatch.setattr(
-        cli.index, "write_index", lambda origins, out: index_calls.append(list(origins))
+        cli.index, "write_index", lambda origins, out, **kw: index_calls.append(list(origins))
     )
     _stub_pipeline(monkeypatch, written, coverages=[1.0, 1.0])
 
@@ -168,7 +175,7 @@ def test_a_limited_build_does_not_rewrite_index_json(monkeypatch, tmp_path):
     _stub_pipeline(monkeypatch, written, [1.0, 1.0])
     wrote_index: list = []
     monkeypatch.setattr(cli.index, "write_index",
-                        lambda origins, out: wrote_index.append(out))
+                        lambda origins, out, **kw: wrote_index.append(out))
 
     cli._build_all(limit=1)
     assert wrote_index == [], "a partial build rewrote index.json"
@@ -211,7 +218,7 @@ def test_a_gate_failure_in_a_forked_worker_aborts_the_run(monkeypatch, tmp_path)
     written: list = []
     _stub_pipeline(monkeypatch, written, coverages=[1.0, 0.0])  # "second" fails coverage
     index_calls: list = []
-    monkeypatch.setattr(cli.index, "write_index", lambda origins, out: index_calls.append(1))
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: index_calls.append(1))
 
     def hung(signum, frame):
         raise TimeoutError("_build_all is hanging: the worker's gate failure never reached the parent")
@@ -261,7 +268,7 @@ def test_a_worker_killed_by_a_signal_aborts_the_run_instead_of_hanging(monkeypat
 def test_a_second_build_refuses_while_the_lock_is_held(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.config, "DIST", tmp_path)
     _stub_pipeline(monkeypatch, [], [1.0, 1.0])       # so a wrongly acquired lock runs fast, not for real
-    monkeypatch.setattr(cli.index, "write_index", lambda origins, out: None)
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
     (tmp_path / cli.LOCK_NAME).write_text(f"{os.getpid()} 2026-09-10T00:00:00Z\n")
     with pytest.raises(SystemExit, match="held by a running build"):
         cli._build_all()
@@ -271,7 +278,7 @@ def test_a_second_build_refuses_while_the_lock_is_held(monkeypatch, tmp_path):
 def test_a_stale_lock_is_reported_not_reused(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.config, "DIST", tmp_path)
     _stub_pipeline(monkeypatch, [], [1.0, 1.0])
-    monkeypatch.setattr(cli.index, "write_index", lambda origins, out: None)
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
     dead = subprocess.Popen([sys.executable, "-c", "pass"])
     dead.wait()                                                    # a pid that has exited
     (tmp_path / cli.LOCK_NAME).write_text(f"{dead.pid} 2026-09-10T00:00:00Z\n")
@@ -283,6 +290,51 @@ def test_the_lock_is_released_after_a_run(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.config, "DIST", tmp_path)
     written: list = []
     _stub_pipeline(monkeypatch, written, [1.0, 1.0])
-    monkeypatch.setattr(cli.index, "write_index", lambda origins, out: None)
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
     cli._build_all()
     assert not (tmp_path / cli.LOCK_NAME).exists()
+
+
+def test_only_builds_the_named_origins_through_the_same_path_and_never_publishes(monkeypatch, tmp_path):
+    """`solve` and `index` were separate entry points with their own layout and
+    no gates; --only is the single-origin smoke test through the real path."""
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    written: list = []
+    _stub_pipeline(monkeypatch, written, [1.0, 1.0])
+    wrote_index: list = []
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: wrote_index.append(out))
+
+    cli._build_all(only=["second"])
+    assert wrote_index == [], "a partial build rewrote index.json"
+    assert {p.name.split(".")[0] for p in written} == {"second"}
+    assert len(written) == 7
+
+    with pytest.raises(SystemExit, match="not in origins.toml"):
+        cli._build_all(only=["nowhere"])
+
+
+def test_a_full_build_stamps_identity_count_and_graph_flags_into_index_json(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    _stub_pipeline(monkeypatch, [], [1.0, 1.0])
+    calls: list = []
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: calls.append(kw))
+    cli._build_all()
+    kw = calls[0]
+    assert kw["hover_cell_count"] == 1
+    assert kw["graph"] == {"rail": False, "ferry": False}
+    assert set(kw["identity"]) == {"inputsHash", "buildId", "builtAt"}
+
+
+def test_worker_cap_drops_to_five_above_three_million_cells():
+    assert cli._worker_cap(3_000_001) == 5
+    assert cli._worker_cap(500_000) == 8
+
+
+@pytest.mark.parametrize("cmd", ["solve", "index"])
+def test_solve_and_index_subcommands_are_gone(monkeypatch, cmd):
+    """They wrote a layout the page could not read and published index.json
+    for origins with no files (A7); argparse must reject them (exit 2)."""
+    monkeypatch.setattr(sys, "argv", ["transport-maps", cmd])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2

@@ -11,7 +11,6 @@ os.environ.setdefault("POLARS_MAX_THREADS", "1")
 import argparse
 import logging
 import multiprocessing
-import re
 import subprocess
 import threading
 import time
@@ -35,15 +34,15 @@ from transport_maps.graph import build, ground, nodes, transfers
 from transport_maps.solve import dijkstra
 from transport_maps.sources import countries, osm
 
-# Origin slugs become filenames under config.DIST, so reject anything that
-# could escape that directory (path separators, "..", leading dots/dashes).
-_SLUG_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+# One slug grammar, owned by emit.index (where origins.toml is read).
+_SLUG_RE = index._SLUG_RE
 
 
 def _slug(name: str) -> str:
     if not _SLUG_RE.fullmatch(name):
         raise argparse.ArgumentTypeError(
-            f"invalid --name {name!r}: must contain only letters, digits, '-' and '_'"
+            f"invalid slug {name!r}: letters, digits, '-' and '_' only, "
+            "starting with a letter or digit"
         )
     return name
 
@@ -232,11 +231,12 @@ def _load_ferries():
     return links
 
 
-def _build_all(limit: int | None = None) -> None:
+def _build_all(limit: int | None = None, only: list[str] | None = None) -> None:
     """Build the graph once, then solve, validate and emit every origin.
 
     Aborts on the first failing gate -- a partially written dist/ is worse
-    than none. `limit` restricts to the first N origins, for smoke-testing.
+    than none. `limit` restricts to the first N origins and `only` to the
+    named slugs; either makes a PARTIAL build that never rewrites index.json.
     """
     lock = _acquire_lock(config.DIST)
     try:
@@ -250,12 +250,13 @@ def _build_all(limit: int | None = None) -> None:
                 "%d other build-all process(es) are running on this machine (pids %s); "
                 "if they are orphans of a killed build, reap them -- they hold graph memory",
                 len(others), ", ".join(map(str, others)))
-        _build_all_locked(limit)
+        _build_all_locked(limit, only)
     finally:
         lock.unlink(missing_ok=True)
 
 
-def _build_all_locked(limit: int | None) -> None:
+def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
+    started = datetime.now(UTC)
     rail_routes = _load_rail()
     ferry_links = _load_ferries()
     idx = nodes.build_index(rail_routes=rail_routes)
@@ -286,8 +287,15 @@ def _build_all_locked(limit: int | None) -> None:
               "rail_tables": rail_detail.lookup_tables(rail_routes)}
 
     origins = index.load_origins()
+    if only:
+        known = {o["slug"] for o in origins}
+        missing = [s for s in only if s not in known]
+        if missing:
+            raise SystemExit(f"--only names origins not in origins.toml: {missing}")
+        origins = [o for o in origins if o["slug"] in set(only)]
     if limit is not None:
         origins = origins[:limit]
+    partial = limit is not None or bool(only)
 
     # hover_cells.bin depends only on the graph, not on any origin, so it is
     # safe to write eagerly. index.json is different: it lists the origins the
@@ -327,10 +335,14 @@ def _build_all_locked(limit: int | None) -> None:
     # partial run. A --limit smoke test that rewrote index.json would leave
     # dist/ advertising the handful of origins it happened to build, which is
     # indistinguishable from a real build until the site drops to one city.
-    if limit is not None:
-        print(f"--limit {limit}: index.json left untouched (partial build)")
+    if partial:
+        print("partial build (--limit / --only): index.json left untouched")
         return
-    index.write_index(origins, config.DIST / "index.json")
+    index.write_index(origins, config.DIST / "index.json",
+                      hover_cell_count=len(hover.hover_cells(idx)),
+                      graph={"rail": bool(getattr(idx, "has_rail", False)),
+                             "ferry": ferry_links is not None and len(ferry_links) > 0},
+                      identity=index.build_identity(started))
 
 
 def _consume(pool, results):
@@ -363,19 +375,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="transport-maps")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    solve = sub.add_parser(
-        "solve", help="solve one origin and write its PMTiles bands, hover array and routes"
-    )
-    solve.add_argument("--lat", type=float, required=True)
-    solve.add_argument("--lon", type=float, required=True)
-    solve.add_argument(
-        "--name", required=True, type=_slug, help="origin slug, used for the filename"
-    )
-
-    sub.add_parser(
-        "index", help="write index.json and the shared hover-cell ordering from origins.toml"
-    )
-
+    # `solve` and `index` used to be separate entry points with their own file
+    # layout and no gates -- `index` could publish an index.json for origins
+    # with no files. One path builds everything; --only is the single-origin
+    # smoke test, through the same gates, never publishing.
     build_all = sub.add_parser(
         "build-all", help="build the graph once and solve, validate and emit every origin"
     )
@@ -383,46 +386,20 @@ def main() -> None:
         "--limit",
         type=int,
         default=None,
-        help="only build the first N origins from origins.toml (for smoke-testing)",
+        help="only build the first N origins from origins.toml (partial build; index.json untouched)",
+    )
+    build_all.add_argument(
+        "--only",
+        type=lambda s: [_slug(x) for x in s.split(",") if x],
+        default=None,
+        help="comma-separated origin slugs to build (partial build; index.json untouched)",
     )
 
     args = parser.parse_args()
     config.ensure_dirs()
 
-    if args.command == "solve":
-        rail_routes = _load_rail()
-        ferry_links = _load_ferries()
-        idx = nodes.build_index(rail_routes=rail_routes)
-        csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links)
-        source = dijkstra.origin_node(idx, args.lat, args.lon)
-        minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
-
-        fc = bands.band_feature_collection(idx, minutes[: idx.n_cells])
-        pmtiles_out = config.DIST / f"{args.name}.pmtiles"
-        tiles.write_pmtiles(fc, pmtiles_out)
-
-        hover_out = config.DIST / f"{args.name}.hover.bin"
-        hover.write_hover(idx, minutes[: idx.n_cells], hover_out)
-
-        routes_out = config.DIST / f"{args.name}.routes.json"
-        routes_json.write_routes(idx, minutes, predecessors, routes_out)
-
-        print(f"wrote {pmtiles_out}, {hover_out}, {routes_out} ({len(fc['features'])} bands)")
-
-    elif args.command == "index":
-        origins = index.load_origins()
-        idx = nodes.build_index()
-
-        index_out = config.DIST / "index.json"
-        index.write_index(origins, index_out)
-
-        hover_cells_out = config.DIST / "hover_cells.bin"
-        index.write_hover_cells(idx, hover_cells_out)
-
-        print(f"wrote {index_out} ({len(origins)} origins), {hover_cells_out}")
-
-    elif args.command == "build-all":
-        _build_all(limit=args.limit)
+    if args.command == "build-all":
+        _build_all(limit=args.limit, only=args.only)
 
 
 # Without this, `python -m transport_maps.cli build-all` imports the module,
