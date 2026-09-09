@@ -123,24 +123,41 @@ function paintLegend() {
   $("tints").replaceChildren(...BANDS.map((c) => {
     const s = document.createElement("span"); s.style.background = c; return s;
   }));
+  // The two tones outside the ramp, so the grey of Antarctica or Siberia and
+  // the scheme's sea are named rather than left for the reader to guess.
+  $("sw-uncharted").style.background = UNCHARTED;
+  $("sw-sea").style.background = RAMPS[rampName]?.sea ?? SEA;
 }
 paintLegend();
 
 // Segments are equal width but the time scale is not linear, so a tick must sit
-// at its own band boundary. Placing evenly spaced labels under uneven bands is
-// how a legend ends up lying about the thing it explains.
-const SHOWN_HOURS = [1, 2, 4, 8, 16, 24, 48, 72];
-$("scale").replaceChildren(...EDGES.flatMap((mins, i) => {
-  const hours = mins / 60;
-  // Edges sit on a geometric ladder, so a round hour may not fall exactly on
-  // one; label the nearest edge to each and skip duplicates.
-  const nearest = SHOWN_HOURS.find((h) => Math.abs(hours - h) / h < 0.08);
-  if (nearest == null || EDGES.findIndex((e) => Math.abs(e / 60 - nearest) / nearest < 0.08) !== i) return [];
-  const el = document.createElement("span");
-  el.style.left = `${((i + 1) / BANDS.length) * 100}%`;
-  el.textContent = nearest === 72 ? "72+" : String(nearest);
-  return [el];
-}));
+// at its own band boundary AND say that boundary's value. The edges are a
+// geometric ladder, so most round hours do not fall on one; labelling the
+// nearest edge with the round hour put "72+" on the 67 h edge and "4" on
+// 3 h 45. Now: aim at a doubling ladder, snap to the nearest edge, and print
+// that edge's own hours.
+const TICK_TARGETS_MIN = [60, 120, 240, 480, 960, 1440, 2880, 4320];
+function paintScale() {
+  const fmtH = (m) => { const h = m / 60; return Number.isInteger(h) ? String(h) : h.toFixed(1); };
+  const picked = new Set();
+  for (const t of TICK_TARGETS_MIN) {
+    let best = -1, bestErr = Infinity;
+    EDGES.forEach((e, i) => { const err = Math.abs(Math.log(e / t)); if (err < bestErr) { bestErr = err; best = i; } });
+    if (best >= 0) picked.add(best);
+  }
+  // Two labels closer than three band widths would overprint; keep the earlier.
+  const kept = []; let last = -Infinity;
+  for (const i of [...picked].sort((a, b) => a - b)) if (i - last >= 3) { kept.push(i); last = i; }
+  $("scale").replaceChildren(...kept.map((i) => {
+    const el = document.createElement("span");
+    el.style.left = `${((i + 1) / N_BANDS) * 100}%`;
+    el.dataset.min = String(EDGES[i]);
+    el.textContent = fmtH(EDGES[i]) + (i === EDGES.length - 1 ? "+" : "");
+    el.title = `${EDGES[i]} minutes`;
+    return el;
+  }));
+}
+paintScale();
 
 $("credits").textContent = (meta.attribution ?? [])
   .map((s) => `${s.name} (${s.licence})`)

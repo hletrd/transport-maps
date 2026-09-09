@@ -154,6 +154,11 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   white-space:nowrap;
 }
 .legend-cap{margin:6px 0 0;font-size:10.5px;color:var(--text-3)}
+/* The two tones the ramp does not cover: land no scheduled service reaches, and
+   the sea. Without them a tenth of the land is a grey the legend never names. */
+.keys{display:flex;gap:14px;margin-top:7px;font-size:10.5px;color:var(--text-3)}
+.key{display:inline-flex;align-items:center;gap:5px}
+.keys .sw{width:14px;height:9px;border-radius:1px;display:inline-block;border:1px solid var(--line)}
 
 /* Route summary, under the legend. Appears only once a destination is set. */
 .legs{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;
@@ -350,6 +355,10 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <div class="legend">
     <div class="tints" id="tints"></div>
     <div class="scale" id="scale"></div>
+    <div class="keys" id="keys">
+      <span class="key"><span class="sw" id="sw-uncharted"></span>no scheduled route</span>
+      <span class="key"><span class="sw" id="sw-sea"></span>open water</span>
+    </div>
     <p class="legend-cap">Hours from the departure city, door to door.</p>
   </div>
 
