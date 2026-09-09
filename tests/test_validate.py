@@ -33,36 +33,53 @@ def test_low_coverage_trips_the_publish_threshold():
 
 
 def _hex_universe():
-    """A 19-cell disk and its neighbour table, the shape the gate expects."""
+    """A 19-cell disk with its sea rings, the shape the gate expects."""
     from transport_maps.contour import grid
     centre = h3.latlng_to_cell(37.5, 127.0, 5)
     return grid.universe(sorted(h3.grid_disk(centre, 2)))
 
 
-def _feature(geom, band=0):
+def _features(geom, band=0):
+    """The same geometry at every level of detail."""
     from shapely.geometry import mapping
-    return {"properties": {"band": band}, "geometry": mapping(geom)}
+    from transport_maps.contour import bands
+    out = []
+    for lod in bands.LODS:
+        z = {"minzoom": lod["minzoom"]}
+        if lod["maxzoom"] is not None:
+            z["maxzoom"] = lod["maxzoom"]
+        out.append({"tippecanoe": z, "properties": {"band": band}, "geometry": mapping(geom)})
+    return out
+
+
+def _whole(cells):
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+    return unary_union([Polygon([(lo, la) for la, lo in h3.cell_to_boundary(c)]) for c in cells])
 
 
 def test_a_hole_between_bands_is_rejected():
     """The gate must see a gap at an interior hex vertex, not just at centroids."""
-    from shapely.geometry import Point, Polygon
-    from shapely.ops import unary_union
-    cells, nb = _hex_universe()
-    whole = unary_union([Polygon([(lo, la) for la, lo in h3.cell_to_boundary(c)]) for c in cells])
-    # Punch out a disc around one vertex of the CENTRE cell -- an interior vertex.
-    la, lo = h3.cell_to_boundary(cells[len(cells) // 2])[0]
-    holed = whole.difference(Point(lo, la).buffer(0.002))
+    from shapely.geometry import Point
+    cells, nb, ring = _hex_universe()
+    # Punch out a disc around one vertex of the CENTRE land cell.
+    la, lo = h3.cell_to_boundary(cells[0])[0]
+    holed = _whole(cells).difference(Point(lo, la).buffer(0.002))
     with pytest.raises(ValueError, match="between bands"):
-        validate.check_bands_cover(cells, nb, {"features": [_feature(holed)]}, samples=len(cells))
+        validate.check_bands_cover(cells, nb, ring, {"features": _features(holed)}, samples=len(cells))
+
+
+def test_a_level_with_no_features_is_rejected():
+    """A missing level would leave those zooms blank without any error."""
+    cells, nb, ring = _hex_universe()
+    only_fine = _features(_whole(cells).buffer(1e-6))[:1]
+    with pytest.raises(ValueError, match="level 1"):
+        validate.check_bands_cover(cells, nb, ring, {"features": only_fine}, samples=len(cells))
 
 
 def test_full_coverage_is_accepted():
-    from shapely.geometry import Polygon
-    from shapely.ops import unary_union
-    cells, nb = _hex_universe()
-    whole = unary_union([Polygon([(lo, la) for la, lo in h3.cell_to_boundary(c)]) for c in cells])
-    validate.check_bands_cover(cells, nb, {"features": [_feature(whole.buffer(1e-6))]},
+    cells, nb, ring = _hex_universe()
+    validate.check_bands_cover(cells, nb, ring, {"features": _features(_whole(cells).buffer(1e-6))},
                                samples=len(cells))  # must not raise
 
 

@@ -181,66 +181,134 @@ def _dissolve(cells: list[str]):
     return _smooth(merged)
 
 
+# Levels of detail. tippecanoe simplifies in TILE space, so its tolerance at
+# low zoom is tens of kilometres: 10 km at zoom 3, 20 km at zoom 2, 39 km at
+# zoom 1. That is more than the one-cell rim that keeps neighbouring bands
+# overlapping, so hairlines opened between bands at those zooms, and more than
+# the hex fringe along the coast, which Douglas-Peucker turned into a sawtooth
+# of black teeth biting into every shore. Each band is therefore emitted once
+# per level, and tippecanoe's per-feature `tippecanoe.minzoom/maxzoom` keeps
+# the copies apart:
+#
+#   z5+  : resolution-5 cells, one-cell rim, one ring out to sea. The rim's
+#          ~10 km margin is far beyond the 2.4 km tolerance at zoom 5.
+#   z3-4 : resolution-5 cells, two-cell rim (~25 km margin against 10 km),
+#          two rings out to sea so the coast edge sits beyond the tolerance.
+#   z0-2 : resolution-4 parents, no rim at all -- fully cumulative, which
+#          costs overdraw only where land is a few hundred pixels wide --
+#          four rings out to sea against a 39 km tolerance at zoom 1.
+#
+# The sea margin bleeds across a strait onto the far shore by up to its own
+# width, which at these zooms is one to three pixels; the water layer hides
+# the rest. tippecanoe runs Visvalingam (emit/tiles.py) so what remains of the
+# hex edge at low zoom is rounded away rather than left as spikes.
+LODS = (
+    {"minzoom": 5, "maxzoom": None, "res": 5, "rim": 1, "rings": 1},
+    {"minzoom": 3, "maxzoom": 4, "res": 5, "rim": 2, "rings": 2},
+    {"minzoom": 0, "maxzoom": 2, "res": 4, "rim": None, "rings": 4},
+)
+
+
+def lod_features(feature_collection: dict, lod: int) -> list[dict]:
+    """The features emitted for one level of detail, in emission order."""
+    minzoom = LODS[lod]["minzoom"]
+    return [f for f in feature_collection["features"]
+            if f.get("tippecanoe", {}).get("minzoom") == minzoom]
+
+
+def _feature(k: int, geometry, lod: dict) -> dict:
+    open_band = len(config.BAND_EDGES_MIN)
+    emitted = UNREACHABLE_BAND if k == open_band + 1 else int(k)
+    zoom = {"minzoom": lod["minzoom"]}
+    if lod["maxzoom"] is not None:
+        zoom["maxzoom"] = lod["maxzoom"]
+    return {
+        "type": "Feature",
+        "tippecanoe": zoom,
+        "properties": {
+            "band": emitted,
+            # None for the open band AND for unreachable land: band -1 would
+            # otherwise index BAND_EDGES_MIN from the end and claim the
+            # unreachable cells are inside the last edge.
+            "max_minutes": (config.BAND_EDGES_MIN[emitted]
+                            if 0 <= emitted < open_band else None),
+        },
+        "geometry": mapping(geometry),
+    }
+
+
+def _fine_features(lod: dict, cells_arr, nb, ring, band) -> list[dict]:
+    """Resolution-5 bands with a rim of `lod['rim']` cells over the faster ones."""
+    sub = ring <= lod["rings"]
+    # A neighbour outside this level's universe does not exist for it: it
+    # neither blocks interiority nor gets painted.
+    nb_sub = np.where((nb >= 0) & sub[np.maximum(nb, 0)], nb, -1)
+    slowest_nb = np.where(nb_sub >= 0, band[np.maximum(nb_sub, 0)], -1).max(axis=1)
+    out = []
+    for k in np.unique(band[sub]).tolist():
+        interior = (band <= k - 1) & (slowest_nb <= k - 1)
+        for _ in range(lod["rim"] - 1):
+            # Widen the rim: a cell is interior only if every existing
+            # neighbour is interior too.
+            interior &= np.where(nb_sub >= 0, interior[np.maximum(nb_sub, 0)], True).all(axis=1)
+        keep = sub & (band <= k) & ~interior
+        geometry = _dissolve(cells_arr[keep].tolist())
+        if geometry is not None and not geometry.is_empty:
+            out.append(_feature(k, geometry, lod))
+    return out
+
+
+def _coarse_features(lod: dict, cells_arr, ring, band) -> list[dict]:
+    """Cumulative bands over coarser parents: a parent is within edge k when
+    any of its children is."""
+    import h3
+
+    sub = ring <= lod["rings"]
+    parents = np.array([h3.cell_to_parent(c, lod["res"]) for c in cells_arr[sub]], dtype=object)
+    uniq, inverse = np.unique(parents, return_inverse=True)
+    fastest = np.full(len(uniq), np.iinfo(np.int64).max, dtype=np.int64)
+    np.minimum.at(fastest, inverse, band[sub])
+    out = []
+    for k in np.unique(band[sub]).tolist():
+        geometry = _dissolve(uniq[fastest <= k].tolist())
+        if geometry is not None and not geometry.is_empty:
+            out.append(_feature(k, geometry, lod))
+    return out
+
+
 def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None) -> dict:
-    """GeoJSON FeatureCollection, one polygon feature per occupied band.
+    """GeoJSON FeatureCollection: one feature per occupied band per level of
+    detail (see LODS), each level in ascending band order with unreachable
+    land last.
 
-    See the module docstring for the construction. `grid` is the
-    `contour.grid.universe` of `idx.cells`; the build computes it once in the
-    parent process and hands it to every forked worker.
-
-    Features are emitted in ascending band order with unreachable land last,
-    which is also the order the page paints them in when it has no sort key
-    to go on.
+    `grid` is the `contour.grid.universe` of `idx.cells`; the build computes
+    it once in the parent process and hands it to every forked worker.
     """
     if len(cell_minutes) < idx.n_cells:
         raise ValueError("cell_minutes shorter than the cell universe")
     from transport_maps.contour import grid as grid_mod
 
-    cells, nb = grid if grid is not None else grid_mod.universe(idx.cells)
+    cells, nb, ring = grid if grid is not None else grid_mod.universe(idx.cells)
     n_land = idx.n_cells
     if len(cells) < n_land or cells[:n_land] != list(idx.cells):
         raise ValueError("render grid does not match the cell universe")
 
-    # Fringe cells take the fastest adjacent land cell. Their own slots start
-    # at +inf, so the minimum over neighbours only ever sees land.
+    # Each sea ring takes the fastest cell of the ring inside it. Outer rings
+    # are still +inf when an inner one is filled, so the minimum only ever
+    # sees the ring inside.
     minutes = np.full(len(cells), np.inf)
     minutes[:n_land] = np.asarray(cell_minutes[:n_land], dtype=float)
-    if len(cells) > n_land:
-        fringe_nb = nb[n_land:]
-        minutes[n_land:] = np.where(fringe_nb >= 0,
-                                    minutes[np.maximum(fringe_nb, 0)], np.inf).min(axis=1)
-
+    for r in range(1, int(ring.max()) + 1 if len(ring) else 1):
+        sel = np.flatnonzero(ring == r)
+        nbs = nb[sel]
+        minutes[sel] = np.where(nbs >= 0, minutes[np.maximum(nbs, 0)], np.inf).min(axis=1)
     band = band_indices(minutes)
-    # Slowest band among each cell's neighbours. A missing neighbour (open sea
-    # past the fringe) does not count: a coastal cell whose land neighbours are
-    # all faster is interior, and leaving it in every slower band would copy
-    # the whole coast into each of them.
-    slowest_nb = np.where(nb >= 0, band[np.maximum(nb, 0)], -1).max(axis=1)
-
-    open_band = len(config.BAND_EDGES_MIN)
-    unreachable = open_band + 1
     cells_arr = np.array(cells, dtype=object)
 
-    features = []
-    for k in np.unique(band).tolist():
-        interior = (band <= k - 1) & (slowest_nb <= k - 1)
-        keep = (band <= k) & ~interior
-        geometry = _dissolve(cells_arr[keep].tolist())
-        if geometry is None or geometry.is_empty:
-            continue
-        emitted = UNREACHABLE_BAND if k == unreachable else int(k)
-        features.append({
-            "type": "Feature",
-            "properties": {
-                "band": emitted,
-                # None for the open band AND for unreachable land: band -1
-                # would otherwise index BAND_EDGES_MIN from the end and claim
-                # the unreachable cells are inside the last edge.
-                "max_minutes": (
-                    config.BAND_EDGES_MIN[emitted]
-                    if 0 <= emitted < open_band else None
-                ),
-            },
-            "geometry": mapping(geometry),
-        })
+    features: list[dict] = []
+    for lod in LODS:
+        if lod["res"] == config.SOLVE_RES:
+            features += _fine_features(lod, cells_arr, nb, ring, band)
+        else:
+            features += _coarse_features(lod, cells_arr, ring, band)
     return {"type": "FeatureCollection", "features": features}

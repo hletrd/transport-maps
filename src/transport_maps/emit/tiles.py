@@ -36,7 +36,7 @@ def write_pmtiles(feature_collection: dict, out: Path) -> None:
     staged = src.with_suffix(".pmtiles")
 
     try:
-        subprocess.run([
+        result = subprocess.run([
             "tippecanoe",
             "-o", str(staged), "--force",
             "-l", LAYER,
@@ -46,14 +46,23 @@ def write_pmtiles(feature_collection: dict, out: Path) -> None:
             # way a fixed degree tolerance does. This is the right knob for
             # size; the geometry handed to it stays smooth.
             "--simplification=8",
-            # Bands tile the land exactly, so their shared edges must simplify
-            # IDENTICALLY -- otherwise low zooms open hairline gaps along every
-            # boundary and the sea shows through the middle of a continent.
-            "--detect-shared-borders",
+            # Visvalingam drops the smallest bumps first. Douglas-Peucker keeps
+            # the farthest-out vertices, which on a hex edge at low zoom means
+            # a sawtooth of spikes.
+            "--visvalingam",
+            # A band fragment too small to draw should vanish, not become a
+            # square of the same area.
+            "--no-tiny-polygon-reduction",
             "--coalesce-densest-as-needed",
             "--extend-zooms-if-still-dropping",
             str(src),
         ], check=True, capture_output=True, text=True)
+        # tippecanoe says when it had to coarsen a tile to make it fit, and
+        # nothing else does: a coarsened tile is what turns a coast into teeth.
+        notes = [l for l in result.stderr.splitlines()
+                 if "tile " in l and ("too large" in l or "detail" in l or "dropping" in l)]
+        for note in notes[:3]:
+            print(f"  tippecanoe: {note.strip()[:140]}")
         # shutil.move handles the cross-filesystem case (local -> NFS) that
         # os.replace cannot.
         shutil.move(str(staged), str(out))

@@ -34,10 +34,14 @@ def test_feature_collection_has_one_feature_per_occupied_band():
         n_cells = 2
     fc = bands.band_feature_collection(FakeIndex(), np.array([10.0, 5000.0]))
     assert fc["type"] == "FeatureCollection"
-    assert len(fc["features"]) == 2
     expected = {bands.band_of(10.0), bands.band_of(5000.0)}
     assert expected == {0, len(config.BAND_EDGES_MIN)}, "fixture no longer spans first and open band"
-    assert {f["properties"]["band"] for f in fc["features"]} == expected
+    # Every level of detail carries one feature per occupied band.
+    for lod in range(len(bands.LODS)):
+        feats = bands.lod_features(fc, lod)
+        assert len(feats) == 2, f"level {lod}"
+        assert {f["properties"]["band"] for f in feats} == expected
+    assert len(fc["features"]) == 2 * len(bands.LODS)
 
 
 def test_bands_are_emitted_in_ascending_order():
@@ -52,7 +56,8 @@ def test_bands_are_emitted_in_ascending_order():
     fc = bands.band_feature_collection(FakeIndex(), np.array(times))
     expected = sorted(bands.band_of(t) for t in times)
     assert len(set(expected)) == 3, "fixture times must land in three distinct bands"
-    assert [f["properties"]["band"] for f in fc["features"]] == expected
+    for lod in range(len(bands.LODS)):
+        assert [f["properties"]["band"] for f in bands.lod_features(fc, lod)] == expected
 
 
 def test_max_minutes_matches_the_band_edge_and_is_none_past_the_last_edge():
@@ -124,9 +129,9 @@ def test_real_multi_band_solve_passes_the_cover_gate(seoul_band_feature_collecti
     must leave no hex vertex unpainted. This is the gate the build runs.
     """
     from transport_maps.contour import grid
-    assert len(seoul_band_feature_collection["features"]) > 5  # exercise the far bands too
-    cells, nb = grid.universe(nodes.build_index().cells)
-    validate.check_bands_cover(cells, nb, seoul_band_feature_collection)  # must not raise
+    assert len(bands.lod_features(seoul_band_feature_collection, 0)) > 5  # the far bands too
+    cells, nb, ring = grid.universe(nodes.build_index().cells)
+    validate.check_bands_cover(cells, nb, ring, seoul_band_feature_collection)  # must not raise
 
 
 def test_no_gap_opens_between_bands_however_they_meet():
@@ -146,9 +151,18 @@ def test_no_gap_opens_between_bands_however_they_meet():
         pass
     idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
     fc = bands.band_feature_collection(idx, minutes)
-    assert len(fc["features"]) >= 8
-    universe, nb = grid.universe(cells)
-    validate.check_bands_cover(universe, nb, fc, samples=len(universe))  # every vertex
+    assert len(bands.lod_features(fc, 0)) >= 8
+    universe, nb, ring = grid.universe(cells)
+    validate.check_bands_cover(universe, nb, ring, fc, samples=len(universe))  # every vertex
+
+
+def test_each_level_of_detail_is_bounded_to_its_zooms():
+    """The copies must not overlap in zoom, or a tile would carry two of them."""
+    zooms = [(l["minzoom"], l["maxzoom"] if l["maxzoom"] is not None else 99) for l in bands.LODS]
+    covered = sorted(zooms)
+    assert covered[0][0] == 0
+    for (a0, a1), (b0, b1) in zip(covered, covered[1:]):
+        assert a1 + 1 == b0, f"levels {a0}-{a1} and {b0}-{b1} leave a gap or overlap"
 
 
 def test_the_sea_fringe_is_painted_with_the_fastest_neighbour():
@@ -166,15 +180,16 @@ def test_the_sea_fringe_is_painted_with_the_fastest_neighbour():
         cells = [a, b]
         n_cells = 2
     fc = bands.band_feature_collection(Idx(), np.array([1.0, 3000.0]))
-    fast = next(shape(f["geometry"]) for f in fc["features"] if f["properties"]["band"] == 0)
+    fine = bands.lod_features(fc, 0)
+    fast = next(shape(f["geometry"]) for f in fine if f["properties"]["band"] == 0)
     la, lo = h3.cell_to_latlng(shared[0])
     assert fast.contains(Point(lo, la)), "common fringe cell not painted with the faster band"
     # A ring-2 cell of `a` that is not also a neighbour of `b` -- otherwise it
     # is b's legitimate fringe.
     far = next(c for c in h3.grid_ring(a, 2) if c not in h3.grid_disk(b, 1))
     la, lo = h3.cell_to_latlng(far)
-    assert not any(shape(f["geometry"]).contains(Point(lo, la)) for f in fc["features"]), \
-        "ring 2 must stay unpainted: the fringe is one cell"
+    assert not any(shape(f["geometry"]).contains(Point(lo, la)) for f in fine), \
+        "ring 2 must stay unpainted at the fine level: its fringe is one cell"
 
 
 def test_unreachable_land_is_emitted_rather_than_dropped():

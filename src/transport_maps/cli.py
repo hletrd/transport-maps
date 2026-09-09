@@ -82,7 +82,7 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
                                     country=shared["country"], zone=shared["zone"])
 
     fc = bands.band_feature_collection(idx, minutes[: idx.n_cells], grid=shared["grid"])
-    validate.check_bands_cover(shared["grid"][0], shared["grid"][1], fc)
+    validate.check_bands_cover(*shared["grid"], fc)
 
     out = config.DIST / "origins"
     tiles.write_pmtiles(fc, out / f"{slug}.pmtiles")

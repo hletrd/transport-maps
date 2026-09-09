@@ -1,14 +1,16 @@
-"""The cell universe the map paints: land cells plus their one-ring sea fringe.
+"""The cell universe the map paints: land cells plus rings of sea around them.
 
 Painting only the cells whose centroid is on land leaves every shore an 8 km
 hex stair-step -- the land mask can be as fine as it likes, the paint stops
-one cell short of it. The fringe ring inherits the fastest adjacent land cell,
-so the bands run one cell past the shore, and the water layer drawn above them
+one cell short of it. So the bands run out to sea: each ring inherits the
+fastest cell of the ring inside it, and the water layer drawn above the bands
 (web/app.js, built by emit/water.py) cuts them back to the real coastline.
 
-Also carries every cell's six neighbour positions, which is what lets
-`contour.bands` decide in one vectorised pass which cells sit safely inside a
-band boundary and which are on its rim.
+Several rings are kept because the low-zoom copies of each band need a wider
+sea margin than the high-zoom ones (see contour.bands.LODS). `ring[i]` is 0
+for land and r for the r-th ring out; `nb[i, j]` is the position of cell i's
+j-th neighbour, or -1 past the outermost ring (or the empty slot of a
+pentagon).
 """
 
 from __future__ import annotations
@@ -22,48 +24,56 @@ from transport_maps import config
 from transport_maps.sources._utils import _atomic_write
 
 # Bump when the layout of the cached arrays changes.
-GRID_VERSION = "ring1-nb6-v1"
+GRID_VERSION = "rings-nb6-v2"
+# Enough for the coarsest level of detail's margin (bands.LODS) plus one.
+RINGS = 4
 # Test fixtures of a handful of cells are not worth a cache file each.
 MIN_CELLS_TO_CACHE = 5_000
 
 
-def universe(cells: list[str]) -> tuple[list[str], np.ndarray]:
-    """(all cells, neighbour positions) for a list of land cells.
+def universe(cells: list[str], rings: int = RINGS) -> tuple[list[str], np.ndarray, np.ndarray]:
+    """(all cells, neighbour positions, ring index) for a list of land cells.
 
-    The land cells come first, in the order given, then the fringe sorted.
-    `nb[i, j]` is the position of cell i's j-th neighbour, or -1 where that
-    neighbour is open water beyond the fringe (or the empty slot of a
-    pentagon). Cached on the exact cell list: a different universe of the same
-    length must not share an entry.
+    Land cells come first in the order given, then ring 1 sorted, ring 2
+    sorted, and so on. Cached on the exact cell list: a different universe of
+    the same length must not share an entry.
     """
     cells = list(cells)
-    key = hashlib.sha256((GRID_VERSION + "|" + "".join(cells)).encode()).hexdigest()[:24]
+    key = hashlib.sha256(f"{GRID_VERSION}|{rings}|{''.join(cells)}".encode()).hexdigest()[:24]
     cached = config.BUILD / f"render-grid-{key}.npz"
     if len(cells) >= MIN_CELLS_TO_CACHE and cached.exists():
         z = np.load(cached, allow_pickle=False)
-        fringe = [h3.int_to_str(int(v)) for v in z["fringe"]]
-        return cells + fringe, z["nb"]
+        sea = [h3.int_to_str(int(v)) for v in z["sea"]]
+        return cells + sea, z["nb"], z["ring"]
 
-    land = set(cells)
-    fringe_set: set[str] = set()
-    for c in cells:
-        for n in h3.grid_ring(c, 1):
-            if n not in land:
-                fringe_set.add(n)
-    fringe = sorted(fringe_set)
-    allc = cells + fringe
+    seen = set(cells)
+    allc = list(cells)
+    ring = [0] * len(cells)
+    frontier = cells
+    for r in range(1, rings + 1):
+        grown: set[str] = set()
+        for c in frontier:
+            for n in h3.grid_ring(c, 1):
+                if n not in seen:
+                    grown.add(n)
+        frontier = sorted(grown)
+        seen.update(frontier)
+        allc.extend(frontier)
+        ring.extend([r] * len(frontier))
+
     pos = {c: i for i, c in enumerate(allc)}
     nb = np.full((len(allc), 6), -1, dtype=np.int32)
     for i, c in enumerate(allc):
         for j, n in enumerate(h3.grid_ring(c, 1)):
             nb[i, j] = pos.get(n, -1)
+    ring_arr = np.asarray(ring, dtype=np.int8)
 
     if len(cells) >= MIN_CELLS_TO_CACHE:
-        fringe_ids = np.array([h3.str_to_int(c) for c in fringe], dtype=np.uint64)
+        sea_ids = np.array([h3.str_to_int(c) for c in allc[len(cells):]], dtype=np.uint64)
 
         def _save(tmp):
             with open(tmp, "wb") as fh:          # a file object: savez adds no suffix
-                np.savez(fh, fringe=fringe_ids, nb=nb)
+                np.savez(fh, sea=sea_ids, nb=nb, ring=ring_arr)
 
         _atomic_write(cached, _save)
-    return allc, nb
+    return allc, nb, ring_arr
