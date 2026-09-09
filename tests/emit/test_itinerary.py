@@ -1,15 +1,16 @@
 """The arrival-airport array must name the route that produced the time."""
 
+from typing import ClassVar
+
 import numpy as np
-import pytest
 
 from transport_maps.emit import itinerary
 
 
 class Idx:
     """cells [0,3), departures [3,5), arrivals [5,7)."""
-    cells = ["a", "b", "c"]
-    airports = ["AAA", "BBB"]
+    cells: ClassVar[list[str]] = ["a", "b", "c"]
+    airports: ClassVar[list[str]] = ["AAA", "BBB"]
     n_cells = 3
 
 
@@ -54,9 +55,9 @@ def test_written_array_is_one_uint16_per_hover_cell(tmp_path):
     from transport_maps import config
 
     class RealIdx:
-        cells = [h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES),
-                 h3.latlng_to_cell(35.6, 139.7, config.SOLVE_RES)]
-        airports = ["AAA", "BBB"]
+        cells: ClassVar[list[str]] = [h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES),
+                                      h3.latlng_to_cell(35.6, 139.7, config.SOLVE_RES)]
+        airports: ClassVar[list[str]] = ["AAA", "BBB"]
         n_cells = 2
 
     n = RealIdx.n_cells

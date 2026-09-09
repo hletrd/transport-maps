@@ -14,7 +14,7 @@ test goes red. Every task below names its mutation.
 
 ## Cycle 1 (this run)
 
-- [ ] **F14** Clear the 40 ruff errors (F401, F841, I001, RUF007, RUF012, UP031)
+- [x] **F14** Clear the 40 ruff errors (F401, F841, I001, RUF007, RUF012, UP031)
       without suppressions. Unused locals in `emit/hover.py:60`,
       `itinerary.py:58`, `modes.py:53,99` are removed, not renamed.
       Gate: `uv run ruff check .` exits 0.

@@ -131,8 +131,9 @@ def _fill_blanks(cells: list[str], out: np.ndarray, passes: int = 3) -> np.ndarr
     the blanks that only touch other blanks. Whichever side a blank inherits,
     one of its edges then crosses the closed pair and is cut.
     """
-    import h3
     from collections import Counter
+
+    import h3
 
     pos = {c: i for i, c in enumerate(cells)}
     out = out.copy()

@@ -1,5 +1,7 @@
 """Surface minutes must be attributed to the mode that actually carried them."""
 
+from typing import ClassVar
+
 import h3
 import numpy as np
 
@@ -11,7 +13,7 @@ class Idx:
     """cells [0,3), departures [3,5), arrivals [5,7), stations [7,9)."""
 
     n_cells = 3
-    airports = ["AAA", "BBB"]
+    airports: ClassVar[list[str]] = ["AAA", "BBB"]
     stations = ("s0", "s1")
 
     def __init__(self, cells):

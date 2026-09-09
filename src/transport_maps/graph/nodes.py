@@ -116,6 +116,7 @@ def build_index(rail_routes=None) -> NodeIndex:
     None to build a road-and-air graph."""
     base_cells = landmask.land_cells(config.SOLVE_RES)
     from transport_maps.sources import roads, urban
+
     from . import refine
     split = refine.dense_mask(roads.cell_class(base_cells), urban.urban_mask(base_cells))
     cells, base_index, fine = refine.refine(base_cells, split)

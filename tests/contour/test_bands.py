@@ -1,3 +1,4 @@
+from itertools import pairwise
 from typing import ClassVar
 
 import h3
@@ -162,7 +163,7 @@ def test_each_level_of_detail_is_bounded_to_its_zooms():
     zooms = [(l["minzoom"], l["maxzoom"] if l["maxzoom"] is not None else 99) for l in bands.LODS]
     covered = sorted(zooms)
     assert covered[0][0] == 0
-    for (a0, a1), (b0, b1) in zip(covered, covered[1:]):
+    for (a0, a1), (b0, b1) in pairwise(covered):
         assert a1 + 1 == b0, f"levels {a0}-{a1} and {b0}-{b1} leave a gap or overlap"
 
 
@@ -178,7 +179,7 @@ def test_the_sea_fringe_is_painted_with_the_fastest_neighbour():
     assert shared, "fixture: no common neighbour"
 
     class Idx:
-        cells = [a, b]
+        cells: ClassVar[list[str]] = [a, b]
         n_cells = 2
     fc = bands.band_feature_collection(Idx(), np.array([1.0, 3000.0]))
     # The sea rings belong to the base levels (zoom <= 6); the native level
@@ -210,8 +211,10 @@ def test_unreachable_land_is_emitted_rather_than_dropped():
     from transport_maps.contour import bands
 
     class Idx:
-        cells = [h3.latlng_to_cell(-77.8, 166.7, 5),      # Ross Island
-                 h3.latlng_to_cell(37.5, 127.0, 5)]       # Seoul
+        cells: ClassVar[list[str]] = [
+            h3.latlng_to_cell(-77.8, 166.7, 5),      # Ross Island
+            h3.latlng_to_cell(37.5, 127.0, 5),       # Seoul
+        ]
         n_cells = 2
 
     fc = bands.band_feature_collection(Idx(), np.array([np.inf, 30.0]))
@@ -230,6 +233,7 @@ def test_a_split_cell_is_painted_by_its_children_with_the_parent_underneath():
     must sit under them in the slowest child's band so the seams where
     children do not tile their parent exactly are closed."""
     from shapely.geometry import Point, shape
+
     from transport_maps.graph import refine
     centre = h3.latlng_to_cell(37.5, 127.0, 5)
     base = sorted(h3.grid_disk(centre, 1))            # 7 base cells at res 5...

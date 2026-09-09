@@ -1,7 +1,6 @@
 """Rail route parsing, on PBFs built here so the expected answer is known."""
 
 import osmium
-import polars as pl
 import pytest
 
 from transport_maps.sources import osm

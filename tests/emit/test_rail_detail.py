@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import numpy as np
 import polars as pl
 
@@ -6,9 +8,9 @@ from transport_maps.emit import rail_detail
 
 class Idx:
     """Two cells, one airport (dep+arr), two stations: cells 0,1; air 2,3; stations 4,5."""
-    cells = ["8630e08ffffffff", "8630e087fffffff"]
+    cells: ClassVar[list[str]] = ["8630e08ffffffff", "8630e087fffffff"]
     n_cells = 2
-    airports = ["AAA"]
+    airports: ClassVar[list[str]] = ["AAA"]
     stations = ("s1", "s2")
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import sys
+from itertools import pairwise
 from pathlib import Path
 
 # Between ANCHORS. Eleven anchors from near-white to near-black span about 70
@@ -46,14 +47,14 @@ def ramps(source: str = None) -> dict[str, dict]:
 def measure(colours: list[str]) -> tuple[list[float], list[float]]:
     lab = [srgb_to_oklab(c) for c in colours]
     lightness = [p[0] for p in lab]
-    delta = [100 * sum((a - b) ** 2 for a, b in zip(p, q)) ** 0.5 for p, q in zip(lab, lab[1:])]
+    delta = [100 * sum((a - b) ** 2 for a, b in zip(p, q)) ** 0.5 for p, q in pairwise(lab)]
     return lightness, delta
 
 
 def problems(colours: list[str]) -> list[str]:
     lightness, delta = measure(colours)
     out = []
-    if any(b >= a for a, b in zip(lightness, lightness[1:])):
+    if any(b >= a for a, b in pairwise(lightness)):
         out.append("lightness is not strictly decreasing")
     low = [f"{i}-{i + 1}: {d:.1f}" for i, d in enumerate(delta) if d < MIN_DELTA_E]
     if low:
@@ -65,7 +66,7 @@ def respace(colours: list[str]) -> list[str]:
     """The same colour path, re-sampled so adjacent anchors are equally far
     apart in OKLab -- which is what maximises the smallest step."""
     lab = [srgb_to_oklab(c) for c in colours]
-    seg = [sum((a - b) ** 2 for a, b in zip(p, q)) ** 0.5 for p, q in zip(lab, lab[1:])]
+    seg = [sum((a - b) ** 2 for a, b in zip(p, q)) ** 0.5 for p, q in pairwise(lab)]
     total = sum(seg)
     n = len(colours)
     out = []
@@ -92,7 +93,7 @@ def oklab_to_srgb(lab: tuple[float, float, float]) -> str:
         c = min(1.0, max(0.0, c))
         c = 12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
         return round(c * 255)
-    return "#%02x%02x%02x" % tuple(enc(c) for c in lin)
+    return "#" + "".join(f"{enc(c):02x}" for c in lin)
 
 
 if __name__ == "__main__":

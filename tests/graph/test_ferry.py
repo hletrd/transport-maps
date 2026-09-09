@@ -1,7 +1,6 @@
 """Ferry crossings as cell-to-cell edges."""
 
 import h3
-import numpy as np
 import polars as pl
 import pytest
 

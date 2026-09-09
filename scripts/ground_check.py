@@ -12,11 +12,9 @@ Kept as a quick reproducible spot-check.
     uv run python scripts/ground_check.py
 """
 
-import h3
 import numpy as np
 import scipy.sparse as sp
 
-from transport_maps import config
 from transport_maps.graph import ground, nodes
 
 # (label, city lat/lon, airport lat/lon, MEASURED driving minutes)

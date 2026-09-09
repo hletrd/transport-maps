@@ -16,10 +16,18 @@ import numpy as np
 
 from transport_maps import config, validate
 from transport_maps.contour import bands, grid
-from transport_maps.emit import rail_detail, hover, index, itinerary, modes, routes_json, tiles
+from transport_maps.emit import (
+    hover,
+    index,
+    itinerary,
+    modes,
+    rail_detail,
+    routes_json,
+    tiles,
+)
 from transport_maps.graph import build, ground, nodes, transfers
 from transport_maps.solve import dijkstra
-from transport_maps.sources import countries, osm, roads
+from transport_maps.sources import countries, osm
 
 # Origin slugs become filenames under config.DIST, so reject anything that
 # could escape that directory (path separators, "..", leading dots/dashes).

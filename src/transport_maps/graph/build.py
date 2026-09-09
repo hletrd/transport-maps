@@ -7,7 +7,6 @@ import numpy as np
 import polars as pl
 import scipy.sparse as sp
 
-from transport_maps import config
 from transport_maps.graph import air, ground, rail, transfers
 from transport_maps.graph.nodes import NodeIndex
 from transport_maps.sources import airports, osm, routes

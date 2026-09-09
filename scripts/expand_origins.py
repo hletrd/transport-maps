@@ -16,13 +16,12 @@ Earth produced "Shenyeng" and gave Amaravati 5.8 million people. GeoNames
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import math
 import re
 import tomllib
 import unicodedata
-
-import csv
-import io
 import zipfile
 
 import httpx

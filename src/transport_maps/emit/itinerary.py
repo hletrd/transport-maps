@@ -55,7 +55,6 @@ def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Pat
     it.
     """
     parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
-    position = {cell: i for i, cell in enumerate(parents)}
 
     last = arrival_airport_per_node(idx, minutes, predecessors)
     first_arrival = idx.n_cells + len(idx.airports)

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import h3
 import numpy as np
 import pytest
@@ -13,7 +15,7 @@ def test_coverage_is_the_reachable_fraction():
     class Idx:
         n_cells = 4
         # Non-Antarctic cells, so none are allowlisted out.
-        cells = [h3.latlng_to_cell(10.0 + i, 0.0, 5) for i in range(4)]
+        cells: ClassVar[list[str]] = [h3.latlng_to_cell(10.0 + i, 0.0, 5) for i in range(4)]
     assert validate.check_coverage(minutes, Idx()) == 0.5
 
 
@@ -28,7 +30,7 @@ def test_low_coverage_trips_the_publish_threshold():
     class Idx:
         n_cells = 100
         # Non-Antarctic cells, so none are allowlisted out.
-        cells = [h3.latlng_to_cell(10.0 + i, 0.0, 5) for i in range(100)]
+        cells: ClassVar[list[str]] = [h3.latlng_to_cell(10.0 + i, 0.0, 5) for i in range(100)]
     assert validate.check_coverage(minutes, Idx()) < validate.MIN_COVERAGE
 
 
@@ -47,6 +49,7 @@ def _hex_universe():
 def _features(geom, band=0):
     """The same geometry at every level of detail."""
     from shapely.geometry import mapping
+
     from transport_maps.contour import bands
     out = []
     for lod in bands.LODS:
@@ -231,7 +234,7 @@ def test_antarctic_cells_are_excluded_from_the_coverage_denominator():
     """
     class Idx:
         # Two reachable temperate cells, two unreachable Antarctic ones.
-        cells = [
+        cells: ClassVar[list[str]] = [
             h3.latlng_to_cell(10.0, 0.0, 5),
             h3.latlng_to_cell(11.0, 0.0, 5),
             h3.latlng_to_cell(-75.0, 0.0, 5),

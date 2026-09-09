@@ -57,7 +57,6 @@ def _representative_children(idx, parents: list[str], cell_minutes: np.ndarray) 
 
 def write_hover(idx, cell_minutes: np.ndarray, out: Path) -> None:
     parents = hover_cells(idx)
-    position = {cell: i for i, cell in enumerate(parents)}
 
     best = np.full(len(parents), np.inf, dtype=np.float64)
     picked = _representative_children(idx, parents, cell_minutes)

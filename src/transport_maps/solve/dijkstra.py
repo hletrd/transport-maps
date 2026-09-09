@@ -1,10 +1,8 @@
 """Single-source shortest path over the multi-modal graph."""
 
-import h3
 import scipy.sparse as sp
 from scipy.sparse.csgraph import dijkstra as _dijkstra
 
-from transport_maps import config
 from transport_maps.graph.nodes import NodeIndex
 
 

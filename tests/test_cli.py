@@ -7,6 +7,7 @@ from scipy.sparse import csr_matrix
 
 from transport_maps import cli
 from transport_maps.cli import _slug
+from transport_maps.sources import roads
 
 
 def test_slug_accepts_a_simple_name():
@@ -58,7 +59,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
     # polars or GDAL; on a one-cell fake index they must be stand-ins too.
     monkeypatch.setattr(cli.countries, "cell_country", lambda cells: np.array(["KOR"]))
     monkeypatch.setattr(cli.countries, "iso2", lambda a3: "KR")
-    monkeypatch.setattr(cli.roads, "cell_class", lambda cells: np.array([1]))
+    monkeypatch.setattr(roads, "cell_class", lambda cells: np.array([1]))
     monkeypatch.setattr(cli.ground, "cell_class", lambda idx: np.array([1]))
     monkeypatch.setattr(cli.dijkstra, "origin_node", lambda idx, lat, lon: 0)
     monkeypatch.setattr(

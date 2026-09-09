@@ -9,6 +9,7 @@ which is a few thousand rows rather than the 257,000 stops in the network.
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 from pathlib import Path
 
 import h3
@@ -51,7 +52,7 @@ def _line_between(routes: pl.DataFrame) -> dict[tuple[str, str], str]:
     for rid, g in df.group_by("route_id", maintain_order=True):
         st = g["station"].to_list()
         name = g["route_name"][0] if "route_name" in g.columns else ""
-        for a, b in zip(st, st[1:]):
+        for a, b in pairwise(st):
             out.setdefault((a, b), name)
             out.setdefault((b, a), name)
     return out

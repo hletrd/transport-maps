@@ -50,7 +50,6 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
     """
     n_cells = idx.n_cells
     n_air = len(idx.airports)
-    first_arr = n_cells + n_air
     first_stn = n_cells + 2 * n_air
 
     if cell_class is None:
@@ -96,7 +95,6 @@ def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path,
     describes the journey the number refers to rather than a different one.
     """
     parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
-    position = {cell: i for i, cell in enumerate(parents)}
 
     acc = mode_minutes_per_node(idx, minutes, predecessors, cell_class=cell_class)
     from .hover import _representative_children

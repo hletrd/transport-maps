@@ -4,8 +4,8 @@ Compact columnar JSON: 3,983 rows of code, name, country, lat, lon. The IATA
 code is what people type; the name is what they need to recognise the answer.
 """
 
-from pathlib import Path
 import json
+from pathlib import Path
 
 from ..sources import airports
 from ..sources._utils import _atomic_write

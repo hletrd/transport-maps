@@ -12,7 +12,13 @@ effective cruise speed. Raw traces never leave the server.
 """
 from __future__ import annotations
 
-import argparse, gzip, json, math, os, sys, tarfile, urllib.request
+import argparse
+import gzip
+import json
+import math
+import os
+import tarfile
+import urllib.request
 from pathlib import Path
 
 GITHUB_RELEASES = "https://api.github.com/repos/adsblol/globe_history_2026/releases?per_page=30"
