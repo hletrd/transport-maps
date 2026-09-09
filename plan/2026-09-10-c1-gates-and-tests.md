@@ -26,7 +26,7 @@ test goes red. Every task below names its mutation.
       bound must change.
 - [x] **F1b** `tests/graph/test_build.py:61-65` — use `idx.cell_at(lat, lon)`
       instead of a hard-coded res-5 cell.
-- [ ] **F1c / E2** README attribution rows for GeoNames (CC BY 4.0) and
+- [x] **F1c / E2** README attribution rows for GeoNames (CC BY 4.0) and
       HydroLAKES (CC BY 4.0) so `tests/emit/test_index.py::test_readme_documents_the_same_sources`
       is green for the right reason (the test already compares against
       `index.ATTRIBUTION`).
@@ -97,3 +97,4 @@ test goes red. Every task below names its mutation.
 
 - 2026-09-10 cycle 1: plan written; cycle-1 tasks implemented in the cycle-1 commits (`test(...)`, `style(...)`, `docs(readme)` entries in git log). Gate results recorded in the cycle report.
 - 2026-09-10 cycle 1 gates: `uv run ruff check .` clean; `uv run pytest -q` 251 passed, 4 deselected (3 `network`, 1 `real_multi_band`), 16 min 42 s. The first full run found 7 res-5 fixtures the migration had left behind (`test_ground`, `test_golden` x3, `test_rail_integration` x2, `test_countries` SG/JB pair); fixed at the root in the `test(...)` commits that follow, not skipped.
+- 2026-09-10 cycle 1 done: F14 (a3f918f), TE-23/TE-22 (00f40e4), F1a (990febe), F1b (6f63764), F1c/E2 (662f5d3), F12 (84fb110), F2 (498b971); ruff clean; full suite 251 passed, 4 deselected. Res-5 fixture fallout fixed at the root in 6cc60d4, ceebfc2, 3e393b5 (part of F3 landed early).

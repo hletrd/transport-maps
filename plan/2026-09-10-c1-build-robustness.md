@@ -122,3 +122,4 @@ orchestrator are running; do not start/stop them, do not rewrite `dist/` or
 ## Progress
 
 - 2026-09-10 cycle 1: plan written; cycle-1 tasks implemented in the cycle-1 commits.
+- 2026-09-10 cycle 1 done: A3 (b030d38), A5 (599dc60), A8 (be2cc94), A4 (b38fb8b, superseding 3487081), E1 verify half + FD-5 (cea16ca, 4d74cbe). Each guard shown red under its mutation, then reverted.

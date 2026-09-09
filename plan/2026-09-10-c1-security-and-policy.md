@@ -12,13 +12,13 @@ production and firewall/header changes require explicit confirmation.
 
 ## Cycle 1 (this run)
 
-- [ ] **I1** Escape every external string before `innerHTML`: GeoNames place,
+- [x] **I1** Escape every external string before `innerHTML`: GeoNames place,
       region and country names, OurAirports names, Nominatim display names,
       rail station and line names (`app.js:596-601,614-624,730` and the route
       summary). One `esc()` helper; or build the nodes with `textContent`.
       Check: a place named `<img src=x onerror=alert(1)>` in a fixture renders
       as text.
-- [ ] **E3 (repo half)** `deploy/worldmap.atik.kr.conf`: move the security
+- [x] **E3 (repo half)** `deploy/worldmap.atik.kr.conf`: move the security
       headers into an `include deploy/security-headers.conf` (or repeat them)
       inside every `location` that sets `Cache-Control`, so nginx's
       `add_header` inheritance no longer drops them; extend the CSP to what
@@ -28,11 +28,11 @@ production and firewall/header changes require explicit confirmation.
       for the tag's beacon) and keep `frame-ancestors 'none'`. `deploy/README.md`
       documents the inheritance trap and how to verify with `curl -sI`.
       Server-side deployment of the conf: **blocked on owner** (see below).
-- [ ] **E4 (bounded)** Address search becomes explicit (Enter or a button) —
+- [x] **E4 (bounded)** Address search becomes explicit (Enter or a button) —
       done in the web plan's D4 task — with a Nominatim attribution line under
       results and a visible disclosure sentence in the about panel that the
       page talks to Nominatim (address search) and Google Analytics.
-- [ ] **E4 (docs)** `web/README.md`, `llms.txt` and the JSON-LD stop claiming
+- [x] **E4 (docs)** `web/README.md`, `llms.txt` and the JSON-LD stop claiming
       "no runtime API calls / no third party".
 
 ## Cycle 2
@@ -76,3 +76,4 @@ production and firewall/header changes require explicit confirmation.
 ## Progress
 
 - 2026-09-10 cycle 1: plan written; cycle-1 tasks implemented in the cycle-1 commits.
+- 2026-09-10 cycle 1 done: I1 (f943964 esc() on every dataset string), E3 repo half (03988a5 snippet + includes + CSP), E4 bounded (1305ba7 explicit search) and docs (e11c830). Server-side header install remains blocked on owner.

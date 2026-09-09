@@ -7,18 +7,18 @@ detail: `document-specialist.md` (DOC-*), `critic.md`, `verifier.md`,
 
 ## Cycle 1 (this run)
 
-- [ ] **E2** Attribution for GeoNames (CC BY 4.0) and HydroLAKES (CC BY 4.0):
+- [x] **E2** Attribution for GeoNames (CC BY 4.0) and HydroLAKES (CC BY 4.0):
       README table rows, `web/llms.txt` source list, the page's credit line
       (`#key .src`) and the `<noscript>` block; JSON-LD `license` replaced by a
       note that the dataset combines ODbL, CC BY-SA and CC BY inputs with a
       link to the credits. Also credit Nominatim/OSM beside address results.
-- [ ] **E5** `web/llms.txt`: one consistent description (res 6 refined to 7,
+- [x] **E5** `web/llms.txt`: one consistent description (res 6 refined to 7,
       36 edges / 37 bands, rail and ferry in the graph, HydroLAKES lakes).
-- [ ] **E7** `web/README.md`: one font family; twelve measured multi-hue schemes;
+- [x] **E7** `web/README.md`: one font family; twelve measured multi-hue schemes;
       runtime calls to Nominatim and the Google tag disclosed; MapLibre 6 note
       states the cause. `deploy/README.md`: document the `web/ → dist/` copy
       step and the uncached asset classes.
-- [ ] **E9** Stale comments and dead constants: `config.py:11,19-24` (grid size,
+- [x] **E9** Stale comments and dead constants: `config.py:11,19-24` (grid size,
       "11th band"), `emit/hover.py:7`, `modes.py:95`, `itinerary.py:51`
       (res-5 → `SOLVE_RES`), `app.js:29-34,573-577` ("fastest child" → centre
       child; `solveRes ?? 5` → 6), `app.js:376,923-924` (`band-seams` never
@@ -26,9 +26,9 @@ detail: `document-specialist.md` (DOC-*), `critic.md`, `verifier.md`,
       test that pins them), `src/transport_maps/__init__.py` stub `main`,
       `routes_json.py` "Task 9" comment. (Python half done in the cycle-1
       `docs(pipeline)` commit; the `app.js` half is the web agent's.)
-- [ ] **E12** README factual claims (lakes source, coast zoom, band count,
+- [x] **E12** README factual claims (lakes source, coast zoom, band count,
       grid resolution) brought in line with the code.
-- [ ] **D20** State one separation threshold: CLAUDE.md says ~8, `check_ramps.py`
+- [x] **D20** State one separation threshold: CLAUDE.md says ~8, `check_ramps.py`
       uses 6; `app.js:5-12` says 8. Chosen: the measured anchor threshold in
       `check_ramps.py` is the rule; the comment in `app.js` and CLAUDE.md wording
       say "anchors ≥ 6, target 8"; interpolated-band measurement is a
@@ -77,3 +77,4 @@ detail: `document-specialist.md` (DOC-*), `critic.md`, `verifier.md`,
 ## Progress
 
 - 2026-09-10 cycle 1: plan written; cycle-1 tasks implemented in the cycle-1 commits.
+- 2026-09-10 cycle 1 done: E2 (662f5d3 README, d84217f page, e11c830 llms.txt), E5/E7/E8/D20 (e11c830), E9 (fa89fbc Python half, e11c830 app.js half), E12 (e1b9558 README claims reworded per DOC-16).

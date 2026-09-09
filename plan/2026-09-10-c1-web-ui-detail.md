@@ -14,69 +14,69 @@ viewports; each task lists its own text-extractable check.
 
 ## Cycle 1 (this run) — bounded, S-effort, user-visible
 
-- [ ] **D1** Fix the four invalid `font: … inherit` shorthands so the search box,
+- [x] **D1** Fix the four invalid `font: … inherit` shorthands so the search box,
       city list, scheme picker, `.btn` and address results render in IBM Plex
       Sans. `web/index.html:181,189,208,251` → `font-family:inherit; font-weight;
       font-size; line-height` written out. Check: `getComputedStyle(q).fontFamily`
       starts with "IBM Plex Sans".
-- [ ] **D2** Give globe labels the page typeface and a text shadow: `.lbl` gets
+- [x] **D2** Give globe labels the page typeface and a text shadow: `.lbl` gets
       `font-family:var(--font)` (`index.html:226-231`) and a dark
       `text-shadow`; origin labels keep weight 500. Check: computed
       `fontFamily`/`textShadow` on `.lbl.origin`.
-- [ ] **D3** Make the opening view show city names: raise the label budget at the
+- [x] **D3** Make the opening view show city names: raise the label budget at the
       landing zoom (`app.js:189`) or land `flyTo` at a zoom where the budget is
       non-zero (`app.js:433`). Check: `document.querySelectorAll(".lbl").length > 0`
       after load at 1280×800.
-- [ ] **D4 + E4 (bounded)** Enter in the search box acts: with a filter typed, Enter
+- [x] **D4 + E4 (bounded)** Enter in the search box acts: with a filter typed, Enter
       departs from the first matching city; when the filter matches no city,
       Enter runs the address search. Arrow keys move through the result list.
       Address search moves from search-as-you-type to explicit (Enter or a
       "Search address" button), which also satisfies the Nominatim policy
       (E4). Check: keydown Enter on `#q` changes `map.getSource("bands").url`
       or populates `.addresses`.
-- [ ] **C4** Legend ticks: place each label on the edge whose value equals the
+- [x] **C4** Legend ticks: place each label on the edge whose value equals the
       round hour exactly when one exists (72 h = 4320 exists), and label the
       others with the true edge value (e.g. "3¾ h" or "225 min" rather than
       "4"); keep enough spacing that "48" and "72+" cannot collide.
       `app.js:129-143`. Check: each `.tick` `data-min` equals a value in
       `meta.bandEdgesMin` and its label equals that value formatted.
-- [ ] **C6** Add a legend entry for the "no scheduled route" tone (`UNCHARTED`)
+- [x] **C6** Add a legend entry for the "no scheduled route" tone (`UNCHARTED`)
       and for open water. `app.js:122-127`, `index.html:340-344`.
-- [ ] **D5** Rewrite the Route panel instructions to describe the real
+- [x] **D5** Rewrite the Route panel instructions to describe the real
       interaction (click a destination; change departure via the list, an
       origin label, or "Depart from here"). `index.html:373-375`.
-- [ ] **D6** Raise `--text-3` to a value that clears 4.5:1 on `--panel` and
+- [x] **D6** Raise `--text-3` to a value that clears 4.5:1 on `--panel` and
       re-check the readout scrim (`index.html:85,132`). Measure with the
       WCAG formula in the commit message.
-- [ ] **D7** Visible focus: replace `outline:none` on `#q`, `.ap`, `.mode`,
+- [x] **D7** Visible focus: replace `outline:none` on `#q`, `.ap`, `.mode`,
       `.lbl.origin` with a `:focus-visible` ring (`index.html:189,191,231,245`).
-- [ ] **D9** Add `color-scheme: dark` on `:root` (`index.html:82-87`).
-- [ ] **D10** Honour `prefers-reduced-motion: reduce`: `flyTo`/`easeTo` become
+- [x] **D9** Add `color-scheme: dark` on `:root` (`index.html:82-87`).
+- [x] **D10** Honour `prefers-reduced-motion: reduce`: `flyTo`/`easeTo` become
       `jumpTo` (or `duration: 0`) at `app.js:433,848,858,875,994`.
-- [ ] **D18** Stop requesting IBM Plex Sans 300 (`index.html:136`); use 400 with
+- [x] **D18** Stop requesting IBM Plex Sans 300 (`index.html:136`); use 400 with
       a lighter colour or vendor the 300 face. Chosen: weight 400.
-- [ ] **C7** Distinguish "loading" / "no data for this departure" from "Open
+- [x] **C7** Distinguish "loading" / "no data for this departure" from "Open
       water." (`app.js:464-468,618-626`).
-- [ ] **C10** Gate geolocation behind a user gesture (a "Use my location"
+- [x] **C10** Gate geolocation behind a user gesture (a "Use my location"
       button) instead of prompting on load (`app.js:956-998`).
-- [ ] **C12** When `index.json` has no `modeDetail` (the shipped 157-origin
+- [x] **C12** When `index.json` has no `modeDetail` (the shipped 157-origin
       build), fall back to built-in explanations so tooltips still render;
       do not fetch `.rail.bin/.rail.json` when `index.json` does not advertise
       them (`app.js:396-401,508-511,646-653`). Check: `.mode[data-tip]` non-empty
       on the local preview.
-- [ ] **D14** Show the disclaimer in the visible page (one line under the legend
+- [x] **D14** Show the disclaimer in the visible page (one line under the legend
       or in the about panel head), not only in `<noscript>`
       (`index.html:273-274,425-426`).
-- [ ] **D12** State "door to door" beside every figure: the readout caption, the
+- [x] **D12** State "door to door" beside every figure: the readout caption, the
       Route "Time" row, the leg tooltip (`index.html:331-343`, `app.js:556`).
-- [ ] **E1 (page half)** Derive every visible city count from `meta.origins.length`
+- [x] **E1 (page half)** Derive every visible city count from `meta.origins.length`
       at runtime; make the static meta/JSON-LD copy count-free ("hundreds of
       departure cities") until the 553-origin build ships (`index.html:15,23,31,41-42,375,421`,
       `app.js:722` comment, `llms.txt:3`).
-- [ ] **C2 (copy half)** Relabel "Onward from X, of which:" to what the numbers
+- [x] **C2 (copy half)** Relabel "Onward from X, of which:" to what the numbers
       are (surface travel across the whole journey) until per-leg accounting
       lands (`app.js` route summary).
-- [ ] **C9** Wrap the two top-level awaits (`index.json`, `hover_cells.bin`) so a
+- [x] **C9** Wrap the two top-level awaits (`index.json`, `hover_cells.bin`) so a
       404, non-JSON body or odd byte length shows a visible message instead
       of a blank globe (`app.js:27,38-40`).
 
@@ -86,8 +86,9 @@ viewports; each task lists its own text-extractable check.
       per-origin fetches and discards results when `gen !== originGen`
       (`app.js:396-431`). Check: fire two switches back to back with the first
       delayed; the second wins.
-- [ ] **D8** Empty and failed search states: "No city or address matches" and a
-      Nominatim error line (`app.js:728-770,778-842`).
+- [ ] **D8** Empty and failed search states: "No city or address matches" for the
+      local list (`app.js:728-770`). The address half (searching / no address
+      found / unavailable) landed in cycle 1 with D4.
 - [ ] **D11** One "Route" heading; show the time once (`index.html:370-379`,
       `app.js:556-561,655-672`).
 - [ ] **D13 (reorder)** Create the map before `hover_cells.bin` arrives; fetch
@@ -137,3 +138,4 @@ viewports; each task lists its own text-extractable check.
 ## Progress
 
 - 2026-09-10 cycle 1: plan written. Cycle-1 tasks implemented in the cycle-1 commits (see git log for `web/`); each check recorded in the commit body.
+- 2026-09-10 cycle 1 done: all twenty cycle-1 tasks shipped in a261141, b7da35f, 1305ba7, d84217f, f943964, e11c830 (web/); verified on the local preview with agent-browser (fonts, ticks, keys, labels, Enter, address search, route tooltips, console clean) and by scripts/browser_verify.sh after deploy.
