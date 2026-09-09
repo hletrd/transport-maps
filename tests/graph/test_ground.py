@@ -22,10 +22,11 @@ def test_speeds_span_the_full_range(idx):
 
 
 def test_roadless_terrain_is_slower_than_motorway_terrain(idx):
-    import h3
     speeds = ground.cell_speed_kmh(idx)
-    sahara = idx.cell_index(h3.latlng_to_cell(23.0, 10.0, 5))
-    seoul = idx.cell_index(h3.latlng_to_cell(37.5665, 126.9780, 5))
+    # Through the index, which knows whether a point sits in a base cell or a
+    # fine child; a literal resolution went stale when the grid changed.
+    sahara = idx.cell_index(idx.cell_at(23.0, 10.0))
+    seoul = idx.cell_index(idx.cell_at(37.5665, 126.9780))
     assert speeds[sahara] < speeds[seoul]
 
 

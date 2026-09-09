@@ -4,11 +4,9 @@ These are deliberately loose in Phase A (air plus uniform ground) and tighten as
 real modes land. Update the tolerances, never the expectations, as the model improves.
 """
 
-import h3
 import numpy as np
 import pytest
 
-from transport_maps import config
 from transport_maps.graph import build, nodes
 from transport_maps.solve import dijkstra
 
@@ -26,7 +24,8 @@ def solved():
 
 
 def _minutes_at(idx, minutes, latlon) -> float:
-    return float(minutes[idx.cell_index(h3.latlng_to_cell(*latlon, config.SOLVE_RES))])
+    # The index resolves base-versus-fine: Tokyo and London sit in split cells.
+    return float(minutes[idx.cell_index(idx.cell_at(*latlon))])
 
 
 def test_seoul_to_tokyo_is_a_half_day_or_less(solved):

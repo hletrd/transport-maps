@@ -43,7 +43,7 @@ test goes red. Every task below names its mutation.
       `uv run pytest` is the gate and no one has to remember `-k`.
 - [x] **F13/TE-22** Add the missing `__init__.py` to `tests/cli/` and `tests/web/`
       (and `tests/` if needed for the rootdir import mode).
-- [ ] Run the full suite (`uv run pytest -q`) and record the outcome in the
+- [x] Run the full suite (`uv run pytest -q`) and record the outcome in the
       cycle report; every failure must be fixed at the root, not skipped.
 
 ## Cycle 2
@@ -96,3 +96,4 @@ test goes red. Every task below names its mutation.
 ## Progress
 
 - 2026-09-10 cycle 1: plan written; cycle-1 tasks implemented in the cycle-1 commits (`test(...)`, `style(...)`, `docs(readme)` entries in git log). Gate results recorded in the cycle report.
+- 2026-09-10 cycle 1 gates: `uv run ruff check .` clean; `uv run pytest -q` 251 passed, 4 deselected (3 `network`, 1 `real_multi_band`), 16 min 42 s. The first full run found 7 res-5 fixtures the migration had left behind (`test_ground`, `test_golden` x3, `test_rail_integration` x2, `test_countries` SG/JB pair); fixed at the root in the `test(...)` commits that follow, not skipped.
