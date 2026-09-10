@@ -213,3 +213,60 @@ appears in the "Scheduled" table above it with its task number. The cycle-1 and
 cycle-2 deferrals earlier in this file are unchanged except where a cycle-3
 finding extends one (B1 by TR3-4/CRIT3-2, K8 by TR3-12, N22 by DOC3-22, S5 by
 TE3-6/TE3-7, J2 by ARCH3-8's closure).
+
+---
+
+# Cycle 4
+
+## Reopened, and one deferral withdrawn
+
+**N22 is withdrawn as a deferral and scheduled as U18.** It was deferred on the
+stated ground that "OSMF guidelines accept a collapsed credit behind a clearly
+labelled control" (`deferred.md`, N22 row). The cycle-4 document-specialist read
+the guideline: it says verbatim *"The attribution format should not require
+individuals to interact with the map or produced work to see the attribution,"*
+and its three permitted collapse behaviours (dismiss, on map interaction, after
+five seconds) all presuppose the credit was shown first. The premise of the
+deferral is false, so this is a mechanical licence requirement, not an owner
+judgement. Severity raised to High. Source:
+https://osmfoundation.org/wiki/Licence/Attribution_Guidelines
+
+**H14 is reopened as U26 on new evidence.** Its row records "2-5 ms measured",
+Low, "below the 50 ms trigger". The `.sort()` with comparator-side `rankAirport`
+landed *after* that measurement, in `05f88a5`, and the pathological query is the
+word *Airport* (six two-letter substrings each matching about 99 % of 4,008
+names). Re-measured: "portland" 20.0 ms across three keystrokes, "airport"
+36.8 ms, airport stage only, one fast desktop core. The exit criterion the
+deferral itself set is met.
+
+## Deferred this cycle
+
+Every cycle-4 finding not scheduled in
+`2026-09-10-c4-page-deploy-and-licence.md` (U1-U28) is here, with its citation,
+its original severity and confidence unchanged, a concrete reason, and the exit
+criterion that reopens it. No security, correctness or data-loss finding is
+deferred without a rebuild constraint the orchestrator imposed, which is stated
+where it applies.
+
+| ID | Finding | Sev / Conf | Citation | Reason | Exit criterion |
+|---|---|---|---|---|---|
+| PR4-4 | The tooltip repositions with `left`/`top` while carrying `backdrop-filter` and reads `offsetWidth` back in the same frame: forced synchronous reflow, a layout-affecting move, and a moving blur region sampling a repainting WebGL canvas, at 60 Hz. | Medium / Needs-manual-validation | `web/app.js:1107-1123`, `web/index.html:283-287` | The reviewer could not measure the magnitude: a browser performance trace needs a coherent `dist/`, and today's is mid-rebuild with a stale 157-origin index. Rewriting the positioning to `transform` without a measurement risks trading a real reflow for a new compositing layer on the fourth `backdrop-filter` surface. Severity unchanged. | A trace on the live site after this cycle's deploy shows a frame budget miss on pointer move; or N24 (the scrim/blur swap) is picked up, which touches the same surfaces. |
+| PR4-5 | Two unthrottled `resize` listeners, one of them calling `map.jumpTo`. | Low / High | `web/app.js:312`, `:489-493` | `map.jumpTo` on resize is T10's viewport framing, which must run on resize by design; throttling it is exactly how the framing regression T10 fixed comes back. Resize is not a hot path. Severity unchanged. | A measured stall while dragging a window edge, or the next time `app.js`'s event wiring is revised. |
+| PR4-6 | `dist/vendor/` holds 14 orphan `g00-g13.woff2` (386,120 B) that nothing references and `check_dist.py` does not flag. | Low / High | `dist/vendor/`, `scripts/check_dist.py` | The remedy is deleting files under `dist/`, which the orchestrator forbids this cycle while the rebuild holds it. The `check_dist` flag alone would fail the deploy on files that are harmless. Severity unchanged. | The rebuild has exited and this cycle's deploy has landed; then remove the files and add the flag in one commit. |
+| SEC4-5 | The vendor table pins on-disk hashes but records no upstream provenance for 9 of 10 files. | Low / High | `tests/web/test_vendor.py`, `web/README.md` | Already scheduled as **I5 (docs part)** in `2026-09-10-c2-docs-attribution-calibration.md`. The cycle-4 security reviewer measured five upstream hashes and left them in `.context/reviews/security-reviewer.md` ready to paste, which is the work I5 was waiting on. Not a second task. | I5 lands. |
+| UX4-8 | The legend carries four ticks at every width, including a 792 px strip on the tablet; `TICK_TARGETS_MIN` is a fixed four and T3's pruning machinery is unused headroom. | Low / High | `web/app.js` `paintScale`, `TICK_TARGETS_MIN` | CLAUDE.md requires the ticks to sit at their true band boundaries and the legend to be always visible; both hold today, and no visitor is misled by four correct ticks. Denser ticks are a refinement of a legend that is already right, and T3's pruning exists so a denser set stays legible -- so this is headroom, not a defect. Severity unchanged. | The legend is next revised, or a viewport is found at which four ticks misstate the scale. |
+| CRIT4-6 | One click yields two different place names: `#where` reads "Bagalkot" and `#pins` reads "Bennura" for the same point. | Low / High | `web/app.js` `describe()` vs `renderPins()` | The two names come from different resolvers on purpose -- the readout names the nearest gazetteer place, the pin names the place the itinerary actually terminates at -- so reconciling them is a decision about which place a journey is "to", not a repair. Choosing wrongly makes the itinerary lie rather than the readout. Severity unchanged. | The owner says which name is authoritative; or U9's per-city times put both names in one list, at which point the discrepancy becomes visible and must be resolved. |
+| TR4-6 | Four small items: a `<u2` airport ordinal with no overflow guard where the rail emitter raises; `showReading`'s `point` parameter dead since T11; 9 of 4,008 searchable airports answer "open water". | Low / High | `emit/itinerary.py`, `web/app.js` `showReading`, `dist/airports.json` | The ordinal needs more than 65,535 airports on one journey to overflow, which the data cannot produce; the dead parameter is cosmetic; and the nine airports sit on cells the res-6 land mask does not cover, which is a land-mask question, not a page question. Severity unchanged. | The airport table approaches a u2 bound, or the land mask is revised (which is where the nine belong). |
+| CR4-aside | `scripts/build_water_tiles.py` never takes the build lock that `cli._acquire_lock`'s docstring says protects against "the water build". | Low / High | `scripts/build_water_tiles.py`, `src/transport_maps/cli.py` `_acquire_lock` | Inside **O6 / E6**'s scope (the `assets` subcommand that folds the standalone scripts into the CLI). The water build is run by hand today and has never raced a `build-all`; adding a second lock acquirer outside the CLI would be undone by O6. Severity unchanged. | O6 / E6 lands, or the water build is scripted into `build-all`. |
+| DBG4-5 | New measurement for the already-deferred **TR3-2 / C8**: the emitter truncates where the band search uses the float and the page rounds, so **405 of Seoul's 81,455 reachable cells (0.50 %)** print a band range one band below the colour under the cursor. The specific fix is `np.rint` at `sources`-side `hover.py:69`. | Medium / High | `src/transport_maps/emit/hover.py:69` | Unchanged from TR3-2: the code half is one line but the artifacts only change at the next full build, and changing the emitter mid-rebuild would make `dist/` describe two conventions. Severity unchanged; the measurement is recorded here so the next build does not have to re-derive it. | The next full build. The `np.rint` change and its test land in the same commit that starts it. |
+| U24(a) data half | `MAX_ZOOM = 11` in `emit/water.py` takes `water.pmtiles` from 867 MB to about 490 MB: **366,690,691 bytes (42.7 % of the 858 MB tile section) is referenced only at z >= 12**, which `app.js:358`'s `maxZoom: 11` can never request. | Medium / High | `src/transport_maps/emit/water.py:33`, `web/app.js:358` | The constant and the emitter-max <= page-max gate land as U24(a); the 377 MB only comes off when `scripts/build_water_tiles.py` runs, which the orchestrator forbids this cycle. Severity unchanged. | The water tileset is next rebuilt. |
+| U24(b) artifact half | The build host's OS username and this repo's absolute path are served from `water.pmtiles`' metadata blob on every page load, live now. `64ab007` fixed the emitter; the shipped archives predate it, and the running rebuild is still writing the leak. | Medium / High | `dist/water.pmtiles` metadata; `src/transport_maps/emit/tiles.py` | The only remedy is regenerating the tileset, which this cycle must not run, and the leak is already live -- so failing the gate would block a deploy on an unfixable artifact without reducing any exposure by one byte. **U24(b) therefore lands the detector as a reported warning rather than a failure.** This is a new signal where there was none, not a weakened gate. Severity unchanged. | The water tileset is rebuilt with the fixed emitter. At that point the detector becomes a failure in the same commit, and the warning text is removed. |
+| U23 data half | `borders.json`'s 213-242 KB gzipped saving. | High value / High | `src/transport_maps/emit/borders.py` | The emitter change lands as U23; the shipped `borders.json` is written by `build-all`, which this cycle must not run. Severity unchanged. | The next full build, or a `--page-only`-style re-emit of the extras once the rebuild has exited. |
+| J3 (exit criterion fired) | `web/app.js` has passed the 1,500-line threshold J3's deferral set as its own exit criterion: 1,689 lines, 25 mutable module-level bindings. | Medium / High | `web/app.js` | Recorded, not acted on. The run brief forbids sweeping refactors this cycle, and the architect's review says explicitly that the module split needs a cycle of its own. Severity unchanged; the condition is now on the record as met rather than pending. | Its own cycle, with the run brief's scope discipline lifted or a cycle budgeted for it. |
+| ARCH4-6 | **O6 / E6**'s deferral reason ("writes under `dist/`") conflates *writing* the `assets` subcommand with *running* it; the code half can land now. | Info / High | `deferred.md` O6/E6 row | A correction to a reason, not a new finding. Recorded so the next cycle picks O6 up on its merits instead of re-reading a reason that does not apply. | Cycle 5 schedules O6's code half. |
+
+Not deferred, for the record: every other cycle-4 finding appears in
+`2026-09-10-c4-page-deploy-and-licence.md` under a U-number. The 37 open items in
+the five cycle-2 plans are unchanged and keep their own records there; none was
+re-raised by this cycle's reviewers except N22 (withdrawn above) and H14
+(reopened above).

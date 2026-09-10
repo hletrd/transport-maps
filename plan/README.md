@@ -1,7 +1,9 @@
 # Plans
 
 Implementation plans derived from the multi-agent reviews in `.context/reviews/`
-(cycle 3: per-agent files plus `_aggregate.md` with merged clusters X1…X21 and
+(cycle 4: per-agent files plus `_aggregate.md` with merged clusters Y1…Y30 and
+per-agent IDs CR4-n, PR4-n, SEC4-n, CRIT4-n, VER4-n, TE4-n, TR4-n, ARCH4-n,
+DBG4-n, DOC4-n, UX4-n, FCR4-n; cycle 3: `cycle-3/` with clusters X1…X21 and
 per-agent IDs CR3-n, PR3-n, SEC3-n, CRIT3-n, VER3-n, TE3-n, TR3-n, ARCH3-n,
 DBG3-n, DOC3-n, UX3-n, FCR3-n; cycle 2: `cycle-2/` with merged IDs K1…S6;
 cycle 1: `cycle-1/_aggregate.md` with A1…J9). Finding IDs are stable across cycles: a
@@ -23,26 +25,31 @@ to act on a finding lives only in an untracked file. Cycle 3 audited this
 mechanically: all 142 finding IDs its reviewers raised are named in `plan/`,
 including thirteen that had been carried only in the review text.
 
+Cycle 4's designer found one gap in that audit: six cycle-3 designer findings
+(A3-A8) reached no table, and the designer's `A1…A8` collide with the build
+plan's `A1…A17`. Both are scheduled in U28. Cycle-4 IDs are prefixed with the
+cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
+
 | Plan | Scope | Status |
 |---|---|---|
-| `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | cycle 2 done; cycle 3 open |
-| `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | cycle 2 done; cycle 3 open |
-| `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); cycle 3 open |
-| `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; cycle 3 open |
-| `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; cycle 3 open |
-| `2026-09-10-c3-page-detail-and-defects.md` | Cycle 3: page detail, ease of use, UI, and the defects the cycle-3 review confirmed (T1…T31) | cycle 3: 28 of 31 done; T26, T28 carried; T19's run against `dist/` waits for the rebuild |
+| `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
+| `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
+| `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); open tasks carried to cycle 5 |
+| `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
+| `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
+| `2026-09-10-c4-page-deploy-and-licence.md` | Cycle 4: the page a visitor reads, the three defects that would break the deploy, and two licence obligations (U1…U28) | cycle 4: open |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
+| `archive/2026-09-10-c3-*.md` | Cycle 3 (T1…T31): 28 done; T24, T26 and T28 carried into the cycle-4 plan as U28, U10 and U11 | archived (cycle 4) |
 
-None of the five moves to `archive/` yet: each carries an unfinished
-**Cycle 3** section, and the archive convention below applies only when
-every task is done or has been carried forward under its ID. `W1` in the
-gates plan stays open by design -- it is a recorded warning with an exit
-criterion, not an unfinished fix.
+The five cycle-2 plans do not move to `archive/` yet: 37 tasks across them are
+still open, and the archive convention below applies only when every task is
+done or has been carried forward under its ID. `W1` in the gates plan stays open
+by design -- it is a recorded warning with an exit criterion, not an unfinished
+fix.
 
-End-of-cycle-2 gate state at `29c6330`: `uv run ruff check .` all checks
-passed; `uv run pytest -q` 356 passed, 4 deselected, 5 warnings (all W1),
-exit 0.
+End-of-cycle-3 gate state at `43b99f5`: `uv run ruff check .` all checks passed,
+exit 0; `uv run pytest -q` 390 passed, 4 deselected, 5 warnings (all W1), exit 0.
 
 Conventions
 - Each task carries the merged finding ID(s) so the provenance can be traced to

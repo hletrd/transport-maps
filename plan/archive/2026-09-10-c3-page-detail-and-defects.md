@@ -409,3 +409,33 @@ has exited.
   hops remain in the shipped artifacts until then. T19's `reindex` was NOT run
   against `dist/`: the 553-origin rebuild still held the directory at the end
   of this cycle.
+
+- 2026-09-10 cycle 4: archived. 28 of 31 tasks are done above; the three that are
+  not have been carried into `plan/2026-09-10-c4-page-deploy-and-licence.md`
+  under their own IDs, per the archive convention in `plan/README.md`:
+  **T24** into U28 (the record corrections), **T26** into U10 (type hierarchy,
+  the em-dash empty state, the Route panel's ordering, and the landmarks), and
+  **T28** into U11 (the destination in the permalink).
+
+  The cycle-4 verifier re-checked every tick above against the code at HEAD.
+  26 of the 28 hold exactly as written. Two do not, and both are scheduled in
+  cycle 4 rather than silently corrected here:
+
+  - **T27's tablet half was never written.** The task says "give 600-900 px its
+    own breakpoint"; `web/index.html` has exactly three media queries
+    (`max-height:700px`, `max-width:860px`, and that query's landscape variant)
+    and `git show 01fd1ec -- web/index.html` adds none. At 820x1180 the tablet
+    still gets the phone's bottom sheet verbatim, `.depart-card{display:none}`
+    included -- which is half of why T14's departure block reaches almost nobody.
+    Scheduled as **U7**.
+  - **T3's promised regression check does not exist.** `grep -n scale
+    scripts/browser_verify.sh` returns no match; the four-viewport check measures
+    `#tints` and never `#scale`. The three code fixes T3 describes are all
+    present and correct. Scheduled as **U28** with the other record corrections,
+    and the check itself with **U5**.
+
+  Two further overstatements in the task text above, recorded rather than
+  edited: T2's and T11's "mutation ... goes red" lines name assertions that do
+  not exist (`grep -rn "fmtTick\|bandRangeOf" tests/ scripts/` returns nothing),
+  though `2a2c183`'s own commit body accurately describes a different guard it
+  did make red. The code fixes are present.
