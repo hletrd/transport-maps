@@ -66,23 +66,46 @@ def test_every_index_json_key_the_page_reads_is_written(tmp_path):
     assert read <= written, f"app.js reads {sorted(read - written)} which write_index never writes"
 
 
-def test_the_legend_tick_rule_lands_on_true_band_edges():
-    """A Python port of paintScale's selection: each target snaps to the
-    nearest edge by log distance, an exact hour winning when nearly as close,
-    so every tick is a real band boundary (the CLAUDE.md legend rule); the
-    on-screen gap rule is measured in the browser (browser_verify.sh)."""
+def _tick_rule(targets, edges, hour_bonus=0.6):
+    """paintScale's selection, ported: snap each target to the nearest edge by
+    log distance, an exact hour winning when it is nearly as close."""
     import math
 
-    m = re.search(r"const TICK_TARGETS_MIN = \[([^\]]+)\];", APP)
-    targets = [int(x) for x in m.group(1).split(",")]
-    edges = list(config.BAND_EDGES_MIN)
     picked = []
     for t in targets:
         best, best_err = -1, math.inf
         for i, e in enumerate(edges):
-            err = abs(math.log(e / t)) * (0.6 if e % 60 == 0 else 1.0)
+            err = abs(math.log(e / t)) * (hour_bonus if e % 60 == 0 else 1.0)
             if err < best_err:
                 best, best_err = i, err
         picked.append(edges[best])
+    return picked
+
+
+def test_the_legend_tick_rule_lands_on_true_band_edges():
+    """Every tick is a real band boundary -- the CLAUDE.md legend rule. The
+    on-screen gap rule is measured in the browser (browser_verify.sh)."""
+    m = re.search(r"const TICK_TARGETS_MIN = \[([^\]]+)\];", APP)
+    targets = [int(x) for x in m.group(1).split(",")]
+    edges = list(config.BAND_EDGES_MIN)
+    picked = _tick_rule(targets, edges)
     assert picked == [60, 300, 1470, 4320]
-    assert all(v in edges for v in picked)
+    assert picked == sorted(set(picked)), "ticks must be distinct and ascending"
+    assert picked[0] == min(e for e in edges if e >= targets[0])
+
+
+def test_the_hour_bonus_is_a_rule_the_port_implements_not_a_constant_it_ignores():
+    """The shipped ladder is blind to the hour bonus.
+
+    On config.BAND_EDGES_MIN every target either IS an edge or has one so much
+    closer than any hour edge that the factor never decides: 0.6, 1.0, 0.2 and
+    0.9 all yield [60, 300, 1470, 4320], so a port that dropped `* 0.6`
+    entirely would keep this file green while the page changed. Exercise the
+    branch on a ladder where it decides, so the port is pinned to the rule and
+    not to one outcome.
+    """
+    edges, targets = [114, 120], [100]
+    assert _tick_rule(targets, edges, hour_bonus=0.6) == [120], "the hour edge wins with the bonus"
+    assert _tick_rule(targets, edges, hour_bonus=1.0) == [114], "and loses without it"
+    # And the factor the page actually ships is the one tested above.
+    assert re.search(r"err \*= 0\.6;", APP), "app.js no longer applies the hour bonus"

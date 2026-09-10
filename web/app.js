@@ -206,9 +206,15 @@ function fmtTime(min) {
   return [String(h), m ? `h ${m} min` : "h"];
 }
 const fmtDur = (m) => { const [b, u] = fmtTime(m); return u ? `${b} ${u}` : b; };
-// Compact form for the legend ticks and band ranges: "3 h 45", "16 h".
+// Compact form for the legend ticks and band ranges: "45 min", "3 h 45",
+// "16 h". Six of the thirty-seven bands are under an hour, and without the
+// first branch every one of them printed "0 h 45" beside a #time reading
+// "45 min" -- two notations for one quantity, in the same sentence, in the
+// cells around the departure city where everyone looks first.
 function fmtTick(min) {
-  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  const total = Math.round(min);
+  if (total < 60) return `${total} min`;
+  const h = Math.floor(total / 60), m = total % 60;
   return m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
 }
 
@@ -255,15 +261,40 @@ function paintScale() {
     if (i === EDGES.length - 1) el.classList.add("last");   // right-anchored, never overhangs
     return el;
   }));
-  // Measured, not assumed: two labels closer than 8 px would read as one number.
-  let prevRight = -Infinity;
-  for (const el of scale.children) {
-    const r = el.getBoundingClientRect();
-    if (r.left < prevRight + 8) { el.remove(); continue; }
-    prevRight = r.right;
+  prune(scale);
+}
+
+// Measured, not assumed: two labels closer than 8 px read as one number.
+//
+// Three bugs lived in six lines. `scale.children` is a LIVE HTMLCollection, so
+// removing during for...of skipped the element after every removal. The later
+// label of an overlapping pair was always the one dropped, which meant the
+// ceiling ("72 h+") went first -- the one tick a reader needs to know the
+// scale ends. And it ran once, at module load, in the fallback face under
+// font-display:swap, so the measurement belonged to a viewport and a typeface
+// the page may never have had again.
+function prune(scale) {
+  const els = [...scale.children];              // snapshot: removal must not shift the walk
+  let prev = null;
+  for (const el of els) {
+    if (!prev) { prev = el; continue; }
+    if (el.getBoundingClientRect().left >= prev.getBoundingClientRect().right + 8) {
+      prev = el; continue;
+    }
+    // The ceiling survives every collision: it is the one tick that tells a
+    // reader where the scale ends, and dropping the LATER label always threw
+    // it away first. Otherwise the newcomer loses, which keeps the leading
+    // tick that carries the unit.
+    if (el.classList.contains("last")) { prev.remove(); prev = el; }
+    else el.remove();
   }
 }
 paintScale();
+// Re-measure when the box or the typeface changes: at load the labels were
+// laid out at whatever width the window happened to be, in whatever face had
+// arrived, and never again.
+addEventListener("resize", paintScale);
+if (document.fonts?.ready) document.fonts.ready.then(paintScale).catch(() => {});
 
 // Credits: the pipeline's list from index.json, plus what the PAGE itself
 // adds (the address search), so a build whose index.json predates a source
@@ -815,24 +846,24 @@ function renderLegs() {
   box.hidden = false;
 }
 
-// The painted band comes from the polygon actually under the cursor (a res-6
-// or res-7 cell), while the time array is res 4 and holds the CENTRE child's
-// value, so the number can differ from the colour it sits on. Reading the band
-// from the rendered geometry costs nothing and lets the readout say which band
-// you are in rather than quietly contradicting it.
-function bandRangeAt(point) {
-  if (!map.getLayer("bands")) return null;
-  const hit = map.queryRenderedFeatures(point, { layers: ["bands"] });
-  if (!hit.length) return null;
-  // Bands overlap by a one-cell rim and the fastest is painted on top, so
-  // the band under the cursor is the smallest non-negative one hit.
-  let b = null;
-  for (const h of hit) {
-    const v = h.properties.band;
-    if (v >= 0 && (b == null || v < b)) b = v;
-  }
-  if (b == null) b = hit[0].properties.band;
-  if (b === UNREACHABLE_BAND) return "no scheduled route";
+// The band range beside the number is derived from that number, not from the
+// polygon under the cursor.
+//
+// It used to come from queryRenderedFeatures. Below map zoom 7 -- the opening
+// view and most reading zooms -- the only band features rendered are the
+// coarse LODs, and those value a parent by the MINIMUM over its children
+// (contour/bands.py), while the readout's number is the res-4 array's CENTRE
+// child. So the range described the fastest child and the number described
+// the centre one: "10 h" above "0 h 30 - 1 h". Reproduced on a synthetic
+// res-6/7 index.
+//
+// The edges follow the emitter's own convention: band k is (EDGES[k-1],
+// EDGES[k]], matching np.searchsorted(edges, m, side="left").
+function bandRangeOf(min) {
+  if (min == null) return null;
+  if (min >= MAX_MINUTES) return "no scheduled route";
+  let b = 0;
+  while (b < EDGES.length && min > EDGES[b]) b++;
   const lo = b === 0 ? 0 : EDGES[b - 1];
   const hi = b < EDGES.length ? EDGES[b] : null;
   return hi == null ? `over ${fmtTick(lo)}` : `${fmtTick(lo)} – ${fmtTick(hi)}`;
@@ -856,7 +887,7 @@ function showReading(lat, lng, point) {
   const t = lookup(lat, lng);
   const [big, unit] = fmtTime(t);
   $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
-  const band = point ? bandRangeAt(point) : null;
+  const band = bandRangeOf(t);
   $("where").innerHTML = t === undefined
     ? (origin.failed
         ? `Times unavailable for ${esc(active.name)}.`
