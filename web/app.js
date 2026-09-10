@@ -949,7 +949,7 @@ function renderLegs() {
   // the airport and its country. Modes explain how they were modelled.
   const ap = (code) => {
     const a = airports.find((x) => x[0] === code);
-    return a ? `<span class="ap" tabindex="0" data-tip="${esc(a[1])}, ${esc(a[2])}">${esc(code)}</span>` : esc(code);
+    return a ? `<span class="ap" tabindex="0" data-tip="${esc(a[1])}, ${esc(countryName(a[2]))}">${esc(code)}</span>` : esc(code);
   };
   const mode = (name) => {
     const tip = meta.modeDetail?.[name] ?? MODE_FALLBACK[name];
