@@ -53,7 +53,11 @@ async function loadCells(url) {
 const meta = await loadJSON("./index.json");
 // A valid JSON body is not yet a valid index: an index.json written by
 // another tool, or truncated to {}, threw on cities[0] with no message.
-if (!Array.isArray(meta.origins) || !meta.origins.length || !Array.isArray(meta.bandEdgesMin))
+// `.length` on BOTH: an empty bandEdgesMin passed this check and then threw
+// inside expandRamp at module top level, which is the same blank globe with no
+// console error that the origins check was added to prevent.
+if (!Array.isArray(meta.origins) || !meta.origins.length
+    || !Array.isArray(meta.bandEdgesMin) || !meta.bandEdgesMin.length)
   fatal("index.json lists no departure cities or band edges.");
 const UNREACHABLE = meta.unreachable ?? 65535;
 // The emitter writes the sentinel for anything at or beyond 65,534 minutes
@@ -186,7 +190,12 @@ const store = {
   },
   set(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch { /* private mode */ } },
 };
-try { const r = localStorage.getItem("ramp"); if (r && RAMPS[r]) rampName = r; }
+// Object.hasOwn, not `RAMPS[r]`: "constructor", "toString" and "__proto__"
+// are all truthy on any object literal, so localStorage.ramp = "constructor"
+// set rampName to a prototype method, and the next line threw at module top
+// level -- before fatal() could report anything. A blank globe with nothing in
+// the console is this project's signature failure.
+try { const r = localStorage.getItem("ramp"); if (r && Object.hasOwn(RAMPS, r)) rampName = r; }
 catch { /* private mode */ }
 BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
 lockNorth = store.get("lockNorth", false);
@@ -682,7 +691,19 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => {
       if (!current() || !j) return;
-      origin.routes = { offsets: j.offsets, byId: new Map(j.nodes.map((n) => [n.id, n])) };
+      // {slug}.json is the one per-origin file no length check can cover: the
+      // four .bin files are validated against hoverCells.length, but a rebuild
+      // that changes only the dense-split rule leaves the res-4 parent set
+      // bit-identical while offsets.airports moves by millions. Check the
+      // shape here, so a mismatched file is "unavailable" rather than a
+      // TypeError in the click path.
+      const off = j && j.offsets;
+      if (!off || !Number.isFinite(off.airports) || !Number.isFinite(off.stations)
+          || !Array.isArray(j.nodes)) {
+        console.warn(`${o.slug}.json has no usable offsets/nodes; routes unavailable`);
+        return;
+      }
+      origin.routes = { offsets: off, byId: new Map(j.nodes.map((n) => [n.id, n])) };
       settle();
     })
     .catch((err) => { if (current() && !sig.aborted) console.warn("routes unavailable:", err.message); });
@@ -708,7 +729,12 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     url.searchParams.set("from", o.slug);
     history.replaceState(null, "", url);
   } catch { /* file:// or a sandbox without history */ }
-  renderPins();
+  // renderLegs too, not just renderPins. The itinerary belongs to the OLD
+  // city and its arrays have just been dropped, so leaving it on screen put a
+  // Seoul route under "Loading the times from Tokyo…" -- and, if the new
+  // origin's files 404, it stayed there permanently beside "Times unavailable
+  // for Tokyo".
+  renderPins(); renderLegs();
 }
 
 // ---- readout ----
@@ -752,6 +778,12 @@ function legsTo(lat, lon) {
     chain.push(node);
     node = node.prev == null ? null : origin.routes.byId.get(node.prev);
   }
+  // An empty chain HERE cannot mean "no flight" -- that case returned [] above,
+  // on the NO_AIRPORT sentinel. It means the ordinal did not resolve, and
+  // rendering it as [] made the page state positively "No flight on this
+  // journey: surface travel", with a full surface breakdown, for a journey
+  // that flew. null is the honest answer: the route is unavailable.
+  if (!chain.length) return null;
   return chain.reverse();
 }
 
@@ -1381,7 +1413,13 @@ locate.addEventListener("click", () => {
   locate.disabled = true;
   $("here").textContent = "Locating…";
   // A dismissed permission prompt fires neither callback; do not stay disabled.
-  const release = setTimeout(() => { locate.disabled = false; }, 10000);
+  // Clear the status line as well as the button: a dismissed prompt fires
+  // neither callback, so re-enabling the button alone left "Locating…" on
+  // screen for the rest of the session.
+  const release = setTimeout(() => {
+    locate.disabled = false;
+    if ($("here").textContent === "Locating…") $("here").textContent = "";
+  }, 10000);
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       clearTimeout(release);
