@@ -46,6 +46,21 @@ echo "$R" | grep -q "\"cities\":$CITIES," || { echo "  !! expected $CITIES citie
 # A VISIBLE disclaimer element, not the <noscript> text this used to certify.
 echo "$R" | grep -q '"disclaimer":true' || { echo "  !! no visible .disclaimer element"; fail=1; }
 echo "$R" | grep -q '"originLabel":true' || { echo "  !! the departure city has no label on the opening view"; fail=1; }
+# Every city row answers "how long to X", which the page could not say at all:
+# typing a city name and pressing Enter DEPARTS from it. The rows used to end
+# in a latitude and a longitude.
+CL=$(agent-browser eval '(()=>{const bs=[...document.querySelectorAll(".results button[data-slug]")];
+  const t=bs.map(b=>(b.querySelector(".rowtime")||{}).textContent||"");
+  const dur=t.filter(x=>/^\d+\s*h|^\d+\s*min/.test(x)).length;
+  const coords=t.filter(x=>/^-?\d+\.\d,\s*-?\d+\.\d$/.test(x)).length;
+  const clipped=bs.filter(b=>{const s=b.querySelector(".rowtime");return s&&s.scrollWidth>s.clientWidth+1}).length;
+  return JSON.stringify({rows:bs.length,durations:dur,coords:coords,clipped:clipped,
+   departing:t.filter(x=>x==="departing").length})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  city list: $CL"
+echo "$CL" | grep -qE '"durations":[1-9][0-9]' || { echo "  !! the city list carries no travel times"; fail=1; }
+echo "$CL" | grep -q '"coords":0' || { echo "  !! the city list still ends in coordinates"; fail=1; }
+echo "$CL" | grep -q '"clipped":0' || { echo "  !! a travel time is clipped in the city list"; fail=1; }
+echo "$CL" | grep -q '"departing":1' || { echo "  !! the current departure is not marked in the list"; fail=1; }
 # The coast is a separate static tileset drawn above the bands. A missing or
 # empty water.pmtiles shows no console error -- the shore just goes back to
 # being hex-shaped -- so ask the map whether water features actually rendered.

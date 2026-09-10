@@ -278,6 +278,16 @@ body.crowded .depart-card{display:none}
 .results button:hover{color:var(--text)}
 .results button[aria-current="true"]{color:var(--accent);font-weight:500}
 .results .coord{font-size:10.5px;color:var(--text-3);flex:none}
+/* The city rows used to end in a latitude and a longitude, which answers a
+   question nobody arrives with. They end in the door-to-door time from the
+   current departure instead -- the page's answer, in the list where a visitor
+   is already looking for a city. A width, not tabular figures: the design
+   policy rules those out, and the column only needs to line up. It is
+   content, not metadata, so it carries a little more weight and colour than
+   .coord did. */
+.results .rowtime{font-size:11px;color:var(--text-2);font-weight:500;
+  flex:none;width:5.8em;text-align:right;white-space:nowrap}
+.results button[aria-current="true"] .rowtime{color:var(--text-3);font-weight:400}
 #q{
   width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);
   color:var(--text);font-family:inherit;font-weight:400;font-size:13px;line-height:1.5;padding:6px 8px;
