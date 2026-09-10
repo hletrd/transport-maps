@@ -575,6 +575,49 @@ whose output only changes at the next build; both say so.
   this shipping well. Cycle 5's first task should be the reindex-then-deploy
   sequence, not new work.
 
+  **The biggest risk, retired: the pending payload HAS now run in a browser.**
+  The cycle-4 critic's closing argument was that seventeen page commits had
+  been verified against an `index.json` that disables the features being
+  verified -- today's file carries seven keys, the emitter now writes nine
+  more, and seven branches in `app.js` had therefore never once executed. The
+  proposed mitigation was a scratch preview with a forward-looking
+  `index.json` over the real artifacts. Done, and it writes nothing outside
+  the scratch directory: `dist/` was read only.
+
+  The artifacts in `dist/` are already the new build (`hover_cells.bin` is
+  725,920 B = 90,740 res-6 cells, and every origin array is 181,480 B);
+  only `index.json` is stale, still saying `solveRes: 5` with 157 origins. So
+  the preview is the deploy payload with the index it will get.
+
+  What executed for the first time, all of it verified in a browser:
+
+  - **`railDetail`** -- about 204 MB of `.rail.bin`/`.rail.json` that ships
+    today and is never fetched. Four Korean destinations from Seoul now read
+    "by rail via 구포 (경부선 KTX: 서울 → 부산 (구포경유))",
+    "by rail via 광주송정 (호남선 KTX: 용산 → 광주송정)",
+    "by rail via 대전 (경부선 KTX: 서울 → 동대구)" and
+    "by rail via 경산 (대경선: 경산 → 구미)". This is the single largest
+    content gain in the deploy and the whole reason T19 exists.
+  - **`modeDetail`** -- the route tooltips come from the index instead of
+    `MODE_FALLBACK`, so they carry the calibrated figures: "Motorways and
+    expressways, fitted at 104 km/h free-flow, halved inside cities (within
+    40 km of a city over 200,000 people)", and U28's corrected minor-road
+    sentence naming the published-figure default.
+  - **`builtAt`** -- `#built` reads "Data built on September 10, 2026."
+    instead of being empty.
+  - **`hoverCellCount`** and **`modeChannels`** -- the mixed-build and
+    channel-order guards are live and agree with the files.
+  - **440 origins** in the picker (553 when the build finishes) against 157,
+    with 439 door-to-door times and one "departing" row.
+
+  `scripts/browser_verify.sh` against that payload: **ALL CHECKS PASSED**,
+  zero console entries, all four CLAUDE.md viewports, with the counts read
+  from the forward index (440 cities, 39 swatches) rather than hard-coded.
+
+  The remaining unknown is narrow and worth stating: the 113 origins not yet
+  written, and the live server's own byte-range and header behaviour, which
+  only a real deploy exercises.
+
   **Cycle-4 IDs carry the cycle number.** Cycle 3's designer used a bare
   `A1…A8`, colliding with the build plan's `A1…A17`, and six of those findings
   reached no table at all — the one gap in the audit `plan/README.md` records.
