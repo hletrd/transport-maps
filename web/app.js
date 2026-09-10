@@ -309,6 +309,7 @@ function paintLegend() {
   }));
   // The two tones outside the ramp, so the grey of Antarctica or Siberia and
   // the scheme's sea are named rather than left for the reader to guess.
+  if (bandMark) bandMark = null;          // replaceChildren above detached it
   $("sw-uncharted").style.background = greyOf();
   $("sw-sea").style.background = RAMPS[rampName]?.sea ?? SEA;
 }
@@ -1313,11 +1314,34 @@ function renderLegsInto() {
 //
 // The edges follow the emitter's own convention: band k is (EDGES[k-1],
 // EDGES[k]], matching np.searchsorted(edges, m, side="left").
+//: Which of the equal-width legend segments a reading falls in, or -1 for a
+//: cell with no scheduled route. bandRangeOf used to compute this and throw it
+//: away, so the legend could not say where on it you were reading.
+function bandIndexOf(min) {
+  if (min == null || min >= MAX_MINUTES) return -1;
+  let b = 0;
+  while (b < EDGES.length && min > EDGES[b]) b++;
+  return b;
+}
+// The legend is a scale with no "you are here". Marking the band under the
+// pointer turns eleven anonymous colours into a reading you can place.
+let bandMark = null;
+function markBand(min) {
+  const strip = $("tints");
+  if (!strip) return;
+  const b = bandIndexOf(min);
+  const n = strip.children.length - (bandMark && bandMark.isConnected ? 1 : 0);
+  if (b < 0 || n <= 0) { if (bandMark) bandMark.hidden = true; return; }
+  if (!bandMark) { bandMark = document.createElement("div"); bandMark.className = "mark"; }
+  if (!bandMark.isConnected) strip.append(bandMark);
+  bandMark.hidden = false;
+  bandMark.style.left = `${(100 * (b + 0.5)) / n}%`;
+}
+
 function bandRangeOf(min) {
   if (min == null) return null;
   if (min >= MAX_MINUTES) return "no scheduled route";
-  let b = 0;
-  while (b < EDGES.length && min > EDGES[b]) b++;
+  const b = bandIndexOf(min);
   const lo = b === 0 ? 0 : EDGES[b - 1];
   const hi = b < EDGES.length ? EDGES[b] : null;
   return hi == null ? `over ${fmtTick(lo)}` : `${fmtTick(lo)} – ${fmtTick(hi)}`;
@@ -1343,6 +1367,7 @@ function showReading(lat, lng, point) {
   if (t == null) clearTime();
   else $("time").innerHTML = `${esc(big)}<small>${esc(unit)}</small>`;
   const band = bandRangeOf(t);
+  markBand(t);
   // A real reading, or the failure notice, ends the loading state; only the
   // "Loading the times from …" branch below leaves it standing.
   whereIsLoading = t === undefined && !origin.failed;

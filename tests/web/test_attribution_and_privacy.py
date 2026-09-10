@@ -20,6 +20,7 @@ and both are contract terms rather than matters of taste, so they get a gate.
    https://marketingplatform.google.com/about/analytics/terms/us/
 """
 
+import re
 from html.parser import HTMLParser
 
 from transport_maps import config
@@ -240,8 +241,20 @@ def test_the_heading_outline_is_one_h1_and_named_sections():
 
 def test_the_idle_readout_is_not_a_fifty_pixel_em_dash():
     """At rest the largest element on the page was an em dash: 50px of
-    punctuation, the first thing a first-time visitor saw."""
-    assert '<p class="v" id="time"></p>' in HTML, "the dash is back in the markup"
+    punctuation, the first thing a first-time visitor saw.
+
+    Asserted on the ELEMENT's content, not on one exact spelling of the tag:
+    the previous form pinned `<p class="v" id="time"></p>` byte for byte, so
+    it failed when a loading placeholder was added -- which serves the same
+    purpose better -- while still passing for any dash written any other way.
+    """
+    m = re.search(r'<p class="v" id="time">(.*?)</p>', HTML, re.S)
+    assert m, "#time is not where the readout expects it"
+    inner = m.group(1)
+    assert "\u2014" not in inner and "&mdash;" not in inner, (
+        f"the dash is back in the markup: {inner!r}")
+    # Empty, or a placeholder that says something. Never punctuation alone.
+    assert not inner.strip("\u2014-\u2013 \t") or "waiting" in inner, inner
     assert "IDLE_TIME" in APP and 'class="idle"' in APP
     # ...and the height is reserved, so the first reading does not shift the page.
     assert "min-height:50px" in HTML

@@ -204,6 +204,7 @@ body.crowded .depart-card{display:none}
 .reading .v small{font-size:0.42em;color:inherit;margin-left:6px;font-weight:400}
 .reading .v .idle{font-size:15px;font-weight:400;color:var(--text-2);
   display:block;padding-top:6px;line-height:1.4}
+.reading .v .waiting{font-size:13px;color:var(--text-3);font-weight:400}
 .reading .at{margin:4px 0 0;font-size:12px;color:var(--text-2);min-height:2.6em}
 .listcap{margin:8px 0 4px;font-size:11.5px;line-height:1.45;color:var(--text-3)}
 /* Its own line, so the pointer readout cannot erase it. Warm rather than red:
@@ -214,7 +215,13 @@ body.crowded .depart-card{display:none}
 .reading .at b{color:var(--text);font-weight:500}
 
 .legend{margin-top:14px}
-.tints{display:flex;height:9px;border-radius:1px;overflow:hidden}
+.tints{display:flex;height:9px;border-radius:1px;overflow:hidden;position:relative}
+/* Which band the current reading falls in. A marker INSIDE the strip, not a
+   tick: CLAUDE.md's rule that the legend's ticks sit at their true band
+   boundaries is about the tick labels below, and this adds none. */
+.tints .mark{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;
+  background:var(--text);box-shadow:0 0 0 1px rgba(10,11,13,.85);pointer-events:none}
+@media (prefers-reduced-motion:no-preference){ .tints .mark{transition:left .12s ease-out} }
 /* Thirty-seven slivers read as a gradient; no separators between them. */
 .tints span{flex:1}
 .scale{position:relative;height:15px;margin-top:5px}
@@ -245,6 +252,12 @@ body.crowded .depart-card{display:none}
    against the scrim and its --line border 1.01:1, so the key was invisible.
    --text-3 measures 4.76:1 on the same ground, past the 3:1 that WCAG 2.2
    asks of a non-text indicator. */
+/* Painted by paintLegend(); these are the default scheme's own values so the
+   legend never names a colour it is not showing. app.js is a module, so it
+   runs after the preloads, and until it did these two swatches were empty
+   while the words beside them said "no scheduled route" and "open water". */
+#sw-uncharted{background:#5d5d5d}
+#sw-sea{background:#171a22}
 .keys .sw{width:14px;height:9px;border-radius:1px;display:inline-block;
   border:1px solid var(--text-3)}
 
@@ -573,7 +586,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
        punctuation, the single most prominent thing a first-time visitor saw.
        The space now carries an invitation at a readable size, and reserves
        the number's height so nothing jumps when the first reading lands. -->
-  <p class="v" id="time"></p>
+  <p class="v" id="time"><span class="waiting">Loading the map…</span></p>
   <p class="at" id="where">Move the pointer over the map to read a travel time. Click a city name to depart from it, or click anywhere for the route.</p>
   <!-- #where used to BE the live region, and showReading rewrites it on every
        pointer frame: a MutationObserver recorded one mutation per pointer
