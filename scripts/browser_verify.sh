@@ -35,11 +35,25 @@ agent-browser open "$URL" >/dev/null 2>&1; sleep 15
 fail=0
 echo "=== data-level checks (desktop) ==="
 R=$(agent-browser eval '(()=>{const q=s=>document.querySelector(s);return JSON.stringify({
+  fatal:document.body.classList.contains("fatal"), where:(q("#where")||{}).textContent.slice(0,160),
   canvas:!!q("#map canvas"), cities:document.querySelectorAll(".results button[data-slug]").length,
   tints:document.querySelectorAll(".tints span, .keys .sw").length, ramps:document.querySelectorAll("#ramps button").length,
   disclaimer:!!q(".disclaimer") && q(".disclaimer").offsetParent !== null,
   originLabel:!!Array.from(document.querySelectorAll(".lbl.origin")).find(b=>b.getAttribute("aria-current")==="true")})})()' 2>&1 | tail -1 | tr -d '\\')
 echo "  $R"
+# body.fatal is boot.js saying the page could not start, and index.html turns
+# it into display:none over the entire side rail. It was checked by nothing.
+# Two live defects would have walked past this gate without it: the analytics
+# tag blocked by a content blocker (cycle 5, three reviewers), and a
+# temporal-dead-zone ReferenceError thrown before the map was created (cycle 5,
+# found by opening the page and by nothing else -- `node --check` passes, since
+# a TDZ error is valid syntax). CLAUDE.md records that class of failure as
+# having blanked this site twice.
+echo "$R" | grep -q '"fatal":false' || {
+  echo "  !! body.fatal is set: boot.js says the page could not start."
+  echo "     #where: $(echo "$R" | sed -n 's/.*"where":"\([^"]*\)".*/\1/p')"
+  fail=1
+}
 echo "$R" | grep -q '"canvas":true' || fail=1
 echo "$R" | grep -q "\"tints\":$TINTS," || { echo "  !! expected $TINTS legend swatches ($BANDS bands + 2)"; fail=1; }
 echo "$R" | grep -q "\"cities\":$CITIES," || { echo "  !! expected $CITIES cities in the list"; fail=1; }
