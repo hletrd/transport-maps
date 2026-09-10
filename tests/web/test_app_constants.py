@@ -9,7 +9,7 @@ no error, so the literals are pinned to the emitters here.
 
 import re
 
-from transport_maps import config
+from transport_maps import config, validate
 from transport_maps.contour import bands
 from transport_maps.emit import (
     airports_json,
@@ -109,3 +109,35 @@ def test_the_hour_bonus_is_a_rule_the_port_implements_not_a_constant_it_ignores(
     assert _tick_rule(targets, edges, hour_bonus=1.0) == [114], "and loses without it"
     # And the factor the page actually ships is the one tested above.
     assert re.search(r"err \*= 0\.6;", APP), "app.js no longer applies the hour bonus"
+
+
+def test_the_departure_card_excludes_the_cells_the_coverage_gate_excludes():
+    """One rule for "land a route could reach in principle", not two.
+
+    validate.check_coverage drops Antarctica from its denominator by name and
+    says why: it is charted so the globe has no hole in it, but it has no
+    scheduled passenger service, so every one of its cells is unreachable by
+    construction. The departure card counted them, so Seoul, Tokyo, London and
+    Sydney all printed exactly 10.2% "has no scheduled route from here" -- a
+    fact about the dataset, not the city -- and 83.5% of that was Antarctica.
+    Measured on the shipped dist/: 7,749 of 90,740 hover cells (8.54%).
+
+    If the Python threshold moves and the page's does not, the card silently
+    goes back to describing a different set of land from the gate.
+    """
+    assert float(_js_const("KNOWN_UNREACHABLE_MAX_LAT")) == validate.KNOWN_UNREACHABLE_MAX_LAT
+
+
+def test_the_card_counts_only_the_cells_it_kept():
+    """The denominator must be the mask, not the array length.
+
+    Dividing the kept counts by the full array is the same bug in a subtler
+    form: the numerators shrink and the denominator does not, so every figure
+    reads low by the Antarctic share.
+    """
+    body = APP[APP.index("function renderDeparture"):]
+    body = body[:body.index("\nfunction ")]
+    assert "if (!mask[i]) continue;" in body, "the loop must skip the excluded cells"
+    assert "denom++" in body and "/ (denom || 1)" in body, (
+        "percentages must divide by the cells actually counted, not by t.length")
+    assert "/ t.length" not in body, "t.length includes the cells the mask drops"

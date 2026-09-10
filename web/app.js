@@ -80,6 +80,46 @@ const hoverCells = await loadCells("./" + (meta.hoverCellsUrl || "hover_cells.bi
 if (meta.hoverCellCount != null && meta.hoverCellCount !== hoverCells.length)
   fatal(`index.json expects ${meta.hoverCellCount} hover cells but hover_cells.bin has ${hoverCells.length}: the two files come from different builds.`);
 
+// Antarctica is charted so the globe has no hole in it, but it has no
+// scheduled passenger service, so every one of its cells is unreachable by
+// construction. src/transport_maps/validate.py excludes them from the coverage
+// gate by name and explains why; the departure card counted them, so every
+// city printed the same "10.2% has no scheduled route from here" -- a fact
+// about the dataset, not about the city -- and every reach figure was diluted
+// by the same 8.54% of the grid.
+//
+// The exclusion needs one latitude per hover cell: 90,740 h3.cellToLatLng
+// calls, measured at 50.3 ms. That is too much to spend on the load path, so
+// it runs in idle slices while the first origin's arrays are still in flight
+// and finishes synchronously if something asks for it first.
+const KNOWN_UNREACHABLE_MAX_LAT = -60.0;
+let chartedMask = null, chartedCount = 0, chartedDone = 0;
+function chartedSlice(budget) {
+  if (!chartedMask) chartedMask = new Uint8Array(hoverCells.length);
+  const end = Math.min(hoverCells.length, chartedDone + budget);
+  for (let i = chartedDone; i < end; i++) {
+    if (h3.cellToLatLng(hoverCells[i].toString(16))[0] > KNOWN_UNREACHABLE_MAX_LAT) {
+      chartedMask[i] = 1;
+      chartedCount++;
+    }
+  }
+  chartedDone = end;
+  return chartedDone === hoverCells.length;
+}
+function charted() {
+  while (!chartedSlice(hoverCells.length)) { /* finish it now */ }
+  return chartedMask;
+}
+(function primeCharted() {
+  const idle = globalThis.requestIdleCallback
+    || ((fn) => setTimeout(() => fn({ timeRemaining: () => 8 }), 0));
+  idle(function step(deadline) {
+    // ~8000 cells per millisecond of measured budget, floor of one slice.
+    while (chartedDone < hoverCells.length && deadline.timeRemaining() > 1) chartedSlice(4000);
+    if (chartedDone < hoverCells.length) idle(step);
+  });
+})();
+
 const RAMPS = {
   // Eleven anchors per scheme; adjacent-anchor separation in OKLab (x100) is
   // at least 6 and aimed at 8. Lightness is strictly monotonic in every ramp,
@@ -710,21 +750,25 @@ function renderDeparture() {
       : "Reading the travel times…";
     return;
   }
-  let unreached = 0;
+  const mask = charted();
+  let unreached = 0, denom = 0;
   const counts = REACH_STEPS.map(() => 0);
   for (let i = 0; i < t.length; i++) {
+    if (!mask[i]) continue;               // Antarctica: unreachable by construction
+    denom++;
     const v = t[i];
-    if (v >= UNREACHABLE) { unreached++; continue; }
+    if (v >= MAX_MINUTES) { unreached++; continue; }
     for (let k = 0; k < REACH_STEPS.length; k++) if (v <= REACH_STEPS[k][0]) counts[k]++;
   }
-  const pct = (n) => `${(100 * n / t.length).toFixed(1)}%`;
+  const pct = (n) => `${(100 * n / (denom || 1)).toFixed(1)}%`;
   reach.replaceChildren(...REACH_STEPS.flatMap(([, label], k) => {
     const dt = document.createElement("dt"); dt.textContent = `Within ${label}`;
     const dd = document.createElement("dd"); dd.textContent = pct(counts[k]);
     return [dt, dd];
   }));
   $("depart-note").textContent =
-    `Share of charted land, door to door. ${pct(unreached)} has no scheduled route from here.`;
+    `Share of charted land outside Antarctica, door to door. `
+    + `${pct(unreached)} has no scheduled route from here.`;
 }
 
 function captureComparison() {
