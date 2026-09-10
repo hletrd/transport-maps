@@ -30,7 +30,10 @@ if [ "$MODE" = full ]; then
     echo "  dist/.build.lock exists: a build-all is running or died holding it; refusing to deploy a mixed dist/"
     exit 1
   fi
-  busy=$(/bin/ps -axo pid=,pcpu=,command= | grep -E "transport-maps build-all|transport_maps.cli build-all" | grep -v grep | awk '$2 >= 1 {print $1}' | tr '\n' ' ')
+  # `|| true`: grep exits 1 when nothing matches, and under `set -euo pipefail`
+  # that aborted the whole script -- silently, with status 1 and no message --
+  # every time NO build was running. The healthy path had never once executed.
+  busy=$(/bin/ps -axo pid=,pcpu=,command= | grep -E "transport-maps build-all|transport_maps.cli build-all" | grep -v grep | awk '$2 >= 1 {print $1}' | tr '\n' ' ' || true)
   if [ -n "$busy" ]; then
     echo "  a build-all is running (pids $busy); refusing to deploy a mixed dist/"
     exit 1
