@@ -1750,12 +1750,42 @@ function render(filter = "") {
     list.append(li);
   }
   const box = $("results");
+  // settle() rebuilds this list once per origin, about a second after a city
+  // is clicked -- and replaceChildren throws keyboard focus to <body>, on the
+  // only keyboard route to a departure city. Remember which row had it and
+  // give it back to the row with the same slug.
+  const hadFocus = box.contains(document.activeElement)
+    ? document.activeElement.dataset?.slug : null;
   box.replaceChildren(list);
   // Roving tabindex: one stop in the tab order (the first row), the arrow
   // keys walk the rest. 157 rows used to be 157 tab stops between the search
   // box and the next panel.
   const first = box.querySelector("button");
   if (first) first.tabIndex = 0;
+  if (hadFocus) {
+    const again = box.querySelector(`button[data-slug="${cssEscape(hadFocus)}"]`);
+    if (again) { again.tabIndex = 0; again.focus({ preventScroll: true }); }
+  }
+  // The list opens at the top -- so with 553 origins, Seoul is row 364 of 461,
+  // about 9,540 px down a 12,072 px scroll box, and the visitor is looking at
+  // "Aba" with no sign that a departure city is selected at all. Put the
+  // current departure in view. Only when nothing is being typed: while
+  // filtering, the top of the list IS the answer.
+  if (!f && active) {
+    const here = box.querySelector(`button[aria-current="true"][data-slug]`);
+    if (here && !inView(box, here)) {
+      box.scrollTop = here.offsetTop - box.clientHeight / 2 + here.offsetHeight / 2;
+    }
+  }
+}
+//: CSS.escape is not in every browser this page supports, and a slug can carry
+//: a hyphen but never a quote, so a conservative fallback is enough.
+function cssEscape(s) {
+  return globalThis.CSS?.escape ? CSS.escape(s) : String(s).replace(/[^\w-]/g, "");
+}
+function inView(box, el) {
+  const top = el.offsetTop - box.scrollTop;
+  return top >= 0 && top + el.offsetHeight <= box.clientHeight;
 }
 
 // ---- address search ----
