@@ -1687,6 +1687,20 @@ for (const d of document.querySelectorAll(".rail details.panel")) {
   });
 }
 
+// A <details> does not open for a fragment link, so the always-visible
+// "Privacy" credit would scroll to a closed panel and appear to do nothing.
+for (const a of document.querySelectorAll('a[href^="#"]')) {
+  a.addEventListener("click", (e) => {
+    const target = document.getElementById(a.getAttribute("href").slice(1));
+    if (!target) return;
+    e.preventDefault();
+    for (let d = target.closest("details"); d; d = d.parentElement?.closest("details")) d.open = true;
+    target.scrollIntoView({ block: "nearest", behavior: REDUCED_MOTION.matches ? "auto" : "smooth" });
+    target.setAttribute("tabindex", "-1");
+    target.focus({ preventScroll: true });
+  });
+}
+
 const lockBox = $("lock-north");
 lockBox.checked = lockNorth;
 lockBox.addEventListener("change", () => {

@@ -205,10 +205,17 @@ body.crowded .depart-card{display:none}
 /* The last tick sits on the strip's end and would overhang it. */
 .scale span.last{transform:translateX(-100%)}
 .legend-cap{margin:6px 0 0;font-size:11px;color:var(--text-3)}
+/* NOT .credit: that class is already taken by the pin and address lists. */
+.legend-credit{margin:3px 0 0;font-size:11px;color:var(--text-3)}
+.legend-credit a{color:var(--text-2);text-decoration:underline;text-underline-offset:2px}
+.legend-credit a:hover{color:var(--text)}
 .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
   clip-path:inset(50%);white-space:nowrap;border:0}
 .reading .disclaimer{margin:4px 0 0;font-size:11px;color:var(--text-3);line-height:1.4}
 .reading .built{margin:2px 0 0;font-size:11px;color:var(--text-3)}
+#key h3{margin:14px 0 4px;font-size:12.5px;font-weight:600;color:var(--text)}
+#key a,.inline-link{color:var(--text-2);text-decoration:underline;text-underline-offset:2px}
+#key a:hover{color:var(--text)}
 /* The two tones the ramp does not cover: land no scheduled service reaches, and
    the sea. Without them a tenth of the land is a grey the legend never names. */
 .keys{display:flex;gap:14px;margin-top:7px;font-size:11px;color:var(--text-3)}
@@ -455,9 +462,10 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
      line that says the figures are door to door, which the modelling rule
      requires wherever a figure is presented. */
   .rail.folded .reading > :not(.legend),
-  .rail.folded .legend > :not(.tints):not(.scale):not(.keys):not(.legend-cap){display:none}
+  .rail.folded .legend > :not(.tints):not(.scale):not(.keys):not(.legend-cap):not(.legend-credit){display:none}
   .rail.folded .keys{margin-top:5px}
   .rail.folded .legend-cap{margin-top:4px}
+  .rail.folded .legend-credit{margin-top:2px}
   .rail.folded .legend{margin-top:0}
   .rail.folded{max-height:none}
 }
@@ -527,6 +535,20 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
       <span class="key"><span class="sw" id="sw-sea"></span>open water</span>
     </div>
     <p class="legend-cap">Hours from the departure city, door to door.</p>
+    <!-- The OSMF Attribution Guideline is explicit: "The attribution format
+         should not require individuals to interact with the map or produced
+         work to see the attribution." The only credit on this page lived
+         inside <details id="key">, which has no open attribute and which
+         app.js closes outright on a phone -- and attributionControl is false,
+         so MapLibre adds none of its own. The three collapse behaviours the
+         guideline does permit all presuppose the credit was shown first.
+         So it goes here, in the one block this project's own rules say is
+         always visible, and it stays visible when the sheet is folded. The
+         full source list is still in the panel.
+         https://osmfoundation.org/wiki/Licence/Attribution_Guidelines -->
+    <p class="legend-credit">Map data &copy; <a href="https://www.openstreetmap.org/copyright"
+       target="_blank" rel="noopener">OpenStreetMap</a> contributors &middot;
+       <a href="#privacy" id="privacy-link">Privacy</a></p>
     <p class="disclaimer" id="disclaimer">For reference only: estimates from open data and a simplified model, with no warranty.</p>
     <p class="built" id="built"></p>
   </div>
@@ -623,8 +645,34 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          coordinates to OpenStreetMap’s Nominatim service (no more than one request
          a second, and never as you type). Page views are counted
          by Google Analytics. Everything else is computed in the browser from
-         files on this site.</p>
+         files on this site. What each of those collects is set out under
+         <a href="#privacy" class="inline-link">Privacy</a> below.</p>
       <p class="src" id="credits"></p>
+
+      <h3 id="privacy">Privacy</h3>
+      <p>This site has no accounts, no sign-in and no advertising, and nothing
+         collected here is sold or shared beyond the two services named below.</p>
+      <p><b>Google Analytics.</b> Page views are counted by Google Analytics,
+         which sets cookies and identifiers in your browser and sends Google
+         your approximate location (derived from your IP address), your
+         browser and device type, the pages you open and how you arrived. How
+         Google uses that data is described at
+         <a href="https://www.google.com/policies/privacy/partners/"
+            target="_blank" rel="noopener">google.com/policies/privacy/partners</a>.
+         Browser settings, an ad-blocker or Google&rsquo;s own opt-out add-on
+         will stop it.</p>
+      <p><b>OpenStreetMap Nominatim.</b> Searching an address, or asking for the
+         name of a place you clicked, sends that text or those coordinates to
+         Nominatim, run by the OpenStreetMap Foundation, along with the usual
+         request metadata. It is never sent as you type. Turning off
+         &ldquo;Name the place under the cursor&rdquo; in Settings stops the
+         second kind entirely.</p>
+      <p><b>What stays on your device.</b> &ldquo;Show my location&rdquo; asks
+         the browser for your position and uses it only in the page, to draw a
+         dot and name the nearest departure city; it is not sent anywhere. Your
+         colour scheme and the two Settings switches are kept in this
+         browser&rsquo;s local storage and go no further. Everything else the
+         map does is computed in your browser from files on this site.</p>
       <p class="disclaimer-long"><b>For reference only.</b> Every figure is an
          estimate from open data and a simplified model. It carries no warranty of
          accuracy, is not travel advice, and must not be relied on for any journey,

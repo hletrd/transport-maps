@@ -135,7 +135,7 @@ def test_the_card_counts_only_the_cells_it_kept():
     form: the numerators shrink and the denominator does not, so every figure
     reads low by the Antarctic share.
     """
-    body = APP[APP.index("function renderDeparture"):]
+    body = APP[APP.index("function renderDepartureInto"):]
     body = body[:body.index("\nfunction ")]
     assert "if (!mask[i]) continue;" in body, "the loop must skip the excluded cells"
     assert "denom++" in body and "/ (denom || 1)" in body, (
