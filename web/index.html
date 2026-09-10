@@ -142,6 +142,26 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .mast h1{margin:0;font-size:17px;font-weight:600;line-height:1.2}
 .mast p{margin:4px 0 0;font-size:11.5px;color:var(--text-2);line-height:1.45}
 
+/* ---- the departure city, between the masthead and the reading ---- */
+.departure{
+  position:fixed;left:14px;top:104px;z-index:6;width:306px;
+  padding:12px 16px 13px;border-radius:var(--r);
+  background:color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.departure h2{margin:0;font-size:12.5px;font-weight:400;color:var(--text-3)}
+.departure h2 b{display:block;font-size:22px;font-weight:500;color:var(--text);line-height:1.2}
+.departure .sub{margin:2px 0 0;font-size:11.5px;color:var(--text-2)}
+.reach{margin:10px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}
+.reach dt{color:var(--text-2)}
+/* A width, not tabular figures: the design policy rules those out, and the
+   column only needs to line up, not to be monospaced. */
+.reach dd{margin:0;color:var(--text);font-weight:500;width:5.5ch}
+.departure .note{margin:8px 0 0;font-size:11px;color:var(--text-3);line-height:1.4}
+/* Short windows have no room between the two blocks; the panel header still
+   names the city there. */
+@media (max-height:700px){ .departure{display:none} }
+
 /* ---- reading + legend, always visible ---- */
 .reading{
   position:fixed;left:14px;bottom:14px;z-index:6;width:306px;
@@ -337,6 +357,9 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
    the readout moves INTO a bottom sheet with the panels (app.js relocates it),
    panels start closed, and the sheet is capped so the globe keeps the rest. */
 @media (max-width:860px){
+  /* The bottom sheet owns the lower half and the masthead the upper: there is
+     no dead space left to fill, and the sheet's own header names the city. */
+  .departure{display:none}
   body{overflow:hidden}
   .mast{top:10px;left:10px;max-width:58vw;padding:7px 10px 8px}
   .mast h1{font-size:14px}
@@ -404,6 +427,18 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <h1>Isochronic Passage Chart</h1>
   <p>Hours to reach any point on Earth, door to door, by air, rail, road and ferry. After Galton, 1881.</p>
 </header>
+
+<!-- Between the masthead and the reading there were 306 x 413 px of empty
+     scrim, and the departure city -- the thing every figure on the page is
+     measured from -- was named only in an 11 px panel header. This block says
+     which city you are departing and how far that city actually reaches,
+     computed from the array the page has already fetched. -->
+<section class="departure" id="depart" aria-labelledby="depart-h" hidden>
+  <h2 id="depart-h">Departing <b id="depart-city"></b></h2>
+  <p class="sub" id="depart-where"></p>
+  <dl class="reach" id="depart-reach"></dl>
+  <p class="note" id="depart-note"></p>
+</section>
 
 <div class="reading">
   <p class="v" id="time">—</p>

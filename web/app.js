@@ -575,6 +575,9 @@ fetch("./places.json")
       lon: Float32Array.from(p.places, (x) => x[4]),
       rows: p.places,
     };
+    // The departure block names the city's region and country from the
+    // gazetteer, which usually lands after the first paint.
+    renderDeparture();
     // Labels, so a zoomed view says roughly where it is. DOM markers rather
     // than a symbol layer: MapLibre text needs a glyph server, which the CSP
     // blocks, and markers render in the page's own typeface. The gazetteer is
@@ -679,6 +682,47 @@ function placeLead(p) {
 }
 
 // ---- the departure city ----
+// How far this city actually reaches, from the array already in memory: no
+// new request, no rebuild. Thresholds a person thinks in -- half a day, a
+// day, two days -- as a share of the charted land the hover grid covers.
+const REACH_STEPS = [[720, "12 hours"], [1440, "a day"], [2880, "two days"]];
+function renderDeparture() {
+  const box = $("depart");
+  if (!box) return;
+  if (!active) { box.hidden = true; return; }
+  box.hidden = false;
+  $("depart-city").textContent = active.name;
+  const p = places ? nearestPlace(active.lat, active.lon) : null;
+  $("depart-where").textContent = p
+    ? [p.region && p.region !== active.name ? p.region : null, p.country].filter(Boolean).join(", ")
+    : "";
+
+  const t = origin.times;
+  const reach = $("depart-reach");
+  if (!t || !t.length) {
+    reach.replaceChildren();
+    $("depart-note").textContent = origin.failed
+      ? "Travel times for this city are unavailable."
+      : "Reading the travel times…";
+    return;
+  }
+  let unreached = 0;
+  const counts = REACH_STEPS.map(() => 0);
+  for (let i = 0; i < t.length; i++) {
+    const v = t[i];
+    if (v >= UNREACHABLE) { unreached++; continue; }
+    for (let k = 0; k < REACH_STEPS.length; k++) if (v <= REACH_STEPS[k][0]) counts[k]++;
+  }
+  const pct = (n) => `${(100 * n / t.length).toFixed(1)}%`;
+  reach.replaceChildren(...REACH_STEPS.flatMap(([, label], k) => {
+    const dt = document.createElement("dt"); dt.textContent = `Within ${label}`;
+    const dd = document.createElement("dd"); dd.textContent = pct(counts[k]);
+    return [dt, dd];
+  }));
+  $("depart-note").textContent =
+    `Share of charted land, door to door. ${pct(unreached)} has no scheduled route from here.`;
+}
+
 function captureComparison() {
   if (!pinB || !active) return (lastFrom = null);
   const t = lookup(pinB.lat, pinB.lon);
@@ -719,7 +763,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   const current = () => gen === originGen;
   const settle = () => {
     if (!current()) return;
-    renderPins(); renderLegs();
+    renderPins(); renderLegs(); renderDeparture();
     // The reading under the pointer (or the last tap) is redone once the
     // times land; with no pointer yet, the idle prompt replaces "loading".
     if (lastPointer) rereadPointer();
@@ -824,7 +868,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // Seoul route under "Loading the times from Tokyo…" -- and, if the new
   // origin's files 404, it stayed there permanently beside "Times unavailable
   // for Tokyo".
-  renderPins(); renderLegs();
+  renderPins(); renderLegs(); renderDeparture();
   announce(`Departing from ${o.name}. Loading travel times.`);
 }
 
