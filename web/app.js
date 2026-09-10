@@ -1494,6 +1494,35 @@ $("compass").addEventListener("click", () => {
   map.easeTo({ bearing: 0, pitch: 0, duration: REDUCED_MOTION.matches ? 0 : 420 });
 });
 
+// A single-pointer alternative to dragging and pinching (WCAG 2.2 SC 2.5.7),
+// and the fastest way to zoom on a phone. Disabled at the ends so the control
+// never lies about what it will do.
+const zoomBy = (d) => map.easeTo({ zoom: map.getZoom() + d, duration: REDUCED_MOTION.matches ? 0 : 260 });
+$("zoom-in").addEventListener("click", () => zoomBy(1));
+$("zoom-out").addEventListener("click", () => zoomBy(-1));
+const syncZoomButtons = () => {
+  const z = map.getZoom();
+  $("zoom-in").disabled = z >= map.getMaxZoom() - 0.01;
+  $("zoom-out").disabled = z <= map.getMinZoom() + 0.01;
+};
+map.on("zoom", syncZoomButtons);
+syncZoomButtons();
+
+// Opening a panel on a short window put its content below the fold with no
+// cue that anything had happened: at 390x844, tapping "Departure" left
+// #results at y=844, the whole city list off screen. The rail is the
+// scrolling box, so bring the panel that just opened into it.
+for (const d of document.querySelectorAll(".rail details.panel")) {
+  d.addEventListener("toggle", () => {
+    if (!d.open) return;
+    const rail = d.closest(".rail");
+    if (!rail) return;
+    const box = d.getBoundingClientRect(), view = rail.getBoundingClientRect();
+    if (box.bottom <= view.bottom && box.top >= view.top) return;
+    d.scrollIntoView({ block: "nearest", behavior: REDUCED_MOTION.matches ? "auto" : "smooth" });
+  });
+}
+
 const lockBox = $("lock-north");
 lockBox.checked = lockNorth;
 lockBox.addEventListener("change", () => {

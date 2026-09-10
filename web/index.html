@@ -143,24 +143,24 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .mast p{margin:4px 0 0;font-size:11.5px;color:var(--text-2);line-height:1.45}
 
 /* ---- the departure city, between the masthead and the reading ---- */
-.departure{
+.depart-card{
   position:fixed;left:14px;top:104px;z-index:6;width:306px;
   padding:12px 16px 13px;border-radius:var(--r);
   background:color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
 }
-.departure h2{margin:0;font-size:12.5px;font-weight:400;color:var(--text-3)}
-.departure h2 b{display:block;font-size:22px;font-weight:500;color:var(--text);line-height:1.2}
-.departure .sub{margin:2px 0 0;font-size:11.5px;color:var(--text-2)}
+.depart-card h2{margin:0;font-size:12.5px;font-weight:400;color:var(--text-3)}
+.depart-card h2 b{display:block;font-size:22px;font-weight:500;color:var(--text);line-height:1.2}
+.depart-card .sub{margin:2px 0 0;font-size:11.5px;color:var(--text-2)}
 .reach{margin:10px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}
 .reach dt{color:var(--text-2)}
 /* A width, not tabular figures: the design policy rules those out, and the
    column only needs to line up, not to be monospaced. */
 .reach dd{margin:0;color:var(--text);font-weight:500;width:5.5ch}
-.departure .note{margin:8px 0 0;font-size:11px;color:var(--text-3);line-height:1.4}
+.depart-card .note{margin:8px 0 0;font-size:11px;color:var(--text-3);line-height:1.4}
 /* Short windows have no room between the two blocks; the panel header still
    names the city there. */
-@media (max-height:700px){ .departure{display:none} }
+@media (max-height:700px){ .depart-card{display:none} }
 
 /* ---- reading + legend, always visible ---- */
 .reading{
@@ -328,6 +328,18 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .btn:hover{color:var(--text);border-color:var(--line-2)}
 .btn:disabled{color:var(--text-3);cursor:progress}
 
+/* ---- zoom buttons and compass ---- */
+.zoomctl{position:fixed;right:296px;bottom:74px;z-index:7;display:flex;flex-direction:column;gap:6px}
+.mapbtn{
+  width:46px;height:38px;border-radius:var(--r);
+  background:var(--surface);border:1px solid var(--line);color:var(--text-2);
+  cursor:pointer;padding:0;font:inherit;font-size:17px;line-height:1;
+  display:grid;place-items:center;
+}
+.mapbtn:hover{border-color:var(--line-2);color:var(--text)}
+.mapbtn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.mapbtn[disabled]{opacity:.45;cursor:default}
+
 /* ---- compass ---- */
 .compass{
   position:fixed;right:296px;bottom:20px;z-index:7;width:46px;height:46px;border-radius:50%;
@@ -359,12 +371,14 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 @media (max-width:860px){
   /* The bottom sheet owns the lower half and the masthead the upper: there is
      no dead space left to fill, and the sheet's own header names the city. */
-  .departure{display:none}
+  .depart-card{display:none}
   body{overflow:hidden}
   .mast{top:10px;left:10px;max-width:58vw;padding:7px 10px 8px}
   .mast h1{font-size:14px}
   .mast p{display:none}
   .compass{top:10px;right:10px;bottom:auto;left:auto;width:38px;height:38px}
+  .zoomctl{top:56px;right:10px;bottom:auto;gap:5px}
+  .mapbtn{width:38px;height:34px}
   .compass svg{width:22px;height:22px}
   .tip{display:none}                    /* the sheet readout carries the value */
   .rail{
@@ -417,6 +431,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
     border-top:0;border-left:1px solid var(--line)}
   .mast{max-width:40vw}
   .compass{right:calc(min(300px,46vw) + 10px)}
+  .zoomctl{top:auto;bottom:74px;right:calc(min(300px,46vw) + 10px)}
 }
 </style>
 </head>
@@ -433,7 +448,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
      measured from -- was named only in an 11 px panel header. This block says
      which city you are departing and how far that city actually reaches,
      computed from the array the page has already fetched. -->
-<section class="departure" id="depart" aria-labelledby="depart-h" hidden>
+<section class="depart-card" id="depart" aria-labelledby="depart-h" hidden>
   <h2 id="depart-h">Departing <b id="depart-city"></b></h2>
   <p class="sub" id="depart-where"></p>
   <dl class="reach" id="depart-reach"></dl>
@@ -467,6 +482,15 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 </div>
 
 <div class="tip" id="tip" hidden></div>
+
+<!-- WCAG 2.2 SC 2.5.7: the globe panned and zoomed by drag alone, with no
+     single-pointer alternative and no NavigationControl. MapLibre's own
+     control CSS is not loaded anywhere else on this page and would bring an
+     idiom that does not match it, so these are the page's own buttons. -->
+<div class="zoomctl">
+  <button class="mapbtn" id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+  <button class="mapbtn" id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">&minus;</button>
+</div>
 
 <button class="compass" id="compass" title="Reset bearing to north" aria-label="Reset bearing to north">
   <svg viewBox="0 0 24 24" aria-hidden="true">
