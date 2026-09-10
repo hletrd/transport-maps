@@ -1187,6 +1187,24 @@ for (const c of cities) c.key = fold(c.name);
 const bySlug = new Map(cities.map((c) => [c.slug, c]));
 // Airports are searchable by code ("JFK") or name. Picking one drops it as the
 // DESTINATION -- only the departure cities in index.json have a computed surface.
+// airports.json ships the ISO-2 code; places.json resolves a country NAME, so
+// one results list read "Seoul - Seoul, South Korea" beside "JFK ... - US".
+// Intl.DisplayNames is in the platform, needs no data and no network.
+const countryName = (() => {
+  let dn = null;
+  try { dn = new Intl.DisplayNames(["en"], { type: "region" }); } catch { /* older engine */ }
+  const cache = new Map();
+  return (code) => {
+    if (!code) return "";
+    if (!cache.has(code)) {
+      let name = code;
+      try { name = dn?.of(code) || code; } catch { /* not a region code */ }
+      cache.set(code, name);
+    }
+    return cache.get(code);
+  };
+})();
+
 fetch("./airports.json")
   .then((r) => (r.ok ? r.json() : null))
   .then((a) => { if (a) airports = a.airports.map((row) => Object.assign(row, { key: fold(row[1]) })); })
@@ -1199,8 +1217,28 @@ function render(filter = "") {
 
   // Airports first when the query looks like a code, so "jfk" is one keystroke
   // from the answer; otherwise after the cities.
+  // Ranked, not alphabetical by IATA code. "tok" used to return ACC Kotoka,
+  // ENT Eniwetok, FYN Koktokay and GTA Gatokae before HND, because the list
+  // ships in code order and was sliced at twelve: the answer was buried under
+  // nine airports nobody meant. Exact code first, then a name that starts with
+  // the query, then a word inside the name, then any substring -- and within
+  // each, the larger airport, which airports.json has always carried in a
+  // column the page ignored.
+  const SIZE_RANK = { large: 0, medium: 1, small: 2 };
+  const rankAirport = (a) => {
+    if (a[0].toLowerCase() === f) return 0;
+    if (a.key.startsWith(f)) return 1;
+    return (" " + a.key).includes(" " + f) ? 2 : 3;
+  };
   const apHits = f.length >= 2
-    ? airports.filter((a) => a[0].toLowerCase() === f || a.key.includes(f)).slice(0, 12)
+    ? airports.filter((a) => a[0].toLowerCase() === f || a.key.includes(f))
+        .sort((x, y) => rankAirport(x) - rankAirport(y)
+          || (SIZE_RANK[x[5]] ?? 3) - (SIZE_RANK[y[5]] ?? 3)
+          // The plainer name wins a tie: "Tokyo Haneda International Airport"
+          // over "Tokushima Awaodori Airport / JMSDF Tokushima Air Base".
+          || x[1].length - y[1].length
+          || x[1].localeCompare(y[1]))
+        .slice(0, 12)
     : [];
   const airportRows = apHits.map((a) => {
     const b = document.createElement("button");
@@ -1211,7 +1249,7 @@ function render(filter = "") {
     name.append(code, ` ${a[1]}`);
     const coord = document.createElement("span");
     coord.className = "coord";
-    coord.textContent = `${a[2]} · destination`;
+    coord.textContent = `${countryName(a[2])} · destination`;
     b.append(name, coord);
     return row(b);
   });
