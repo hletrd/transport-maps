@@ -26,6 +26,11 @@ echo "expecting $CITIES cities, $BANDS bands ($TINTS swatches) from index.json; 
 BEFORE=$(/bin/ps -ax -o pid=,command= | grep -E "\.agent-browser/" | grep -v grep | awk '{print $1}' | sort)
 cd "$SHOTS"
 agent-browser close >/dev/null 2>&1
+# agent-browser keeps the viewport between runs, so the "desktop" checks below
+# silently ran at whatever size the last session left -- 390x844 after a phone
+# pass, which put the route click into the Pacific and failed two checks that
+# have nothing to do with the route.
+agent-browser set viewport 1280 800 >/dev/null 2>&1
 agent-browser open "$URL" >/dev/null 2>&1; sleep 15
 fail=0
 echo "=== data-level checks (desktop) ==="
@@ -50,9 +55,11 @@ W=$(agent-browser eval '(()=>{const m=window.__map;if(!m||!m.getLayer("water"))r
 echo "  $W"
 echo "$W" | grep -qE '"waterFeatures":[1-9]' || { echo "  !! water layer rendered nothing"; fail=1; }
 echo "$W" | grep -q '"bandsBelowWater":true' || { echo "  !! bands are painted above the coast"; fail=1; }
-# route summary with surface modes: click a Siberian destination from Seoul
-agent-browser eval '(()=>{const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();
-  const o={clientX:r.left+r.width*0.44,clientY:r.top+r.height*0.30,bubbles:true};
+# Route summary with surface modes. The point is PROJECTED from real
+# coordinates, not taken as a fraction of the canvas: a fraction depends on the
+# viewport and the framing, and at a phone width the old one landed in the sea.
+agent-browser eval '(()=>{const m=window.__map,p=m.project([100,62]);const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();
+  const o={clientX:r.left+p.x,clientY:r.top+p.y,bubbles:true};
   c.dispatchEvent(new MouseEvent("mousedown",o));c.dispatchEvent(new MouseEvent("mouseup",o));c.dispatchEvent(new MouseEvent("click",o));return 1})()' >/dev/null 2>&1
 sleep 4
 L=$(agent-browser eval 'document.getElementById("legs").innerText.replace(/\n/g," | ")' 2>&1 | tail -1 | tr -d '\\')
@@ -90,39 +97,128 @@ agent-browser open "${URL}?from=tokyo" >/dev/null 2>&1; sleep 10
 P=$(agent-browser eval 'document.getElementById("origin-name").textContent' 2>&1 | tail -1 | tr -d '\\"')
 echo "  ?from=tokyo -> $P"
 [ "$P" = "Tokyo" ] || { echo "  !! ?from=tokyo did not select Tokyo"; fail=1; }
+echo "=== a searched destination writes the answer, not only the itinerary ==="
+# The two search branches used to call renderPins()+renderLegs() and nothing
+# else, so the 50px headline kept the PREVIOUS destination's time above an
+# itinerary describing the new one. The check is that the two agree.
+agent-browser eval '(()=>{const q=document.getElementById("q");q.value="JFK";q.dispatchEvent(new Event("input",{bubbles:true}));
+  const b=document.querySelector(".results button[data-airport]");if(!b)return 0;b.click();return 1})()' >/dev/null 2>&1; sleep 4
+S=$(agent-browser eval '(()=>{const l=document.getElementById("legs").innerText.split("\n").filter(Boolean);
+  const norm=t=>t.replace(/\s+/g,"").replace(/min$/,"");
+  return JSON.stringify({head:document.getElementById("time").innerText.replace(/\n/g," "),
+   total:(l[l.length-2]||""),agree:norm(document.getElementById("time").innerText)===norm(l[l.length-2]||"x"),
+   announced:/JFK/.test(document.getElementById("status").textContent)})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  $S"
+echo "$S" | grep -q '"agree":true' || { echo "  !! the headline and the itinerary total disagree after a search"; fail=1; }
+echo "$S" | grep -q '"announced":true' || { echo "  !! a searched destination is not announced"; fail=1; }
+agent-browser eval '(()=>{const q=document.getElementById("q");q.value="";q.dispatchEvent(new Event("input",{bubbles:true}));return 1})()' >/dev/null 2>&1
+echo "=== globe labels carry their own names ==="
+# Marker.addTo() re-applies role="button" aria-label="Map marker" behind
+# hasAttribute guards, so removing them at construction was a no-op: every
+# plain label announced as a button that does nothing (WCAG 4.1.2).
+agent-browser eval 'window.__map.jumpTo({center:[127,36],zoom:5.2});1' >/dev/null 2>&1; sleep 4
+N=$(agent-browser eval '(()=>{const ls=[...document.querySelectorAll(".lbl")];
+  return JSON.stringify({labels:ls.length,mapMarker:ls.filter(e=>e.getAttribute("aria-label")==="Map marker").length,
+   origin:(document.querySelector(".lbl.origin")||{}).getAttribute?.("aria-label")||""})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  $N"
+echo "$N" | grep -q '"mapMarker":0' || { echo "  !! globe labels are announced as \"Map marker\""; fail=1; }
+echo "$N" | grep -qE '"origin":"[A-Za-z].*departure city"' || { echo "  !! the departure label does not say its own name"; fail=1; }
 echo "=== console ==="; E=$(agent-browser console 2>/dev/null | grep -ciE "error|exception"); echo "  errors: $E"; [ "$E" -eq 0 ] || fail=1
 echo "=== viewports ==="
+# With a route OPEN: .depart-card and .reading only collide once an itinerary
+# is on screen, so checking the viewports on an unpinned page cannot see it.
+agent-browser eval '(()=>{const m=window.__map,p=m.project([100,62]);const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();
+  const o={clientX:r.left+p.x,clientY:r.top+p.y,bubbles:true};
+  c.dispatchEvent(new MouseEvent("mousedown",o));c.dispatchEvent(new MouseEvent("mouseup",o));c.dispatchEvent(new MouseEvent("click",o));return 1})()' >/dev/null 2>&1; sleep 3
+# `time` is measured against the viewport box, not offsetParent: offsetParent
+# stays truthy for an element scrolled out of its container, which is exactly
+# how a tap could push the answer off a phone and pass this check.
+# `scale` is the hour ticks; T3 promised a check for them and none was written,
+# so the four-viewport pass measured the band strip and never its labels.
+# `cardOverlap` is only meaningful on the desktop layout, where .depart-card and
+# .reading are both position:fixed in the same 306px column; in the rail they
+# are stacked and share a boundary, which is not an overlap.
 CHECK='(()=>{const b=document.body,d=document.documentElement;const q=s=>document.querySelector(s).getBoundingClientRect();
- const rr=q(".reading"),rl=q(".rail"),ms=q(".mast"),cp=q("#compass"),lg=q("#tints");const ov=(a,c)=>!(a.right<c.left||c.right<a.left||a.bottom<c.top||c.bottom<a.top);
+ const rr=q(".reading"),rl=q(".rail"),ms=q(".mast"),cp=q("#compass"),lg=q("#tints"),sc=q("#scale");
+ const ov=(a,c)=>!(a.right<c.left-1||c.right<a.left-1||a.bottom<c.top-1||c.bottom<a.top-1);
+ const onScreen=x=>x.top>=-1&&x.bottom<=innerHeight+1&&x.width>10;
+ const card=document.querySelector(".depart-card");
+ const cardFixed=card&&!card.closest(".rail")&&!card.hidden&&getComputedStyle(card).display!=="none";
  return JSON.stringify({vw:innerWidth,vh:innerHeight,canvas:!!document.querySelector("#map canvas"),hScroll:Math.max(b.scrollWidth,d.scrollWidth)>innerWidth+1,
-  overlap:ov(ms,cp)||ov(ms,rl)||ov(cp,rl),time:!!document.getElementById("time").offsetParent,legend:lg.top>=0&&lg.bottom<=innerHeight&&lg.width>40})})()'
+  overlap:ov(ms,cp)||ov(ms,rl)||ov(cp,rl),cardOverlap:!!(cardFixed&&ov(card.getBoundingClientRect(),rr)),
+  time:onScreen(q("#time")),legend:onScreen(lg)&&lg.width>40,scale:onScreen(sc)})})()'
 for spec in "1280 800 desktop" "820 1180 tablet" "390 844 mobile" "844 390 landscape"; do
   w=${spec%% *}; rest=${spec#* }; h=${rest%% *}; name=${rest#* }
   agent-browser set viewport $w $h >/dev/null 2>&1; sleep 3
   V=$(agent-browser eval "$CHECK" 2>&1 | tail -1 | tr -d '\\'); echo "  $name: $V"
   echo "$V" | grep -q '"canvas":true' && echo "$V" | grep -q '"hScroll":false' && echo "$V" | grep -q '"overlap":false' && echo "$V" | grep -q '"time":true' && echo "$V" | grep -q '"legend":true' || fail=1
+  echo "$V" | grep -q '"scale":true' || { echo "  !! the legend's hour ticks are off screen at $name"; fail=1; }
+  echo "$V" | grep -q '"cardOverlap":false' || { echo "  !! the departure card and the reading overlap at $name"; fail=1; }
   agent-browser screenshot "$SHOTS/verify_$name.png" >/dev/null 2>&1
 done
-# Phones: with the sheet FOLDED the legend must still be on screen (CLAUDE.md:
-# the legend is always visible) and a tap must show the tapped cell's value.
+# Back to desktop after visiting a phone width. The grab handle is created on
+# first entry into the small layout and had no display rule outside the phone
+# media query, so it survived as UA chrome with a live tab stop and a click
+# that toggled a class with no desktop rules. The loop above never returns to
+# a wide viewport, so this is its own step.
+agent-browser set viewport 1280 800 >/dev/null 2>&1; sleep 2
+H=$(agent-browser eval '(()=>{const t=document.getElementById("sheet-toggle");if(!t)return JSON.stringify({display:"absent"});
+  return JSON.stringify({display:getComputedStyle(t).display,h:Math.round(t.getBoundingClientRect().height)})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  desktop after a phone width: $H"
+echo "$H" | grep -qE '"display":"(none|absent)"' || { echo "  !! the bottom-sheet handle survived the return to desktop"; fail=1; }
+
+# Phones: a TAP must leave the answer and the whole legend on screen. Opening
+# the Route panel used to scroll the rail (measured scrollTop 297 at 390x844),
+# taking #time, #tints and #scale with it -- against CLAUDE.md's standing rule
+# that the legend is always visible.
 agent-browser set viewport 390 844 >/dev/null 2>&1; sleep 2
-F=$(agent-browser eval '(()=>{const t=document.getElementById("sheet-toggle");if(!t)return "no toggle";t.click();
-  const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();const o={clientX:r.left+r.width*0.5,clientY:r.top+r.height*0.3,bubbles:true};
-  c.dispatchEvent(new MouseEvent("mousedown",o));c.dispatchEvent(new MouseEvent("mouseup",o));c.dispatchEvent(new MouseEvent("click",o));
-  return new Promise(res=>setTimeout(()=>{const box=s=>document.getElementById(s).getBoundingClientRect();
-   const on=b=>b.width>20&&b.top>=0&&b.bottom<=innerHeight;const lg=box("tints");
-   res(JSON.stringify({legendOnScreen:lg.width>40&&lg.top>=0&&lg.bottom<=innerHeight,
-    keysOnScreen:on(box("keys")),capOnScreen:!!document.querySelector(".rail.folded .legend-cap")&&on(document.querySelector(".legend-cap").getBoundingClientRect()),
-    time:document.getElementById("time").textContent.trim()}))},1500))})()' 2>&1 | tail -1 | tr -d '\\')
-echo "  folded sheet: $F"
-echo "$F" | grep -q '"legendOnScreen":true' || { echo "  !! the legend is hidden while the sheet is folded"; fail=1; }
+agent-browser eval '(()=>{const m=window.__map,p=m.project([120,40]);const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();
+  const o={clientX:r.left+p.x,clientY:r.top+p.y,bubbles:true};
+  c.dispatchEvent(new MouseEvent("mousedown",o));c.dispatchEvent(new MouseEvent("mouseup",o));c.dispatchEvent(new MouseEvent("click",o));return 1})()' >/dev/null 2>&1; sleep 3
+S2=$(agent-browser eval '(()=>{const rl=document.querySelector(".rail"),v=rl.getBoundingClientRect();
+  const on=s=>{const b=document.querySelector(s).getBoundingClientRect();return b.top>=v.top-1&&b.bottom<=v.bottom+1};
+  return JSON.stringify({scrollTop:Math.round(rl.scrollTop),time:on("#time"),tints:on("#tints"),scale:on("#scale"),
+   reading:document.getElementById("time").innerText.trim()})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  tap on a phone: $S2"
+echo "$S2" | grep -q '"time":true' && echo "$S2" | grep -q '"tints":true' && echo "$S2" | grep -q '"scale":true' \
+  || { echo "  !! a tap scrolled the answer or the legend out of the sheet"; fail=1; }
+
+# Phones: with the sheet FOLDED the legend must still be on screen (CLAUDE.md:
+# the legend is always visible). Measured WITHOUT tapping -- a tap unfolds the
+# sheet on purpose, so the old single check asserted two states at once and
+# could never pass both: it went green on the caption only when the tap had
+# landed in the sea and written no reading.
+agent-browser set viewport 390 844 >/dev/null 2>&1; sleep 2
+FOLD=$(agent-browser eval '(()=>{const t=document.getElementById("sheet-toggle");if(!t)return "no toggle";
+  if(!document.querySelector(".rail").classList.contains("folded"))t.click();
+  return new Promise(res=>setTimeout(()=>{const box=s=>document.querySelector(s).getBoundingClientRect();
+   const on=b=>b.width>20&&b.top>=0&&b.bottom<=innerHeight;
+   res(JSON.stringify({folded:document.querySelector(".rail").classList.contains("folded"),
+    legendOnScreen:on(box("#tints")),keysOnScreen:on(box("#keys")),capOnScreen:on(box(".legend-cap")),
+    scaleOnScreen:on(box("#scale"))}))},800))})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  folded sheet: $FOLD"
+echo "$FOLD" | grep -q '"folded":true' || { echo "  !! the sheet did not fold"; fail=1; }
+echo "$FOLD" | grep -q '"legendOnScreen":true' || { echo "  !! the legend is hidden while the sheet is folded"; fail=1; }
 # The band strip alone is not the legend: without the two keys the grey and the
 # sea colour have no meaning, and without the caption the figures lose the
 # door-to-door qualifier the modelling rule requires. The swatch COUNT cannot
 # catch this -- display:none leaves the nodes in the DOM.
-echo "$F" | grep -q '"keysOnScreen":true' || { echo "  !! the two legend keys are hidden while the sheet is folded"; fail=1; }
-echo "$F" | grep -q '"capOnScreen":true' || { echo "  !! the door-to-door caption is hidden while the sheet is folded"; fail=1; }
-echo "$F" | grep -qE '"time":"[0-9]' || { echo "  !! a tap did not write the reading"; fail=1; }
+echo "$FOLD" | grep -q '"keysOnScreen":true' || { echo "  !! the two legend keys are hidden while the sheet is folded"; fail=1; }
+echo "$FOLD" | grep -q '"capOnScreen":true' || { echo "  !! the door-to-door caption is hidden while the sheet is folded"; fail=1; }
+echo "$FOLD" | grep -q '"scaleOnScreen":true' || { echo "  !! the hour ticks are hidden while the sheet is folded"; fail=1; }
+# ...and a tap from the folded state must both write the reading AND bring the
+# sheet back, so the number it just produced is on screen.
+TAP=$(agent-browser eval '(()=>{const m=window.__map,p=m.project([120,40]);
+  const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();const o={clientX:r.left+p.x,clientY:r.top+p.y,bubbles:true};
+  c.dispatchEvent(new MouseEvent("mousedown",o));c.dispatchEvent(new MouseEvent("mouseup",o));c.dispatchEvent(new MouseEvent("click",o));
+  return new Promise(res=>setTimeout(()=>{const rl=document.querySelector(".rail"),v=rl.getBoundingClientRect();
+   const on=s=>{const b=document.querySelector(s).getBoundingClientRect();return b.top>=v.top-1&&b.bottom<=v.bottom+1};
+   res(JSON.stringify({folded:rl.classList.contains("folded"),time:document.getElementById("time").textContent.trim(),
+    timeOnScreen:on("#time"),legendOnScreen:on("#tints")}))},1600))})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  tap from folded: $TAP"
+echo "$TAP" | grep -qE '"time":"[0-9]' || { echo "  !! a tap did not write the reading"; fail=1; }
+echo "$TAP" | grep -q '"timeOnScreen":true' || { echo "  !! the reading a tap produced is off screen"; fail=1; }
+echo "$TAP" | grep -q '"legendOnScreen":true' || { echo "  !! the legend went off screen after a tap"; fail=1; }
 agent-browser close >/dev/null 2>&1; sleep 1
 # Kill only the browser processes this run started (agent-browser's own
 # Chrome tree under ~/.agent-browser/), never the user's Google Chrome and
