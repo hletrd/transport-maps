@@ -205,6 +205,11 @@ body.crowded .depart-card{display:none}
 .reading .v .idle{font-size:15px;font-weight:400;color:var(--text-2);
   display:block;padding-top:6px;line-height:1.4}
 .reading .at{margin:4px 0 0;font-size:12px;color:var(--text-2);min-height:2.6em}
+/* Its own line, so the pointer readout cannot erase it. Warm rather than red:
+   the times below are still correct, only the shading is missing. */
+.reading .trouble{margin:6px 0 0;padding:6px 8px;font-size:12px;line-height:1.4;
+  color:var(--text-1);background:rgba(224,168,74,.14);
+  border-left:2px solid rgba(224,168,74,.7);border-radius:3px}
 .reading .at b{color:var(--text);font-weight:500}
 
 .legend{margin-top:14px}
@@ -579,6 +584,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
        says nothing more until a reading is committed on the new city -- there
        is no reading to announce until then. -->
   <p id="status" role="status" class="sr-only"></p>
+  <!-- The one sentence that explains a blank globe used to be written into
+       #where, which showReading overwrites on every pointer frame -- so it
+       vanished at the first mouse move, and a `shown` latch meant it could
+       never come back, not even for a different origin's missing tileset
+       later in the session. It gets its own line, and it stays. -->
+  <p class="trouble" id="tiletrouble" hidden></p>
 
   <div class="legend">
     <div class="tints" id="tints"></div>

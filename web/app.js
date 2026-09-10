@@ -217,6 +217,10 @@ let active = null;              // the departure city
 // city's number).
 let originGen = 0, originAbort = null;
 const origin = { times: null, failed: null, air: null, modes: null, routes: null, rail: null };
+//: True while #where holds "Loading the times from …" rather than a reading or
+//: the idle prompt. settle() used to detect that by string-matching the
+//: element, which any other writer could defeat.
+let whereIsLoading = false;
 let lastPointer = null;         // {lat, lng, point} of the last reading, re-run when data lands
 // The one comparison the page offers: the figure read at the current pin from
 // the PREVIOUS departure city. Switching city used to discard it -- Turkmenabat
@@ -445,13 +449,34 @@ map.on("error", (e) => {
   // works from the arrays -- but it must not be silent.
   if (/pmtiles|tile|source/i.test(msg)) noteTileTrouble(msg);
 });
-let tileTroubleShown = false;
+// This used to write into #where, which showReading rewrites on every pointer
+// frame: the one sentence that explains a blank globe was erased milliseconds
+// after it appeared. And `tileTroubleShown` latched for the session, so it
+// could never return -- including for a DIFFERENT origin's missing .pmtiles
+// later on. Its own element, cleared when the next origin's tiles load.
+//
+// The message also has to say which layer failed. Both the band tiles and the
+// coastline arrive as .pmtiles, and "the globe is blank" is wrong when it is
+// the water that is missing and the bands are fine.
+let tileTroubleFor = null;
 function noteTileTrouble(msg) {
-  if (tileTroubleShown) return;
-  tileTroubleShown = true;
-  const el = document.getElementById("where");
-  if (el) el.textContent = "The shaded bands could not be loaded, so the globe "
-    + "is blank. The travel times below are still correct. (" + msg.slice(0, 120) + ")";
+  const el = document.getElementById("tiletrouble");
+  if (!el) return;
+  const water = /water\.pmtiles/i.test(msg);
+  const key = (water ? "water:" : "bands:") + (active?.slug || "");
+  if (tileTroubleFor === key) return;      // do not restate the same failure
+  tileTroubleFor = key;
+  el.textContent = water
+    ? "The coastline could not be loaded, so the map has no shoreline. The "
+      + "bands and the travel times are unaffected. (" + msg.slice(0, 120) + ")"
+    : "The shaded bands could not be loaded, so the globe is blank. The travel "
+      + "times below are still correct. (" + msg.slice(0, 120) + ")";
+  el.hidden = false;
+}
+function clearTileTrouble() {
+  tileTroubleFor = null;
+  const el = document.getElementById("tiletrouble");
+  if (el) { el.hidden = true; el.textContent = ""; }
 }
 
 // ...and a load that never fires at all. `await map.on("load")` had no timeout,
@@ -926,6 +951,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   const ctl = originAbort = new AbortController();
   const sig = ctl.signal;
 
+  clearTileTrouble();
   if (map.getLayer("bands")) map.removeLayer("bands");
   if (map.getSource("bands")) map.removeSource("bands");
   map.addSource("bands", { type: "vector", url: `pmtiles://./origins/${o.slug}.pmtiles` });
@@ -983,8 +1009,13 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     // The reading under the pointer (or the last tap) is redone once the
     // times land; with no pointer yet, the idle prompt replaces "loading".
     if (lastPointer) rereadPointer();
-    else if (origin.times && $("where").textContent.startsWith("Loading")) {
+    // This used to string-match #where for "Loading", so ANY other writer
+    // between the two -- the tile-trouble notice did exactly this -- left
+    // "Loading the times from Seoul…" on screen for the rest of the session.
+    // A flag says what the state is; the text says what the state looks like.
+    else if (origin.times && whereIsLoading) {
       $("where").textContent = IDLE_PROMPT;
+      whereIsLoading = false;
       // ...and the number's space stops saying "Reading the travel times" once
       // they have been read. Without this it said so for the rest of the
       // session, which is the same defect the departure card had.
@@ -1095,6 +1126,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // loading rather than keep the old figure beside the new header.
   clearTime(`Reading the travel times from ${o.name}…`);
   $("where").textContent = `Loading the times from ${o.name}…`;
+  whereIsLoading = true;
   // #tip is written on mousemove and hidden on mouseout, and nothing else
   // touched it. Departing by CLICKING A GLOBE LABEL leaves the pointer on the
   // canvas, so the previous city's door-to-door figure went on floating at the
@@ -1298,6 +1330,9 @@ function showReading(lat, lng, point) {
   if (t == null) clearTime();
   else $("time").innerHTML = `${esc(big)}<small>${esc(unit)}</small>`;
   const band = bandRangeOf(t);
+  // A real reading, or the failure notice, ends the loading state; only the
+  // "Loading the times from …" branch below leaves it standing.
+  whereIsLoading = t === undefined && !origin.failed;
   $("where").innerHTML = t === undefined
     ? (origin.failed
         ? `Times unavailable for ${esc(active.name)}.`
