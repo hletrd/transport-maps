@@ -168,6 +168,13 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
     two runs of one input set (one of them aborted) stay distinguishable.
     """
     started = started or datetime.now(UTC)
+    # Everything below is sampled NOW, so this must be called when the build
+    # STARTS. It used to be called as the last statement of _build_all_locked,
+    # which recorded the checkout as it stood when the build stopped: for the
+    # 553-origin run that meant a git head 38 commits ahead and hashes of a
+    # calibration.toml and origins.toml rewritten 70 minutes after the graph
+    # had already read them. `inputsHash` then named inputs the artifacts were
+    # not built from -- the exact opposite of its purpose.
     inputs = _io.params_hash(
         _git_head(), _sha256(config.ROOT / "calibration.toml"),
         _sha256(config.DATA / "origins.toml"),
@@ -179,14 +186,20 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
 
 
 def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None = None,
-                graph: dict | None = None, identity: dict | None = None) -> None:
+                graph: dict | None = None, identity: dict | None = None,
+                modes_detail: dict[str, str] | None = None) -> None:
     """index.json: what the page needs to read every other artifact.
 
     `hover_cell_count` lets the page refuse a per-origin array whose length
     disagrees with hover_cells.bin; `graph` says whether rail and ferries
     were in the build (a road-and-air build is otherwise indistinguishable);
-    `identity` is build_identity(). All three are optional so a stale
-    index.json is still valid -- the page has a fallback for each.
+    `identity` is build_identity(). All are optional so a stale index.json is
+    still valid -- the page has a fallback for each.
+
+    `modes_detail` should be sampled when the build STARTS. Called here it
+    re-reads calibration.toml at write time, which for a sixteen-hour build is
+    sixteen hours after the graph was weighted: the prose would describe
+    constants the artifacts were not built with.
     """
     payload = {
         "bandEdgesMin": list(config.BAND_EDGES_MIN),
@@ -197,7 +210,7 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
         # Channel order of .modes.bin, so the page never re-types it.
         "modeChannels": list(modes.CHANNELS),
         # How each surface mode was modelled, for the route's hover notes.
-        "modeDetail": mode_detail(),
+        "modeDetail": modes_detail if modes_detail is not None else mode_detail(),
         # This emitter writes {slug}.rail.bin/.rail.json; the page asks for them
         # only when this is present, so an older build is not two 404s per origin.
         "railDetail": True,

@@ -348,3 +348,38 @@ def test_only_with_no_slug_is_an_error_not_a_full_build():
         cli._slug_list("")
     with pytest.raises(argparse.ArgumentTypeError):
         cli._slug_list(",")
+
+
+def test_the_build_stamps_itself_before_it_solves_anything(monkeypatch, tmp_path):
+    """`build_identity` and `mode_detail` read the git head, calibration.toml
+    and origins.toml AT CALL TIME. Called as the last statement of the build --
+    where they were -- a sixteen-hour run recorded the checkout as it stood
+    when it stopped: for the 553-origin build that is a git head 38 commits
+    ahead and hashes of two files rewritten 70 minutes after the graph had
+    already read them, so `inputsHash` named inputs the artifacts were not
+    built from.
+
+    The ordering, not the value, is the invariant: both must be sampled before
+    the first origin is solved, and the sampled values must be what is written.
+    """
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    order: list[str] = []
+    written: list = []
+    monkeypatch.setattr(cli.index, "build_identity",
+                        lambda started=None: (order.append("identity"), {"buildId": "B"})[1])
+    monkeypatch.setattr(cli.index, "mode_detail",
+                        lambda: (order.append("modes"), {"rail": "M"})[1])
+    seen: list = []
+    monkeypatch.setattr(cli.index, "write_index",
+                        lambda origins, out, **kw: (order.append("write"), seen.append(kw))[1])
+    _stub_pipeline(monkeypatch, written, coverages=[1.0, 1.0])
+    solve_one = cli._solve_one
+    monkeypatch.setattr(cli, "_solve_one",
+                        lambda *a, **k: (order.append("solve"), solve_one(*a, **k))[1])
+
+    cli._build_all()
+
+    assert order[:2] == ["identity", "modes"], f"stamped after solving: {order}"
+    assert order[-1] == "write"
+    assert seen[0]["identity"] == {"buildId": "B"}
+    assert seen[0]["modes_detail"] == {"rail": "M"}

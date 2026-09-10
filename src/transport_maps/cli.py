@@ -259,6 +259,13 @@ def _build_all(limit: int | None = None, only: list[str] | None = None) -> None:
 
 def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
     started = datetime.now(UTC)
+    # Sampled here, not at the end. index.json is written as the last statement
+    # of this function, and build_identity()/mode_detail() read the git head,
+    # calibration.toml and origins.toml at call time -- so a long build stamped
+    # itself with the tree as it stood when it FINISHED, not with the inputs it
+    # actually used.
+    identity = index.build_identity(started)
+    modes_detail = index.mode_detail()
     rail_routes = _load_rail()
     ferry_links = _load_ferries()
     idx = nodes.build_index(rail_routes=rail_routes)
@@ -344,7 +351,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
                       hover_cell_count=len(hover.hover_cells(idx)),
                       graph={"rail": bool(getattr(idx, "has_rail", False)),
                              "ferry": ferry_links is not None and len(ferry_links) > 0},
-                      identity=index.build_identity(started))
+                      identity=identity, modes_detail=modes_detail)
 
 
 def _reindex(dist: Path | None = None) -> None:

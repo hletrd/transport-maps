@@ -166,3 +166,41 @@ def test_the_page_credit_fallbacks_agree_with_the_emitters_licences():
     assert repeated, "PAGE_CREDITS no longer repeats an emitter source; drop this test"
     for name, lic in repeated.items():
         assert lic == ours[name], f"{name}: page says {lic}, emitter says {ours[name]}"
+
+
+def test_build_identity_is_sampled_when_it_is_called_not_when_the_build_ends(tmp_path, monkeypatch):
+    """The build stamps itself with the inputs it USED, not with the tree as it
+    stands when it finishes. build_identity() reads the git head and hashes
+    calibration.toml and origins.toml at call time, so calling it as the last
+    statement of a sixteen-hour build recorded a checkout 38 commits ahead of
+    the one that weighted the graph.
+    """
+    from transport_maps import config
+    from transport_maps.emit import index as index_mod
+
+    cal = config.ROOT / "calibration.toml"
+    original = cal.read_bytes()
+    monkeypatch.setattr(index_mod, "_git_head", lambda: "frozen-head")
+    at_start = index_mod.build_identity()
+    try:
+        cal.write_bytes(original + b"\n# a mid-build edit\n")
+        at_end = index_mod.build_identity()
+    finally:
+        cal.write_bytes(original)
+
+    assert at_start["inputsHash"] != at_end["inputsHash"], (
+        "build_identity must reflect the file it read; if this is equal the test "
+        "cannot detect an end-of-build sample")
+    # And the value the build actually publishes is the one captured at the top.
+    assert index_mod.build_identity()["inputsHash"] == at_start["inputsHash"]
+
+
+def test_write_index_uses_the_mode_prose_it_is_given(tmp_path):
+    """mode_detail() re-reads calibration.toml; called at write time that is
+    hours after the graph was weighted with those constants."""
+    from transport_maps.emit import index as index_mod
+
+    out = tmp_path / "index.json"
+    index_mod.write_index([{"slug": "a", "name": "A", "lat": 0, "lon": 0}], out,
+                          modes_detail={"rail": "frozen at build start"})
+    assert json.loads(out.read_text())["modeDetail"] == {"rail": "frozen at build start"}
