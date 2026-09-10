@@ -158,8 +158,13 @@ def mode_detail() -> dict[str, str]:
         # route tooltip beside an ascending "18-25".
         "major road": f"Primary and secondary roads, fitted at "
                       f"{min(kmh[2], kmh[3]):.0f}-{max(kmh[2], kmh[3]):.0f} km/h, {halved}.",
-        "minor road": f"Tertiary and local roads, fitted at "
-                      f"{min(kmh[4], kmh[5]):.0f}-{max(kmh[4], kmh[5]):.0f} km/h, {halved}.",
+        # NOT "fitted at 18-25": class 4 (tertiary) is fitted, class 5 (local)
+        # keeps a published-figure default because the fit drew 116 km across
+        # four journeys -- graph/ground.py says so in as many words, and
+        # CLAUDE.md requires each constant to say which it is. This sentence
+        # ships into index.json and is read out in the page's route tooltip.
+        "minor road": f"Tertiary roads, fitted at {kmh[4]:.0f} km/h; local roads at "
+                      f"{kmh[5]:.0f} km/h, a published-figure default. Both {halved}.",
         "track": f"No mapped road: {kmh[0]:.0f} km/h, walking pace.",
     }
 

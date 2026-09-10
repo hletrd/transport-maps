@@ -51,6 +51,11 @@ fix.
 End-of-cycle-3 gate state at `43b99f5`: `uv run ruff check .` all checks passed,
 exit 0; `uv run pytest -q` 390 passed, 4 deselected, 5 warnings (all W1), exit 0.
 
+Cycle-4 IDs carry the cycle number (`CR4-n`, `PR4-n`, `UX4-n` ...). Cycle 3's
+designer used a bare `A1…A8`, which collided with the build plan's `A1…A17`,
+and six of those findings reached no table at all -- the one gap in the audit
+this file records. The prefix makes the collision impossible.
+
 Conventions
 - Each task carries the merged finding ID(s) so the provenance can be traced to
   the per-agent review text.

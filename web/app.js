@@ -187,7 +187,8 @@ const MODE_FALLBACK = {
   "ferry": "Scheduled ferry routes from OpenStreetMap, sailing time plus time at the terminals.",
   "highway": "Motorways and expressways at a fitted free-flow speed, halved inside cities.",
   "major road": "Primary and secondary roads at fitted speeds, halved inside cities.",
-  "minor road": "Tertiary and local roads at fitted speeds, halved inside cities.",
+  "minor road": "Tertiary roads at a fitted speed; local roads at a published-figure "
+                + "default. Both halved inside cities.",
   "track": "No mapped road: walking pace.",
 };
 const NO_AIRPORT = 0xFFFF;
@@ -501,7 +502,10 @@ paintSea();
 map.addSource("hover", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 // A dark halo under the white line. White alone measured 1.15:1 against the
 // palest band -- the ring around the departure city, where every visitor
-// points first, was invisible. The halo reads 17.0:1 there and disappears
+// points first, was invisible. The halo ships at line-opacity 0.55, so what
+// reaches the eye is the COMPOSITE, #767260, at 4.19:1 on band 0 -- clear of
+// WCAG 2.2 SC 1.4.11's 3:1, and the figure this comment used to give (17.0:1,
+// the unblended colour) was four times the delivered value. It disappears
 // into the darkest bands, where the white line is already unmissable.
 map.addLayer({ id: "hover-halo", type: "line", source: "hover",
   paint: { "line-color": "#0a0b0d", "line-width": 3.5, "line-opacity": 0.55 } });
@@ -1840,9 +1844,10 @@ $("compass").addEventListener("click", () => {
   map.easeTo({ bearing: 0, pitch: 0, duration: REDUCED_MOTION.matches ? 0 : 420 });
 });
 
-// A single-pointer alternative to dragging and pinching (WCAG 2.2 SC 2.5.7),
-// and the fastest way to zoom on a phone. Disabled at the ends so the control
-// never lies about what it will do.
+// A single-pointer alternative to pinching, which is half of WCAG 2.2 SC
+// 2.5.7 -- rotating the globe still needs a drag -- and the fastest way to
+// zoom on a phone. Disabled at the ends so the control never lies about what
+// it will do.
 const zoomBy = (d) => map.easeTo({ zoom: map.getZoom() + d, duration: REDUCED_MOTION.matches ? 0 : 260 });
 $("zoom-in").addEventListener("click", () => zoomBy(1));
 $("zoom-out").addEventListener("click", () => zoomBy(-1));

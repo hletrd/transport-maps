@@ -112,9 +112,11 @@ def cell_class(cells: list[str]) -> np.ndarray:
 
     The spec says "the highest-grade road class present in it" -- present in the
     cell, not at its centre. Measured (not estimated) full pass over the
-    res-5 grid's 548,557 cells: 4.77 seconds. The res-6/7 universe is about
-    25x larger; the point of the measurement is that the pass is linear and
-    cheap, not the absolute figure.
+    res-5 grid's 548,557 cells: 4.77 seconds. cell_class runs over the base
+    cells, of which the res-6 build has 4,091,715 -- about 7.5x, not the 25x
+    an earlier note claimed (that figure counted the refined res-7 children,
+    which this pass never sees). The point of the measurement is that the pass
+    is linear and cheap, not the absolute figure.
     """
     grid = road_class_grid()
     out = np.zeros(len(cells), dtype=np.uint8)

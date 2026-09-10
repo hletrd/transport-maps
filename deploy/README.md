@@ -3,24 +3,38 @@
 Static hosting on nginx. `scripts/deploy_verify.sh` does the whole thing and
 refuses to ship an inconsistent build:
 
-1. refuses while a `build-all` is running (its lock, or its process: a build
-   rewrites `dist/origins` in place, so `dist/` is a mixed generation until it
-   finishes);
+1. refuses while a `build-all` is running — its lock, or a matching process
+   ABOVE 1 % CPU (orphans of a killed build sit at 0.0 % for days and must not
+   block every deploy);
 2. runs `scripts/check_dist.py` — every origin's arrays agree in length with
-   `hover_cells.bin` (widths from the emitters), `{slug}.json` is present and
-   valid, `.rail.bin` and `.rail.json` ship together, every `.pmtiles` header
-   is sane, `index.json` lists exactly the origins of `data/origins.toml`, no
-   stray `*-journal`/`.tmp`/dotfile is present, and the page copy states no
-   city count (it must come from `index.json`);
-3. runs the licence firewall (`tests/test_licence_firewall.py`) on `dist/`;
-4. copies the page into the build output — `web/vendor/` mirrored with
+   `hover_cells.bin` (widths from the emitters), `index.json` carries
+   `bandEdgesMin`, `hoverCellCount` and `modeChannels` (a missing one names
+   `transport-maps reindex` as the remedy), `{slug}.json` is present, valid,
+   and carries real `offsets`, every origin agrees on `offsets.airports` so two
+   builds cannot be mixed, `.rail.bin` and `.rail.json` ship together and
+   `.rail.json` has its `stations` list, every `.pmtiles` header is sane,
+   `index.json` lists exactly the origins of `data/origins.toml`, no stray
+   `*-journal`/`.tmp`/dotfile is present, and the page copy states no city
+   count (it must come from `index.json`). It also WARNS, without blocking, on
+   a build-host path in a PMTiles metadata blob;
+3. assembles the page into the build output — `web/vendor/` mirrored with
    `--delete`, the rest of `web/` (everything but `web/README.md`) on top — so
-   `index.html`, `app.js`, `llms.txt`, `vendor/` sit beside `index.json`,
-   `hover_cells.bin` and `origins/`;
+   `index.html`, `app.js`, `boot.js`, `llms.txt` and `vendor/` sit beside
+   `index.json`, `hover_cells.bin` and `origins/`;
+4. runs the page-asset gate over what it has just assembled: the licence
+   firewall (on `web/` as well as `dist/`), the vendored-bundle hash pins, the
+   CSP inline-script hash, and the attribution and privacy obligations. This
+   runs in BOTH modes — `--page-only` publishes `web/` and nothing else, so
+   before it did, that path shipped ungated;
 5. rsyncs `dist/` to the server with `--delete --delete-delay --delay-updates`,
    explicit modes and `deploy/rsync-excludes.txt`, logging to a temp file;
-6. curls the live files, including a byte-range request against a `.pmtiles`,
-   and reports whether the security headers are present.
+6. curls the live files, including two byte-range requests against a
+   `.pmtiles`, and ASSERTS each status (200, or 206 on the range probes) rather
+   than printing it; then reports whether the security headers are present.
+
+The order of 3 and 4 matters and was wrong until cycle 3: the gate used to run
+before the page was merged in, so `index.html`, `app.js`, `llms.txt` and
+`vendor/` — the assets that actually ship — were scanned by nothing.
 
 `scripts/deploy_verify.sh --page-only` ships `web/` alone, without the
 `dist/` gate and without `--delete`, for a page fix while a rebuild owns
@@ -32,9 +46,14 @@ older build stays valid. Host, server root and site URL come from
 given its URL) in a browser and checks the canvas, the city list and legend
 counts (read from the deployed `index.json`, never hard-coded), the
 departure label, the coast and borders layers, a route with surface modes
-and tooltips, address search, click-to-depart, zoom 3, the `?from=` permalink,
-the console, four viewports, and that on a phone the legend stays on screen
-and a tap writes the reading with the sheet folded. It kills only the browser
+and tooltips, address search, click-to-depart, zoom 3, the city list's
+door-to-door times, a searched destination agreeing with its itinerary, globe
+labels carrying their own accessible names, the `?from=`/`?to=` permalink and
+an unknown slug, the console, four viewports with a route open (including the
+legend's hour ticks and the departure card not overlapping the reading), the
+bottom-sheet handle after a return to desktop, and — on a phone — that a tap
+leaves the answer and the whole legend on screen, and that the folded sheet
+still shows the band strip, the ticks, the keys and the door-to-door caption. It kills only the browser
 processes it started. **A deploy is not done until that has passed**
 (CLAUDE.md).
 

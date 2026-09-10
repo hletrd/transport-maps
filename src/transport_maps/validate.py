@@ -148,10 +148,17 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
     ground.hex_edges uses.
 
     An earlier draft compared against the fastest speed on the grid (85 km/h
-    in the superseded spec; the built table tops out at 104 km/h, about 8.7
-    minutes per hop). That is wrong: ground speeds span 5 to 104 km/h,
-    so a roadless neighbour legitimately costs about 180 minutes, and the tight
+    in the superseded spec; the built table tops out at 104 km/h). That is
+    wrong: ground speeds span 5 to 104 km/h, so a roadless neighbour
+    legitimately costs many times what the fastest one does, and the tight
     bound fails on any slow terrain. Do not reintroduce a single global bound.
+
+    The minutes depend on the resolution, so they are stated per grid rather
+    than left as a bare number: centre to centre a res-6 hop is 6.45 km, which
+    is 3.7 min at 104 km/h and 77 min at 5 km/h; a res-7 hop is 2.44 km, 1.4
+    and 29 min. (The 8.7 and 180 min this note used to give were res-5 figures
+    -- 17.07 km per hop -- and survived the move to SOLVE_RES = 6 unchanged;
+    T23 corrected the km/h in this very sentence and left the minutes.)
 
     `speeds` is `ground.cell_speed_kmh(idx)`, computed once by the caller. This
     gate runs once per origin (553 times in a full build), and the grid it is

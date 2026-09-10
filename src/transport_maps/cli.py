@@ -565,7 +565,14 @@ def main() -> None:
     # `solve` and `index` used to be separate entry points with their own file
     # layout and no gates -- `index` could publish an index.json for origins
     # with no files. One path builds everything; --only is the single-origin
-    # smoke test, through the same gates, never publishing.
+    # smoke test, through the same gates.
+    #
+    # "Never publishing" was too strong and this is what it withholds: a
+    # partial run leaves index.json untouched, so the SITE never advertises
+    # the handful of origins it built. It does still write
+    # dist/hover_cells.bin and dist/origins/{slug}.*, which is what makes it a
+    # smoke test of the real emit path -- and means a partial run over a
+    # populated dist/ overwrites those origins' arrays in place.
     build_all = sub.add_parser(
         "build-all", help="build the graph once and solve, validate and emit every origin"
     )
@@ -573,13 +580,15 @@ def main() -> None:
         "--limit",
         type=int,
         default=None,
-        help="only build the first N origins from origins.toml (partial build; index.json untouched)",
+        help="build only the first N origins (writes their arrays into dist/origins; "
+             "index.json is left untouched, so the site does not advertise them)",
     )
     build_all.add_argument(
         "--only",
         type=_slug_list,
         default=None,
-        help="comma-separated origin slugs to build (partial build; index.json untouched)",
+        help="comma-separated origin slugs to build (writes their arrays into "
+             "dist/origins; index.json is left untouched, so the site does not advertise them)",
     )
 
     # Not a second way to publish: reindex writes index.json and nothing else,

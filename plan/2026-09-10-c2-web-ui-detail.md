@@ -178,7 +178,8 @@ Controls, focus, tooltips, semantics
       wrap (UX-36). **N16** Show the one-line description from 600 px (UX-37).
       **N19** `.results{max-height:min(40vh,280px)}` and 22vh with a route open
       (UX-40).
-- [x] **N23** `modulepreload` for `fflate.js`; preload the 500 face (PR-10,
+- [x] **N23** (confirmed shipped, cycle 4: `index.html:84-85`, in `9d0a401`)
+      `modulepreload` for `fflate.js`; preload the 500 face (PR-10,
       PR-11) -- already shipped in `9d0a401` (`index.html:84-85`); the cycle-3
       perf review found it done and the box unticked. **N24** Solid scrim on `.tip` instead of `backdrop-filter`; trace
       before/after (PR-13).

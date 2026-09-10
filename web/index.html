@@ -63,7 +63,7 @@
     {
       "@type": "WebApplication",
       "name": "Isochronic Passage Chart",
-      "applicationCategory": "https://schema.org/TravelApplication",
+      "applicationCategory": "TravelApplication",
       "operatingSystem": "Any modern web browser",
       "browserRequirements": "Requires WebGL",
       "url": "https://worldmap.atik.kr/",
@@ -612,10 +612,14 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 <div class="tip" id="tip" hidden></div>
 <div class="legtip" id="legtip" hidden></div>
 
-<!-- WCAG 2.2 SC 2.5.7: the globe panned and zoomed by drag alone, with no
-     single-pointer alternative and no NavigationControl. MapLibre's own
-     control CSS is not loaded anywhere else on this page and would bring an
-     idiom that does not match it, so these are the page's own buttons. -->
+<!-- WCAG 2.2 SC 2.5.7 asks for a single-pointer alternative to any dragging
+     movement. These buttons give ZOOM one; the globe still ROTATES by drag
+     alone, so the criterion is only half met and this comment says so rather
+     than claiming it whole. (The compass resets bearing, which is not a pan
+     alternative.) Recorded in plan/deferred.md with the exit criterion.
+     MapLibre's own control CSS is not loaded anywhere else on this page and
+     would bring an idiom that does not match it, so these are the page's own
+     buttons. -->
 <div class="zoomctl">
   <button class="mapbtn" id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
   <button class="mapbtn" id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">&minus;</button>
@@ -683,8 +687,9 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
         <div class="rowlabel" id="ramps-label">Colour scheme</div>
         <div id="ramps" class="ramps" role="radiogroup" aria-labelledby="ramps-label"></div>
       </div>
-      <p class="hint">Drag to rotate the map, scroll to zoom. Locking to north
-        disables rotation so dragging only pans.</p>
+      <p class="hint">Drag to rotate the globe; zoom with the + and &minus;
+        buttons, the scroll wheel, or a pinch. Locking to north disables
+        rotation so dragging only pans.</p>
     </div>
   </details>
 
@@ -694,8 +699,10 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
       <p>Times assume you leave when you choose: the first service is not waited
          for. A flight connection is charged the minimum connection time or the
          expected wait for the next departure, whichever is longer, capped at the
-         cost of leaving the terminal and re-entering it (about an hour to an hour
-         and a half); rail and ferry legs carry no wait.</p>
+         cost of leaving the terminal and re-entering it — which is the
+         disembark and check-in times for that airport&rsquo;s size, so about
+         55 minutes at a small airport and an hour and forty at a large one;
+         rail and ferry legs carry no wait.</p>
       <p>Door to door, not gate to gate. The time includes the trip to the
          airport, check-in and security, border control where one is crossed, and
          the trip from the arrival airport into the city. A flight of two hours
