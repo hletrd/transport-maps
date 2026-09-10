@@ -732,6 +732,14 @@ fetch("./places.json")
     // The departure block names the city's region and country from the
     // gazetteer, which usually lands after the first paint.
     renderDeparture();
+    // ...and so does the departure LIST, for the four names shared by two
+    // cities each. render() has one data-driven call site, in settle(), which
+    // fires when {slug}.bin arrives -- 181 KB against this file's 1.8 MB, so
+    // the list is almost always built before the gazetteer that would tell
+    // "Suzhou" from "Suzhou". Rebuild once, here, and only when there is
+    // something to disambiguate: with no duplicate names nothing in a row
+    // depends on `places` at all.
+    if (ambiguousNames().size) render($("q").value);
     // Labels, so a zoomed view says roughly where it is. DOM markers rather
     // than a symbol layer: MapLibre text needs a glyph server, which the CSP
     // blocks, and markers render in the page's own typeface. The gazetteer is
