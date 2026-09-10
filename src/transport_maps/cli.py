@@ -137,20 +137,50 @@ def _acquire_lock(dist: Path) -> Path:
     return lock
 
 
-def _other_builds() -> list[int]:
-    """Pids of other build-all processes on this machine, from ps."""
+#: A build-all worker that is actually building sits far above this. An orphan
+#: of a killed build sits at 0.0 % for days -- eight of them (pids 12633-12640,
+#: ppid 1, stat SN) were resident for eighteen hours while this was written.
+#: scripts/deploy_verify.sh has carried the same threshold, and the same
+#: reasoning in a comment, since 6d4ac0f; this is the Python half of it.
+BUSY_CPU_PERCENT = 1.0
+
+
+def _other_builds(*, min_cpu: float = 0.0) -> list[int]:
+    """Pids of other build-all processes on this machine, from ps.
+
+    `min_cpu` filters by instantaneous CPU: pass BUSY_CPU_PERCENT to see only
+    processes that are working, and 0.0 (the default) to see orphans too. The
+    two callers want different answers. A build warns about every match,
+    orphans included, because an idle worker still holds its share of the graph
+    in memory and the owner should reap it. `reindex` must refuse only for
+    processes that will actually overwrite index.json when they finish -- an
+    orphan never will, and refusing on one strands the operator between two
+    gates giving contradictory advice: deploy_verify.sh passes its own
+    (CPU-filtered) check, check_dist then refuses the deploy and names reindex
+    as the remedy, and reindex refuses because of a process that died yesterday.
+    """
     try:
-        out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True,
+        out = subprocess.run(["ps", "-axo", "pid=,pcpu=,command="], capture_output=True,
                              text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError):
         return []
     mine = os.getpid()
     found = []
     for line in out.splitlines():
-        pid, _, cmd = line.strip().partition(" ")
-        if "build-all" in cmd and ("transport_maps" in cmd or "transport-maps" in cmd):
-            if pid.isdigit() and int(pid) != mine:
-                found.append(int(pid))
+        pid, _, rest = line.strip().partition(" ")
+        cpu, _, cmd = rest.strip().partition(" ")
+        if not pid.isdigit() or int(pid) == mine:
+            continue
+        if "build-all" not in cmd or not ("transport_maps" in cmd or "transport-maps" in cmd):
+            continue
+        try:
+            pcpu = float(cpu)
+        except ValueError:
+            # ps without a readable pcpu column: treat the process as busy
+            # rather than invent an idle one. Refusing is the safe direction.
+            pcpu = float("inf")
+        if pcpu >= min_cpu:
+            found.append(int(pid))
     return found
 
 
@@ -381,11 +411,17 @@ def _reindex(dist: Path | None = None) -> None:
     log = logging.getLogger(__name__)
     lock = _acquire_lock(dist)
     try:
-        others = _other_builds()
+        others = _other_builds(min_cpu=BUSY_CPU_PERCENT)
         if others:
             raise SystemExit(
                 f"build-all is running (pids {', '.join(map(str, others))}) without holding "
                 f"{dist / LOCK_NAME}; it will overwrite index.json when it finishes. Wait for it.")
+        idle = set(_other_builds()) - set(others)
+        if idle:
+            log.warning(
+                "ignoring %d build-all process(es) below %.1f%% CPU (pids %s): orphans of a "
+                "killed build never finish, so they will not overwrite index.json. Reap them.",
+                len(idle), BUSY_CPU_PERCENT, ", ".join(map(str, sorted(idle))))
 
         cells = dist / "hover_cells.bin"
         if not cells.exists():

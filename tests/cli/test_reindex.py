@@ -43,7 +43,7 @@ def dist(tmp_path, monkeypatch):
     (d / "hover_cells.bin").write_bytes(b"\0" * (N_CELLS * 8))
     # No real build may interfere, and this machine may genuinely be running
     # one: the guard itself is tested separately.
-    monkeypatch.setattr(cli, "_other_builds", lambda: [])
+    monkeypatch.setattr(cli, "_other_builds", lambda **k: [])
     return d
 
 
@@ -113,7 +113,8 @@ def test_built_at_falls_back_to_the_hover_file_the_build_wrote_first(dist, monke
 
 def test_reindex_refuses_while_another_build_is_running(dist, monkeypatch):
     _artifacts(dist, "seoul")
-    monkeypatch.setattr(cli, "_other_builds", lambda: [4143, 4144])
+    monkeypatch.setattr(cli, "_other_builds",
+                        lambda **k: [4143, 4144] if k.get("min_cpu") else [4143, 4144, 9001])
     monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
     with pytest.raises(SystemExit, match="4143"):
         cli._reindex(dist)
@@ -122,7 +123,7 @@ def test_reindex_refuses_while_another_build_is_running(dist, monkeypatch):
 
 
 def test_reindex_refuses_a_dist_with_no_hover_cells(tmp_path, monkeypatch):
-    monkeypatch.setattr(cli, "_other_builds", lambda: [])
+    monkeypatch.setattr(cli, "_other_builds", lambda **k: [])
     with pytest.raises(SystemExit, match="hover_cells.bin missing"):
         cli._reindex(tmp_path / "empty")
 
@@ -131,3 +132,84 @@ def test_reindex_refuses_when_no_origin_is_complete(dist, monkeypatch):
     monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
     with pytest.raises(SystemExit, match="complete file set"):
         cli._reindex(dist)
+
+
+# --- U1: the CPU filter on _other_builds -----------------------------------
+#
+# reindex exists to repair the index a long build publishes. Without a CPU
+# filter it refuses on any matching process, including the orphans of a build
+# killed days earlier -- which is the state this machine was in when the filter
+# was written: `ps` listed seventeen candidates and only five were working.
+# The operator is then stranded between two gates that disagree, because
+# deploy_verify.sh has filtered by CPU since 6d4ac0f and check_dist names
+# reindex as the remedy for the index reindex is refusing to write.
+
+PS_LINES = (
+    "  4143  98.4 /path/.venv/bin/python -m transport_maps.cli build-all\n"
+    " 12633   0.0 /path/.venv/bin/python -m transport_maps.cli build-all\n"
+    " 12634   0.0 /path/.venv/bin/python -m transport_maps.cli build-all\n"
+    " 55555  12.0 /usr/bin/vim notes-about-build-all.txt\n"
+)
+
+
+def _fake_ps(monkeypatch, stdout=PS_LINES):
+    import subprocess as sp
+
+    def run(cmd, **kw):
+        assert cmd[:2] == ["ps", "-axo"], cmd
+        assert "pcpu=" in cmd[2], "the filter needs ps to report CPU"
+        return sp.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(cli.subprocess, "run", run)
+
+
+def test_other_builds_without_a_floor_reports_the_orphans_too(monkeypatch):
+    """A build wants every match: an idle worker still holds graph memory."""
+    _fake_ps(monkeypatch)
+    assert cli._other_builds() == [4143, 12633, 12634]
+
+
+def test_other_builds_above_the_busy_floor_drops_a_killed_builds_orphans(monkeypatch):
+    """The whole point: 0.0 % processes are corpses and never write index.json."""
+    _fake_ps(monkeypatch)
+    assert cli._other_builds(min_cpu=cli.BUSY_CPU_PERCENT) == [4143]
+
+
+def test_a_process_that_merely_mentions_build_all_is_not_a_build(monkeypatch):
+    _fake_ps(monkeypatch)
+    assert 55555 not in cli._other_builds()
+
+
+def test_an_unreadable_cpu_column_counts_as_busy(monkeypatch):
+    """Refusing is the safe direction when ps cannot be parsed."""
+    _fake_ps(monkeypatch, " 4143  ?.? /path/python -m transport_maps.cli build-all\n")
+    assert cli._other_builds(min_cpu=cli.BUSY_CPU_PERCENT) == [4143]
+
+
+def test_reindex_runs_past_a_killed_builds_orphans(dist, monkeypatch, caplog):
+    """The failure U1 fixes: reindex refusing because of yesterday's corpses.
+
+    Deliberately NOT patching _other_builds -- patching ps is what makes this
+    exercise the filter rather than the stub.
+    """
+    _artifacts(dist, "seoul")
+    monkeypatch.undo()  # drop the fixture's _other_builds stub
+    monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
+    _fake_ps(monkeypatch, " 12633   0.0 /p/python -m transport_maps.cli build-all\n"
+                          " 12634   0.0 /p/python -m transport_maps.cli build-all\n")
+    cli._reindex(dist)
+    idx = json.loads((dist / "index.json").read_text())
+    assert [o["slug"] for o in idx["origins"]] == ["seoul"]
+    assert "12633" in caplog.text and "Reap" in caplog.text, (
+        "the ignored orphans must be named, not silently dropped")
+
+
+def test_reindex_still_refuses_a_build_that_is_actually_working(dist, monkeypatch):
+    _artifacts(dist, "seoul")
+    monkeypatch.undo()
+    monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
+    _fake_ps(monkeypatch, " 4143  98.4 /p/python -m transport_maps.cli build-all\n")
+    with pytest.raises(SystemExit, match="4143"):
+        cli._reindex(dist)
+    assert not (dist / "index.json").exists()
+    assert not (dist / cli.LOCK_NAME).exists()
