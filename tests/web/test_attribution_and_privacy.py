@@ -214,3 +214,52 @@ def test_every_interactive_control_uses_it():
         block = m.group(0)
         assert "border:1px solid var(--line-ctl)" in block, (
             f"{selector} still draws its boundary with --line: {block[:120]}")
+
+
+# --- U10 / T26: hierarchy, the empty state, and something to navigate by ----
+
+def test_the_page_has_landmarks_with_accessible_names():
+    """One heading and two landmarks left nothing to navigate the page by."""
+    import re
+    assert re.search(r'<main aria-label="[^"]+"', HTML), "no named main landmark"
+    assert re.search(r'<aside class="rail" aria-labelledby="[^"]+"', HTML), "the rail is not a landmark"
+    assert re.search(r'<section class="reading" aria-labelledby="[^"]+"', HTML), (
+        "the readout is not a landmark")
+    assert "<header class=\"mast\">" in HTML
+
+
+def test_the_heading_outline_is_one_h1_and_named_sections():
+    import re
+    heads = re.findall(r"<h([123])[^>]*>(.*?)</h\1>", HTML, re.S)
+    levels = [int(lv) for lv, _ in heads]
+    assert levels.count(1) >= 1, heads
+    # Every landmark that names itself by id must have a heading with that id.
+    for m in re.finditer(r'aria-labelledby="([\w-]+)"', HTML):
+        assert f'id="{m.group(1)}"' in HTML, f"aria-labelledby={m.group(1)} names nothing"
+
+
+def test_the_idle_readout_is_not_a_fifty_pixel_em_dash():
+    """At rest the largest element on the page was an em dash: 50px of
+    punctuation, the first thing a first-time visitor saw."""
+    assert '<p class="v" id="time"></p>' in HTML, "the dash is back in the markup"
+    assert "IDLE_TIME" in APP and 'class="idle"' in APP
+    # ...and the height is reserved, so the first reading does not shift the page.
+    assert "min-height:50px" in HTML
+
+
+def test_one_quantity_is_not_split_across_two_colours():
+    """50px in --text beside 16px in --text-2 read as a number and a separate
+    piece of metadata. CLAUDE.md: carry hierarchy with weight and colour --
+    within one figure that means one colour."""
+    import re
+    m = re.search(r"\.reading \.v small\{([^}]*)\}", HTML)
+    assert m, "the unit rule is gone"
+    assert "color:inherit" in m.group(1), m.group(1)
+    assert "font-size:0.42em" in m.group(1), "the unit must scale with the figure, not stand apart"
+
+
+def test_the_route_panel_puts_the_answer_above_the_instructions():
+    body = HTML[HTML.index('<details class="panel" id="route">'):]
+    body = body[:body.index("</details>")]
+    assert body.index('id="pins"') < body.index('id="route-hint"'), (
+        "eighty words of instructions still outrank the answer")

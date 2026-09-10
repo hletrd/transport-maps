@@ -195,8 +195,15 @@ body.crowded .depart-card{display:none}
 }
 .reading .v{
   margin:0;font-size:50px;line-height:1;font-weight:400;
+  min-height:50px;                      /* the idle prompt reserves the number's height */
 }
-.reading .v small{font-size:16px;color:var(--text-2);margin-left:6px;font-weight:400}
+/* ONE colour and a PROPORTIONAL size: the unit belongs to the figure, and at
+   16px in --text-2 beside 50px in --text it read as separate metadata --
+   "14" in white and "h 39 min" in grey, one quantity in two voices. Hierarchy
+   by weight, which is what the design policy asks for. */
+.reading .v small{font-size:0.42em;color:inherit;margin-left:6px;font-weight:400}
+.reading .v .idle{font-size:15px;font-weight:400;color:var(--text-2);
+  display:block;padding-top:6px;line-height:1.4}
 .reading .at{margin:4px 0 0;font-size:12px;color:var(--text-2);min-height:2.6em}
 .reading .at b{color:var(--text);font-weight:500}
 
@@ -378,6 +385,8 @@ body.crowded .depart-card{display:none}
 .tip i{font-style:normal;color:var(--text-3)}
 .row label{cursor:pointer}
 .hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}
+/* With a reading above it, the explanation is no longer the thing to read. */
+#pins:not(:empty) + #route-hint{margin-top:12px;border-top:1px solid var(--line);padding-top:9px}
 .btn{
   background:var(--surface-2);border:1px solid var(--line-ctl);border-radius:var(--r);color:var(--text-2);
   font-family:inherit;font-weight:500;font-size:12px;line-height:1;padding:7px 10px;cursor:pointer;
@@ -464,7 +473,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
     background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
     border-bottom:1px solid var(--line);flex:none;
   }
-  .reading .v{font-size:34px}
+  .reading .v{font-size:34px;min-height:34px}
   .reading .at{min-height:0}
   .legend{margin-top:10px}
   .legs{max-height:20vh}
@@ -527,7 +536,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 </style>
 </head>
 <body>
-<div id="map" role="application" aria-roledescription="globe" aria-label="Interactive globe shaded by travel time from the selected departure city; drag to rotate, scroll to zoom, click to set a destination"></div>
+<!-- The page had one heading and two landmarks, so there was nothing to
+     navigate it by. Four now: the masthead (banner), the globe (main), the
+     reading, and the panel rail -- each with an accessible name, and each
+     named by a heading in the outline under the h1. -->
+<main aria-label="Globe">
+  <div id="map" role="application" aria-roledescription="globe" aria-label="Interactive globe shaded by travel time from the selected departure city; drag to rotate, zoom with the buttons or the scroll wheel, click to set a destination"></div>
+</main>
 
 <header class="mast">
   <h1>Isochronic Passage Chart</h1>
@@ -546,8 +561,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <p class="note" id="depart-note"></p>
 </section>
 
-<div class="reading">
-  <p class="v" id="time">—</p>
+<section class="reading" aria-labelledby="reading-h">
+  <h2 id="reading-h" class="sr-only">Travel time reading</h2>
+  <!-- At rest the largest element on the page was an em dash: 50px of
+       punctuation, the single most prominent thing a first-time visitor saw.
+       The space now carries an invitation at a readable size, and reserves
+       the number's height so nothing jumps when the first reading lands. -->
+  <p class="v" id="time"></p>
   <p class="at" id="where">Move the pointer over the map to read a travel time. Click a city name to depart from it, or click anywhere for the route.</p>
   <!-- #where used to BE the live region, and showReading rewrites it on every
        pointer frame: a MutationObserver recorded one mutation per pointer
@@ -587,7 +607,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   </div>
 
   <div class="legs" id="legs" hidden></div>
-</div>
+</section>
 
 <div class="tip" id="tip" hidden></div>
 <div class="legtip" id="legtip" hidden></div>
@@ -610,7 +630,8 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   </svg>
 </button>
 
-<div class="rail">
+<aside class="rail" aria-labelledby="rail-h">
+  <h2 id="rail-h" class="sr-only">Departure, route and settings</h2>
   <details class="panel" id="departure" open>
     <summary>Departure<span id="origin-name" style="color:var(--text);font-weight:400;font-size:12.5px"></span></summary>
     <div class="body">
@@ -630,17 +651,17 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <details class="panel" id="route">
     <summary>Route</summary>
     <div class="body">
-      <p class="hint" style="margin-top:0">Click anywhere on the map to set a destination; the
+      <!-- The answer first. The instructions used to sit above it and outrank
+           it permanently: eighty words of explanation in the space where the
+           destination, the time and the comparison belong. They are still
+           here, below, and they step back once there is something to read. -->
+      <div class="pins" id="pins"></div>
+      <p class="hint" id="route-hint">Click anywhere on the map to set a destination; the
         journey from the departure city is itemised under the legend. To change the
         departure, pick a city in the list above, click a city name marked with a dot on
         the map, or click near a city and press “Depart from”. Only the
         <span id="n-cities">…</span> departure cities have a computed surface, so a
         departure snaps to the nearest of them.</p>
-      <!-- NOT a live region. T4 moved the page's one live region into
-           #status; this was left behind, so an origin switch announced the
-           whole route block up to six times and every click announced twice.
-           The committed reading is announced once, from #status. -->
-      <div class="pins" id="pins"></div>
       <button class="btn" id="clear-pins" style="margin-top:10px">Clear</button>
     </div>
   </details>
@@ -717,7 +738,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          booking or decision. The author accepts no liability for any use.</p>
     </div>
   </details>
-</div>
+</aside>
 
 <noscript>
   <div style="position:fixed;inset:0;background:#0a0b0d;color:#e9e7e4;z-index:20;padding:40px;max-width:62ch">

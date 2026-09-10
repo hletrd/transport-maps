@@ -34,7 +34,7 @@ const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;")
 // the bottom sheet until the layout runs, so the sheet is hidden as well.
 function fatal(msg) {
   document.body.classList.add("fatal");
-  $("time").textContent = "—";
+  $("time").textContent = "";
   $("where").textContent = msg;
   throw new Error(msg);
 }
@@ -225,9 +225,19 @@ let lastPointer = null;         // {lat, lng, point} of the last reading, re-run
 let lastFrom = null;
 let firstPaint = true;          // the opening view is jumped to, not flown to
 // The readout's resting copy; a phone has no pointer.
-const IDLE_PROMPT = window.matchMedia("(pointer: coarse)").matches
+const COARSE = window.matchMedia("(pointer: coarse)").matches;
+const IDLE_PROMPT = COARSE
   ? "Tap the map to read a travel time. Tap a city name to depart from it."
   : $("where").textContent;
+// What stands where the number goes before there is a number. It used to be an
+// em dash at 50px -- the largest element on the page at rest, and the first
+// thing a visitor saw. The height is reserved in CSS so nothing jumps when the
+// first reading lands.
+const IDLE_TIME = `<span class="idle">${COARSE ? "Tap" : "Point"} anywhere on the globe `
+  + "for the travel time from your departure city, door to door.</span>";
+function clearTime(msg) {
+  $("time").innerHTML = msg === undefined ? IDLE_TIME : `<span class="idle">${esc(msg)}</span>`;
+}
 
 // ---- settings, remembered per viewer ----
 const store = {
@@ -936,7 +946,13 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     // The reading under the pointer (or the last tap) is redone once the
     // times land; with no pointer yet, the idle prompt replaces "loading".
     if (lastPointer) rereadPointer();
-    else if (origin.times && $("where").textContent.startsWith("Loading")) $("where").textContent = IDLE_PROMPT;
+    else if (origin.times && $("where").textContent.startsWith("Loading")) {
+      $("where").textContent = IDLE_PROMPT;
+      // ...and the number's space stops saying "Reading the travel times" once
+      // they have been read. Without this it said so for the rest of the
+      // session, which is the same defect the departure card had.
+      clearTime();
+    }
   };
   // An array from another build has another cell ordering: it would render
   // plausible, silently wrong times for every cell, which dist/ does during
@@ -1040,7 +1056,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   showLabels();
   // The readout belongs to the departure it names: say the new one is
   // loading rather than keep the old figure beside the new header.
-  $("time").textContent = "—";
+  clearTime(`Reading the travel times from ${o.name}…`);
   $("where").textContent = `Loading the times from ${o.name}…`;
   // #tip is written on mousemove and hidden on mouseout, and nothing else
   // touched it. Departing by CLICKING A GLOBE LABEL leaves the pointer on the
@@ -1242,7 +1258,8 @@ function showReading(lat, lng, point) {
   lastPointer = { lat, lng, point };
   const t = lookup(lat, lng);
   const [big, unit] = fmtTime(t);
-  $("time").innerHTML = t == null ? "—" : `${big}<small>${unit}</small>`;
+  if (t == null) clearTime();
+  else $("time").innerHTML = `${esc(big)}<small>${esc(unit)}</small>`;
   const band = bandRangeOf(t);
   $("where").innerHTML = t === undefined
     ? (origin.failed
