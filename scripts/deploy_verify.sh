@@ -26,9 +26,13 @@ RSYNC_COMMON=(-a --chmod=D755,F644 --exclude-from=deploy/rsync-excludes.txt)
 # The vendored-bundle pins (the CVE-2026-85061 patch) and the CSP inline-script
 # hash added in cycle 2 were tests that never ran on the deploy path.
 page_gate() {
-  echo "=== page-asset gate: licence firewall, vendor pins, CSP hash ==="
+  echo "=== page-asset gate: licence firewall, vendor pins, CSP hash, obligations ==="
+  # The firewall test file now scans web/ as well as dist/, so this covers the
+  # assets --page-only actually publishes; before, it read whatever the last
+  # full deploy had left in dist/.
   uv run pytest -q -p no:cacheprovider \
-    tests/test_licence_firewall.py tests/web/test_vendor.py tests/web/test_csp.py
+    tests/test_licence_firewall.py tests/web/test_vendor.py tests/web/test_csp.py \
+    tests/web/test_attribution_and_privacy.py tests/web/test_app_constants.py
 }
 
 if [ "$MODE" = full ]; then

@@ -30,7 +30,16 @@ from transport_maps import _io, config
 WATER_URL = "https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip"
 LAKES_URL = "https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v10_shp.zip"
 LAYER = "water"
-MIN_ZOOM, MAX_ZOOM = 0, 12
+# MAX_ZOOM must not exceed the page's own maxZoom (web/app.js: `maxZoom: 11`).
+# MapLibre asks a vector source for floor(mapZoom), so a z12 tile can never be
+# requested. Decoding the shipped archive -- header, root and all 2,094 leaf
+# directories -- found 366,690,691 bytes, 42.7% of the 858 MB tile section,
+# referenced only at z >= 12, plus about 4.4 M of its 8.6 M directory entries.
+# Capping at 11 takes water.pmtiles from 867 MB to roughly 490 MB.
+#
+# tests/emit/test_water.py asserts emitter-max <= page-max, not equality: a
+# gate written as equality would have passed happily on 12 == 12.
+MIN_ZOOM, MAX_ZOOM = 0, 11
 # Tile-space tolerance. At zoom 12 one unit is ~2.4 m, so 4 keeps the coast
 # within ~10 m -- a quarter of a screen pixel at the page's maximum zoom of
 # 11, and about the precision of the OSM coastline itself.

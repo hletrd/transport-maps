@@ -33,6 +33,44 @@ PMTILES_MAGIC = b"PMTiles"
 COUNT_CLAIM = re.compile(r"\b[0-9]{3} (cities|departure|origin)|\bhundreds of (cities|departure)", re.I)
 
 
+#: Substrings that must never appear in a PMTiles metadata blob. The blob is
+#: served to every visitor -- pmtiles.js fetches the first few KB of every
+#: archive on load -- and tippecanoe writes its own argv and input paths into
+#: it by default. 64ab007 fixed the emitter; archives written before that, and
+#: any produced outside build-all (water.pmtiles is built by a standalone
+#: script), still carry a build host's home directory.
+PMTILES_METADATA_LEAKS = ("/users/", "/home/", "/var/folders/", "/private/",
+                          "generator_options")
+
+
+def _pmtiles_metadata_leak(path: Path) -> str | None:
+    """A build-host path served to every visitor, or None.
+
+    A single unauthenticated `Range: 0-4095` GET returns the metadata blob, so
+    this is public the moment the archive is. The emitter-side test builds a
+    fresh archive with today's code and asserts on that, which structurally
+    cannot see a file already on disk.
+    """
+    size = path.stat().st_size
+    with open(path, "rb") as fh:
+        head = fh.read(127)
+        start, length = struct.unpack_from("<QQ", head, 24)
+        if not length or start + length > size or length > 4 << 20:
+            return None
+        fh.seek(start)
+        blob = fh.read(length)
+    if blob[:2] == b"\x1f\x8b":
+        import gzip
+        try:
+            blob = gzip.decompress(blob)
+        except OSError:
+            return None
+    text = blob.decode("utf-8", "ignore").lower()
+    hit = next((t for t in PMTILES_METADATA_LEAKS if t in text), None)
+    return f"{path.name} metadata contains {hit!r}: a build-host path served to every visitor" \
+        if hit else None
+
+
 def _pmtiles_ok(path: Path) -> str | None:
     """None when the archive's header is sane, else the problem."""
     size = path.stat().st_size
@@ -51,15 +89,26 @@ def _pmtiles_ok(path: Path) -> str | None:
 
 
 def check_dist(dist: Path, origins: list[dict] | None = None,
-               n_channels: int = len(CHANNELS)) -> list[str]:
+               n_channels: int = len(CHANNELS),
+               warn_out: list[str] | None = None) -> list[str]:
     """Every problem found under `dist`, or an empty list.
 
     `origins` is the expected origin list (data/origins.toml); when given,
     index.json must list exactly those slugs -- a partial build never
     rewrites index.json, so a mismatch means a stale one.
+
+    `warn_out` collects findings that are REPORTED but do not fail the deploy.
+    There is exactly one class of those: a build-host path in a PMTiles
+    metadata blob. The only remedy is regenerating the tileset, the leak is
+    already live on archives written before 64ab007, and water.pmtiles is not
+    produced by build-all at all -- so failing here would block every deploy on
+    an artifact the deploy cannot fix, without removing one byte of exposure.
+    plan/deferred.md records the exit criterion: when the water tileset is next
+    rebuilt this becomes a failure in the same commit.
     """
     dist = Path(dist)
     bad: list[str] = []
+    warn = warn_out if warn_out is not None else []
     if (dist / ".build.lock").exists():
         bad.append(".build.lock present: a build is running, or died holding it")
     for p in dist.rglob("*"):
@@ -179,6 +228,10 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
             problem = _pmtiles_ok(tiles)
             if problem:
                 bad.append(problem)
+            else:
+                leak = _pmtiles_metadata_leak(tiles)
+                if leak:
+                    warn.append(leak)
 
     # Every origin of one build walks the same node universe, so a disagreement
     # means two builds are mixed in dist/ -- the failure the deploy rule calls
@@ -196,6 +249,10 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
             problem = _pmtiles_ok(p)
             if problem:
                 bad.append(problem)
+            else:
+                leak = _pmtiles_metadata_leak(p)
+                if leak:
+                    warn.append(leak)
     return bad
 
 
@@ -220,12 +277,13 @@ def main() -> None:
     args = ap.parse_args()
 
     problems = check_copy(args.web)
+    warnings: list[str] = []
     if not args.copy_only:
         origins = None
         if not args.no_origins:
             from transport_maps.emit.index import load_origins
             origins = load_origins()
-        problems += check_dist(args.dist, origins)
+        problems += check_dist(args.dist, origins, warn_out=warnings)
         if not problems:
             # .get throughout: this summary used to KeyError on an index.json
             # it had just declared consistent, because check_dist never
@@ -236,6 +294,12 @@ def main() -> None:
             print(f"  hover cells {n:,} | origins {len(idx.get('origins') or [])} | bands {bands} "
                   f"| solveRes {idx.get('solveRes')} | build {idx.get('buildId', 'unstamped')}")
             print(f"  attribution {[a.get('name') for a in idx.get('attribution') or []]}")
+    if warnings:
+        # Reported, not fatal; see check_dist's docstring for why, and
+        # plan/deferred.md for the exit criterion that makes it fatal.
+        print("  WARNINGS (not blocking):", *sorted(set(warnings))[:8], sep="\n    ")
+        if len(set(warnings)) > 8:
+            print(f"    ... and {len(set(warnings)) - 8} more")
     if problems:
         print("  PROBLEMS:", *problems[:15], sep="\n    ")
         if len(problems) > 15:

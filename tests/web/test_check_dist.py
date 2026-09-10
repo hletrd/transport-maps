@@ -21,13 +21,20 @@ def check_dist():
 N_CELLS = 3
 
 
-def _pmtiles(path, size=4096):
+def _pmtiles(path, size=4096, metadata=b'{"name":"water"}', gzipped=False):
+    if gzipped:
+        import gzip
+        metadata = gzip.compress(metadata)
     head = bytearray(127)
     head[:7] = b"PMTiles"
     head[7] = 3
-    # root dir at 127 (len 100), metadata at 227 (len 50), leaves at 277 (len 0), tiles at 277 (len size-277)
-    struct.pack_into("<QQQQQQQQ", head, 8, 127, 100, 227, 50, 277, 0, 277, size - 277)
-    path.write_bytes(bytes(head) + b"\0" * (size - 127))
+    # root dir at 127 (len 100), metadata at 227, leaves after it (len 0), then tiles
+    mlen = len(metadata)
+    struct.pack_into("<QQQQQQQQ", head, 8, 127, 100, 227, mlen,
+                     227 + mlen, 0, 227 + mlen, size - 227 - mlen)
+    body = bytearray(b"\0" * (size - 127))
+    body[227 - 127:227 - 127 + mlen] = metadata
+    path.write_bytes(bytes(head) + bytes(body))
 
 
 def _good_dist(tmp_path, slugs=("seoul",), rail=True):
@@ -239,3 +246,51 @@ def test_origins_from_two_builds_are_refused(check_dist, tmp_path):
         {"offsets": {"airports": 635_000, "stations": 640_000}, "nodes": []}))
     problems = check_dist.check_dist(d, [{"slug": "seoul"}, {"slug": "tokyo"}])
     assert any("mixes two builds" in m for m in problems), problems
+
+# --- U24: a build-host path in a PMTiles metadata blob ---------------------
+#
+# pmtiles.js fetches the first few KB of every archive on load, so the blob is
+# served to every visitor; a single unauthenticated Range: 0-4095 GET returns
+# it. tippecanoe writes its own argv and input paths in by default. 64ab007
+# fixed the emitter and left the artifacts, and water.pmtiles is not produced
+# by build-all at all -- so the emitter-side test, which builds a fresh archive
+# with today's code and asserts on that, structurally cannot see a shipped
+# file. Confirmed at review time on the real dist/: water.pmtiles carried
+# '/users/' and every sampled origin archive carried '/var/folders/'.
+
+def test_a_build_host_path_in_the_metadata_is_reported(check_dist, tmp_path):
+    d = _good_dist(tmp_path)
+    _pmtiles(d / "origins" / "seoul.pmtiles",
+             metadata=b'{"name":"seoul","generator_options":"-o /Users/someone/x.pmtiles"}')
+    warn: list[str] = []
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=warn)
+    assert problems == [], "this must not block a deploy; the artifact cannot be fixed by one"
+    assert any("/users/" in w for w in warn), warn
+    assert any("served to every visitor" in w for w in warn), warn
+
+
+def test_a_gzipped_metadata_blob_is_decoded_before_it_is_scanned(check_dist, tmp_path):
+    """The real archives store it gzipped; scanning the raw bytes finds
+    nothing and reports clean."""
+    d = _good_dist(tmp_path)
+    _pmtiles(d / "water.pmtiles", size=8192, gzipped=True,
+             metadata=b'{"description":"built in /var/folders/kz/T/tmp1234"}')
+    warn: list[str] = []
+    check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=warn)
+    assert any("/var/folders/" in w for w in warn), warn
+
+
+def test_a_clean_metadata_blob_raises_nothing(check_dist, tmp_path):
+    d = _good_dist(tmp_path)
+    warn: list[str] = []
+    assert check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=warn) == []
+    assert warn == [], warn
+
+
+def test_the_leak_scan_survives_a_header_it_cannot_read(check_dist, tmp_path):
+    """A zero-length or absurd metadata range must not raise out of the gate."""
+    d = _good_dist(tmp_path)
+    _pmtiles(d / "origins" / "seoul.pmtiles", metadata=b"")
+    warn: list[str] = []
+    check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=warn)
+    assert warn == []

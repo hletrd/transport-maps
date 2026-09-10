@@ -48,6 +48,22 @@ def test_no_provider_fingerprints_in_shipped_text():
     _check_no_provider_fingerprints(config.DIST)
 
 
+def test_no_provider_fingerprints_in_the_page_assets():
+    """web/, not only dist/.
+
+    T18 is recorded as running this gate "in both modes"; only the full mode
+    was. The vendor and CSP tests read web/ directly, but this scan reads
+    config.DIST -- and --page-only publishes web/ without ever merging it into
+    dist/, so on that path the firewall inspected whatever copies of app.js and
+    index.html the last full deploy happened to leave behind. Demonstrated at
+    review time: web/app.js contained `countryName` three times and dist/app.js
+    zero, so the gate was reading files a day older than the ones about to
+    ship. --page-only is the documented mode for a page fix while a rebuild
+    owns dist/, which is exactly when it matters.
+    """
+    _check_no_provider_fingerprints(config.ROOT / "web")
+
+
 def test_firewall_skips_rather_than_passes_on_an_unbuilt_tree(tmp_path):
     """Proof for the vacuous-pass bug: a directory with nothing scannable
     must SKIP, not report a silent pass.
