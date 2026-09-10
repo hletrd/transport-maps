@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from transport_maps import cli
+from transport_maps import cli, config
 from transport_maps.emit import modes
 
 N_CELLS = 5
@@ -305,3 +305,62 @@ def test_an_index_with_none_of_those_fields_still_reindexes(dist, monkeypatch):
     (dist / "index.json").write_text('{"origins":[]}')
     idx = _reindex(dist, [_origin("seoul")], monkeypatch)
     assert [o["slug"] for o in idx["origins"]] == ["seoul"]
+
+
+def test_reindex_refuses_when_the_hover_resolution_has_moved(dist, monkeypatch):
+    """The omission that mattered most.
+
+    hoverRes is the resolution of hover_cells.bin, which the page
+    binary-searches by cell id (app.js: cellIndex). Republish an index whose
+    hoverRes has moved and every lookup misses, so every land cell reads
+    "Open water." -- and nothing else sees it: check_dist compares
+    hoverCellCount against the file's length, and the page's own guard
+    compares the same two, so a drift that keeps the COUNT the same passes
+    both.
+
+    Mutation: drop "hoverRes" from cli._CURRENT_INDEX_CONSTANTS.
+    """
+    _artifacts(dist, "seoul")
+    _previous(dist, hoverRes=config.HOVER_RES + 1)
+    monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
+    with pytest.raises(SystemExit, match="hoverRes"):
+        cli._reindex(dist)
+
+
+def test_reindex_refuses_when_the_unreachable_sentinel_has_moved(dist, monkeypatch):
+    """Mutation: drop "unreachable" from cli._CURRENT_INDEX_CONSTANTS."""
+    _artifacts(dist, "seoul")
+    _previous(dist, unreachable=config.UNREACHABLE - 1)
+    monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
+    with pytest.raises(SystemExit, match="unreachable"):
+        cli._reindex(dist)
+
+
+def test_every_constant_write_index_derives_is_in_the_refusal_set():
+    """The refusal set was three of five, and stayed three of five while
+    write_index grew. Derive the question from the artifact instead of
+    re-typing the answer: any scalar field index.json carries that comes from
+    `config` and is not carried forward must be refused on drift.
+
+    Mutation: remove any entry from _CURRENT_INDEX_CONSTANTS.
+    """
+    governed = {"bandEdgesMin", "solveRes", "modeChannels", "hoverRes",
+                "fineRes", "unreachable"}
+    assert governed <= set(cli._CURRENT_INDEX_CONSTANTS), (
+        "a constant index.json publishes is not covered by the drift refusal: "
+        f"{governed - set(cli._CURRENT_INDEX_CONSTANTS)}")
+    # ...and each really does read today's config, not a frozen copy.
+    for key, current in cli._CURRENT_INDEX_CONSTANTS.items():
+        assert current() is not None, key
+
+
+def test_the_inputs_hash_covers_the_unreachable_sentinel(monkeypatch):
+    """Two builds differing only in the sentinel every uint16 array is written
+    with produced identical inputsHash AND identical buildId, so the field that
+    exists to tell artifacts apart could not tell those two apart.
+
+    Mutation: remove config.UNREACHABLE from index.build_identity's params_hash.
+    """
+    before = cli.index.build_identity()["inputsHash"]
+    monkeypatch.setattr(config, "UNREACHABLE", config.UNREACHABLE - 1)
+    assert cli.index.build_identity()["inputsHash"] != before

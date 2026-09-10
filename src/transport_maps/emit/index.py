@@ -189,7 +189,7 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
 
     `inputsHash` covers the code (git head, dirty flag), the two hand-edited
     inputs (calibration.toml, origins.toml) and the constants that shape the
-    grid, the bands and the mode channels; `buildId` adds the start time so
+    grid, the bands, the unreachable sentinel and the mode channels; `buildId` adds the start time so
     two runs of one input set (one of them aborted) stay distinguishable.
     """
     started = started or datetime.now(UTC)
@@ -204,6 +204,11 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
         _git_head(), _sha256(config.ROOT / "calibration.toml"),
         _sha256(config.DATA / "origins.toml"),
         config.SOLVE_RES, config.FINE_RES, config.HOVER_RES, config.BAND_EDGES_MIN,
+        # The sentinel every uint16 array is written with, and which index.json
+        # advertises. Two builds differing only in it produced identical
+        # inputsHash and identical buildId, so the field that exists to tell
+        # artifacts apart could not tell those two apart.
+        config.UNREACHABLE,
         modes.CHANNELS)
     return {"inputsHash": inputs,
             "buildId": f"{inputs}-{started:%Y%m%dT%H%M%SZ}",

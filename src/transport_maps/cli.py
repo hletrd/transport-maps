@@ -391,6 +391,20 @@ _CURRENT_INDEX_CONSTANTS = {
     "bandEdgesMin": lambda: list(config.BAND_EDGES_MIN),
     "solveRes": lambda: config.SOLVE_RES,
     "modeChannels": lambda: list(modes.CHANNELS),
+    # hoverRes was the omission that mattered most. It is the resolution of
+    # hover_cells.bin, and the page binary-searches that array by cell id
+    # (app.js: cellIndex). Republish an index whose hoverRes has moved and
+    # every lookup misses, so every land cell reads "Open water." -- past
+    # check_dist, which only compares hoverCellCount against the file's
+    # length, and past the page's own guard, which compares the same two.
+    "hoverRes": lambda: config.HOVER_RES,
+    # fineRes is written into the index and read back by the page's outline
+    # detail; a stale value describes a refinement the artifacts do not have.
+    "fineRes": lambda: config.FINE_RES,
+    # unreachable is the sentinel every uint16 array is written with. If the
+    # code's value has moved, the page would test the arrays against a
+    # threshold they were not written with.
+    "unreachable": lambda: config.UNREACHABLE,
 }
 
 
@@ -497,12 +511,12 @@ def _reindex(dist: Path | None = None) -> None:
         # rewritten at 05:34:33, which is the evidence T20 was landed on.
         #
         # modeDetail is prose the visitor reads in the route panel, so it is
-        # carried forward rather than re-derived. The other three cannot be
+        # carried forward rather than re-derived. The rest cannot be
         # carried forward, because the page's guards depend on them agreeing
         # with the arrays: if they have moved, the artifacts were built by
         # different code and rewriting index.json alone would republish a new
         # legend over old tiles. That is a refusal, not a warning.
-        drifted = [k for k in ("bandEdgesMin", "solveRes", "modeChannels")
+        drifted = [k for k in _CURRENT_INDEX_CONSTANTS
                    if k in previous and previous[k] != _CURRENT_INDEX_CONSTANTS[k]()]
         if drifted:
             raise SystemExit(
