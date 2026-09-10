@@ -31,11 +31,35 @@
     }
   }
 
+  // A capturing listener on window receives `error` from EVERY element whose
+  // subresource fails -- which is exactly how ad-block detectors are built.
+  // This page loads one cross-origin subresource, the analytics tag, and it is
+  // blocked for a large and ordinary population: ad-blocker extensions,
+  // Pi-hole and NextDNS households, corporate resolvers, and everyone behind
+  // the Great Firewall. Treating that as "the page could not start" set
+  // body.fatal, and index.html's `body.fatal .rail{display:none}` then deleted
+  // the city list, the search box, Settings and the sources panel from a page
+  // whose globe was drawing perfectly -- and latched `shown`, so the real
+  // 25-second watchdog could never fire afterwards.
+  //
+  // The guard exists for THIS origin's files: app.js, boot.js, the vendored
+  // bundles, the fonts. Nothing third-party is load-bearing.
+  function ourOwn(url) {
+    if (!url) return true;              // no URL to judge: assume it is ours
+    try {
+      return new URL(url, location.href).origin === location.origin;
+    } catch (err) {
+      return true;                      // unparseable: fail towards reporting
+    }
+  }
+
   window.addEventListener("error", function (e) {
     // Resource errors (a 404 on a <script> or a font) do not bubble as
     // ErrorEvent.error; they arrive with a target instead.
     if (e && e.target && e.target !== window && e.target.tagName) {
-      say("a file did not load", e.target.src || e.target.href || e.target.tagName);
+      var url = e.target.src || e.target.href || "";
+      if (!ourOwn(url)) return;
+      say("a file did not load", url || e.target.tagName);
       return;
     }
     say("script error", e && (e.message || e.error));

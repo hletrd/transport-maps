@@ -1,0 +1,213 @@
+"""Run web/boot.js and check what it DOES, not what it contains.
+
+`tests/web/test_app_constants.py` pins boot.js with three `substring in BOOT`
+checks. That is the vacuity CLAUDE.md warns about: changing `cities > 0` to
+`cities >= 0` -- one character -- leaves the watchdog permanently inert and
+every one of those assertions still green.
+
+boot.js is a 62-line classic-script IIFE with no imports and no awaits, so it
+runs unchanged under a small DOM shim in Node. Each test below drives the real
+listeners boot.js installs and asserts on the class it does or does not put on
+<body>, which is the only thing that matters: `index.html` turns `body.fatal`
+into `display:none` over the entire side rail.
+
+The mutations each test is written against are named in its docstring, and each
+was performed and reverted before this file was committed.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+BOOT = ROOT / "web" / "boot.js"
+
+#: A DOM small enough to be obviously correct and large enough to run boot.js.
+#: Nothing here is a mock of boot.js: it is a mock of the browser, and every
+#: assertion is on boot.js's own observable effect.
+HARNESS = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[2], "utf8");
+const opts = JSON.parse(process.argv[3]);
+
+const listeners = Object.create(null);
+const classes = new Set();
+const elements = Object.create(null);
+const timers = [];
+
+const element = (id) => (elements[id] ||= { id, textContent: "" });
+
+const window = {
+  addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+};
+const document = {
+  body: {
+    classList: {
+      contains: (c) => classes.has(c),
+      add: (c) => classes.add(c),
+    },
+  },
+  getElementById: element,
+  // The watchdog counts departure-city buttons. `opts.cities` is how many the
+  // page managed to render before the 25-second deadline.
+  querySelectorAll: () => new Array(opts.cities).fill({}),
+};
+const location = { href: opts.href, origin: new URL(opts.href).origin };
+const setTimeout = (fn, ms) => timers.push({ fn, ms }) - 1;
+
+// boot.js reads these as globals; hand them in as parameters instead of
+// polluting Node's own.
+new Function("window", "document", "location", "setTimeout", "URL", src)(
+  window, document, location, setTimeout, URL);
+
+const fire = (type, event) => (listeners[type] || []).forEach((fn) => fn(event));
+
+for (const step of opts.steps) {
+  if (step.kind === "resourceError") {
+    fire("error", { target: { tagName: step.tagName || "SCRIPT", src: step.src } });
+  } else if (step.kind === "scriptError") {
+    fire("error", { target: window, message: step.message });
+  } else if (step.kind === "rejection") {
+    fire("unhandledrejection", { reason: { message: step.message } });
+  } else if (step.kind === "settle") {
+    // The page finishes loading, then the watchdog's timer comes due.
+    fire("load", {});
+    timers.filter((t) => t.ms >= 20000).forEach((t) => t.fn());
+  } else {
+    throw new Error("unknown step " + step.kind);
+  }
+}
+
+process.stdout.write(JSON.stringify({
+  fatal: classes.has("fatal"),
+  where: (elements.where || {}).textContent || "",
+  time: (elements.time || {}).textContent || "",
+  watchdogArmed: timers.some((t) => t.ms >= 20000),
+}));
+"""
+
+SITE = "https://worldmap.atik.kr/"
+
+
+@pytest.fixture(scope="module")
+def harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    if shutil.which("node") is None:
+        pytest.skip("node is not on PATH; boot.js cannot be executed")
+    path = tmp_path_factory.mktemp("boot") / "harness.cjs"
+    path.write_text(HARNESS, encoding="utf-8")
+    return path
+
+
+def run_boot(harness: Path, *steps: dict, cities: int = 0, href: str = SITE) -> dict:
+    opts = {"cities": cities, "href": href, "steps": list(steps)}
+    out = subprocess.run(
+        ["node", str(harness), str(BOOT), json.dumps(opts)],
+        capture_output=True, text=True, check=True, cwd=ROOT)
+    return json.loads(out.stdout)
+
+
+GTAG = "https://www.googletagmanager.com/gtag/js?id=G-2NYW09JSK2"
+
+
+def test_a_blocked_analytics_tag_does_not_declare_the_page_dead(harness: Path) -> None:
+    """The cycle-5 defect three reviewers found independently.
+
+    The page loads exactly one cross-origin subresource, and it is blocked for
+    ad-blocker users, Pi-hole households, corporate resolvers and everyone
+    behind the Great Firewall. `body.fatal` hides the whole side rail.
+
+    Mutation: delete the `ourOwn(url)` test from boot.js's resource branch.
+    """
+    seen = run_boot(harness, {"kind": "resourceError", "src": GTAG}, cities=553)
+    assert not seen["fatal"], (
+        "a blocked third-party analytics tag set body.fatal, which hides the "
+        "departure list, the search box, Settings and the sources panel")
+    assert seen["where"] == "", "and it wrote a failure message over the map's readout"
+
+
+def test_a_missing_file_from_this_origin_still_declares_the_page_dead(harness: Path) -> None:
+    """The guard must keep doing the job it was added for.
+
+    Mutation: make `ourOwn` return false unconditionally.
+    """
+    seen = run_boot(harness, {"kind": "resourceError", "src": SITE + "app.js"}, cities=0)
+    assert seen["fatal"], "a 404 on this origin's own app.js must still be reported"
+    assert "app.js" in seen["where"], "the message must name the file that failed"
+
+
+def test_a_relative_url_counts_as_ours(harness: Path) -> None:
+    """`src="./vendor/maplibre-gl.js"` resolves against location, not against
+    nothing. Mutation: compare the raw string to location.origin.
+    """
+    seen = run_boot(harness, {"kind": "resourceError", "src": "./vendor/maplibre-gl.js"})
+    assert seen["fatal"], "a relative vendor path is this origin's file"
+
+
+def test_an_unparseable_url_fails_towards_reporting(harness: Path) -> None:
+    """Better a false alarm than a silent blank page -- that is the whole point
+    of boot.js. Mutation: return false from `ourOwn`'s catch.
+    """
+    seen = run_boot(harness, {"kind": "resourceError", "src": "http://[", "tagName": "LINK"})
+    assert seen["fatal"], "an unparseable URL must be reported, not swallowed"
+
+
+def test_the_blocked_tag_does_not_latch_the_watchdog_shut(harness: Path) -> None:
+    """`say()` sets `shown = true`, so a spurious third-party report used to
+    disarm the genuine 25-second watchdog for the rest of the session. This is
+    the second half of the same defect and it needs its own assertion.
+
+    Mutation: delete the `ourOwn(url)` test.
+    """
+    seen = run_boot(harness,
+                    {"kind": "resourceError", "src": GTAG},
+                    {"kind": "settle"},
+                    cities=0)
+    assert seen["fatal"], (
+        "after a blocked analytics tag, the real 'nothing drew' watchdog never fired")
+    assert "no departure cities" in seen["where"]
+
+
+def test_the_watchdog_fires_when_nothing_drew(harness: Path) -> None:
+    """CLAUDE.md's named recurring failure: everything resolves, nothing paints.
+
+    Mutation: `if (cities > 0) return;` -> `if (cities >= 0) return;`. One
+    character, and the three substring assertions in test_app_constants.py stay
+    green while the watchdog is permanently inert.
+    """
+    seen = run_boot(harness, {"kind": "settle"}, cities=0)
+    assert seen["watchdogArmed"], "no 25-second timer was ever scheduled"
+    assert seen["fatal"], "zero departure cities after 25 seconds went unreported"
+    assert seen["time"] == "—"
+
+
+def test_the_watchdog_stays_quiet_when_the_page_worked(harness: Path) -> None:
+    """The other half of the same mutation: `cities >= 0` would make this fail
+    too, which is what makes the pair non-vacuous in both directions.
+    """
+    seen = run_boot(harness, {"kind": "settle"}, cities=553)
+    assert not seen["fatal"], "a page with 553 departure cities was called dead"
+
+
+def test_a_script_error_and_a_rejection_are_both_reported(harness: Path) -> None:
+    """Mutation: remove either listener."""
+    err = run_boot(harness, {"kind": "scriptError", "message": "x is not defined"})
+    assert err["fatal"] and "x is not defined" in err["where"]
+
+    rej = run_boot(harness, {"kind": "rejection", "message": "fetch failed"})
+    assert rej["fatal"] and "fetch failed" in rej["where"]
+
+
+def test_only_the_first_report_is_shown(harness: Path) -> None:
+    """A generic message must not paint over a specific one.
+
+    Mutation: remove the `shown` guard from `say()`.
+    """
+    seen = run_boot(harness,
+                    {"kind": "resourceError", "src": SITE + "app.js"},
+                    {"kind": "scriptError", "message": "secondary"})
+    assert "app.js" in seen["where"] and "secondary" not in seen["where"]
