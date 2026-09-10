@@ -72,16 +72,24 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
       test sets `umask(0o022)` around itself (TE-12); the mtime fingerprint test
       bumps `st_mtime_ns` explicitly (TE-13); `test_tiles` skips when
       tippecanoe is absent and checks the layer name (TE-18).
-- [ ] **W1 (gate warning, recorded)** One `DeprecationWarning` (fork of a
-      multi-threaded process) from
-      `tests/test_cli.py::test_a_gate_failure_in_a_forked_worker_aborts_the_run`.
-      Severity Low, confidence High. Still not suppressed: the production build
-      forks on purpose and the test exercises that path; the alarm is halved
-      (TE-14). Exit criterion unchanged: `_build_all` moves to a
-      `forkserver`/`spawn` context with the graph passed explicitly (S2 in the
-      build plan), or the test carries a `filterwarnings` limited to itself
-      quoting this entry.
-- [ ] Run the full suite once at the end of the cycle and record the outcome.
+- [ ] **W1 (gate warning, recorded)** One `DeprecationWarning` class (fork of a
+      multi-threaded process), raised five times at the end-of-cycle run by the
+      two forked-pool tests in `tests/test_cli.py`:
+      `test_a_gate_failure_in_a_forked_worker_aborts_the_run` (2) and
+      `test_a_worker_killed_by_a_signal_aborts_the_run_instead_of_hanging` (3,
+      added by 53cd8cf for K3). Severity Low, confidence High. Still not
+      suppressed: the production build forks on purpose and both tests exercise
+      that path; the alarm count per test is halved (TE-14) and the rise from
+      one occurrence to five is the new K3 test, not a new defect. Exit
+      criterion unchanged: `_build_all` moves to a `forkserver`/`spawn` context
+      with the graph passed explicitly (S2 in the build plan), or the tests
+      carry a `filterwarnings` limited to themselves quoting this entry.
+- [x] Run the full suite once at the end of the cycle and record the outcome.
+      At `29c6330`, machine loaded by rebuild16: `uv run ruff check .` **All
+      checks passed**; `uv run pytest -q` **356 passed, 4 deselected, 5
+      warnings in 1298.81 s (21 min 38 s)**, exit 0. No failures, no errors,
+      nothing suppressed; the five warnings are W1 above. Compare the plan's
+      opening gate state at `bf9e5cc`: ruff red (2 errors), 254 passed.
 
 ## Cycle 3
 
@@ -116,3 +124,4 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
   target red, 4 tests shown vacuous (F3 eastern DMZ, F6, F11 mapping, the
   bf9e5cc "nearest" claim).
 - 2026-09-10 cycle 2 done: P1 f0c3a4f; P2 7b95407 (is_closed mutant red on both DMZ tests; CH-out-of-zone red on Schengen); P5 69e6222 (zero-fill red); P6 52a1308 (swapped channels red); P8/P10 e7e159d (data/cache count unchanged across a run: 484 before and after); P9 35320bf; L4/F9 160bb34; K2 a30ef1b; P4 parity 1d382c8; P11 773eafe (unpatched loop red); L13 c4b7295 (one hash character red); P10 small f2341dc + c0c6cbf (PAGE_CREDITS parity, fork alarms halved). W1 stays recorded: one DeprecationWarning per gate run from the forked-pool tests, exit criterion unchanged.
+- 2026-09-10 cycle 2 gates, final run at `29c6330` (both gates green): `uv run ruff check .` all checks passed; `uv run pytest -q` 356 passed, 4 deselected, 5 warnings, 21 min 38 s, exit 0. The suite grew from the 254 passing at `bf9e5cc` to 356 without a single red; the five warnings are the recorded W1 fork alarm, whose entry above now names both forked-pool tests instead of only the first.

@@ -98,3 +98,4 @@ DOM-write table).
   unfinished task from the cycle-1 security plan (now archived) under its
   original ID.
 - 2026-09-10 cycle 2 done: Q1 9d0a401 (one Nominatim queue, 1.1 s spacing, latest click wins, cache by rounded coordinate, credit beside the label; no request for water or unreached clicks); Q3/I2 773eafe (one-token patch, hashes recorded, tests red when unpatched); I3, L5/I4, Q5, Q8/J5 0e74b2b; Q6/I5 773eafe; Q7/A17 269e17c + 379d607; L13 c4b7295; G2 bounded 379d607. Blocked-on-owner items unchanged (E3 server half: live headers still absent on page assets).
+- 2026-09-10 cycle 2 closed at `29c6330`: every Cycle 2 task above is ticked; the Cycle 3 section stays open, so this plan is not archived. Both gates green on the whole repo at that commit (ruff clean; pytest 356 passed, 4 deselected, 5 warnings, exit 0) -- recorded in `plan/2026-09-10-c2-gates-and-tests.md`.

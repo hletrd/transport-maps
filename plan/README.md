@@ -13,13 +13,23 @@ dropped.
 
 | Plan | Scope | Status |
 |---|---|---|
-| `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | in progress (cycle 2) |
-| `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | in progress (cycle 2) |
-| `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | in progress (cycle 2) |
-| `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | in progress (cycle 2) |
-| `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | in progress (cycle 2) |
+| `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | cycle 2 done; cycle 3 open |
+| `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | cycle 2 done; cycle 3 open |
+| `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); cycle 3 open |
+| `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; cycle 3 open |
+| `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; cycle 3 open |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
+
+None of the five moves to `archive/` yet: each carries an unfinished
+**Cycle 3** section, and the archive convention below applies only when
+every task is done or has been carried forward under its ID. `W1` in the
+gates plan stays open by design -- it is a recorded warning with an exit
+criterion, not an unfinished fix.
+
+End-of-cycle-2 gate state at `29c6330`: `uv run ruff check .` all checks
+passed; `uv run pytest -q` 356 passed, 4 deselected, 5 warnings (all W1),
+exit 0.
 
 Conventions
 - Each task carries the merged finding ID(s) so the provenance can be traced to
