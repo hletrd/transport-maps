@@ -906,6 +906,19 @@ function captureComparison() {
 }
 
 function paintOrigin(o, { keepZoom = false } = {}) {
+  // U13 landed only its #tip half. Four of the five call sites tested the slug
+  // and the results-list handler did not, so clicking the row you are ALREADY
+  // departing from -- the highlighted one, aria-current="true", the obvious
+  // thing to click to "go back to Seoul" -- removed and re-added the bands
+  // layer, aborted and re-issued about 700 KB of fetches, blanked the
+  // itinerary, announced a no-op, rebuilt 553 rows, and (keepZoom defaults to
+  // false) flew the camera back to the world view, discarding the region the
+  // visitor was reading.
+  //
+  // The guard belongs here rather than at the fifth call site, so a sixth
+  // cannot reintroduce it. A failed origin is still retryable: that is the one
+  // case where re-picking the active city has something to do.
+  if (o.slug === active?.slug && !origin.failed) return;
   if (o.slug !== active?.slug) captureComparison();
   active = o;
   const gen = ++originGen;
