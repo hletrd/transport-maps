@@ -3,14 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-2NYW09JSK2"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-2NYW09JSK2');
-</script>
 <title>Isochronic Passage Chart — travel time to anywhere on Earth</title>
 <meta name="description" content="How many hours it takes, door to door, to reach any point on Earth from more than five hundred cities, by air, rail, road and ferry. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
 <link rel="canonical" href="https://worldmap.atik.kr/">
@@ -86,6 +78,24 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%230a0b0d'/%3E%3Cpath d='M12 3 L15 13 L12 11.4 L9 13 Z' fill='%23e48f35'/%3E%3Cpath d='M12 21 L9 11.6 L12 13.2 L15 11.6 Z' fill='%238f96a0'/%3E%3C/svg%3E">
 <link href="./vendor/fonts.css" rel="stylesheet">
 <link href="./vendor/maplibre-gl.css" rel="stylesheet">
+
+<!-- Analytics LAST among the head's network work, not first.
+     It was the opening subresource in the document, ahead of every preload
+     below: 190,810 bytes gzipped on the wire, 579,003 bytes of JavaScript to
+     parse, and two extra third-party connection setups -- all of it queued in
+     front of index.json and hover_cells.bin, which are what the page needs
+     before it can draw anything at all. `async` never governed the ORDER the
+     preload scanner discovered it in.
+     Nothing here is load-bearing: boot.js ignores third-party failures, and
+     the inline block below is byte-identical, so the CSP hash is unchanged. -->
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2NYW09JSK2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-2NYW09JSK2');
+</script>
 <style>
 :root{
   --bg:#0a0b0d; --surface:#131519; --surface-2:#1a1d22;

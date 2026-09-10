@@ -9,7 +9,7 @@ The user's brief for this run is "more details, higher quality and design and
 ease of usage and UI. Do not overwork." The orchestrator asked cycle 5 to be
 smaller than cycle 4 and to prefer the handful of changes that most improve what
 a visitor sees and does, plus any genuine correctness defect. This plan is that
-handful: **28 tasks**, against cycle 4's 28 and cycle 3's 31, and almost all of
+handful: **29 tasks**, against cycle 4's 28 and cycle 3's 31, and almost all of
 them are one to fifteen lines.
 
 Everything not scheduled here is recorded in `plan/deferred.md` with its
@@ -60,6 +60,8 @@ tabular figures, no new legend tick, dark theme throughout.
 | **V13** | Announce the departure-filter result count, and resolve `#status` when the arrays land. Filtering 461→0 announces nothing today, and `#status` still read "Loading travel times" long after loading finished. WCAG 4.1.3. | `UX5-7` Medium/High | `web/app.js` | Filter to zero results; `#status` must carry a count. |
 | **V14** | Bring the Settings checkboxes and the origin labels to a 24 px hit area. Measured 15×15 px and 23 px below 860 px, against N18/D16's ticked "24 px hit area" claim. WCAG 2.5.8. | `UX5-10` Medium/High | `web/index.html` | Computed height of both targets must be ≥ 24 px at 390×844. |
 | **V15** | A visible "Copy link" beside "Clear". `grep` finds no share affordance at all, so U11's `?to=` permalink is unreachable by a visitor who does not read the address bar. | `UX5-8` Medium/High | `web/index.html`, `web/app.js` | The control must exist and write `location.href` to the clipboard. |
+
+| **V29** | Move the analytics tag from the head's first subresource to after every preload. Measured: 190,810 B gzipped on the wire and 579,003 B of JavaScript to parse, plus two extra third-party connection setups, all queued ahead of `index.json` and `hover_cells.bin` -- the two files the page needs before it can draw anything. `async` governs execution, never the order the preload scanner discovers a tag in. | `PR5-2` Medium/High | `web/index.html` | The `<script src=googletagmanager>` index in `document.head.children` must exceed the first `rel=preload` index. |
 
 ## Tier C — what the page says about itself (schedule: cycle 5)
 
@@ -133,6 +135,7 @@ _Updated as the cycle runs._
 | V25 | done | `83fb802` | gate now runs `tests/web/` whole; `test_ramps` reached |
 | V26 | done | `83fb802` | threshold above real free space -> refuses before any byte moves |
 | V27 | recorded | - | no code change by design; see below |
+| V29 | done | `pending` | gtag at head index 33, first preload at 21; page verified in a browser |
 | V28 | done | `8232d6e` | attribution block deleted -> `test_an_index_that_drops_a_credit` red |
 
 ### V27 — the stray journal file, recorded rather than removed
