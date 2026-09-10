@@ -384,6 +384,16 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
                       identity=identity, modes_detail=modes_detail)
 
 
+#: The index fields that describe the ARTIFACTS, not the checkout, and that the
+#: page's guards compare against the arrays. `reindex` refuses when any has
+#: moved since the dist/ was built rather than silently republishing.
+_CURRENT_INDEX_CONSTANTS = {
+    "bandEdgesMin": lambda: list(config.BAND_EDGES_MIN),
+    "solveRes": lambda: config.SOLVE_RES,
+    "modeChannels": lambda: list(modes.CHANNELS),
+}
+
+
 def _reindex(dist: Path | None = None) -> None:
     """Rewrite dist/index.json alone, from the artifacts already on disk.
 
@@ -479,10 +489,41 @@ def _reindex(dist: Path | None = None) -> None:
             datetime.fromtimestamp(cells.stat().st_mtime, UTC).replace(microsecond=0).isoformat())
         identity["reindexedAt"] = datetime.now(UTC).replace(microsecond=0).isoformat()
 
+        # Same reasoning as the identity above, applied to the four fields that
+        # describe the ARTIFACTS rather than this checkout. write_index derives
+        # them from today's code and today's calibration.toml, which for a
+        # sixteen-hour build is sixteen hours after the graph was weighted --
+        # the in-flight build read calibration.toml at ~04:28 and the file was
+        # rewritten at 05:34:33, which is the evidence T20 was landed on.
+        #
+        # modeDetail is prose the visitor reads in the route panel, so it is
+        # carried forward rather than re-derived. The other three cannot be
+        # carried forward, because the page's guards depend on them agreeing
+        # with the arrays: if they have moved, the artifacts were built by
+        # different code and rewriting index.json alone would republish a new
+        # legend over old tiles. That is a refusal, not a warning.
+        drifted = [k for k in ("bandEdgesMin", "solveRes", "modeChannels")
+                   if k in previous and previous[k] != _CURRENT_INDEX_CONSTANTS[k]()]
+        if drifted:
+            raise SystemExit(
+                "the code has moved since this dist/ was built: "
+                + "; ".join(f"{k} was {previous[k]!r}, is now "
+                            f"{_CURRENT_INDEX_CONSTANTS[k]()!r}" for k in drifted)
+                + ". Rewriting index.json alone would publish today's "
+                  "constants over yesterday's artifacts. Rebuild instead.")
+
+        modes_detail = previous.get("modeDetail")
+        if modes_detail is None:
+            log.warning(
+                "the previous index.json has no modeDetail, so the route panel's mode prose is "
+                "sampled from calibration.toml NOW, not from the constants the artifacts were "
+                "built with. It may describe speeds this build did not use.")
+
         graph = dict(previous.get("graph") or {})
         graph["rail"] = rail_seen
         index.write_index(present, index_path, hover_cell_count=n_cells,
-                          graph=graph, identity=identity, rail_detail=rail_seen)
+                          graph=graph, identity=identity, rail_detail=rail_seen,
+                          modes_detail=modes_detail)
         print(f"index.json rewritten: {len(present)} origins, {n_cells:,} hover cells, "
               f"rail detail {'present' if rail_seen else 'absent'}, "
               f"built {identity['builtAt']}, {len(skipped)} origin(s) skipped")

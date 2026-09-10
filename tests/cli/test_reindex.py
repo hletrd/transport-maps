@@ -232,3 +232,76 @@ def test_reindex_still_refuses_a_build_that_is_actually_working(dist, monkeypatc
         cli._reindex(dist)
     assert not (dist / "index.json").exists()
     assert not (dist / cli.LOCK_NAME).exists()
+
+
+# --- U3: index fields that describe the artifacts, not the checkout ---------
+#
+# reindex is fastidious with identity -- "carried forward, never invented" --
+# and then write_index derived bandEdgesMin, solveRes, modeChannels and
+# modeDetail from today's code and today's calibration.toml. The in-flight
+# 553-origin build read calibration.toml at ~04:28 and the file was rewritten at
+# 05:34:33; T20 exists because of that gap. reindex had the same gap.
+
+def _previous(dist, **extra):
+    from transport_maps import config
+    (dist / "index.json").write_text(json.dumps({
+        "bandEdgesMin": list(config.BAND_EDGES_MIN),
+        "solveRes": config.SOLVE_RES,
+        "modeChannels": list(modes.CHANNELS),
+        **extra}))
+
+
+def test_mode_prose_is_carried_forward_not_resampled(dist, monkeypatch):
+    """The route panel's mode tooltips are figures a visitor reads."""
+    _artifacts(dist, "seoul")
+    _previous(dist, modeDetail={"motorway": "Motorways, fitted at 90 km/h as of the build"})
+    called = []
+    monkeypatch.setattr(cli.index, "mode_detail",
+                        lambda *a, **k: called.append(1) or {"motorway": "today's value"})
+    idx = _reindex(dist, [_origin("seoul")], monkeypatch)
+    assert idx["modeDetail"]["motorway"].endswith("as of the build"), (
+        "reindex must not re-read calibration.toml for prose describing older artifacts")
+    assert not called, "mode_detail() must not be called when the previous index has the prose"
+
+
+def test_a_previous_index_without_mode_prose_says_so(dist, monkeypatch, caplog):
+    _artifacts(dist, "seoul")
+    _previous(dist)
+    _reindex(dist, [_origin("seoul")], monkeypatch)
+    assert "sampled from calibration.toml NOW" in caplog.text
+
+
+def test_reindex_refuses_when_the_band_edges_have_moved(dist, monkeypatch):
+    """A new legend over old tiles is the failure this prevents."""
+    _artifacts(dist, "seoul")
+    _previous(dist, bandEdgesMin=[1, 2, 3])
+    monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
+    with pytest.raises(SystemExit, match="bandEdgesMin"):
+        cli._reindex(dist)
+    assert json.loads((dist / "index.json").read_text())["bandEdgesMin"] == [1, 2, 3], (
+        "the refusal must leave the existing index untouched")
+
+
+def test_reindex_refuses_when_the_channel_order_has_moved(dist, monkeypatch):
+    _artifacts(dist, "seoul")
+    _previous(dist, modeChannels=["road", "rail"])
+    monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
+    with pytest.raises(SystemExit, match="modeChannels"):
+        cli._reindex(dist)
+
+
+def test_reindex_refuses_when_the_solve_resolution_has_moved(dist, monkeypatch):
+    """Exactly the res-5 -> res-6 change this build is making."""
+    _artifacts(dist, "seoul")
+    _previous(dist, solveRes=5)
+    monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
+    with pytest.raises(SystemExit, match="solveRes"):
+        cli._reindex(dist)
+
+
+def test_an_index_with_none_of_those_fields_still_reindexes(dist, monkeypatch):
+    """The 04:23 emitter wrote bandEdgesMin but a truly bare index must work."""
+    _artifacts(dist, "seoul")
+    (dist / "index.json").write_text('{"origins":[]}')
+    idx = _reindex(dist, [_origin("seoul")], monkeypatch)
+    assert [o["slug"] for o in idx["origins"]] == ["seoul"]
