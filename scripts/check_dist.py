@@ -94,6 +94,16 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
     elif len(idx["modeChannels"]) != n_channels:
         bad.append(f"index.json modeChannels has {len(idx['modeChannels'])} entries, emitter has {n_channels}")
 
+    # app.js: `const EDGES = meta.bandEdgesMin` and then expandRamp(EDGES) --
+    # fatal() on load without it, which is a blank page, not a degraded one.
+    # check_dist called such a dist/ consistent.
+    edges = idx.get("bandEdgesMin")
+    if not isinstance(edges, list) or not edges:
+        bad.append("index.json has no bandEdgesMin: the page cannot draw a legend and "
+                   "stops on load. Run `uv run transport-maps reindex`.")
+    elif list(edges) != sorted(edges) or len(set(edges)) != len(edges):
+        bad.append(f"index.json bandEdgesMin is not strictly ascending: {edges[:8]}...")
+
     cells_path = dist / "hover_cells.bin"
     if not cells_path.exists():
         return [*bad, "hover_cells.bin missing"]
@@ -107,6 +117,7 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
         bad.append(f"index.json hoverCellCount {idx['hoverCellCount']} != hover_cells.bin {n_cells}")
 
     widths = {".bin": 2, ".air.bin": 2, ".modes.bin": 2 * n_channels}
+    n_nodes: dict[int, list[str]] = {}
     rail_advertised = bool(idx.get("railDetail"))
     for o in listed:
         s = o["slug"]
@@ -141,8 +152,24 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
         else:
             try:
                 payload = json.loads(routes.read_text(encoding="utf-8"))
-                if "offsets" not in payload or "nodes" not in payload:
+                off = payload.get("offsets")
+                if not isinstance(off, dict) or not isinstance(payload.get("nodes"), list):
                     bad.append(f"{s}.json lacks offsets/nodes")
+                elif not all(isinstance(off.get(k), int) for k in ("airports", "stations")):
+                    # An empty or partial offsets object passed the `in` test
+                    # above and made the route panel silently disappear: the
+                    # page checks the same two numbers and gives up quietly.
+                    bad.append(f"{s}.json offsets lacks airports/stations "
+                               f"(the route panel silently disappears): {sorted(off)}")
+                else:
+                    # The ONLY per-origin fingerprint of the build that made
+                    # this file. Every fixed-width array is n_cells long
+                    # whatever the solve resolution, because the res-4 parent
+                    # count depends on the land mask -- so all 349 shipped
+                    # arrays are the same size and a stale res-5 array passes
+                    # every length check above. offsets.airports does move:
+                    # about 635k at res 5 against 13.7M at res 6.
+                    n_nodes.setdefault(off["airports"], []).append(s)
             except (OSError, ValueError):
                 bad.append(f"{s}.json is not valid JSON (truncated write?)")
         tiles = base.with_name(s + ".pmtiles")
@@ -152,6 +179,14 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
             problem = _pmtiles_ok(tiles)
             if problem:
                 bad.append(problem)
+
+    # Every origin of one build walks the same node universe, so a disagreement
+    # means two builds are mixed in dist/ -- the failure the deploy rule calls
+    # out as having twice produced a blank live site.
+    if len(n_nodes) > 1:
+        groups = ", ".join(f"{k:,} in {len(v)} origin(s) e.g. {v[0]}"
+                           for k, v in sorted(n_nodes.items(), key=lambda kv: -len(kv[1]))[:3])
+        bad.append(f"origins disagree on the node universe ({groups}): dist/ mixes two builds")
 
     for extra in REQUIRED_EXTRAS:
         p = dist / extra

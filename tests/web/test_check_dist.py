@@ -38,7 +38,10 @@ def _good_dist(tmp_path, slugs=("seoul",), rail=True):
         (d / "origins" / f"{s}.bin").write_bytes(b"\0" * 2 * N_CELLS)
         (d / "origins" / f"{s}.air.bin").write_bytes(b"\0" * 2 * N_CELLS)
         (d / "origins" / f"{s}.modes.bin").write_bytes(b"\0" * 2 * len(CHANNELS) * N_CELLS)
-        (d / "origins" / f"{s}.json").write_text(json.dumps({"offsets": {}, "nodes": []}))
+        # Real offsets: an empty object used to pass, and the page then lost
+        # its route panel with no error, so a "good" dist must carry them.
+        (d / "origins" / f"{s}.json").write_text(json.dumps(
+            {"offsets": {"airports": 1000, "stations": 1200}, "nodes": []}))
         _pmtiles(d / "origins" / f"{s}.pmtiles")
         if rail:
             (d / "origins" / f"{s}.rail.bin").write_bytes(b"\0" * 2 * N_CELLS)
@@ -166,13 +169,73 @@ def test_an_index_written_by_an_older_emitter_is_refused(check_dist, tmp_path, m
     assert any("reindex" in m for m in problems), "the refusal must name the remedy"
 
 
-def test_the_summary_survives_an_index_without_attribution_or_band_edges(check_dist, tmp_path):
+def test_the_summary_survives_an_index_without_attribution(check_dist, tmp_path, capsys):
     """check_dist declared the build consistent and then died with a KeyError
-    printing its own summary, because it never required either field."""
+    printing its own summary, because it never required the field.
+
+    It used to assert `bands == 1` from an expression the test computed the
+    same way the code does, and never called main() -- so reverting the fix
+    kept it green. It runs the real entry point now.
+    """
     d = _good_dist(tmp_path)
     idx = json.loads((d / "index.json").read_text())
-    del idx["attribution"], idx["bandEdgesMin"]
+    del idx["attribution"]
     (d / "index.json").write_text(json.dumps(idx))
-    assert check_dist.check_dist(d, [{"slug": "seoul"}]) == []
-    bands = len(idx.get("bandEdgesMin") or []) + 1  # the expression the summary now uses
-    assert bands == 1
+    import sys
+    argv = sys.argv
+    sys.argv = ["check_dist", "--dist", str(d), "--web", str(tmp_path / "empty-web"),
+                "--no-origins"]
+    (tmp_path / "empty-web").mkdir()
+    try:
+        check_dist.main()
+    except SystemExit as exc:                       # pragma: no cover - only on failure
+        raise AssertionError(capsys.readouterr().out) from exc
+    finally:
+        sys.argv = argv
+    out = capsys.readouterr().out
+    assert "attribution []" in out, out
+    assert "bands 3" in out, out                    # two edges in the fixture
+    assert "dist/ is consistent" in out, out
+
+
+def test_an_index_without_band_edges_is_refused(check_dist, tmp_path):
+    """app.js does `expandRamp(meta.bandEdgesMin)` and fatal()s without it,
+    which is a blank page. check_dist called such a dist/ consistent."""
+    d = _good_dist(tmp_path)
+    idx = json.loads((d / "index.json").read_text())
+    del idx["bandEdgesMin"]
+    (d / "index.json").write_text(json.dumps(idx))
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any("bandEdgesMin" in m for m in problems), problems
+    assert any("reindex" in m for m in problems), "the refusal must name the remedy"
+
+
+def test_band_edges_out_of_order_are_refused(check_dist, tmp_path):
+    d = _good_dist(tmp_path)
+    idx = json.loads((d / "index.json").read_text())
+    idx["bandEdgesMin"] = [60, 30]
+    (d / "index.json").write_text(json.dumps(idx))
+    assert any("ascending" in m for m in check_dist.check_dist(d, [{"slug": "seoul"}]))
+
+
+def test_an_empty_offsets_object_is_refused(check_dist, tmp_path):
+    """`"offsets" not in payload` passed an empty dict, and the page then
+    dropped the route panel silently -- it checks the same two numbers."""
+    d = _good_dist(tmp_path)
+    (d / "origins" / "seoul.json").write_text(json.dumps({"offsets": {}, "nodes": []}))
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any("offsets lacks airports/stations" in m for m in problems), problems
+
+
+def test_origins_from_two_builds_are_refused(check_dist, tmp_path):
+    """Every fixed-width array is n_cells long whatever the solve resolution,
+    because the res-4 parent count depends on the land mask -- so all 349
+    shipped arrays are the same size and a stale res-5 array passes every
+    length check. offsets.airports is the only per-origin fingerprint that
+    does move: about 635k at res 5 against 13.7M at res 6.
+    """
+    d = _good_dist(tmp_path, slugs=("seoul", "tokyo"))
+    (d / "origins" / "tokyo.json").write_text(json.dumps(
+        {"offsets": {"airports": 635_000, "stations": 640_000}, "nodes": []}))
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}, {"slug": "tokyo"}])
+    assert any("mixes two builds" in m for m in problems), problems
