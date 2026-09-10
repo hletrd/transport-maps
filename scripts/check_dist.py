@@ -82,7 +82,16 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
         if want != have:
             bad.append(f"index.json lists {len(have)} origins, origins.toml has {len(want)} "
                        f"(missing {sorted(want - have)[:5]}, extra {sorted(have - want)[:5]})")
-    if "modeChannels" in idx and len(idx["modeChannels"]) != n_channels:
+    # REQUIRED, not "checked if present". Both fields are the page's only
+    # defence against a mixed build, and `if key in idx` meant an index.json
+    # written by an emitter older than the artifacts beside it -- which is what
+    # a long build publishes, since the parent writes index.json at the end
+    # using the module it imported at the start -- passed this gate with the
+    # guards silently off. `transport-maps reindex` rewrites the file alone.
+    if "modeChannels" not in idx:
+        bad.append("index.json has no modeChannels: the page cannot check the .modes.bin channel "
+                   "order. Run `uv run transport-maps reindex`.")
+    elif len(idx["modeChannels"]) != n_channels:
         bad.append(f"index.json modeChannels has {len(idx['modeChannels'])} entries, emitter has {n_channels}")
 
     cells_path = dist / "hover_cells.bin"
@@ -91,7 +100,10 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
     if cells_path.stat().st_size % 8:
         bad.append("hover_cells.bin is not a whole number of uint64 ids")
     n_cells = cells_path.stat().st_size // 8
-    if "hoverCellCount" in idx and idx["hoverCellCount"] != n_cells:
+    if "hoverCellCount" not in idx:
+        bad.append("index.json has no hoverCellCount: the page cannot refuse an origin array from "
+                   "a different build. Run `uv run transport-maps reindex`.")
+    elif idx["hoverCellCount"] != n_cells:
         bad.append(f"index.json hoverCellCount {idx['hoverCellCount']} != hover_cells.bin {n_cells}")
 
     widths = {".bin": 2, ".air.bin": 2, ".modes.bin": 2 * n_channels}
@@ -169,18 +181,28 @@ def main() -> None:
             origins = load_origins()
         problems += check_dist(args.dist, origins)
         if not problems:
+            # .get throughout: this summary used to KeyError on an index.json
+            # it had just declared consistent, because check_dist never
+            # required `attribution` or `bandEdgesMin`.
             idx = json.loads((args.dist / "index.json").read_text())
             n = (args.dist / "hover_cells.bin").stat().st_size // 8
-            print(f"  hover cells {n:,} | origins {len(idx['origins'])} | bands {len(idx['bandEdgesMin']) + 1} "
+            bands = len(idx.get("bandEdgesMin") or []) + 1
+            print(f"  hover cells {n:,} | origins {len(idx.get('origins') or [])} | bands {bands} "
                   f"| solveRes {idx.get('solveRes')} | build {idx.get('buildId', 'unstamped')}")
-            print(f"  attribution {[a['name'] for a in idx['attribution']]}")
+            print(f"  attribution {[a.get('name') for a in idx.get('attribution') or []]}")
     if problems:
         print("  PROBLEMS:", *problems[:15], sep="\n    ")
         if len(problems) > 15:
             print(f"    ... and {len(problems) - 15} more")
         sys.exit(1)
-    print("  dist/ is consistent: every origin has pmtiles + bin + air.bin + modes.bin + json, "
-          "rail files paired, no strays; page copy states no count")
+    if args.copy_only:
+        # --page-only ships web/ and never looks at dist/. Claiming dist/ is
+        # consistent here put an assertion about work that never ran into the
+        # deploy transcript.
+        print("  page copy checked (no dist/ gate: --copy-only)")
+    else:
+        print("  dist/ is consistent: every origin has pmtiles + bin + air.bin + modes.bin + json, "
+              "rail files paired, no strays; page copy states no count")
 
 
 if __name__ == "__main__":

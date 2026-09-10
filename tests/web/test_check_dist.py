@@ -149,3 +149,30 @@ def test_the_page_copy_may_not_state_a_count(check_dist, tmp_path):
     (web / "index.html").write_text("<p>from more than a hundred cities</p>")
     (web / "llms.txt").write_text("the cities listed in index.json")
     assert check_dist.check_copy(web) == []
+
+
+@pytest.mark.parametrize("missing", ["hoverCellCount", "modeChannels"])
+def test_an_index_written_by_an_older_emitter_is_refused(check_dist, tmp_path, missing):
+    """A long build writes index.json at the end from the module it imported at
+    the start, so the artifacts can be newer than the index beside them. Both
+    fields are the page's only defence against a mixed build; `if key in idx`
+    let exactly that index through with the guards silently off."""
+    d = _good_dist(tmp_path)
+    idx = json.loads((d / "index.json").read_text())
+    del idx[missing]
+    (d / "index.json").write_text(json.dumps(idx))
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any(missing in m for m in problems), problems
+    assert any("reindex" in m for m in problems), "the refusal must name the remedy"
+
+
+def test_the_summary_survives_an_index_without_attribution_or_band_edges(check_dist, tmp_path):
+    """check_dist declared the build consistent and then died with a KeyError
+    printing its own summary, because it never required either field."""
+    d = _good_dist(tmp_path)
+    idx = json.loads((d / "index.json").read_text())
+    del idx["attribution"], idx["bandEdgesMin"]
+    (d / "index.json").write_text(json.dumps(idx))
+    assert check_dist.check_dist(d, [{"slug": "seoul"}]) == []
+    bands = len(idx.get("bandEdgesMin") or []) + 1  # the expression the summary now uses
+    assert bands == 1
