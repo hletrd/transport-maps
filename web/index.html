@@ -205,6 +205,7 @@ body.crowded .depart-card{display:none}
 .reading .v .idle{font-size:15px;font-weight:400;color:var(--text-2);
   display:block;padding-top:6px;line-height:1.4}
 .reading .at{margin:4px 0 0;font-size:12px;color:var(--text-2);min-height:2.6em}
+.listcap{margin:8px 0 4px;font-size:11.5px;line-height:1.45;color:var(--text-3)}
 /* Its own line, so the pointer readout cannot erase it. Warm rather than red:
    the times below are still correct, only the shading is missing. */
 .reading .trouble{margin:6px 0 0;padding:6px 8px;font-size:12px;line-height:1.4;
@@ -659,6 +660,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
         <button class="btn" id="find-address" type="button">Search address</button>
         <span class="qhint">Enter picks the first match: a city departs; an airport or address is the destination.</span>
       </div>
+      <!-- The rows carry a time and the rows are clickable, and those are two
+           different cities: the number is how long it takes to REACH that
+           city, and clicking it DEPARTS from it. Cycle 4 shipped the times
+           with that said only in a title attribute, invisible on touch, on a
+           list headed "Departure". CLAUDE.md: say so wherever a figure is
+           presented. -->
+      <p class="listcap" id="listcap">Each time is how long it takes to reach that city, door to door. Choosing one departs from it instead.</p>
       <ul class="results" id="results" role="listbox" aria-label="Departure cities, airports and addresses"></ul>
     </div>
   </details>

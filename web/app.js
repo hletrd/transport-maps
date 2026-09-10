@@ -1736,6 +1736,15 @@ function render(filter = "") {
       if (typeof t === "number" && t < MAX_MINUTES) {
         val.title = `${fmtDur(t)} from ${active.name}, door to door`;
       }
+      // A screen reader read the row as "London 15 h 15 min" -- the time TO
+      // London -- on a row that DEPARTS from London when activated. The
+      // accessible name has to carry both halves; the title cannot, because
+      // touch has no hover.
+      b.setAttribute("aria-label", val.textContent
+        ? `${c.name}. ${val.textContent === "no route" ? "No route" : val.textContent}`
+          + `${val.textContent === "no route" ? "" : " to get there"}`
+          + ` from ${active?.name ?? "here"}, door to door. Choose to depart from ${c.name}.`
+        : `${c.name}. Choose to depart from ${c.name}.`);
     }
     b.append(name, val);
     list.append(row(b));
@@ -1748,6 +1757,12 @@ function render(filter = "") {
     li.className = "empty"; li.setAttribute("role", "none");
     li.textContent = `No departure city or airport matches “${filter.trim()}”. Press Enter or “Search address” to look it up.`;
     list.append(li);
+  }
+  const cap = $("listcap");
+  if (cap) {
+    cap.textContent = active
+      ? `Each time is how long it takes to reach that city from ${active.name}, door to door. Choosing one departs from it instead.`
+      : "Each time is how long it takes to reach that city, door to door. Choosing one departs from it instead.";
   }
   const box = $("results");
   // settle() rebuilds this list once per origin, about a second after a city
