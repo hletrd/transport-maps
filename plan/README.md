@@ -1,8 +1,10 @@
 # Plans
 
 Implementation plans derived from the multi-agent reviews in `.context/reviews/`
-(cycle 2: per-agent files plus `_aggregate.md` with merged IDs K1…S6; cycle 1:
-`cycle-1/_aggregate.md` with A1…J9). Finding IDs are stable across cycles: a
+(cycle 3: per-agent files plus `_aggregate.md` with merged clusters X1…X21 and
+per-agent IDs CR3-n, PR3-n, SEC3-n, CRIT3-n, VER3-n, TE3-n, TR3-n, ARCH3-n,
+DBG3-n, DOC3-n, UX3-n, FCR3-n; cycle 2: `cycle-2/` with merged IDs K1…S6;
+cycle 1: `cycle-1/_aggregate.md` with A1…J9). Finding IDs are stable across cycles: a
 cycle-1 ID (C5, D13, F3, G1 …) keeps its name when it is carried into a cycle-2
 plan.
 
@@ -18,6 +20,7 @@ dropped.
 | `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); cycle 3 open |
 | `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; cycle 3 open |
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; cycle 3 open |
+| `2026-09-10-c3-page-detail-and-defects.md` | Cycle 3: page detail, ease of use, UI, and the defects the cycle-3 review confirmed (T1…T31) | cycle 3 open |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
 
