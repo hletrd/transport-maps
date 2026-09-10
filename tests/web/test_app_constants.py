@@ -141,3 +141,55 @@ def test_the_card_counts_only_the_cells_it_kept():
     assert "denom++" in body and "/ (denom || 1)" in body, (
         "percentages must divide by the cells actually counted, not by t.length")
     assert "/ t.length" not in body, "t.length includes the cells the mask drops"
+
+
+# --- U20: the failure CLAUDE.md names as this project's recurring one -------
+
+BOOT = (config.ROOT / "web" / "boot.js").read_text(encoding="utf-8")
+INDEX = (config.ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+
+def test_the_boot_guard_is_installed_before_the_module_it_guards():
+    """A guard loaded after app.js cannot catch app.js failing to load.
+
+    Both twice-shipped blank-site incidents CLAUDE.md records were silent: by
+    the time anyone looked, the console was empty. boot.js is a classic script,
+    so it runs to completion before the module is even fetched.
+    """
+    boot = INDEX.index('src="./boot.js"')
+    app = INDEX.index('src="./app.js"')
+    assert boot < app, "boot.js must be earlier in the document than app.js"
+    assert 'type="module"' not in INDEX[boot - 40:boot], (
+        "boot.js must be a classic script; a module is deferred past app.js's fetch")
+
+
+def test_the_boot_guard_covers_the_three_silent_failures():
+    for hook in ("addEventListener(\"error\"", "addEventListener(\"unhandledrejection\""):
+        assert hook in BOOT, f"boot.js does not listen for {hook}"
+    assert "e.target" in BOOT, "a 404 on a <script> arrives with a target, not an error"
+    # ...and the case with no error at all.
+    assert "setTimeout" in BOOT and "data-slug" in BOOT, (
+        "nothing covers 'everything resolved and nothing drew'")
+
+
+def test_the_boot_guard_defers_to_fatal():
+    """fatal() writes a specific message; a generic one must not paint over it."""
+    assert 'classList.contains("fatal")' in BOOT
+
+
+def test_webgl_is_checked_before_the_map_constructor_can_throw():
+    """The Map constructor throws synchronously on a missing WebGL context, and
+    everything that fills the page runs after it -- so fatal() was unreachable
+    and the canvas HAD already been created, passing the deploy rule's own
+    "confirm the canvas exists" check on a page that cannot paint."""
+    guard = APP.index('getContext("webgl2")')
+    ctor = APP.index("new maplibregl.Map(")
+    assert guard < ctor, "the WebGL check must precede the Map constructor"
+    assert "WebGL" in APP[guard:ctor], "the check must say what is missing"
+
+
+def test_the_map_reports_its_own_errors():
+    """MapLibre's default for an unlistened `error` is console.error only, so a
+    missing tile archive gave a sea-coloured globe with no message."""
+    assert 'map.on("error"' in APP
+    assert "did not finish loading" in APP, "await map.on('load') has no timeout"

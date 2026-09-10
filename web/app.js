@@ -387,6 +387,26 @@ if (meta.builtAt) {
 }
 
 // ---- globe ----
+// The Map constructor throws SYNCHRONOUSLY when WebGL is unavailable
+// ("Failed to initialize WebGL", quoted from the vendored bundle), and
+// everything that fills this page runs after it: the city list, the ramp
+// picker, layoutForSize, paintOrigin. So fatal() was never reached and the
+// shell stayed up with an empty list -- and a <canvas> HAS already been
+// created by then, so CLAUDE.md's "confirm the canvas exists" passes on a
+// page that cannot draw anything. The page already owns the right sentence,
+// but it lives in <noscript>, which by definition cannot render when
+// JavaScript ran and WebGL did not.
+if (!(() => {
+  try {
+    const c = document.createElement("canvas");
+    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+  } catch { return false; }
+})()) {
+  fatal("This browser cannot draw the globe: it needs WebGL, which is "
+      + "unavailable or switched off. Hardware acceleration in the browser's "
+      + "settings is the usual cause.");
+}
+
 const map = new maplibregl.Map({
   container: "map",
   style: {
@@ -402,7 +422,35 @@ const map = new maplibregl.Map({
   attributionControl: false, dragRotate: true
 });
 
-await new Promise((r) => map.on("load", r));
+// The only listener MapLibre has for `error` is a console.error, so a missing
+// origins/{slug}.pmtiles, or a server that stops honouring byte ranges, gave a
+// sea-coloured globe with a full legend, a working readout and no message.
+// index.json and hover_cells.bin go through fatal(); all five per-origin
+// fetches have a .catch; the tile archive had nothing.
+map.on("error", (e) => {
+  const msg = e?.error?.message || String(e?.error || "unknown map error");
+  console.error("map error:", msg);
+  // A tile or source failure is not fatal to the page -- the readout still
+  // works from the arrays -- but it must not be silent.
+  if (/pmtiles|tile|source/i.test(msg)) noteTileTrouble(msg);
+});
+let tileTroubleShown = false;
+function noteTileTrouble(msg) {
+  if (tileTroubleShown) return;
+  tileTroubleShown = true;
+  const el = document.getElementById("where");
+  if (el) el.textContent = "The shaded bands could not be loaded, so the globe "
+    + "is blank. The travel times below are still correct. (" + msg.slice(0, 120) + ")";
+}
+
+// ...and a load that never fires at all. `await map.on("load")` had no timeout,
+// so a WebGL context lost during setup left this promise pending for ever with
+// nothing on screen and nothing in the console.
+await Promise.race([
+  new Promise((r) => map.on("load", r)),
+  new Promise((_, reject) => setTimeout(
+    () => reject(new Error("the globe did not finish loading within 20 seconds")), 20000)),
+]).catch((e) => fatal(`${e.message}. Reloading the page usually clears it.`));
 // For scripts/browser_verify.sh only: lets the post-deploy check ask the map
 // whether the water layer actually rendered rather than trusting a 200.
 window.__map = map;
