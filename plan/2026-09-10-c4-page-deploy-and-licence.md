@@ -139,7 +139,7 @@ whose output only changes at the next build; both say so.
       pair — and run the viewport checks **after** the route click it already
       performs. Mutation: revert the CSS → the desktop assertion goes red.
 
-- [x] **U7 / Y7 + Y11 (CRIT4-4, designer, VER4-1)** The departure block renders at
+- [x] **U7 / Y7 + Y11 (CRIT4-4, UX4-2, UX4-4, VER4-1)** The departure block renders at
       one of five viewports measured: `display:none` at 820×1180, 390×844, 844×390,
       320×800 and 1280×400, and absent in a default browser window
       (`innerHeight` 577). On a phone the departure city is then named exactly once
@@ -153,7 +153,7 @@ whose output only changes at the next build; both say so.
       Fix: the 600–900 px breakpoint T27 owes, and a compact form of the reach
       figures that survives the phone. Check at all four CLAUDE.md viewports.
 
-- [x] **U8 / Y8 (designer #1)** A searched destination never writes the readout, so
+- [x] **U8 / Y8 (UX4-1)** A searched destination never writes the readout, so
       the page states two different answers at once and the bigger one is wrong.
       Reproduced: click Keene NH from Seoul, then type "JFK" and press Enter —
       `#time` (50 px) still reads `19 h 51 min`, `#where` still says "Keene… from
@@ -192,7 +192,7 @@ whose output only changes at the next build; both say so.
       already uses. About fifteen lines. While here, fix the designer's related
       note: an unknown `?from=` slug is silently swallowed *and* the URL rewritten.
 
-- [x] **U12 / Y26 (FCR4-3) + Y28 (designer #3)** Two things the visitor is looking
+- [x] **U12 / Y26 (FCR4-3) + Y28 (UX4-3)** Two things the visitor is looking
       directly at. (a) "Name the place under the cursor" does not govern the
       tooltip that follows the cursor: the setting is respected in `describe()` and
       `announceReading()` and ignored in `mousemove` (`app.js:1110-1116`), so
@@ -214,7 +214,7 @@ whose output only changes at the next build; both say so.
       handler (`app.js:1459`) does not, so re-picking the city you are already on
       refetches everything and wipes the reading.
 
-- [x] **U14 / Y10 (FCR4-2, designer)** `layoutForSize`'s large branch
+- [x] **U14 / Y10 (FCR4-2, UX4-6)** `layoutForSize`'s large branch
       (`app.js:1619-1623`) never removes or hides `#sheet-toggle`, and
       `.sheet-toggle` has no `display` rule outside `@media (max-width:860px)`. On
       desktop the leftover renders as UA chrome (measured 264×6 px,
@@ -226,7 +226,7 @@ whose output only changes at the next build; both say so.
       it. Fix: one top-level `display:none`, and extend the browser check with a
       desktop → small → desktop sequence. Mutation: delete the declaration → red.
 
-- [x] **U15 / Y24 (designer)** T7's accessible-name fix is a no-op for every
+- [x] **U15 / Y24 (UX4-5)** T7's accessible-name fix is a no-op for every
       non-origin globe label: 29 of 29 plain labels at zoom 5.2 are still
       `role="button" aria-label="Map marker"`. Root cause in the vendored library:
       `addTo()` re-applies both attributes behind `hasAttribute` guards, and
@@ -234,7 +234,7 @@ whose output only changes at the next build; both say so.
       labels survive only because their branch sets the attributes. WCAG 4.1.2.
       Fix: name the marker after `addTo`. Check: re-count the labels.
 
-- [x] **U16 / Y14 (CR4-4, designer, TR4-5, FCR4-6, VER4-6)** The announcement layer
+- [x] **U16 / Y14 (CR4-4, UX4-7, TR4-5, FCR4-6, VER4-6)** The announcement layer
       contradicts itself in five places, all from T4's incomplete landing.
       `#pins` still carries `aria-live="polite"`, so an origin switch announces the
       route block up to six times and every click announces twice. A failed origin
@@ -353,6 +353,9 @@ whose output only changes at the next build; both say so.
       `check_dist` and the page discard it. Two free checks: cross-origin equality
       (all 349 agree today, byte-identical) and the bound `49·H ≤ n_cells ≤ 343·H`.
       Mutation: perturb one origin's `offsets.airports` in a fixture → red.
+      **TE4-3** rides along, being the same file: the summary test asserted
+      `bands == 1` from an expression it computed the same way the code does,
+      and never called `main()`, so reverting the fix kept it green.
 
 - [x] **U23 / Y15 (PR4-1)** `emit/borders.py:20,38-40` ships 15 significant digits
       for geometry already simplified to a kilometre. The first shipped vertex is
@@ -475,7 +478,8 @@ whose output only changes at the next build; both say so.
       contradicting `plan/README.md:19-21`, and the designer's `A1…A8` collide with
       the build plan's `A1…A17` — rename); `deferred.md:113` (CRIT3-7 recorded as
       carried into T14, which shipped the departure card and never added the
-      *Known limits* list); DOC4-8 (`schema.org/TravelApplication` 404s);
+      *Known limits* list); DOC4-8 (`schema.org/TravelApplication` 404s); DOC4-9 (the connection cap
+      reads 55 min to 1 h 40, not "about an hour to an hour and a half");
       ARCH4-5 and TR4-7 (J3's exit criterion has fired — `app.js` is 1,689 lines
       against its 1,500 threshold — recorded, not acted on); ARCH4-6 (O6/E6's
       deferral reason conflates writing the `assets` subcommand with running it).
