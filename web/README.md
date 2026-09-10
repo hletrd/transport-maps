@@ -54,6 +54,16 @@ in the same commit.
 | fflate.js | `d22d603594fe32208e563d2f2fbe9e53f8addc1c845320786c7de62464c288a8` |
 | maplibre-gl.css | `ab1e70d59ec40465bae7e7030da2f3ccf28133fd502e62bd598eefbadfd7a732` |
 | fonts.css | `2c6b4a194338790b27cdfa65a3f06ac64c774bd12ed6c2658904105989e0d35b` |
+| ibm-plex-sans-latin-400-normal.woff2 | `3b646991d30055a93a4ecc499713d4347953a74a947ecab435ab72070cbdab0e` |
+| ibm-plex-sans-latin-500-normal.woff2 | `0717336fb31fcdcde4b8deb3675bb4a0f7f6d484864afcd6751ac29975962203` |
+| ibm-plex-sans-latin-600-normal.woff2 | `8960851d691c054ed38e259bdcf1a6190d157b4203ed5bb32c632a863fb8ec2f` |
+| OFL.txt | `7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da` |
+
+Every file in `vendor/` appears above; `tests/web/test_vendor.py` enumerates the
+directory rather than a hard-coded list, so a newly vendored file fails the gate
+until its hash is recorded here. The three font faces are served
+`immutable, max-age=31536000` and are named by family, subset and weight, not by
+content, so a swapped face would be cached for a year with no other signal.
 
 ## Deploy
 

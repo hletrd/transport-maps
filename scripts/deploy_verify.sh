@@ -19,6 +19,18 @@ MODE=full
 LOG="$(mktemp -t deploy_verify.XXXXXX)"
 RSYNC_COMMON=(-a --chmod=D755,F644 --exclude-from=deploy/rsync-excludes.txt)
 
+# Gate over the page assets that actually ship. check_dist inspects the binary
+# artifacts and the licence firewall used to run before web/ was merged into
+# dist/, so index.html, app.js, llms.txt and vendor/ were covered by neither --
+# and --page-only, which ships nothing but those files, ran no gate at all.
+# The vendored-bundle pins (the CVE-2026-85061 patch) and the CSP inline-script
+# hash added in cycle 2 were tests that never ran on the deploy path.
+page_gate() {
+  echo "=== page-asset gate: licence firewall, vendor pins, CSP hash ==="
+  uv run pytest -q -p no:cacheprovider \
+    tests/test_licence_firewall.py tests/web/test_vendor.py tests/web/test_csp.py
+}
+
 if [ "$MODE" = full ]; then
   echo "=== 1. artifact consistency ==="
   # A build rewrites dist/origins in place; its lock (or, for a build started
@@ -39,13 +51,16 @@ if [ "$MODE" = full ]; then
     exit 1
   fi
   uv run python scripts/check_dist.py --dist dist --web web
-  echo "=== 1b. licence firewall on the artifact ==="
-  uv run pytest -q -p no:cacheprovider tests/test_licence_firewall.py
   echo "=== 2. assemble and deploy ==="
   # The page-owned subtrees are mirrored WITH --delete so a removed vendor
   # file does not linger in dist/ (14 dead woff2 did, cached for a year).
   rsync -a --delete web/vendor/ dist/vendor/
   rsync "${RSYNC_COMMON[@]}" --exclude 'vendor/' web/ dist/
+  # The page-asset gate runs AFTER the merge and BEFORE the push, so it scans
+  # the index.html, app.js, llms.txt and vendor/ that are about to ship. Run
+  # before the merge (as the licence firewall was) it scanned the PREVIOUS
+  # deploy's copies and said nothing about the new ones.
+  page_gate
   # --delete-delay and --delay-updates: every file is uploaded to a temp name
   # first and the renames happen at the end, so the window in which a visitor
   # sees a new index.json beside old origin arrays is seconds, not minutes.
@@ -57,6 +72,7 @@ if [ "$MODE" = full ]; then
 else
   echo "=== page-only deploy: web/ without the dist gate and without --delete ==="
   uv run python scripts/check_dist.py --web web --copy-only
+  page_gate
   if ! rsync "${RSYNC_COMMON[@]}" web/ "$DEPLOY_HOST:$DEPLOY_ROOT/" >"$LOG" 2>&1; then
     echo "  rsync failed; log: $LOG"; tail -20 "$LOG"; exit 1
   fi

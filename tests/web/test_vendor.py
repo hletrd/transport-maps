@@ -26,9 +26,17 @@ def _readme_hashes() -> dict[str, str]:
 
 
 def test_every_vendored_file_matches_the_hash_the_readme_records():
+    """Enumerate vendor/, not a hard-coded list.
+
+    A hard-coded set pinned six of the ten files: the three IBM Plex faces --
+    served `immutable, max-age=31536000`, so a swap is cached for a year -- and
+    OFL.txt were unpinned, and a newly vendored file would have been unpinned
+    too, silently. Deriving the set from the directory makes that impossible.
+    """
     recorded = _readme_hashes()
-    expected = {"maplibre-gl.js", "pmtiles.js", "h3.js", "fflate.js", "maplibre-gl.css", "fonts.css"}
-    assert expected <= set(recorded), f"README records hashes for {sorted(recorded)}"
+    expected = {p.name for p in (WEB / "vendor").iterdir() if p.is_file()}
+    assert expected <= set(recorded), (
+        f"vendored but not pinned in web/README.md: {sorted(expected - set(recorded))}")
     for name in expected:
         actual = hashlib.sha256((WEB / "vendor" / name).read_bytes()).hexdigest()
         assert actual == recorded[name], f"{name}: on disk {actual[:12]}…, README {recorded[name][:12]}…"
