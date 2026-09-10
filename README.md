@@ -31,10 +31,24 @@ uv sync
 uv run ruff check .
 uv run pytest                              # the gate; -m "not integration" for a fast loop
 uv run transport-maps build-all            # every origin -> dist/ (one build per dist/ at a time)
-uv run transport-maps build-all --only seoul,tokyo   # a smoke test through every gate; never publishes
+uv run transport-maps build-all --only seoul,tokyo   # a smoke test through every gate; index.json untouched
+uv run transport-maps reindex              # rewrite dist/index.json from the artifacts on disk
 uv run python scripts/check_dist.py        # is dist/ consistent enough to deploy?
 uv run python scripts/build_water_tiles.py # the coast, once -> dist/water.pmtiles
 ```
+
+`--only` and `--limit` make a PARTIAL build: `index.json` is left untouched, but
+`dist/hover_cells.bin` and the named origins under `dist/origins/` **are**
+rewritten, so a smoke test against a published `dist/` mixes generations. Point
+it at a scratch `dist/` unless you mean to replace those origins.
+
+`reindex` writes `index.json` and nothing else. It is for the case where a build
+outlives a change to the index emitter: the parent process writes `index.json`
+at the end of the run using the module it imported at the start, so a sixteen-hour
+build can publish an index that predates its own artifacts. It takes the build
+lock, lists only origins whose whole file set is present and the right length,
+and carries the previous index's build identity forward rather than stamping the
+current checkout.
 
 The bands are painted one cell past the shore and the static `water.pmtiles`
 layer, built once from OpenStreetMap water polygons, cuts them back to the real

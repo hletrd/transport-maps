@@ -9,6 +9,7 @@ import os
 os.environ.setdefault("POLARS_MAX_THREADS", "1")
 
 import argparse
+import json
 import logging
 import multiprocessing
 import subprocess
@@ -346,6 +347,106 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
                       identity=index.build_identity(started))
 
 
+def _reindex(dist: Path | None = None) -> None:
+    """Rewrite dist/index.json alone, from the artifacts already on disk.
+
+    index.json is written by the parent process at the END of a build, from the
+    emit.index module that parent imported at the START. A sixteen-hour build
+    therefore publishes the index emitter as it stood sixteen hours earlier.
+    The 553-origin build started 2026-09-10 04:23 misses buildId, builtAt,
+    hoverCellCount, modeChannels, railDetail and graph -- every one of them
+    added to the emitter between 05:51 and 06:00.
+
+    Those absences are not cosmetic. The page's mixed-build guard
+    (`meta.hoverCellCount`) and its channel-order guard (`meta.modeChannels`)
+    both fall back to trusting the arrays, and `railDetail` absent means the
+    ~204 MB of .rail.bin/.rail.json such a build ships is never fetched: the
+    rail itinerary silently disappears from the site.
+
+    Re-running the build to correct one 40 KB file is not a remedy, so this
+    rewrites that file and nothing else. It takes the same lock a build takes
+    and refuses when another build-all is running, it lists only origins whose
+    whole file set is present and the right length, and it carries the previous
+    index's identity forward rather than stamping today's checkout as if it had
+    produced the artifacts.
+    """
+    dist = dist or config.DIST
+    log = logging.getLogger(__name__)
+    lock = _acquire_lock(dist)
+    try:
+        others = _other_builds()
+        if others:
+            raise SystemExit(
+                f"build-all is running (pids {', '.join(map(str, others))}) without holding "
+                f"{dist / LOCK_NAME}; it will overwrite index.json when it finishes. Wait for it.")
+
+        cells = dist / "hover_cells.bin"
+        if not cells.exists():
+            raise SystemExit(f"{cells} missing: there is no build here to index")
+        size = cells.stat().st_size
+        if size == 0 or size % 8:
+            raise SystemExit(f"{cells} is {size} bytes, not a whole number of uint64 cell ids")
+        n_cells = size // 8
+
+        previous = {}
+        index_path = dist / "index.json"
+        if index_path.exists():
+            try:
+                previous = json.loads(index_path.read_text(encoding="utf-8"))
+            except ValueError as exc:
+                log.warning("existing index.json is unreadable (%s); writing a fresh one", exc)
+
+        # An origin is publishable only if every file the page fetches is there
+        # and the fixed-width ones have one entry per hover cell. Listing an
+        # origin whose array is short is the blank-globe failure this command
+        # exists to prevent, so a short array excludes it rather than warning.
+        widths = {".bin": 2, ".air.bin": 2, ".modes.bin": 2 * len(modes.CHANNELS)}
+        present, skipped, rail_seen = [], [], False
+        for origin in index.load_origins():
+            slug = origin["slug"]
+            base = dist / "origins"
+            why = [f"{slug}{suf} missing" for suf in (*widths, ".json", ".pmtiles")
+                   if not (base / f"{slug}{suf}").exists()]
+            why += [f"{slug}{suf} has {(base / f'{slug}{suf}').stat().st_size // w} entries, "
+                    f"expected {n_cells}"
+                    for suf, w in widths.items()
+                    if (base / f"{slug}{suf}").exists()
+                    and (base / f"{slug}{suf}").stat().st_size != n_cells * w]
+            if why:
+                skipped.append((slug, why[0]))
+                continue
+            present.append(origin)
+            rail_seen = rail_seen or (base / f"{slug}.rail.bin").exists()
+
+        if not present:
+            raise SystemExit(f"no origin under {dist / 'origins'} has a complete file set")
+        for slug, why in skipped[:10]:
+            log.warning("reindex skips %s: %s", slug, why)
+        if len(skipped) > 10:
+            log.warning("reindex skips %d more origins", len(skipped) - 10)
+
+        # The identity of a build cannot be recovered from its artifacts, so it
+        # is carried forward, never invented: stamping today's git head would
+        # assert that this checkout produced files it did not. `builtAt` is the
+        # exception -- hover_cells.bin is written before the first origin, so
+        # its mtime IS when the build started.
+        identity = {k: previous[k] for k in ("inputsHash", "buildId", "builtAt") if k in previous}
+        identity.setdefault(
+            "builtAt",
+            datetime.fromtimestamp(cells.stat().st_mtime, UTC).replace(microsecond=0).isoformat())
+        identity["reindexedAt"] = datetime.now(UTC).replace(microsecond=0).isoformat()
+
+        graph = dict(previous.get("graph") or {})
+        graph["rail"] = rail_seen
+        index.write_index(present, index_path, hover_cell_count=n_cells,
+                          graph=graph, identity=identity)
+        print(f"index.json rewritten: {len(present)} origins, {n_cells:,} hover cells, "
+              f"rail detail {'present' if rail_seen else 'absent'}, "
+              f"built {identity['builtAt']}, {len(skipped)} origin(s) skipped")
+    finally:
+        lock.unlink(missing_ok=True)
+
+
 def _consume(pool, results):
     """Yield imap results, aborting when a worker has died without reporting.
 
@@ -397,11 +498,23 @@ def main() -> None:
         help="comma-separated origin slugs to build (partial build; index.json untouched)",
     )
 
+    # Not a second way to publish: reindex writes index.json and nothing else,
+    # from artifacts a build already produced. It exists because index.json is
+    # emitted by the parent at the end of a long build, using the emitter that
+    # parent imported at the start -- so a build that outlives an emitter change
+    # publishes a stale index for artifacts that are not stale.
+    sub.add_parser(
+        "reindex",
+        help="rewrite dist/index.json from the artifacts on disk (no solving, no rebuild)",
+    )
+
     args = parser.parse_args()
     config.ensure_dirs()
 
     if args.command == "build-all":
         _build_all(limit=args.limit, only=args.only)
+    elif args.command == "reindex":
+        _reindex()
 
 
 # Without this, `python -m transport_maps.cli build-all` imports the module,
