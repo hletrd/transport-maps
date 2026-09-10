@@ -20,7 +20,7 @@ dropped.
 | `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); cycle 3 open |
 | `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; cycle 3 open |
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; cycle 3 open |
-| `2026-09-10-c3-page-detail-and-defects.md` | Cycle 3: page detail, ease of use, UI, and the defects the cycle-3 review confirmed (T1…T31) | cycle 3 open |
+| `2026-09-10-c3-page-detail-and-defects.md` | Cycle 3: page detail, ease of use, UI, and the defects the cycle-3 review confirmed (T1…T31) | cycle 3: 28 of 31 done; T26, T28 carried; T19's run against `dist/` waits for the rebuild |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
 

@@ -36,7 +36,7 @@ has exited.
 
 ## A. The page — repairs a visitor can see
 
-- [ ] **T1 / X7 (UX3-1)** `web/index.html:186` — `.leg .t{width:58px}` is narrower
+- [x] **T1 / X7 (UX3-1)** `web/index.html:186` — `.leg .t{width:58px}` is narrower
       than the text it holds. Measured natural widths in the page's own 12.5 px
       Plex: 59.6 px ("2 h 14 min"), 67.1 px ("14 h 39 min"), 74.6 px
       ("120 h 59 min"); the Seoul→Türkmenabat itinerary measured row heights
@@ -45,14 +45,14 @@ has exited.
       Fix: `width:76px; white-space:nowrap`. Check: re-measure the same journey;
       every row single-height and the total on screen at 1280×800.
 
-- [ ] **T2 / X8 (CR3-3, CRIT3-5, TR3-10)** `web/app.js` `fmtTick` has no sub-hour
+- [x] **T2 / X8 (CR3-3, CRIT3-5, TR3-10)** `web/app.js` `fmtTick` has no sub-hour
       branch, so the readout prints "0 h 45 – 0 h 55" beside a `#time` reading
       "45 min" — for all six bands under an hour, which is every cell around the
       departure city. Fix: one notation, `fmtTick` delegating to the same
       minutes-under-an-hour rule as `fmtTime` (N3/N4's stated intent). Mutation:
       restore the hour-only branch → the new assertion goes red.
 
-- [ ] **T3 / X9 (CR3-4, CRIT3-5, TR3-11)** `paintScale()` runs once at load and
+- [x] **T3 / X9 (CR3-4, CRIT3-5, TR3-11)** `paintScale()` runs once at load and
       never again, so its measured ≥8 px tick-gap rule is stale at every viewport
       but the first and runs in the fallback face under `font-display:swap`; it
       iterates a **live `HTMLCollection` while removing from it** (so it skips the
@@ -63,7 +63,7 @@ has exited.
       the four CLAUDE.md viewports. Mutation: revert to the live collection →
       the overlap assertion goes red.
 
-- [ ] **T4 / X10 (PR3-3, CRIT3-4, UX3-5)** `web/index.html:389` — `#where` carries
+- [x] **T4 / X10 (PR3-3, CRIT3-4, UX3-5)** `web/index.html:389` — `#where` carries
       `aria-live="polite"` and is rewritten by `showReading` every animation frame
       (a `MutationObserver` recorded 10 mutations for 10 discrete pointer steps),
       while `#time` — the answer — is in no live region at all, so the only thing
@@ -73,7 +73,7 @@ has exited.
       and the door-to-door qualifier. Check: the observer records one mutation per
       committed reading and none during a drag.
 
-- [ ] **T5 / X11 (FCR3-1, VER3-2, CRIT3-6)** `web/index.html:366` —
+- [x] **T5 / X11 (FCR3-1, VER3-2, CRIT3-6)** `web/index.html:366` —
       `.rail.folded .legend > :not(.tints):not(.scale){display:none}` also matches
       `#keys`, hiding the "no scheduled route" and "open water" swatches on a
       folded phone sheet. M16(c) was ticked claiming the keys stay visible, and
@@ -85,7 +85,7 @@ has exited.
       folded check in `browser_verify.sh` to assert both have a non-zero box.
       Mutation: re-hide `#keys` → the new browser check goes red.
 
-- [ ] **T6 / X13 (UX3-6, UX3-7)** Non-text contrast, WCAG 2.2 AA (3:1). The "open
+- [x] **T6 / X13 (UX3-6, UX3-7)** Non-text contrast, WCAG 2.2 AA (3:1). The "open
       water" legend swatch measures 1.09–1.22:1 against the reading's real scrim
       composite and its border 1.01:1; "no scheduled route" is 2.16:1; the hover
       cell ring is `#ffffff` at 1.15:1 on band 0, invisible exactly around the
@@ -94,20 +94,20 @@ has exited.
       ring a dark halo beneath the white line (17.0:1 on band 0). Check:
       recompute both ratios from the shipped hex values.
 
-- [ ] **T7 / X14 (UX3-4)** WCAG 2.2 SC 2.5.3 Label in Name. All ten globe labels
+- [x] **T7 / X14 (UX3-4)** WCAG 2.2 SC 2.5.3 Label in Name. All ten globe labels
       carry MapLibre's default `role="button" aria-label="Map marker"`, so the
       visible name is never the accessible name and the departure city reads
       "Map marker, button, current"; non-origin labels are exposed as buttons that
       do nothing. Fix: set the accessible name from the label text on origin
       markers and remove the button role from the rest.
 
-- [ ] **T8 / X15 (CRIT3-3)** The destination pin is never drawn: `pinB` has no
+- [x] **T8 / X15 (CRIT3-3)** The destination pin is never drawn: `pinB` has no
       source, layer or marker anywhere in `web/app.js`, so the point-to-point
       feature the itinerary describes draws no point and the web plan's own check
       ("click Wuhan → no pin dropped") cannot fail. Fix: render the pinned
       destination as a marker in the page's own type, cleared on origin switch.
 
-- [ ] **T9 / X16 (UX3-8, CR3-9)** Search ranks by IATA code, so typing "tok"
+- [x] **T9 / X16 (UX3-8, CR3-9)** Search ranks by IATA code, so typing "tok"
       returns ACC Kotoka, ENT Eniwetok, FYN Koktokay and GTA Gatokae before HND.
       `airports.json` already ships an unused `size` column. Fix: rank exact code,
       then name-prefix, then size, then substring; and resolve the airport's
@@ -115,7 +115,7 @@ has exited.
       Korea" with "JFK … — US · destination". Check: "tok" puts HND first;
       "seo" puts Seoul first.
 
-- [ ] **T10 / X12 (UX3-2)** `web/app.js:655-656` uses a literal opening zoom of
+- [x] **T10 / X12 (UX3-2)** `web/app.js:655-656` uses a literal opening zoom of
       `1.9` and no MapLibre `padding`, so the globe is framed for 1280×800 only:
       at 390×844 the sphere spans x −64…454 (25 % off-screen) with the departure
       label sliced by the sheet seam; at 844×390 north is at y=−46 and south at
@@ -124,7 +124,7 @@ has exited.
       viewport. Check: at all four CLAUDE.md viewports the limb is inside the
       canvas and the departure label is not under a panel.
 
-- [ ] **T11 / X5 (DBG3-1)** Below map zoom 7 — the opening view and most reading
+- [x] **T11 / X5 (DBG3-1)** Below map zoom 7 — the opening view and most reading
       zooms — only the coarse band LODs are rendered, and those value a parent by
       the **minimum** over its children (`contour/bands.py:330-338,270-295`) while
       the headline number comes from the res-4 array's **centre** child. So
@@ -135,7 +135,7 @@ has exited.
       sits under. Mutation: point it back at the rendered feature → the new
       agreement assertion goes red.
 
-- [ ] **T12 / X19 (SEC3-6, DBG3-5)** Two module-level throws that beat `fatal()`
+- [x] **T12 / X19 (SEC3-6, DBG3-5)** Two module-level throws that beat `fatal()`
       to the screen, both reproduced, both the blank-globe-with-no-console-error
       failure CLAUDE.md names as this project's recurring one: `web/app.js:189`
       tests `RAMPS[r]` on a `localStorage` value, so `constructor`, `toString` and
@@ -145,7 +145,7 @@ has exited.
       Mutation: set `localStorage.scheme = "constructor"` → the page must load
       with the default scheme, not a blank globe.
 
-- [ ] **T13 / X18 (DBG3-3, TR3-3)** The cycle-2 `checked()` guard covers the four
+- [x] **T13 / X18 (DBG3-3, TR3-3)** The cycle-2 `checked()` guard covers the four
       `.bin` files but not `{slug}.json`, and `web/app.js:710` destructures
       `offsets` unguarded. A rebuild that changes only the dense-split rule leaves
       the res-4 parent set bit-identical, so every length check stays green while
@@ -159,7 +159,7 @@ has exited.
 
 ## B. The page — additions (the "more detail" half of the brief)
 
-- [ ] **T14 / A1 (designer)** There are 306 × 413 px of dead screen between the
+- [x] **T14 / A1 (designer)** There are 306 × 413 px of dead screen between the
       masthead and the reading, and the departure city is named only at 12.5 px in
       a panel header, at 11 px as "Showing Seoul.", and as a globe label measured
       at 2.20:1. Add a departure block that names the city properly and states its
@@ -170,7 +170,7 @@ has exited.
       the door-to-door qualifier (CLAUDE.md modelling rule) and use weight and
       colour, not uppercase or letter-spacing, for hierarchy.
 
-- [ ] **T15 / A2 (designer)** Keep the previous city's figure across an origin
+- [x] **T15 / A2 (designer)** Keep the previous city's figure across an origin
       switch (~10 lines) and print the difference: verified live, Türkmenabat
       reads 14 h 39 min from Seoul and 18 h 22 min from Tokyo, and the first
       figure is discarded today. "3 h 43 min slower than from Seoul" is the only
@@ -178,14 +178,14 @@ has exited.
 
 ## C. Build and deploy — confirmed defects
 
-- [ ] **T16 / X3 (CR3-2)** `scripts/deploy_verify.sh:33` under `set -euo pipefail`:
+- [x] **T16 / X3 (CR3-2)** `scripts/deploy_verify.sh:33` under `set -euo pipefail`:
       `busy=$(ps … | grep … )` exits 1 when nothing matches, so the script exits 1
       **whenever no build is running** — the healthy path has never executed. Both
       branches reproduced. This blocks the plan's own exit criterion for a green
       deploy the moment the rebuild finishes. Fix: tolerate grep's no-match.
       Check: run the guard with and without a build in flight.
 
-- [ ] **T17 / X17 (CR3-5, DBG3-7, ARCH3-9)** `scripts/deploy_verify.sh:62-73`
+- [x] **T17 / X17 (CR3-5, DBG3-7, ARCH3-9)** `scripts/deploy_verify.sh:62-73`
       prints ten HTTP statuses and asserts none, so a deploy in which
       `places.json`, `airports.json` or `borders.json` 404s still prints ALL
       CHECKS PASSED; the two range checks — the only regression detector for
@@ -193,7 +193,7 @@ has exited.
       range probes) and fail the deploy otherwise. Mutation: point one probe at a
       missing path → the deploy goes red.
 
-- [ ] **T18 / X21 (SEC3-2, SEC3-3)** `check_dist.py` and the licence firewall run
+- [x] **T18 / X21 (SEC3-2, SEC3-3)** `check_dist.py` and the licence firewall run
       at `deploy_verify.sh:38-40`, but `web/` is merged into `dist/` at `:44-45`
       and pushed at `:49`: `index.html`, `app.js`, `llms.txt` and `vendor/` — the
       assets that actually ship — are scanned by neither, and `--page-only` runs
@@ -202,7 +202,7 @@ has exited.
       the vendor and CSP tests plus the licence firewall over the assembled page
       assets in both modes, after the merge and before the push.
 
-- [ ] **T19 / X1 (CRIT3-1, ARCH3-2)** The in-flight rebuild will publish an
+- [x] **T19 / X1 (CRIT3-1, ARCH3-2)** The in-flight rebuild will publish an
       `index.json` written by an emitter imported at 04:23, before the commits
       that add `buildId`, `builtAt`, `hoverCellCount`, `modeChannels`,
       `railDetail` and `graph` (05:51–06:00). That makes the M1 mixed-build guard
@@ -228,7 +228,7 @@ has exited.
       unstamped index. Mutation: drop `modeChannels` from the fixture → red.
       **Not run against `dist/` this cycle unless the rebuild has exited.**
 
-- [ ] **T20 / X4 (ARCH3-1)** `emit/index.py:162-178` — `build_identity()` takes
+- [x] **T20 / X4 (ARCH3-1)** `emit/index.py:162-178` — `build_identity()` takes
       `started` as an argument but samples `_git_head()` and
       `_sha256(calibration.toml, origins.toml)` at call time, and that call is the
       last statement of a 16-hour build (`cli.py:342-346`). Live proof: the parent
@@ -241,20 +241,20 @@ has exited.
 
 ## D. Gates, tests and the record
 
-- [ ] **T21 / TE3-3** `sources/_utils.py`'s `_validated_json` and
+- [x] **T21 / TE3-3** `sources/_utils.py`'s `_validated_json` and
       `_retry_after_seconds` have **zero** tests: deleting the
       `if "error" in body: raise` guard — the guard against MediaWiki's HTTP-200
       error bodies, the bug the docstring records having already shipped once —
       leaves the whole suite green. Both are pure and need no network. Mutation:
       delete the guard → red.
 
-- [ ] **T22 / CR3-12, DBG3-6** `scripts/check_ramps.py` hard-codes `n_bands=37`
+- [x] **T22 / CR3-12, DBG3-6** `scripts/check_ramps.py` hard-codes `n_bands=37`
       instead of deriving it from `BAND_EDGES_MIN`, so the colour gate silently
       stops covering the shipped ladder the moment the band edges change; and it
       carries a dead module-level `old_list` that ruff cannot see. Fix: derive the
       count. Mutation: add a band edge → the derived count follows.
 
-- [ ] **T23 (record corrections)** Six confirmed doc/code mismatches, each a
+- [x] **T23 (record corrections)** Six confirmed doc/code mismatches, each a
       one-line fix: `emit/index.py:141` ships the backwards range "fitted at
       57-50 km/h" straight into the page's route tooltip (VER3-4);
       `validate.py:151` still says ground speeds span 5 to 85 km/h where the built
@@ -277,7 +277,7 @@ has exited.
 
 ## E. The page — smaller repairs found in the same pass
 
-- [ ] **T25 / TR3-5, TR3-9, CR3-11 (stale state on an origin switch)**
+- [x] **T25 / TR3-5, TR3-9, CR3-11 (stale state on an origin switch)**
       `paintOrigin` calls `renderPins()` but never `renderLegs()`, so the previous
       city's itinerary stays on screen — permanently if the new origin 404s, beside
       "Times unavailable for <new city>" (TR3-5). The band range vanishes from the
@@ -297,7 +297,7 @@ has exited.
       and `<main>`/`<nav>`/`<aside>` with accessible names. CLAUDE.md: hierarchy
       by weight and colour, sentence case, no letter-spacing.
 
-- [ ] **T27 / UX3-3, UX3-15 (small viewports)** At 390×844, tapping "Departure"
+- [x] **T27 / UX3-3, UX3-15 (small viewports)** At 390×844, tapping "Departure"
       puts `#results` at y=844 — the entire city list off-screen with no scroll
       cue (UX3-3). At 820×1180 the tablet gets the phone's bottom sheet with none
       of the tablet's room (UX3-15). Fix: scroll the opened panel into view, and
@@ -309,7 +309,7 @@ has exited.
       carry the pinned destination in the URL and restore it on load, through the
       same validated path `?from=` already uses. Ease of use, ~15 lines.
 
-- [ ] **T29 / X2 (CR3-1, DBG3-2, DOC3-7) — the rail dedupe, code half**
+- [x] **T29 / X2 (CR3-1, DBG3-2, DOC3-7) — the rail dedupe, code half**
       `sources/osm.py:216-221`: `_n` is `group_by("route_id").len()` over the
       *concatenation* of both extracts, so it carries no per-extract information
       and `sort("_n", descending=True)` is a no-op — "the longer one wins" is not
@@ -329,7 +329,7 @@ has exited.
       shipped artifacts until the next full build. Recorded in `deferred.md` as
       the data half with that exit criterion.
 
-- [ ] **T30 / TE3-4** `_io.params_hash`'s `default=repr` accepts values whose
+- [x] **T30 / TE3-4** `_io.params_hash`'s `default=repr` accepts values whose
       digest is per-process: `params_hash({'a'…'g'})` gives `652072a0` under
       `PYTHONHASHSEED=1` and `ed78b352` under `=2`. Every call site is safe today
       (verified across seven seeds), but the stability test only compares two
@@ -340,7 +340,7 @@ has exited.
       hashing their `repr`. Mutation: pass a set → must raise, not hash.
 
 
-- [ ] **T31 / DOC3-26** WCAG 2.2 SC 2.5.7 Dragging Movements: the globe pans and
+- [x] **T31 / DOC3-26** WCAG 2.2 SC 2.5.7 Dragging Movements: the globe pans and
       zooms by drag alone — there is no `NavigationControl`, no pan or zoom
       buttons, and no single-pointer alternative. It is also the commonest
       complaint about a globe on a phone. Fix: zoom in / zoom out / reset-north
@@ -354,3 +354,37 @@ has exited.
 
 - 2026-09-10 cycle 3: plan written from `.context/reviews/_aggregate.md`. Every
   cycle-3 finding is either scheduled above or recorded in `deferred.md`.
+- 2026-09-10 cycle 3 done: 28 of 31 tasks landed across 17 signed commits.
+
+  **Build and deploy.** T16 `6d4ac0f` (the grep under `pipefail` that aborted
+  the healthy path -- both branches reproduced); T17 `42f9564` (ten printed
+  statuses now asserted, 206 required on the range probes, origin taken from
+  the deployed index); T18 `3ec7e34` (one page-asset gate in both deploy
+  modes, all ten vendor files pinned by enumerating the directory);
+  T19 `f2abd49` + `87d31c6` (`transport-maps reindex`, and `check_dist`
+  refusing an unstamped index with the remedy named); T20 `a71954d` (identity
+  and mode prose sampled at build start).
+
+  **The page.** T1/T5/T6 `6694b90`; T2/T3/T11 `2a2c183`; T12/T13/T25 `96e4558`;
+  T4/T7 `5c085e6`; T8/T15 `4fa96ec`; T10 `6c27a57`; T9 `05f88a5`;
+  T14 `c1a786e`; T27/T31 `01fd1ec`. Every one verified in a browser against a
+  local range-capable preview of `dist/` with `web/` overlaid, at 1280x800,
+  820x1180, 390x844 and 844x390: canvas present, no horizontal scroll, the
+  readout and the legend on screen at all four, and zero console entries.
+
+  **Gates, tests and the record.** T21 (eleven tests for the two crawl guards
+  that had none), T22 and T30 `487f524`, T23 + T29 `bfa7e10` / `87aec6f`.
+
+  Every guard added was shown to go red under a deliberate mutation, named in
+  its commit body (CLAUDE.md testing rule).
+
+  **Not landed.** T24 is this entry. T26 (type hierarchy and the em-dash empty
+  state) and T28 (destination in the permalink) were dropped to keep the cycle
+  within its brief: T14 already puts real content in the space T26's empty
+  state was about, and both are recorded as carried forward rather than done.
+
+  **Data halves still owed to a build.** T29 fixes the rail splice in code and
+  bumps `RAIL_PARSER_VERSION`, so the next build re-parses; the fabricated
+  hops remain in the shipped artifacts until then. T19's `reindex` was NOT run
+  against `dist/`: the 553-origin rebuild still held the directory at the end
+  of this cycle.

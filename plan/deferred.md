@@ -182,6 +182,9 @@ overwork" — puts internal refactors behind visitor-facing work.
 
 | DOC3-21 | `web/index.html:59` puts licence terms in schema.org `conditionsOfAccess`, which schema.org defines for archive access ("Available by appointment from the Reading Room"), and omits `license` entirely. | Medium / High | `web/index.html:59` | Adding `license` means asserting a single licence for the owner's published artifact -- a legal statement about their work, not a doc fix. It is the same question as the blocked **SEC-17** (whether `conditionsOfAccess` with per-source licences satisfies CC BY-SA for the Wikipedia-derived network), and answering half of it in machine-readable metadata while the other half waits would be worse than either. | The owner answers SEC-17; the JSON-LD then carries the licence they choose. |
 
+| T26 | UX3-9 (one quantity across two sizes and colours), UX3-10 (at rest the largest element is an em dash), UX3-12 (instructions outrank the answer in the Route panel), UX3-14 (one heading, two landmarks) | Medium / High | `web/index.html`, `web/app.js` | Scheduled as T26 and dropped to keep this cycle within its "do not overwork" brief after 28 other tasks landed. T14 already puts real content in the space UX3-10's em dash occupied, which is the half a visitor notices. Severity unchanged. | Cycle 4, as the first web task. |
+| T28 | CRIT3-12: the permalink carries the departure but not the destination, so the interesting half of a reading cannot be shared. | Medium / High | `web/app.js` `?from=` handling | Same reason as T26. It is a feature addition rather than a repair, and this cycle already added two (T14, T15). Severity unchanged. | Cycle 4. |
+
 Not deferred, for the record: every cycle-3 finding not listed in the table above
 appears in the "Scheduled" table above it with its task number. The cycle-1 and
 cycle-2 deferrals earlier in this file are unchanged except where a cycle-3
