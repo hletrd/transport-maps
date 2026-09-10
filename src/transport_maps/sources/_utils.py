@@ -58,9 +58,12 @@ def _validated_json(response, *, expect_key: str, require_batchcomplete: bool) -
     return body[expect_key]
 
 
-# The atomic writer and the cache-key hash moved to transport_maps._io so the
-# emit and contour layers stop importing a private helper from sources; these
-# names stay for the callers in this package.
+# The atomic writer and the cache-key hash live in transport_maps._io. The
+# emit and contour layers now import them from there directly -- this comment
+# claimed they already did while four call sites (contour/grid.py,
+# emit/{places,borders,airports_json}.py) still went through the shim below.
+# These aliases remain only for the modules in THIS package, which import them
+# under the underscored names throughout.
 _atomic_write = atomic_write
 def _refuse_partial(what: str, unresolved: list[str], remedy: str) -> None:
     """Abort rather than let a partially-crawled result become the cached one.

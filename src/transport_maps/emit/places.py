@@ -22,7 +22,7 @@ import zipfile
 import httpx
 
 from .. import config
-from ..sources._utils import _atomic_write
+from .._io import atomic_write
 
 CITIES_URL = "https://download.geonames.org/export/dump/cities15000.zip"
 ADMIN1_URL = "https://download.geonames.org/export/dump/admin1CodesASCII.txt"
@@ -37,7 +37,7 @@ def _download(url: str) -> pathlib.Path:
     if not cached.exists():
         r = httpx.get(url, follow_redirects=True, timeout=180)
         r.raise_for_status()
-        _atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
+        atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
     return cached
 
 
@@ -70,6 +70,6 @@ def build(out: pathlib.Path) -> int:
     order = sorted(range(len(rows)), key=lambda i: -pops[i])
     rows = [rows[i] for i in order]
     payload = {"fields": ["name", "region", "country", "lat", "lon"], "places": rows}
-    _atomic_write(out, lambda tmp: tmp.write_text(
+    atomic_write(out, lambda tmp: tmp.write_text(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"))
     return len(rows)

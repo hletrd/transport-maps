@@ -51,7 +51,14 @@ small = 4.0
 # exists but has no data to run on). Details below.
 [frequency]
 # Gravity model for weekly frequency on a route that is known to exist:
-#   flights_per_week = base * size_weight[dep] * size_weight[arr] * (distance_km ^ decay)
+#   flights_per_week = max(MIN_FLIGHTS_PER_WEEK,
+#                          base * size_weight[dep] * size_weight[arr]
+#                              * max(distance_km, KNEE_KM) ^ decay)
+# The two bounds are NOT in this file: KNEE_KM = 400 km and
+# MIN_FLIGHTS_PER_WEEK = 0.5 live in graph/air.py, and the unbounded equation
+# written here was not the one the model applies. KNEE_KM caps the short-range
+# blow-up (below 400 km the pure power law runs away); MIN_FLIGHTS_PER_WEEK
+# floors the ultra-long-haul tail. Moving either into this file is task B2.
 # The coefficients are a hand fit, not a regression: no observed-frequency
 # refit has been done, and no observed frequency is ever written to dist/.
 # Fitted to two real-world anchors: ICN-NRT (1,258 km) runs about 120 flights/week

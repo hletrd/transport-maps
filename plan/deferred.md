@@ -180,6 +180,8 @@ overwork" — puts internal refactors behind visitor-facing work.
 | D2 | Vendor the `latin-ext` subset only (26 of the 900 label-pool names need it). | Low / Medium (cycle-2 web plan) | `web/vendor/fonts.css` | Explicitly de-scoped this cycle on the critic's argument: it is a queued cosmetic item no visitor would notice, competing with additions (T14, T15) that they would. Severity unchanged. | Cycle 4, or sooner if a label is measured rendering in a fallback face. |
 | N24 | Solid scrim on `.tip` instead of `backdrop-filter`. | Low / Medium (cycle-2 web plan) | `web/index.html` `.tip` | Same reason as D2; the perf reviewer's measurements this cycle put the cost elsewhere (PR3-1, PR3-5). Severity unchanged. | Cycle 4, or a trace showing `backdrop-filter` in a dropped frame. |
 
+| DOC3-21 | `web/index.html:59` puts licence terms in schema.org `conditionsOfAccess`, which schema.org defines for archive access ("Available by appointment from the Reading Room"), and omits `license` entirely. | Medium / High | `web/index.html:59` | Adding `license` means asserting a single licence for the owner's published artifact -- a legal statement about their work, not a doc fix. It is the same question as the blocked **SEC-17** (whether `conditionsOfAccess` with per-source licences satisfies CC BY-SA for the Wikipedia-derived network), and answering half of it in machine-readable metadata while the other half waits would be worse than either. | The owner answers SEC-17; the JSON-LD then carries the licence they choose. |
+
 Not deferred, for the record: every cycle-3 finding not listed in the table above
 appears in the "Scheduled" table above it with its task number. The cycle-1 and
 cycle-2 deferrals earlier in this file are unchanged except where a cycle-3

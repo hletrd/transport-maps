@@ -1,4 +1,4 @@
-"""Per-cell minutes -> smoothed isochrone band polygons.
+"""Per-cell minutes -> isochrone band polygons, drawn as hexagons.
 
 How the bands fit together
 --------------------------
@@ -9,11 +9,12 @@ overlap by that rim, the page draws the faster band on top (`fill-sort-key`
 in web/app.js), and the visible boundary between k-1 and k is always k-1's
 own outer edge.
 
-The overlap is the whole point. Smoothing moves a boundary by up to a quarter
-of a hex edge (about 0.9 km at resolution 6, 0.35 km at 7), and moves it
-differently for each
-polygon it is applied to: where three bands met, two independently rounded
-curves diverged and left a triangular hole. With 37 bands, most of them one
+The overlap is the whole point, and it is why nothing here is smoothed.
+Rounding the corners was tried and removed (see `_dissolve` below and the
+design policy in CLAUDE.md): it moves a boundary by up to a quarter of a hex
+edge -- about 0.9 km at resolution 6, 0.35 km at 7 -- and moves it differently
+for each polygon it is applied to, so where three bands met, two independently
+rounded curves diverged and left a triangular hole. With 37 bands, most of them one
 cell wide, those junctions were everywhere and the map read as hexagons with
 gaps between them. A one-cell rim (2.4 km at the least, where the grid is
 refined to resolution 7; 6.5 km on the base grid) puts the hidden edge far

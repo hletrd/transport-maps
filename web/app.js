@@ -589,19 +589,23 @@ fetch("./places.json")
       // a spelling that differs between the gazetteer and origins.toml, not the
       // next town over -- "Incheon" used to be a button that departed from
       // Seoul). Any other label swallows its click: it is not a destination.
-      const origin = originNear(r[3], r[4], 15);
-      const el = document.createElement(origin ? "button" : "div");
-      el.className = origin ? "lbl origin" : "lbl";
+      // Not `origin`: that is the module-level record of the CURRENT
+      // departure's fetched arrays, and shadowing it here -- inside the one
+      // file whose state block exists to keep those names straight -- is how
+      // the next reader of this closure gets it wrong.
+      const cityHere = originNear(r[3], r[4], 15);
+      const el = document.createElement(cityHere ? "button" : "div");
+      el.className = cityHere ? "lbl origin" : "lbl";
       el.textContent = r[0];
-      if (origin) {
+      if (cityHere) {
         el.type = "button";
         el.tabIndex = -1;                  // the city list is the keyboard path
-        el.title = `Depart from ${origin.name}`;
-        el.dataset.slug = origin.slug;
+        el.title = `Depart from ${cityHere.name}`;
+        el.dataset.slug = cityHere.slug;
         el.addEventListener("click", (ev) => {
           ev.stopPropagation();            // not a destination pin
           $("here").textContent = "";
-          if (origin.slug !== active?.slug) paintOrigin(origin, { keepZoom: true });
+          if (cityHere.slug !== active?.slug) paintOrigin(cityHere, { keepZoom: true });
         });
       } else {
         el.addEventListener("click", (ev) => ev.stopPropagation());
@@ -611,8 +615,8 @@ fetch("./places.json")
       // A label that departs is a button and says so; every other label is
       // map furniture, not a control, and was being announced as a button
       // that does nothing.
-      nameMarker(el, origin ? `Depart from ${origin.name}` : null);
-      return { m, rank: i, on: false, lat: r[3], lon: r[4], slug: origin?.slug };
+      nameMarker(el, cityHere ? `Depart from ${cityHere.name}` : null);
+      return { m, rank: i, on: false, lat: r[3], lon: r[4], slug: cityHere?.slug };
     });
     showLabels = () => {
       const z = map.getZoom();

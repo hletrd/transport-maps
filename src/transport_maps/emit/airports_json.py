@@ -1,18 +1,20 @@
 """The airport list, so the search box can find JFK as readily as New York.
 
 Compact columnar JSON: 4,008 rows (scheduled-service airports; the graph drops
-a few) of code, name, country, lat, lon. The IATA
-code is what people type; the name is what they need to recognise the answer.
+a few) of code, name, country, lat, lon, size -- six columns, the last being
+OurAirports' large/medium/small class, which the page uses to rank search
+results. The IATA code is what people type; the name is what they need to
+recognise the answer.
 """
 
 import json
 from pathlib import Path
 
+from .._io import atomic_write
 from ..sources import airports
-from ..sources._utils import _atomic_write
 
 # Column order of every row in airports.json; web/app.js reads them by position
-# (a[0] code, a[1] name, a[2] country, a[3] lat, a[4] lon).
+# (a[0] code, a[1] name, a[2] country, a[3] lat, a[4] lon, a[5] size).
 FIELDS = ("iata", "name", "country", "lat", "lon", "size")
 
 
@@ -22,6 +24,6 @@ def build(out: Path) -> int:
             for c, n, k, la, lo, s in zip(a["iata"], a["name"], a["country"],
                                           a["lat"], a["lon"], a["size"])]
     payload = {"fields": list(FIELDS), "airports": rows}
-    _atomic_write(out, lambda tmp: tmp.write_text(
+    atomic_write(out, lambda tmp: tmp.write_text(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"))
     return len(rows)

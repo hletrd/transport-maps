@@ -10,7 +10,10 @@ from pathlib import Path
 
 from transport_maps import _io
 
-# Measured on a real Seoul band set: Z0-7 gives 3.84 MB, Z0-6 gives 2.38 MB
+# Measured on a real Seoul band set BUILT ON THE RES-5 GRID (the qualifier
+# was dropped when this comment was re-merged in 64ab007; the res-6/7 grid
+# ships larger tiles, and the RATIOS below are what still hold):
+# Z0-7 gives 3.84 MB, Z0-6 gives 2.38 MB
 # (-38%), while quadrupling simplification only saves 12%. Max zoom is the
 # dominant size lever. At zoom 8 the simplification tolerance is ~0.3 km,
 # which keeps the 2.4 km fine cells hexagons under overzoom; z7 measured ~38%

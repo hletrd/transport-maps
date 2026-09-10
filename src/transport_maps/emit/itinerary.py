@@ -2,7 +2,7 @@
 
 The time array answers "how long"; this answers "by what route". Shipping the
 full predecessor chain per cell would be tens of megabytes, but one airport
-ordinal per hover cell is 180 KB and is enough: the frontend walks that
+ordinal per hover cell is 181,480 bytes (uint16 x 90,740 hover cells) and is enough: the frontend walks that
 airport's `prev` chain in the per-origin routes JSON to recover the whole
 sequence of flights and connections.
 """

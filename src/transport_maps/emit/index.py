@@ -138,8 +138,14 @@ def mode_detail() -> dict[str, str]:
         "ferry": f"Scheduled ferry routes from OpenStreetMap, at {fc.speed_kmh:.0f} km/h plus "
                  f"{fc.terminal_min:.0f} min at the terminals.",
         "highway": f"Motorways and expressways, fitted at {kmh[1]:.0f} km/h free-flow, {halved}.",
-        "major road": f"Primary and secondary roads, fitted at {kmh[2]:.0f}-{kmh[3]:.0f} km/h, {halved}.",
-        "minor road": f"Tertiary and local roads, fitted at {kmh[4]:.0f}-{kmh[5]:.0f} km/h, {halved}.",
+        # sorted(): the table is ordered by road class, not by speed, so
+        # classes 2 and 3 (57 and 50 km/h) printed "fitted at 57-50 km/h" --
+        # a backwards range, shipped in index.json and read out in the page's
+        # route tooltip beside an ascending "18-25".
+        "major road": f"Primary and secondary roads, fitted at "
+                      f"{min(kmh[2], kmh[3]):.0f}-{max(kmh[2], kmh[3]):.0f} km/h, {halved}.",
+        "minor road": f"Tertiary and local roads, fitted at "
+                      f"{min(kmh[4], kmh[5]):.0f}-{max(kmh[4], kmh[5]):.0f} km/h, {halved}.",
         "track": f"No mapped road: {kmh[0]:.0f} km/h, walking pace.",
     }
 

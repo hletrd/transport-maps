@@ -14,7 +14,7 @@ import pyogrio
 import shapely
 
 from .. import config
-from ..sources._utils import _atomic_write
+from .._io import atomic_write
 
 URL = ("https://naturalearth.s3.amazonaws.com/10m_cultural/"
        "ne_10m_admin_0_boundary_lines_land.zip")
@@ -26,7 +26,7 @@ def build(out: Path) -> int:
     if not cached.exists():
         r = httpx.get(URL, follow_redirects=True, timeout=180)
         r.raise_for_status()
-        _atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
+        atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
     meta, table = pyogrio.read_arrow(f"/vsizip/{cached.resolve()}")
     geom_col = next(c for c in table.schema.names if "geom" in c.lower())
     geoms = shapely.from_wkb(table.column(geom_col).to_pylist())
@@ -38,6 +38,6 @@ def build(out: Path) -> int:
         feats.append({"type": "Feature", "properties": {},
                       "geometry": shapely.geometry.mapping(g)})
     payload = {"type": "FeatureCollection", "features": feats}
-    _atomic_write(out, lambda tmp: tmp.write_text(
+    atomic_write(out, lambda tmp: tmp.write_text(
         json.dumps(payload, separators=(",", ":")), encoding="utf-8"))
     return len(feats)

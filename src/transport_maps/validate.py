@@ -147,8 +147,9 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
     distance divided by the DESTINATION cell's speed -- the same rule
     ground.hex_edges uses.
 
-    An earlier draft compared against the fastest speed on the grid (85 km/h,
-    about 10.6 minutes per hop). That is wrong: ground speeds span 5 to 85 km/h,
+    An earlier draft compared against the fastest speed on the grid (85 km/h
+    in the superseded spec; the built table tops out at 104 km/h, about 8.7
+    minutes per hop). That is wrong: ground speeds span 5 to 104 km/h,
     so a roadless neighbour legitimately costs about 180 minutes, and the tight
     bound fails on any slow terrain. Do not reintroduce a single global bound.
 

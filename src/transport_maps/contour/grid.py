@@ -21,7 +21,7 @@ import h3
 import numpy as np
 
 from transport_maps import config
-from transport_maps.sources._utils import _atomic_write
+from transport_maps._io import atomic_write
 
 # Bump when the layout of the cached arrays changes.
 GRID_VERSION = "rings-nb6-v2"
@@ -77,7 +77,7 @@ def universe(cells: list[str], rings: int = RINGS) -> tuple[list[str], np.ndarra
             with open(tmp, "wb") as fh:          # a file object: savez adds no suffix
                 np.savez(fh, sea=sea_ids, nb=nb, ring=ring_arr)
 
-        _atomic_write(cached, _save)
+        atomic_write(cached, _save)
     return allc, nb, ring_arr
 
 
@@ -138,5 +138,5 @@ def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         def _save(tmp):
             with open(tmp, "wb") as fh:
                 np.savez(fh, rows=out[0], cols=out[1], complete=out[2])
-        _atomic_write(cached, _save)
+        atomic_write(cached, _save)
     return out

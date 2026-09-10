@@ -124,7 +124,8 @@ def cell_country(cells: list[str]) -> np.ndarray:
 def _fill_blanks(cells: list[str], out: np.ndarray, passes: int = 3) -> np.ndarray:
     """Give a country to every cell whose centroid fell in the sea.
 
-    31,022 coastal cells -- 5.2% of land -- had no country, and a cell with
+    31,022 coastal cells -- 5.2% of the res-5 land set this was measured on,
+    about 0.76% at resolution 6 -- had no country, and a cell with
     none is a bridge across every closed border: the inter-Korean cut held on
     the DMZ itself yet Kaesong was reachable from Seoul in 2.5 h by stepping
     onto a blank Han-estuary cell and off it into the North. Each blank takes

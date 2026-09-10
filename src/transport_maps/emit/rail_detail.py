@@ -2,7 +2,7 @@
 
 "By rail, 3 h" is the aggregate; this names the last station alighted at
 and the line that reached it -- "KTX 경부선 to Busan". One uint16 per hover
-cell (180 KB) indexes a per-origin table of the stations actually used,
+cell (181,480 bytes over 90,740 cells) indexes a per-origin table of the stations actually used,
 which is a few thousand rows rather than the 257,000 stops in the network.
 """
 
