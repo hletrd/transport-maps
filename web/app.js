@@ -309,7 +309,6 @@ function paintLegend() {
   }));
   // The two tones outside the ramp, so the grey of Antarctica or Siberia and
   // the scheme's sea are named rather than left for the reader to guess.
-  if (bandMark) bandMark = null;          // replaceChildren above detached it
   $("sw-uncharted").style.background = greyOf();
   $("sw-sea").style.background = RAMPS[rampName]?.sea ?? SEA;
 }
@@ -1349,6 +1348,13 @@ function bandIndexOf(min) {
 // The legend is a scale with no "you are here". Marking the band under the
 // pointer turns eleven anonymous colours into a reading you can place.
 let bandMark = null;
+// paintLegend() replaces the strip's children, which detaches this marker.
+// It does NOT need to null it: `isConnected` below is false afterwards and the
+// same node is re-appended. An earlier version had paintLegend reset the
+// binding, and because paintLegend runs at module scope well above this `let`,
+// that was a temporal-dead-zone ReferenceError thrown before the map was
+// created -- the exact failure CLAUDE.md records as having blanked this site
+// twice. Caught by opening the page, which is why that rule exists.
 function markBand(min) {
   const strip = $("tints");
   if (!strip) return;
