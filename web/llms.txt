@@ -18,8 +18,8 @@ a geometric ladder from under 30 minutes to over 72 hours; the band edges are
 `bandEdgesMin` in index.json. A departure is treated as planned, so the first
 service is not waited for. An onward flight connection is charged the minimum
 connection time or the expected wait for the next service, whichever is
-longer, capped at the cost of leaving and re-entering the terminal (about an
-hour to an hour and a half). Rail and ferry legs carry no wait: they are
+longer, capped at the cost of leaving and re-entering the terminal (55 minutes at a
+small airport, 1 h 40 at a large one). Rail and ferry legs carry no wait: they are
 charged running time plus boarding or terminal time.
 
 ## How it is computed

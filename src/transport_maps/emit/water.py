@@ -121,7 +121,9 @@ def build(out: Path) -> Path:
             f"--simplification={SIMPLIFICATION}",
             # The split ocean polygons abut along grid lines; without this the
             # shared edges simplify differently and hairlines open between
-            # them. (--detect-shared-borders is the deprecated spelling.)
+            # them. (Not a spelling of --detect-shared-borders: that is a
+            # different, deprecated algorithm, and tippecanoe's own note
+            # says to use this one instead as faster and more correct.)
             "--no-simplification-of-shared-nodes",
             # Visvalingam drops the smallest bumps first, which is what a
             # generalised coast should look like. Douglas-Peucker keeps the

@@ -33,10 +33,24 @@ from transport_maps import _io, config
 def n_bands() -> int:
     return len(config.BAND_EDGES_MIN) + 1
 
-# Between ANCHORS. Eleven anchors from near-white to near-black span about 70
-# OKLab units, so ~7 per step is the ceiling for a single ramp; the shipped
-# ramps sit at 6-7 and are then interpolated to 37 bands. Below 6 two
-# anchors read as one.
+# Between ANCHORS. The premise here was wrong in both halves, and this gate is
+# the thing that can measure it, so the corrected figures are its own output.
+#
+# "Span about 70 OKLab units" treated the ramp as a lightness ladder. It is a
+# path through three dimensions -- CLAUDE.md requires hue rotation as well as
+# monotonic lightness -- so the path is longer than the lightness drop: vivid
+# measures 93.3. And "the shipped ramps sit at 6-7" is not what they do. Run
+# `uv run python scripts/check_ramps.py` today and the minimum adjacent
+# separation ranges from 6.5 (warm, sand) to 8.9 (vivid), with ember at 8.0
+# and rose and twilight at 7.3 -- four of the twelve above the "ceiling".
+#
+# There was no ceiling to exceed. CLAUDE.md asks for a delta-E of ROUGHLY 8
+# and the ramps deliver between 6.5 and 8.9, which is that. The floor below is
+# the real constraint: under 6, two anchors read as one.
+#
+# CLAUDE.md:21-24 carries the same "about 70 / ~7 per step" sentence. It is the
+# owner's standing policy file, so it is not edited here; the discrepancy is
+# recorded in plan/deferred.md beside DOC5-8.
 MIN_DELTA_E = 6.0
 # Between the grey and ANY painted band: the grey must never read as a band.
 MIN_GREY_DELTA_E = 8.0

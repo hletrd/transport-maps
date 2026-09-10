@@ -12,7 +12,7 @@
   gtag('config', 'G-2NYW09JSK2');
 </script>
 <title>Isochronic Passage Chart — travel time to anywhere on Earth</title>
-<meta name="description" content="How many hours it takes, door to door, to reach any point on Earth from more than a hundred cities, by air, rail, road and ferry. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
+<meta name="description" content="How many hours it takes, door to door, to reach any point on Earth from more than five hundred cities, by air, rail, road and ferry. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
 <link rel="canonical" href="https://worldmap.atik.kr/">
 <meta name="theme-color" content="#0a0b0d">
 <meta name="robots" content="index,follow,max-image-preview:large">
@@ -20,7 +20,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Isochronic Passage Chart">
 <meta property="og:title" content="Isochronic Passage Chart — travel time to anywhere on Earth">
-<meta property="og:description" content="Hours required, door to door, to reach any point on Earth from more than a hundred cities, by air, rail, road and ferry. Recomputed from open data, after Galton, 1881.">
+<meta property="og:description" content="Hours required, door to door, to reach any point on Earth from more than five hundred cities, by air, rail, road and ferry. Recomputed from open data, after Galton, 1881.">
 <meta property="og:url" content="https://worldmap.atik.kr/">
 <meta property="og:image" content="https://worldmap.atik.kr/preview.png">
 <meta property="og:image:width" content="1200">
@@ -28,7 +28,7 @@
 <meta property="og:image:alt" content="A dark globe shaded by travel time from Seoul, brightest nearby and fading to violet at three days">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Isochronic Passage Chart">
-<meta name="twitter:description" content="Hours required, door to door, to reach any point on Earth from more than a hundred cities.">
+<meta name="twitter:description" content="Hours required, door to door, to reach any point on Earth from more than five hundred cities.">
 <meta name="twitter:image" content="https://worldmap.atik.kr/preview.png">
 
 <script type="application/ld+json">
@@ -38,7 +38,7 @@
     {
       "@type": "Dataset",
       "@id": "https://worldmap.atik.kr/#dataset",
-      "name": "Global travel-time isochrones from more than a hundred cities",
+      "name": "Global travel-time isochrones from more than five hundred cities",
       "description": "Expected door-to-door travel time from each of its origin cities to every land area on Earth, combining scheduled air routes, rail from OpenStreetMap route relations, ferry crossings, and a road-speed model calibrated against 2,998 real driving journeys, with check-in, border-control and transfer penalties. Distributed as PMTiles isochrone bands (37 continuous bands at four levels of detail) plus per-origin binary arrays of time, arrival airport, surface mode and rail station on an H3 grid, with coastlines from OpenStreetMap and lakes from HydroLAKES.",
       "url": "https://worldmap.atik.kr/",
       "keywords": ["isochrone", "travel time", "accessibility", "world map", "H3", "PMTiles", "aviation", "geography"],
@@ -99,7 +99,7 @@
   --line-ctl:#646a73;
   --text:#e9e7e4; --text-2:#a4a9b2;
   /* 6.1:1 on --surface and 4.8:1 on the 86% scrim over the brightest band
-     (WCAG 2.2 AA is 4.5:1); the old #6f757e sat at 3.9:1 and 2.0:1. */
+     (WCAG 2.2 AA is 4.5:1); the old #6f757e sat at 3.9:1 and 3.0:1. */
   --text-3:#8f96a0;
   --accent:#e48f35;
   --r:2px;                       /* one corner radius for every control */
@@ -804,7 +804,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <div style="position:fixed;inset:0;background:#0a0b0d;color:#e9e7e4;z-index:20;padding:40px;max-width:62ch">
     <h1 style="font-weight:600">Isochronic Passage Chart</h1>
     <p>An interactive world map showing how many hours it takes to reach any point
-    on Earth from more than a hundred cities, combining scheduled flights, rail, ferries,
+    on Earth from more than five hundred cities, combining scheduled flights, rail, ferries,
     road speed and transfer times. It needs JavaScript and WebGL to draw the globe.</p>
     <p>Built from open data: OurAirports, Wikipedia (CC BY-SA 4.0), Wikidata,
     OpenStreetMap (ODbL), GRIP4 road density, Natural Earth, GeoNames (CC BY 4.0),

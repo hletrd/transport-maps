@@ -67,8 +67,9 @@ content, so a swapped face would be cached for a year with no other signal.
 
 ## Deploy
 
-`scripts/deploy_verify.sh` copies `index.html`, `app.js`, `llms.txt`,
-`robots.txt`, `sitemap.xml`, `preview.png` and `vendor/` into the pipeline's
+`scripts/deploy_verify.sh` copies `index.html`, `boot.js`, `app.js`,
+`llms.txt`, `robots.txt`, `sitemap.xml`, `preview.png` and `vendor/` into the
+pipeline's
 `dist/` (so `index.json`, `hover_cells.bin` and `origins/` are siblings) and
 rsyncs that to the server; see `deploy/README.md`.
 
