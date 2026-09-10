@@ -16,6 +16,15 @@ import sys
 from itertools import pairwise
 from pathlib import Path
 
+from transport_maps import config
+
+# The number of painted bands is one more than the number of edges, and it is
+# the emitter that decides it. Hard-coded as 37 in three places, this gate
+# silently stopped covering the shipped ladder the moment an edge was added or
+# removed -- it would keep measuring 37 interpolated colours for a legend that
+# no longer had 37.
+N_BANDS = len(config.BAND_EDGES_MIN) + 1
+
 # Between ANCHORS. Eleven anchors from near-white to near-black span about 70
 # OKLab units, so ~7 per step is the ceiling for a single ramp; the shipped
 # ramps sit at 6-7 and are then interpolated to 37 bands. Below 6 two
@@ -60,7 +69,7 @@ def constant(name: str, source: str = None) -> str:
     return m.group(1)
 
 
-def expand(control: list[str], n: int = 37) -> list[tuple[float, float, float]]:
+def expand(control: list[str], n: int = N_BANDS) -> list[tuple[float, float, float]]:
     """The 37 painted bands, interpolated between the anchors in OKLab the
     way app.js's expandRamp does."""
     import math
@@ -78,7 +87,7 @@ def delta_e(p, q) -> float:
     return 100 * sum((a - b) ** 2 for a, b in zip(p, q)) ** 0.5
 
 
-def scheme_problems(r: dict, space: str, n_bands: int = 37) -> list[str]:
+def scheme_problems(r: dict, space: str, n_bands: int = N_BANDS) -> list[str]:
     """The grey and the sea, measured against the scheme's own bands."""
     out = []
     bands = expand(r["c"], n_bands)
@@ -152,7 +161,6 @@ if __name__ == "__main__":
         src = APP.read_text(encoding="utf-8")
         for key, r in ramps(src).items():
             new = respace(r["c"])
-            old_list = ", ".join(f'"{c}"' for c in r["c"])
             # anchors are written across two lines in the file; match loosely
             pat = re.compile(r'(' + key + r':\s*\{[^}]*?c:\s*\[)([^\]]+)(\])')
             m = pat.search(src)

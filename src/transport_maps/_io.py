@@ -73,6 +73,32 @@ def params_hash(*values, length: int = 8) -> str:
 
     Values are serialised with `json.dumps(..., sort_keys=True)`, so dict
     order does not affect the digest but any change of value does.
+
+    Unordered containers are REFUSED rather than serialised. `default=repr`
+    accepted a set, and a set's repr follows iteration order, which for
+    strings depends on PYTHONHASHSEED: `params_hash({'a'...'g'})` digests to
+    652072a0 under seed 1 and ed78b352 under seed 2. The failure is silent and
+    permanent -- every run misses the cache, re-downloads GRIP4 and re-polyfills
+    four million cells, and reports success -- which is exactly what the
+    CLAUDE.md cache rule exists to prevent. Sort it at the call site and the
+    intent is explicit.
     """
+    for v in values:
+        _reject_unordered(v)
     payload = json.dumps(values, sort_keys=True, default=repr)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:length]
+
+
+def _reject_unordered(v, _depth: int = 0) -> None:
+    if isinstance(v, (set, frozenset)):
+        raise TypeError(
+            "params_hash refuses a set: its repr follows iteration order, which for strings "
+            "depends on PYTHONHASHSEED, so the cache key would differ between runs. "
+            "Pass sorted(...) instead.")
+    if _depth < 6:
+        if isinstance(v, (list, tuple)):
+            for item in v:
+                _reject_unordered(item, _depth + 1)
+        elif isinstance(v, dict):
+            for item in v.values():
+                _reject_unordered(item, _depth + 1)

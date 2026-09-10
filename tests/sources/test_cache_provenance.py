@@ -253,3 +253,40 @@ def test_a_parser_version_change_empties_the_destination_cache_but_a_legacy_file
     wikidata._save_cache({"X": "XXX"})
     monkeypatch.setattr(wikidata, "RESOLVER_VERSION", wikidata.RESOLVER_VERSION + 1)
     assert wikidata._load_cache() == {}
+
+
+def test_params_hash_refuses_a_set_rather_than_hashing_its_repr():
+    """`default=repr` accepted a set, and a set's repr follows iteration order,
+    which for strings depends on PYTHONHASHSEED: params_hash({'a'...'g'})
+    digests to 652072a0 under seed 1 and ed78b352 under seed 2.
+
+    The failure mode is silent and permanent -- every run misses the cache,
+    re-downloads GRIP4 and re-polyfills four million cells, and reports
+    success. Refusing at the boundary makes the caller sort it and say so.
+    """
+    import pytest
+
+    from transport_maps._io import params_hash
+
+    with pytest.raises(TypeError, match="refuses a set"):
+        params_hash({"a", "b", "c"})
+    with pytest.raises(TypeError, match="refuses a set"):
+        params_hash({"key": [1, {"x", "y"}]})          # nested, too
+    # The sorted form is what a call site should pass, and it is stable.
+    assert params_hash(sorted({"c", "a", "b"})) == params_hash(["a", "b", "c"])
+
+
+def test_params_hash_is_stable_across_interpreter_hash_seeds():
+    """Two calls inside one process cannot detect a seed-dependent digest;
+    the whole hazard is that the seed differs between RUNS."""
+    import subprocess
+    import sys
+
+    code = ("import sys; sys.path.insert(0, 'src');"
+            "from transport_maps._io import params_hash;"
+            "print(params_hash(['a','b','c'], {'k': 1}, (2, 3)))")
+    out = {subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                          env={"PYTHONHASHSEED": str(seed), "PATH": "/usr/bin:/bin"},
+                          check=True).stdout.strip()
+           for seed in (0, 1, 2, 7)}
+    assert len(out) == 1, f"digest moved with PYTHONHASHSEED: {out}"

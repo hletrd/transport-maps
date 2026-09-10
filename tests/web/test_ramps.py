@@ -7,7 +7,10 @@ fixture rather than by mutating sys.path for the whole session.
 
 def test_every_ramp_is_monotonic_and_separable(check_ramps):
     found = check_ramps.ramps()
-    assert len(found) >= 6, "RAMPS not parsed from app.js"
+    # `>= 6` tolerated losing half the schemes: app.js ships twelve, and a
+    # parser that silently matched only the first six would have kept this
+    # green while six schemes went unmeasured.
+    assert len(found) == 12, f"RAMPS parsed {len(found)} schemes from app.js, expected 12"
     for key, r in found.items():
         assert len(r["c"]) == 11, f"{key}: {len(r['c'])} anchors, expected 11"
         assert not check_ramps.problems(r["c"]), f"{key}: {check_ramps.problems(r['c'])}"
@@ -52,3 +55,19 @@ def test_a_grey_that_matches_a_band_is_caught(check_ramps):
     r = dict(check_ramps.ramps()["mono"])
     r["grey"] = "#4a4d50"                      # the old shared grey, 0.9 from band 28
     assert any("grey" in p for p in check_ramps.scheme_problems(r, check_ramps.constant("SPACE")))
+
+
+def test_the_band_count_follows_the_emitter_not_a_literal(check_ramps):
+    """`expand()` and `scheme_problems()` hard-coded 37. The number of painted
+    bands is one more than config.BAND_EDGES_MIN, and the moment an edge is
+    added or removed a literal stops describing the legend the page draws --
+    the gate would keep measuring 37 colours for a ramp that no longer has 37,
+    and every guarantee in this file would be about the wrong colours.
+    """
+    from transport_maps import config
+
+    assert check_ramps.N_BANDS == len(config.BAND_EDGES_MIN) + 1
+    r = check_ramps.ramps()["muted"]
+    assert len(check_ramps.expand(r["c"])) == check_ramps.N_BANDS
+    # And a different ladder really does change what is measured.
+    assert len(check_ramps.expand(r["c"], 11)) == 11
