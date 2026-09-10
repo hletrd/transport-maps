@@ -708,6 +708,45 @@ whose output only changes at the next build; both say so.
   honest next step is to ask them to look again once the rebuild deploys, and
   to keep this row open until they say it is fixed.
 
+  **Page-only deploy, and the live measurement.** With the user looking at the
+  site and asking whether the lines were fixed, `deploy_verify.sh --page-only`
+  was run rather than waiting three more hours for the rebuild. Its safety
+  properties were read before running, not assumed: no `--delete` on that
+  branch (the two `--delete` rsyncs are in the full branch only), `check_dist
+  --copy-only` never reads `dist/`, `web/` contains no file that collides with
+  `index.json`, `origins/`, `hover_cells.bin` or the extras, and nothing on the
+  path takes the build lock -- so the running rebuild could not be disturbed.
+
+  Live afterwards: `app.js` 103,849 B (was 36,889, dated the previous day) with
+  `"fill-antialias": false` at line 949, and `boot.js` serving 200 at 2,782 B.
+  `browser_verify.sh` against the live site: ALL CHECKS PASSED, zero console
+  entries, four viewports.
+
+  Measured on the live page, bands layer alone at z7.2:
+
+  | | one-pixel dark seams |
+  |---|---|
+  | antialiased, as it shipped until today | 717 |
+  | live now | **1** |
+
+  and the single survivor is not a gap. A separate check for the *gaps* the
+  user complained of -- background colour enclosed by band colour -- finds
+  **zero** enclosed runs either way, so the seams were lines drawn over the
+  bands, never holes between them.
+
+  One measurement error worth recording, because it nearly went into a report:
+  the first live pass read 1,205 -> 517, only 57% removed. The labels were
+  hidden and the map then jumped, and `showLabels()` re-adds a marker on every
+  move -- so 516 of those "seams" were city-name text. Hiding after the jump
+  gives 717 -> 1. The order of two lines changed the answer by a factor of
+  fifty.
+
+  **What this deploy does NOT change.** Only `web/` shipped. The data is still
+  the 157-city resolution-5 build: the city list, the coastline detail, the
+  rail station names, the departure card's reach figures and the build stamp
+  all stay as they were until the full deploy. USER-2's coastline row is NOT
+  addressed by this.
+
   **Cycle-4 IDs carry the cycle number.** Cycle 3's designer used a bare
   `A1…A8`, colliding with the build plan's `A1…A17`, and six of those findings
   reached no table at all — the one gap in the audit `plan/README.md` records.
