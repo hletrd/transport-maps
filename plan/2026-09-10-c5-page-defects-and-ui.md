@@ -106,31 +106,73 @@ _Updated as the cycle runs._
 
 | Task | State | Commit | Mutation shown red |
 |---|---|---|---|
-| V1 | | | |
-| V2 | | | |
-| V3 | | | |
-| V4 | | | |
-| V5 | | | |
-| V6 | | | |
-| V7 | | | |
-| V8 | | | |
-| V9 | | | |
-| V10 | | | |
-| V11 | | | |
-| V12 | | | |
-| V13 | | | |
-| V14 | | | |
-| V15 | | | |
-| V16 | | | |
-| V17 | | | |
-| V18 | | | |
-| V19 | | | |
-| V20 | | | |
-| V21 | | | |
-| V22 | | | |
-| V23 | | | |
-| V24 | | | |
-| V25 | | | |
-| V26 | | | |
-| V27 | | | |
-| V28 | | | |
+| V1 | done | `dbc6864` | `ourOwn(url)` deleted -> 2 boot tests red |
+| V2 | done | `23c9b83` | early return removed -> camera flies to world view |
+| V3 | done | `2372a14` | `#where` write restored -> notice vanishes on mousemove |
+| V4 | done | `9965905` | constant `timeRemaining` restored -> shim never yields |
+| V5 | done | `e3101c5` | focus restore deleted -> `activeElement` falls to `<body>` |
+| V6 | done | `e3101c5` | scroll block deleted -> list opens on "Aba" |
+| V7 | done | `23be1c4` | `prepend` -> `append` puts the message at y 12,326 |
+| V8 | done | `1ddfced` | caption removed -> direction lives only in a `title` |
+| V9 | done | `54f97cc` | `markBand` removed -> the strip has no reading |
+| V10 | done | `54f97cc` | em dash restored -> `test_the_idle_readout...` red |
+| V11 | done | `5fbf4a3` | measured at 390x844 by the designer, not re-measured here |
+| V12 | done | `5fbf4a3` | `locale` removed -> canvas is named "Map" |
+| V13 | done | `5fbf4a3` | announce removed -> filtering to zero is silent |
+| V14 | done | `5fbf4a3` | `min-height` removed -> 15x15 and 23 px targets |
+| V15 | done | `5fbf4a3` | control removed -> no share surface at all |
+| V16 | done | `4879a46` | old strings restored -> `grep` finds them again |
+| V17 | done | `4d8e081` | section removed -> zero matches for hold-out in `web/` |
+| V18 | done | `c82dadc` | `hoverRes` dropped -> 2 red; `UNREACHABLE` dropped -> 1 red |
+| V19 | done | `8232d6e` | `generator_options` restored -> a clean archive warns |
+| V20 | done | `83fb802` | verified against the vendored `KeyboardHandler` source |
+| V21 | done | `dbc6864` | `cities > 0` -> `>= 0` -> 2 red |
+| V22 | done | `8232d6e` | `sys.exit(1)` deleted -> 2 exit-code tests red |
+| V23 | done | `b562f0f` | `directed=False` -> 1 red; `return_predecessors=False` -> 1 red |
+| V24 | done | `83fb802` | a fourth `setItem` -> red |
+| V25 | done | `83fb802` | gate now runs `tests/web/` whole; `test_ramps` reached |
+| V26 | done | `83fb802` | threshold above real free space -> refuses before any byte moves |
+| V27 | recorded | - | no code change by design; see below |
+| V28 | done | `8232d6e` | attribution block deleted -> `test_an_index_that_drops_a_credit` red |
+
+### V27 — the stray journal file, recorded rather than removed
+
+`dist/origins/las-vegas.pmtiles-journal` exists on disk. `check_dist`'s
+`STRAY` regex (`scripts/check_dist.py:28`) matches `.*-journal`, and that scan
+runs **before** the rsync whose exclude list would have dropped it, so the next
+**full** deploy hard-fails on it. It was I4 / L5 / SEC3-1, a nice-to-have; it is
+now a blocker.
+
+**This task deliberately changes nothing.** Two rules apply and they agree:
+
+- the orchestrator's standing constraint for this run forbids deleting or
+  rewriting files under `dist/` outside what `reindex` and the deploy do;
+- CLAUDE.md's destructive-action rule requires confirmation before a delete.
+
+And weakening `STRAY` to let a journal file through would be exactly the
+"do not weaken a gate to make a deploy pass" failure the run brief names.
+
+The owner action is one line, and it is theirs to run:
+
+```
+rm dist/origins/las-vegas.pmtiles-journal
+```
+
+It is a tippecanoe temp file left behind by an interrupted origin build. The
+corresponding `las-vegas.pmtiles` should be confirmed present and well-formed
+first (`uv run python scripts/check_dist.py --dist dist` reports it either way).
+
+### Two things this cycle found and did NOT do
+
+**The rail data about to ship carries a known defect.** `TR5-2`: the in-flight
+build read the pre-fix parquet, so 199-226 of each origin's ~2,000 named rail
+stations sit on a fabricated adjacency, and the tooltip names the line from the
+same spliced sequence the edge was booked from -- so both are wrong together.
+The code fix landed in `87aec6f`; only the data is stale. The orchestrator has
+decided to ship it, on the stated ground that what is live carries the same
+defect and is a day older. Recorded in `deferred.md` with a rail edge-length
+gate as the exit criterion.
+
+**`dist/` is mid-rebuild as this plan closes.** `index.json` says `solveRes: 5`,
+`hoverRes: 4` and 157 origins while 461 `{slug}.json` on disk are res-6. That is
+the state `reindex` exists to correct and V18 now refuses to correct wrongly.
