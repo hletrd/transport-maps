@@ -619,8 +619,26 @@ whose output only changes at the next build; both say so.
   only a real deploy exercises.
 
   **U29 / USER-1 -- the one the reviewers missed, found by the user.**
-  "육각형 사이사이에 윤곽선들이 있는데 이건 뭐지?" -- what are the outlines
-  between the hexagons? Not a layer: MapLibre defaults `fill-antialias` to
+
+  Provenance, because it matters for how the item is read. The user raised
+  hexagon seams and gaps **three times in the main conversation** before this
+  cycle:
+
+  > 육각형들 사이의 틈이 극도로 심해졌고, 여전히 해안선 정밀도가 부족해.
+  > 한 10km 단위는 되는것같아.
+
+  > 육각형에 여전히 틈새가 많아. 그리고 coastline 왜 정교하게 안그리는거야?
+  > 왜 거부해?
+
+  > 각 육각형 단위를 둥글려서 갭도 생기고 문제가 많은데 둥글리지 않을수는 없나
+
+  In cycle 4 the question reached this thread in its narrowest form --
+  "육각형 사이사이에 윤곽선들이 있는데 이건 뭐지?", what are the outlines
+  between the hexagons -- and that is the form the cause was finally found in.
+  So this is not a fresh cosmetic request: it is a complaint the user had made
+  three times, whose mechanism nobody had identified.
+
+  Not a layer: MapLibre defaults `fill-antialias` to
   true, which draws a 1 px outline around every polygon in
   `fill-outline-color` (itself defaulting to `fill-color`). At a shared band
   rim the top polygon's edge pixel is only partly covered, composites with the
@@ -645,6 +663,50 @@ whose output only changes at the next build; both say so.
   looking at the globe and asking what a thing was. The reviews are good at
   checking whether the code does what it says; they are weak at noticing what
   the result looks like.
+
+  **USER-2 -- the coastline half of the same complaints, which no plan
+  records at all.** Two of the three quoted messages are not only about seams:
+
+  > 여전히 해안선 정밀도가 부족해. 한 10km 단위는 되는것같아.
+
+  > coastline 왜 정교하게 안그리는거야? 왜 거부해?
+
+  `grep -rn "coastline" plan/` finds this nowhere. A complaint raised twice,
+  with the user asking why it is being refused, and the ledger has no entry --
+  which is the exact failure `plan/README.md` claims cannot happen. It is
+  recorded here as an open item; **it is not fixed in this cycle** and needs
+  the owner's or the next cycle's decision.
+
+  What I could establish without a rebuild, measured on the pending payload:
+
+  - **The water layer is doing its job.** `contour/bands.py` states the design:
+    bands are not clipped to the coast, they run one cell into the sea, and the
+    static water layer above cuts them back "at whatever precision that layer
+    carries". Measured on Korea's south coast, which is heavily indented, the
+    land/sea boundary has a **median flat run of 1 px and a 90th percentile of
+    4-5 px at every zoom from 5 to 10**, where a res-6 hexagon edge would be
+    3, 11, 43 and 85 px respectively. The coast tracks the real shore, not the
+    grid, at every one.
+  - **The coastline geometry is half a screen pixel.** `emit/water.py`'s
+    `SIMPLIFICATION = 4` tile units at the tileset maximum is 19.1 m at z11
+    against 38.2 m for one screen pixel at the page's own maxZoom.
+  - **U24's z12 -> z11 cap is confirmed harmless here**, which matters because
+    this cycle touched that tileset while a coastline complaint was open: it
+    moves the simplification from 9.6 m to 19.1 m, both under one pixel, and
+    MapLibre asks a vector source for floor(mapZoom), so the z12 tiles were
+    never requested at a maxZoom of 11.
+
+  So on what is about to ship, the coast is not 10 km granular. The likeliest
+  attribution is that **the complaints were made against the live site, which
+  is the resolution-5 build**: 17 km hexagons, the right order of magnitude for
+  "한 10km 단위", against 6.5 km base and 2.4 km refined in the pending one.
+  On that reading the standing complaint is largely answered by the deploy that
+  is already waiting, plus this cycle's antialias fix.
+
+  Stated as an attribution, not a diagnosis: I could not reproduce the user's
+  view, and do not know which zoom or which build they were looking at. The
+  honest next step is to ask them to look again once the rebuild deploys, and
+  to keep this row open until they say it is fixed.
 
   **Cycle-4 IDs carry the cycle number.** Cycle 3's designer used a bare
   `A1…A8`, colliding with the build plan's `A1…A17`, and six of those findings
