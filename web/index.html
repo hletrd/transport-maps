@@ -90,6 +90,13 @@
 :root{
   --bg:#0a0b0d; --surface:#131519; --surface-2:#1a1d22;
   --line:#282c33; --line-2:#343941;
+  /* The visual boundary of an interactive control, WCAG 2.2 SC 1.4.11, which
+     wants 3:1 against what is behind it. --line is 1.30:1 on --surface,
+     1.21:1 on --surface-2 and 1.40:1 over space, so the zoom buttons, the
+     compass and the search box had boundaries that are, measurably, not
+     there. Measured from these hex values: 3.35 / 3.10 / 3.61. --line stays
+     what it is for dividers and panel edges, which SC 1.4.11 does not cover. */
+  --line-ctl:#646a73;
   --text:#e9e7e4; --text-2:#a4a9b2;
   /* 6.1:1 on --surface and 4.8:1 on the 86% scrim over the brightest band
      (WCAG 2.2 AA is 4.5:1); the old #6f757e sat at 3.9:1 and 2.0:1. */
@@ -291,7 +298,7 @@ body.crowded .depart-card{display:none}
   flex:none;width:5.8em;text-align:right;white-space:nowrap}
 .results button[aria-current="true"] .rowtime{color:var(--text-3);font-weight:400}
 #q{
-  width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);
+  width:100%;background:var(--surface-2);border:1px solid var(--line-ctl);border-radius:var(--r);
   color:var(--text);font-family:inherit;font-weight:400;font-size:13px;line-height:1.5;padding:6px 8px;
 }
 #q:focus{border-color:var(--line-2)}
@@ -372,7 +379,7 @@ body.crowded .depart-card{display:none}
 .row label{cursor:pointer}
 .hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}
 .btn{
-  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);color:var(--text-2);
+  background:var(--surface-2);border:1px solid var(--line-ctl);border-radius:var(--r);color:var(--text-2);
   font-family:inherit;font-weight:500;font-size:12px;line-height:1;padding:7px 10px;cursor:pointer;
 }
 .btn:hover{color:var(--text);border-color:var(--line-2)}
@@ -382,7 +389,7 @@ body.crowded .depart-card{display:none}
 .zoomctl{position:fixed;right:296px;bottom:74px;z-index:7;display:flex;flex-direction:column;gap:6px}
 .mapbtn{
   width:46px;height:38px;border-radius:var(--r);
-  background:var(--surface);border:1px solid var(--line);color:var(--text-2);
+  background:var(--surface);border:1px solid var(--line-ctl);color:var(--text-2);
   cursor:pointer;padding:0;font:inherit;font-size:17px;line-height:1;
   display:grid;place-items:center;
 }
@@ -393,7 +400,7 @@ body.crowded .depart-card{display:none}
 /* ---- compass ---- */
 .compass{
   position:fixed;right:296px;bottom:20px;z-index:7;width:46px;height:46px;border-radius:50%;
-  background:var(--surface);border:1px solid var(--line);cursor:pointer;padding:0;
+  background:var(--surface);border:1px solid var(--line-ctl);cursor:pointer;padding:0;
   display:grid;place-items:center;
 }
 .compass:hover{border-color:var(--line-2)}

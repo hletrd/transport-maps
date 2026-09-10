@@ -165,3 +165,52 @@ def test_the_announcement_follows_the_reveal():
         body = body[:body.index("renderLegs()")]
         assert body.index("unfoldSheet()") < body.index("announceReading("), (
             f"{fn} announces before it reveals")
+
+
+# --- U27: WCAG 2.2 SC 1.4.11, the boundary that identifies a control --------
+
+def _luminance(hex_colour: str) -> float:
+    def lin(c: float) -> float:
+        c /= 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def _contrast(a: str, b: str) -> float:
+    la, lb = _luminance(a), _luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def _token(name: str) -> str:
+    import re
+    m = re.search(rf"{name}:\s*(#[0-9a-fA-F]{{6}})", HTML)
+    assert m, f"{name} not found in index.html"
+    return m.group(1)
+
+
+def test_the_control_boundary_token_clears_three_to_one_on_every_ground():
+    """--line measures 1.30:1 on --surface, 1.21:1 on --surface-2 and 1.40:1
+    over space, so the zoom buttons, the compass, the search box and the
+    buttons had boundaries that are, measurably, not there. SC 1.4.11 wants
+    3:1 for the visual information required to identify a control.
+
+    --line itself is unchanged: it draws dividers and panel edges, which the
+    criterion does not cover.
+    """
+    ctl = _token("--line-ctl")
+    for ground in ("--surface", "--surface-2", "--bg"):
+        assert _contrast(ctl, _token(ground)) >= 3.0, (
+            f"--line-ctl {ctl} is {_contrast(ctl, _token(ground)):.2f}:1 on {ground}")
+
+
+def test_every_interactive_control_uses_it():
+    """A control that keeps --line has a boundary nobody can see."""
+    import re
+    # ^ anchored: ".qrow .btn{flex:none}" is a layout tweak, not the base rule.
+    for selector in (r"#q\{", r"\.mapbtn\{", r"\.compass\{", r"\.btn\{"):
+        m = re.search(r"^" + selector + r"[^}]*\}", HTML, re.S | re.M)
+        assert m, selector
+        block = m.group(0)
+        assert "border:1px solid var(--line-ctl)" in block, (
+            f"{selector} still draws its boundary with --line: {block[:120]}")

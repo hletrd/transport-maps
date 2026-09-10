@@ -16,7 +16,7 @@ import sys
 from itertools import pairwise
 from pathlib import Path
 
-from transport_maps import config
+from transport_maps import _io, config
 
 
 # The number of painted bands is one more than the number of edges, and it is
@@ -176,7 +176,12 @@ if __name__ == "__main__":
             m = pat.search(src)
             assert m, key
             src = src[: m.start(2)] + ",".join(f'"{c}"' for c in new) + src[m.end(2):]
-        APP.write_text(src, encoding="utf-8")
+        # atomic_write, not write_text: this is the only writer in the repo
+        # that truncates a tracked source file in place. A crash or a full
+        # disk part-way through leaves web/app.js truncated -- and on the
+        # --page-only deploy path nothing would ever open the result, because
+        # that path publishes web/ without a build.
+        _io.atomic_write(APP, lambda tmp: tmp.write_text(src, encoding="utf-8"))
         print("respaced every ramp in app.js")
     bad = 0
     space = constant("SPACE")

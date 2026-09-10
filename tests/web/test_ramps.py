@@ -90,3 +90,13 @@ def test_the_band_count_follows_the_emitter_not_a_literal(check_ramps, monkeypat
     # continuing to grade a 37-band ladder that no longer exists.
     assert check_ramps.scheme_problems(r, check_ramps.constant("SPACE")) == \
         check_ramps.scheme_problems(r, check_ramps.constant("SPACE"), 13)
+
+
+def test_respace_writes_atomically(check_ramps):
+    """--respace is the one writer in the repo that truncates a tracked source
+    file in place. A crash part-way through leaves web/app.js truncated, and on
+    the --page-only deploy path nothing would open the result before it ships.
+    """
+    src = (check_ramps.__file__ and open(check_ramps.__file__, encoding="utf-8").read())
+    assert "atomic_write(APP" in src
+    assert "APP.write_text(" not in src, "a bare write_text truncates before it writes"

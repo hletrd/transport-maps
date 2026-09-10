@@ -1732,11 +1732,18 @@ async function searchAddress(q) {
 const reverseCache = new Map();
 async function reverseGeocode(lat, lon) {
   const seq = ++reverseSeq;
-  const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+  // The cache key was rounded to three decimals -- about 110 m, well inside
+  // the zoom-14 result this asks for -- and then the full double was sent to
+  // Nominatim anyway. So the coarsening bought a cache hit and published a
+  // precision it did not need: the exact point a visitor clicked, to a
+  // third-party server, when 110 m answers the same question. Send what the
+  // cache is keyed on.
+  const qlat = lat.toFixed(3), qlon = lon.toFixed(3);
+  const key = `${qlat},${qlon}`;
   try {
     let j = reverseCache.get(key);
     if (!j) {
-      j = await nominatim(`/reverse?format=jsonv2&zoom=14&lat=${lat}&lon=${lon}`, () => seq !== reverseSeq);
+      j = await nominatim(`/reverse?format=jsonv2&zoom=14&lat=${qlat}&lon=${qlon}`, () => seq !== reverseSeq);
       if (j === null) return;
       if (reverseCache.size > 200) reverseCache.clear();
       reverseCache.set(key, j);
