@@ -28,6 +28,17 @@ arrays; a static page renders them on a globe.
 - **Hexagons are drawn as hexagons.** No corner rounding: it moved every band
   boundary differently per polygon and opened gaps. The margins that keep
   bands overlapping are counted in whole cells (`contour/bands.py` LODS).
+- **H3 cells are not regular hexagons, and that is not a bug to fix.** A
+  sphere cannot be tiled with regular hexagons: H3 lays them on an
+  icosahedron's twenty faces and projects back, so cells are squashed near a
+  face edge. Measured: median longest/shortest edge 1.04 worldwide, worst
+  1.17, and Seoul sits near that worst case at 1.15 with interior angles from
+  110° to 126°. Rendering adds almost nothing (34.5% of corners depart from
+  ±60° in raw H3, 36.7% after tiling). Do NOT try to regularise them: moving a
+  vertex breaks the edge it shares with its neighbour and reopens the holes
+  between bands, which is the same failure corner-rounding caused. Higher
+  resolution does not change the ratio, only the absolute error (1,343 m at
+  res 5, 454 m at res 6, 190 m at res 7).
 - **The legend is always visible**, never folded into a panel, and its ticks sit
   at their true band boundaries — the bands are equal width but the time scale
   is not linear, so evenly spaced labels would misstate the scale.
