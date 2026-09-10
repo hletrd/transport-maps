@@ -618,6 +618,34 @@ whose output only changes at the next build; both say so.
   written, and the live server's own byte-range and header behaviour, which
   only a real deploy exercises.
 
+  **U29 / USER-1 -- the one the reviewers missed, found by the user.**
+  "육각형 사이사이에 윤곽선들이 있는데 이건 뭐지?" -- what are the outlines
+  between the hexagons? Not a layer: MapLibre defaults `fill-antialias` to
+  true, which draws a 1 px outline around every polygon in
+  `fill-outline-color` (itself defaulting to `fill-color`). At a shared band
+  rim the top polygon's edge pixel is only partly covered, composites with the
+  band underneath, and lands darker than either side. With 37 bands, most of
+  them one cell wide near the origin, almost every hexagon edge IS a band
+  boundary, so the map read as hexagons with outlines drawn between them. The
+  seam pixel sits a median of 9 grey levels below both neighbours.
+
+  Fixed in `d1218a0` with the trade-off measured rather than assumed, over two
+  views at all four viewports: 39,448 px of invented dark line removed against
+  46,176 px of real-edge smoothing lost -- of which 84% step by under 6 grey
+  levels (below one ramp step, invisible) because adjacent bands are one ramp
+  step apart, and the 7.4% high-contrast remainder steps every 1 px (p90 2 px),
+  reading as a diagonal rather than a staircase.
+
+  Worth recording for the process, not just the fix: **twelve specialist
+  reviewers, including a designer who ran the page in a browser and measured
+  band separation directly from the painted strip, did not find this.** The
+  designer's review explicitly measured band deltaE from the rendered pixels
+  and reported "0 mismatches" against `check_ramps.expand()` -- the colours
+  were right, so nothing flagged the line drawn between them. It took someone
+  looking at the globe and asking what a thing was. The reviews are good at
+  checking whether the code does what it says; they are weak at noticing what
+  the result looks like.
+
   **Cycle-4 IDs carry the cycle number.** Cycle 3's designer used a bare
   `A1…A8`, colliding with the build plan's `A1…A17`, and six of those findings
   reached no table at all — the one gap in the audit `plan/README.md` records.
