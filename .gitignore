@@ -20,3 +20,10 @@ data/validation/
 
 # The example is documentation; only a real deploy/.env stays private.
 !deploy/.env.example
+
+# Review artifacts from the review-plan-fix agents. Kept on disk for
+# provenance, never committed: they quote absolute paths, mount points and
+# build-host aliases from whatever machine ran them, which is this laptop's
+# internal topology rather than anything about the project. The durable
+# record of what was found and decided lives in plan/.
+.context/reviews/
