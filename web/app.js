@@ -926,7 +926,27 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     },
     paint: {
       "fill-color": bandColorExpression(),
-      "fill-opacity": 1
+      "fill-opacity": 1,
+      // MapLibre defaults fill-antialias to true, which draws a 1px
+      // antialiased outline around EVERY polygon in fill-outline-color
+      // (itself defaulting to fill-color). At a shared rim the top polygon's
+      // edge pixel is only partly covered, so it composites with the band
+      // underneath and lands darker than either: a hairline tracing the
+      // boundary. With 37 bands, most of them one cell wide near the origin,
+      // almost every hexagon edge IS a band boundary -- so the map read as
+      // hexagons with outlines drawn between them.
+      //
+      // Measured on the bands layer alone, everything else hidden, at z7.2:
+      // 236 one-pixel dark seams with antialiasing, 15 without. The two
+      // renders differ by 22,484 px, 89% of them in runs one or two pixels
+      // wide, running in several directions -- hexagon rims.
+      //
+      // Turning it off costs an aliased edge, but only where the band mass
+      // meets something of a different colour. Adjacent bands are one ramp
+      // step apart (OKLab dE about 2), so an aliased edge between them is
+      // invisible; the coast is covered by the water layer above. That leaves
+      // the outer silhouette, which is measured in the commit that set this.
+      "fill-antialias": false
     }
   }, "water");
 

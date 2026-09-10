@@ -247,3 +247,34 @@ def test_the_rail_file_is_shape_checked_too():
     itinerary on screen."""
     i = APP.index("origin.rail = {")
     assert "Array.isArray(j.stations)" in APP[max(0, i - 500):i]
+
+
+def test_the_bands_layer_turns_off_fill_antialias():
+    """MapLibre's fill-antialias defaults to true and draws a 1px outline
+    around every polygon, so a shared band rim composited darker than either
+    side: a hairline tracing the boundary. With 37 bands, most of them one
+    cell wide near the origin, almost every hexagon edge IS a band boundary,
+    and the map read as hexagons with outlines drawn between them.
+
+    Measured on the bands layer alone at z7.2, everything else hidden: 236
+    one-pixel dark seams with antialiasing, 15 without.
+
+    Across the four CLAUDE.md viewports, classifying every pixel the setting
+    changes against the aliased render as ground truth: 39,448 were a colour
+    DARKER than anything that belongs there -- pure artifact -- and 46,176
+    were antialiasing a real edge. Of that second group 84% step by under 6
+    grey levels, which is less than one ramp step and therefore invisible,
+    and the high-contrast remainder steps every 1-2 px, so it reads as a
+    diagonal rather than a staircase.
+
+    None of the twelve cycle-4 reviewers found this; the user did.
+    """
+    block = APP[APP.index('id: "bands", type: "fill"'):]
+    block = block[:block.index('}, "water");')]
+    assert '"fill-antialias": false' in block, (
+        "the bands layer is back to MapLibre's antialiased default, which draws "
+        "a dark hairline along every band boundary")
+    # The neighbouring settings this depends on: opaque fills painted slow to
+    # fast, so an aliased edge lands on the adjacent band rather than on space.
+    assert '"fill-opacity": 1' in block
+    assert "fill-sort-key" in APP[APP.index('id: "bands", type: "fill"'):][:1200]
