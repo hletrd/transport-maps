@@ -278,6 +278,8 @@ body.crowded .depart-card{display:none}
 .results button:hover{color:var(--text)}
 .results button[aria-current="true"]{color:var(--accent);font-weight:500}
 .results .coord{font-size:10.5px;color:var(--text-3);flex:none}
+/* Only on the four names two cities share; sentence case, no letter-spacing. */
+.results .disambig{font-style:normal;color:var(--text-3);font-size:11px}
 /* The city rows used to end in a latitude and a longitude, which answers a
    question nobody arrives with. They end in the door-to-door time from the
    current departure instead -- the page's answer, in the list where a visitor

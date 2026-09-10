@@ -266,3 +266,43 @@ def test_the_mode_prose_covers_every_channel_the_page_expects():
     assert not missing, f"mode_detail() has no prose for {missing}"
     for c in modes.CHANNELS:
         assert prose[c].strip(), f"{c}: empty prose"
+
+
+def test_duplicate_origin_names_are_warned_about_not_rejected(tmp_path, caplog):
+    """Four names in the 553-origin set belong to two cities each -- Hyderabad,
+    Suzhou, Fuzhou, Taizhou. The data is legitimate; the picker sorting by name
+    is what makes it a problem, so this warns and the page disambiguates.
+    """
+    import logging
+
+    p = tmp_path / "origins.toml"
+    p.write_text(
+        '[[origin]]\nslug = "hyderabad"\nname = "Hyderabad"\nlat = 17.4\nlon = 78.5\n'
+        '[[origin]]\nslug = "hyderabad-pk"\nname = "Hyderabad"\nlat = 25.4\nlon = 68.4\n'
+        '[[origin]]\nslug = "seoul"\nname = "Seoul"\nlat = 37.6\nlon = 127.0\n')
+    with caplog.at_level(logging.WARNING):
+        out = index.load_origins(p)
+    assert [o["slug"] for o in out] == ["hyderabad", "hyderabad-pk", "seoul"]
+    assert "Hyderabad" in caplog.text and "more than once" in caplog.text
+
+
+def test_unique_origin_names_warn_about_nothing(tmp_path, caplog):
+    import logging
+
+    p = tmp_path / "origins.toml"
+    p.write_text('[[origin]]\nslug = "seoul"\nname = "Seoul"\nlat = 37.6\nlon = 127.0\n')
+    with caplog.at_level(logging.WARNING):
+        index.load_origins(p)
+    assert "more than once" not in caplog.text
+
+
+def test_the_index_carries_country_only_when_origins_toml_does(tmp_path):
+    """The page needs it to tell two cities of one name apart, and falls back
+    to places.json when the build predates the field."""
+    out = tmp_path / "index.json"
+    index.write_index(
+        [{"slug": "a", "name": "Hyderabad", "lat": 0.0, "lon": 0.0, "country": "IN"},
+         {"slug": "b", "name": "Seoul", "lat": 1.0, "lon": 1.0}], out)
+    listed = json.loads(out.read_text())["origins"]
+    assert listed[0]["country"] == "IN"
+    assert "country" not in listed[1]

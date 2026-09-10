@@ -102,8 +102,16 @@ def main() -> None:
         for o in added:
             # json.dumps is valid TOML basic-string quoting for these names
             # (quotes and backslashes escaped); f-string quoting was not.
+            # `country` is read from GeoNames a few lines above and used to
+            # disambiguate a slug, and was then thrown away -- so the 553-origin
+            # run produced four pairs of origins with the SAME NAME (Hyderabad,
+            # Suzhou, Fuzhou, Taizhou), distinguishable only by a slug the
+            # visitor never sees. The list sorts by name, so each pair is two
+            # adjacent identical rows. Writing it costs nothing and lets the
+            # page tell them apart without a gazetteer lookup.
             fh.write(f'\n[[origin]]\nslug = "{o["slug"]}"\nname = {json.dumps(o["name"], ensure_ascii=False)}\n'
-                     f'lat = {o["lat"]}\nlon = {o["lon"]}\n')
+                     f'lat = {o["lat"]}\nlon = {o["lon"]}\n'
+                     f'country = "{o["country"]}"\n')
     print(f"  {len(existing)} existing, {len(added)} added -> {len(existing) + len(added)} origins")
     for o in added[:12]:
         print(f"    {o['name']:<22} {o['country']:<18} {o['pop']:>10,}{'  capital' if o['capital'] else ''}")

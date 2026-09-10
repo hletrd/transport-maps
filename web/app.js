@@ -852,11 +852,43 @@ function syncPermalink() {
 // The times array the city list was last built from; see settle().
 let listTimesFor = null;
 
+// Names shared by more than one departure city, computed once, LAZILY.
+// `cities` is declared several hundred lines below this point, so an IIFE
+// here reads it in its temporal dead zone and throws at module scope --
+// before the map exists, with a blank page and (as this repository has
+// twice shipped) nothing useful in the console afterwards. Written that
+// way first; caught by opening the page.
+let _ambiguous = null;
+function ambiguousNames() {
+  if (_ambiguous) return _ambiguous;
+  const seen = new Set();
+  _ambiguous = new Set();
+  for (const c of cities) (seen.has(c.name) ? _ambiguous : seen).add(c.name);
+  return _ambiguous;
+}
+// "slower than from Suzhou" is useless when you have just switched between
+// the two cities called Suzhou; say which one.
+function lastFromLabel() {
+  if (!lastFrom) return "";
+  if (!ambiguousNames().has(lastFrom.name)) return lastFrom.name;
+  const c = bySlug.get(lastFrom.slug);
+  const where = c && cityCountry(c);
+  return where ? `${lastFrom.name} (${where})` : lastFrom.name;
+}
+function cityCountry(c) {
+  if (c.country) return c.country;
+  const p = places ? nearestPlace(c.lat, c.lon) : null;
+  return (p && (p.country || p.region)) || "";
+}
+
 function captureComparison() {
   if (!pinB || !active) return (lastFrom = null);
   const t = lookup(pinB.lat, pinB.lon);
+  // The SLUG, not only the name: the comparison was suppressed whenever the
+  // two cities shared a name, which is exactly the pair a visitor is most
+  // likely to click, since the list sorts by name and puts them adjacent.
   lastFrom = (typeof t === "number" && t < MAX_MINUTES)
-    ? { name: active.name, min: t, lat: pinB.lat, lon: pinB.lon } : null;
+    ? { slug: active.slug, name: active.name, min: t, lat: pinB.lat, lon: pinB.lon } : null;
 }
 
 function paintOrigin(o, { keepZoom = false } = {}) {
@@ -1303,11 +1335,11 @@ function renderPins() {
     // before you switched city, against the one you are looking at now.
     if (lastFrom && typeof t === "number" && t < MAX_MINUTES
         && lastFrom.lat === pinB.lat && lastFrom.lon === pinB.lon
-        && lastFrom.name !== active.name) {
+        && lastFrom.slug !== active.slug) {
       const d = Math.round(t) - Math.round(lastFrom.min);
       rows.push(["Versus", d === 0
-        ? `the same as from ${lastFrom.name}`
-        : `${fmtDur(Math.abs(d))} ${d > 0 ? "slower" : "faster"} than from ${lastFrom.name}`]);
+        ? `the same as from ${lastFromLabel()}`
+        : `${fmtDur(Math.abs(d))} ${d > 0 ? "slower" : "faster"} than from ${lastFromLabel()}`]);
     }
   } else {
     rows.push(["To", "click anywhere on the map"]);
@@ -1571,6 +1603,20 @@ function render(filter = "") {
     b.setAttribute("aria-current", String(active?.slug === c.slug));
     const name = document.createElement("span");
     name.textContent = c.name;
+    // Four origin names in the 553-origin set belong to two cities each
+    // (Hyderabad, Suzhou, Fuzhou, Taizhou), and the list sorts by name, so
+    // each pair arrives as two adjacent identical rows with nothing to choose
+    // between them. index.json carries `country` when origins.toml has it;
+    // otherwise the gazetteer already loaded answers it.
+    if (ambiguousNames().has(c.name)) {
+      const where = cityCountry(c);
+      if (where) {
+        const q = document.createElement("i");
+        q.className = "disambig";
+        q.textContent = ` ${where}`;
+        name.append(q);
+      }
+    }
     // Was a latitude and a longitude to one decimal, which answers a question
     // nobody arrives with. The page could not say how long it takes to reach a
     // named city at all: typing "London" and pressing Enter DEPARTS from

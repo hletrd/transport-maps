@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import re
 import subprocess
 import tomllib
@@ -103,6 +104,19 @@ def load_origins(path: Path | None = None) -> list[dict]:
                          "'_' and '-' only, starting with a letter or digit")
     if len(set(slugs)) != len(slugs):
         raise ValueError("duplicate origin slug in origins.toml")
+    # Names are NOT required to be unique -- Hyderabad, Suzhou, Fuzhou and
+    # Taizhou each appear twice in the 553-origin set -- but the page sorts the
+    # picker by name, so each pair lands as two adjacent identical rows and the
+    # slug that tells them apart is never shown. Warn rather than raise: the
+    # data is legitimate and the page disambiguates client-side.
+    from collections import Counter
+    dupes = sorted(n for n, k in Counter(str(o.get("name", "")) for o in origins).items() if k > 1)
+    if dupes:
+        logging.getLogger(__name__).warning(
+            "%d origin name(s) appear more than once and the picker sorts by name: %s. "
+            "The page disambiguates from places.json; add `country = \"XX\"` in "
+            "origins.toml (scripts/expand_origins.py writes it now) to name them at the source.",
+            len(dupes), ", ".join(dupes[:8]))
     return origins
 
 
@@ -238,7 +252,11 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
         "hoverCellsUrl": "hover_cells.bin",
         "attribution": [dict(entry) for entry in ATTRIBUTION],
         "origins": [
-            {"slug": o["slug"], "name": o["name"], "lat": o["lat"], "lon": o["lon"]}
+            # `country` only when origins.toml carries it: four origin names in
+            # the 553-origin set are shared by two cities, and the page has no
+            # other way to tell adjacent identical rows apart.
+            {"slug": o["slug"], "name": o["name"], "lat": o["lat"], "lon": o["lon"],
+             **({"country": o["country"]} if o.get("country") else {})}
             for o in origins
         ],
     }
