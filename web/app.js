@@ -183,6 +183,7 @@ let lastPointer = null;         // {lat, lng, point} of the last reading, re-run
 // ever said so. Captured before the arrays are dropped, keyed to the pin it
 // was measured at, cleared when the pin moves.
 let lastFrom = null;
+let firstPaint = true;          // the opening view is jumped to, not flown to
 // The readout's resting copy; a phone has no pointer.
 const IDLE_PROMPT = window.matchMedia("(pointer: coarse)").matches
   ? "Tap the map to read a travel time. Tap a city name to depart from it."
@@ -448,6 +449,48 @@ fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
 // A flyTo arc becomes a cut when the visitor asked for less motion.
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 function moveTo(opts) { if (REDUCED_MOTION.matches) map.jumpTo(opts); else map.flyTo(opts); }
+
+// The globe was framed for 1280x800 and clipped everywhere else. The opening
+// zoom was the literal 1.9 whatever the window, so at 390x844 the sphere spans
+// x -64 to 454 -- a quarter of it off-screen -- and at 844x390 it loses a fifth
+// off the top and bottom, with the east limb behind the rail. The zoom only
+// ever comes DOWN from 1.9: a desktop window keeps exactly the framing it has.
+//
+// The measured diameter at zoom 1.9 is 518 px, and the globe scales by 2^zoom,
+// so the zoom that fits a given diameter is 1.9 + log2(want / 518).
+const GLOBE_PX_AT_1_9 = 518;
+function panelBox() {
+  // The rail is a right-hand column on a desktop and a bottom sheet on a
+  // phone; ask the element rather than re-deriving the breakpoints.
+  const r = document.querySelector(".rail")?.getBoundingClientRect();
+  if (!r || !r.width) return { right: 0, bottom: 0 };
+  const side = r.left > innerWidth * 0.5;
+  return { right: side ? Math.max(0, innerWidth - r.left) : 0,
+           bottom: side ? 0 : Math.max(0, innerHeight - r.top) };
+}
+function viewPadding() {
+  const { right, bottom } = panelBox();
+  // Nudge the centre out of the panel's half, so the departure city is
+  // centred in what the visitor can actually see.
+  return { top: 0, left: 0, right: Math.min(right, innerWidth * 0.45),
+           bottom: Math.min(bottom, innerHeight * 0.45) };
+}
+let framedZoom = 1.9;
+function openingZoom() {
+  const { right, bottom } = panelBox();
+  const want = Math.min(innerWidth - right, innerHeight - bottom) * 0.88;
+  framedZoom = (want > 0) ? Math.min(1.9, 1.9 + Math.log2(want / GLOBE_PX_AT_1_9)) : 1.9;
+  return framedZoom;
+}
+// Re-frame when the window changes shape -- a rotated phone would otherwise
+// keep the portrait framing -- but only while the visitor is still at the
+// opening view. Once they have zoomed in they are reading a region, and
+// moving the camera under them would be worse than a clipped limb.
+addEventListener("resize", () => {
+  const wasFramed = map.getZoom() <= framedZoom + 0.01;
+  const z = openingZoom();
+  if (wasFramed) map.jumpTo({ zoom: z, padding: viewPadding() });
+});
 
 // Whether a point is on the visible face of the globe: project() happily
 // returns on-disc coordinates for Lima while the view faces Beijing.
@@ -748,8 +791,16 @@ function paintOrigin(o, { keepZoom = false } = {}) {
 
   // Keep the visitor's zoom when they chose the city from the globe (they
   // were reading a region); the list and the permalink open the world view.
-  const zoom = keepZoom ? Math.min(Math.max(map.getZoom(), 1.9), 6) : 1.9;
-  moveTo({ center: [o.lon, o.lat], zoom, speed: 0.75, curve: 1.5 });
+  const opening = openingZoom();
+  const zoom = keepZoom ? Math.min(Math.max(map.getZoom(), opening), 6) : opening;
+  const view = { center: [o.lon, o.lat], zoom, padding: viewPadding() };
+  // The FIRST paint jumps. The departure city is known before the map is even
+  // constructed, so flying to it from an arbitrary opening centre spent about
+  // two seconds animating a view no visitor had seen or asked for -- the tell
+  // being that the reduced-motion path settles two seconds sooner. Every
+  // later switch still flies: there the visitor has a view to be carried from.
+  if (firstPaint) { firstPaint = false; map.jumpTo(view); }
+  else moveTo({ ...view, speed: 0.75, curve: 1.5 });
   for (const b of document.querySelectorAll(".results button[data-slug]"))
     b.setAttribute("aria-current", String(b.dataset.slug === o.slug));
   $("origin-name").textContent = o.name;
