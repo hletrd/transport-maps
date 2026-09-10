@@ -193,7 +193,8 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
 
 def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None = None,
                 graph: dict | None = None, identity: dict | None = None,
-                modes_detail: dict[str, str] | None = None) -> None:
+                modes_detail: dict[str, str] | None = None,
+                rail_detail: bool = True) -> None:
     """index.json: what the page needs to read every other artifact.
 
     `hover_cell_count` is checked by the page against the length of
@@ -210,6 +211,16 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
     re-reads calibration.toml at write time, which for a sixteen-hour build is
     sixteen hours after the graph was weighted: the prose would describe
     constants the artifacts were not built with.
+
+    `rail_detail` says whether {slug}.rail.bin/.rail.json are on disk. It
+    defaults True because this emitter's own build always writes them (see
+    emit.rail_detail.write_rail_detail, which writes both even when the tables
+    are empty), but it MUST be passed by any caller indexing artifacts it did
+    not produce -- `reindex` over a dist/ from an older emitter, above all.
+    Writing True over a dist/ with no rail files makes the page fetch two 404s
+    per origin switch, which browser_verify.sh fails the deploy for, and makes
+    check_dist report one problem per origin naming `reindex` as the remedy for
+    a state `reindex` created.
     """
     payload = {
         "bandEdgesMin": list(config.BAND_EDGES_MIN),
@@ -221,9 +232,9 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
         "modeChannels": list(modes.CHANNELS),
         # How each surface mode was modelled, for the route's hover notes.
         "modeDetail": modes_detail if modes_detail is not None else mode_detail(),
-        # This emitter writes {slug}.rail.bin/.rail.json; the page asks for them
-        # only when this is present, so an older build is not two 404s per origin.
-        "railDetail": True,
+        # The page asks for {slug}.rail.bin/.rail.json only when this is true,
+        # so an older build is not two 404s per origin switch.
+        "railDetail": bool(rail_detail),
         "hoverCellsUrl": "hover_cells.bin",
         "attribution": [dict(entry) for entry in ATTRIBUTION],
         "origins": [

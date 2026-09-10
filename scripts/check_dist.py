@@ -124,6 +124,17 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
             bad.append(f"{s}.rail.bin missing although index.json advertises railDetail")
         if rail_bin.exists() and rail_bin.stat().st_size != n_cells * 2:
             bad.append(f"{s}.rail.bin has {rail_bin.stat().st_size // 2} entries, expected {n_cells}")
+        if rail_json.exists():
+            # app.js reads j.stations and indexes it by the uint16 in .rail.bin.
+            # A file without that key leaves `table` undefined and railVia()
+            # throws out of the click handler on any rail-served cell, leaving
+            # the previous destination's itinerary on screen with no error.
+            try:
+                rail_payload = json.loads(rail_json.read_text(encoding="utf-8"))
+                if not isinstance(rail_payload.get("stations"), list):
+                    bad.append(f"{s}.rail.json has no stations list (the page indexes it)")
+            except (OSError, ValueError):
+                bad.append(f"{s}.rail.json is unreadable")
         routes = base.with_name(s + ".json")
         if not routes.exists():
             bad.append(f"{s}.json missing (the route panel walks it)")

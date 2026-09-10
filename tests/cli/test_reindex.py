@@ -83,9 +83,28 @@ def test_an_origin_missing_a_file_is_not_listed(dist, monkeypatch):
 
 
 def test_rail_detail_is_false_when_no_origin_has_rail_files(dist, monkeypatch):
+    """The name of this test is railDetail, and railDetail is what it asserts.
+
+    It used to assert graph.rail instead, while railDetail was hard-coded True
+    in the emitter with no parameter to write anything else. So reindex printed
+    'rail detail absent' and published 'railDetail': true in the same breath:
+    two 404s per origin switch on the page, which browser_verify.sh fails the
+    deploy for, and one check_dist problem per origin naming reindex as the
+    remedy for the state reindex had just created.
+    """
     _artifacts(dist, "seoul", rail=False)
     idx = _reindex(dist, [_origin("seoul")], monkeypatch)
+    assert idx["railDetail"] is False, (
+        "advertising rail detail over a dist/ that has none is two 404s per origin")
     assert idx["graph"]["rail"] is False
+
+
+def test_rail_detail_follows_the_files_not_the_emitter_version(dist, monkeypatch):
+    """One origin with rail files and one without: the flag follows the dist/."""
+    _artifacts(dist, "seoul", rail=True)
+    _artifacts(dist, "tokyo", rail=False)
+    idx = _reindex(dist, [_origin("seoul"), _origin("tokyo")], monkeypatch)
+    assert idx["railDetail"] is True
 
 
 def test_identity_is_carried_forward_not_restamped(dist, monkeypatch):

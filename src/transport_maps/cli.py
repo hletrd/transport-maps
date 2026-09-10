@@ -482,7 +482,7 @@ def _reindex(dist: Path | None = None) -> None:
         graph = dict(previous.get("graph") or {})
         graph["rail"] = rail_seen
         index.write_index(present, index_path, hover_cell_count=n_cells,
-                          graph=graph, identity=identity)
+                          graph=graph, identity=identity, rail_detail=rail_seen)
         print(f"index.json rewritten: {len(present)} origins, {n_cells:,} hover cells, "
               f"rail detail {'present' if rail_seen else 'absent'}, "
               f"built {identity['builtAt']}, {len(skipped)} origin(s) skipped")
