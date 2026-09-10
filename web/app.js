@@ -835,6 +835,20 @@ function renderDepartureInto() {
     + `${pct(unreached)} has no scheduled route from here.`;
 }
 
+// ?from= carried the departure and nothing else, so the interesting half of a
+// reading could not be shared: the link reopened the city, not the journey.
+// `to` is "lat,lon" rounded to five decimals -- about a metre, far finer than
+// the 5.4 km cell the answer is drawn from, and short enough to read.
+function syncPermalink() {
+  try {
+    const url = new URL(location.href);
+    if (active) url.searchParams.set("from", active.slug); else url.searchParams.delete("from");
+    if (pinB) url.searchParams.set("to", `${pinB.lat.toFixed(5)},${pinB.lon.toFixed(5)}`);
+    else url.searchParams.delete("to");
+    history.replaceState(null, "", url);
+  } catch { /* file:// or a sandbox without history */ }
+}
+
 function captureComparison() {
   if (!pinB || !active) return (lastFrom = null);
   const t = lookup(pinB.lat, pinB.lon);
@@ -992,11 +1006,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // three switch paths were safe only because they leave the canvas.
   $("tip").hidden = true;
   // The address bar follows the departure, so the view can be shared.
-  try {
-    const url = new URL(location.href);
-    url.searchParams.set("from", o.slug);
-    history.replaceState(null, "", url);
-  } catch { /* file:// or a sandbox without history */ }
+  syncPermalink();
   // renderLegs too, not just renderPins. The itinerary belongs to the OLD
   // city and its arrays have just been dropped, so leaving it on screen put a
   // Seoul route under "Loading the times from Tokyo…" -- and, if the new
@@ -1345,6 +1355,7 @@ function commitDestination(lat, lon, label, { geocoded = false } = {}) {
   renderPins();
   renderLegs();
   revealReading();
+  syncPermalink();
   return t;
 }
 
@@ -1433,6 +1444,7 @@ map.on("click", (e) => {
   renderPins();
   renderLegs();
   revealReading();
+  syncPermalink();
   reverseGeocode(lat, lng);
 });
 
@@ -1452,7 +1464,7 @@ function originNear(lat, lon, maxKm = 80) {
   return best;
 }
 
-function clearRoute() { pinB = null; lastFrom = null; renderPins(); renderLegs(); }
+function clearRoute() { pinB = null; lastFrom = null; renderPins(); renderLegs(); syncPermalink(); }
 $("clear-pins").addEventListener("click", clearRoute);
 
 // ---- city and airport list ----
@@ -1911,10 +1923,27 @@ SMALL.addEventListener("change", layoutForSize);
 $("where").textContent = IDLE_PROMPT;
 
 // The departure named in the address (?from=slug) wins over the default; an
-// unknown slug is ignored rather than a blank globe.
+// unknown slug is ignored rather than a blank globe -- but SAY so, because
+// silently swallowing it and then rewriting the address made a mistyped link
+// indistinguishable from a working one.
 const FALLBACK = bySlug.get("seoul") ?? cities[0];
-let requested = null;
-try { requested = bySlug.get(new URL(location.href).searchParams.get("from") ?? "") ?? null; } catch { /* no URL API */ }
+let requested = null, requestedPin = null, badSlug = "";
+try {
+  const q = new URL(location.href).searchParams;
+  const want = q.get("from") ?? "";
+  requested = bySlug.get(want) ?? null;
+  if (want && !requested) badSlug = want;
+  // ?to=lat,lon -- validated to the same standard as the slug: two finite
+  // numbers in range, or nothing at all. Anything else is dropped, never
+  // trusted into lookup() or the DOM.
+  const to = (q.get("to") ?? "").split(",");
+  if (to.length === 2) {
+    const la = Number(to[0]), lo = Number(to[1]);
+    if (Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180) {
+      requestedPin = { lat: la, lon: lo };
+    }
+  }
+} catch { /* no URL API */ }
 
 function nearest(lat, lon) {
   let best = FALLBACK, bestKm = Infinity;
@@ -1929,7 +1958,25 @@ function nearest(lat, lon) {
 // first frame wait on a permission prompt is exactly the initial wait we do not
 // want. If a position arrives later, quietly re-centre on the nearest city.
 paintOrigin(requested ?? FALLBACK);
-$("here").textContent = `Showing ${(requested ?? FALLBACK).name}.`;
+$("here").textContent = badSlug
+  ? `No departure city called "${badSlug}"; showing ${(requested ?? FALLBACK).name}.`
+  : `Showing ${(requested ?? FALLBACK).name}.`;
+// The destination from the address, once the origin's arrays have landed --
+// the reading needs them, and the map needs somewhere to fly to.
+if (requestedPin) {
+  const { lat, lon } = requestedPin;
+  moveTo({ center: [lon, lat], zoom: 4.2, speed: 1.2 });
+  const restore = () => {
+    if (!origin.times) return false;
+    const p = namePlaces ? nearestPlace(lat, lon) : null;
+    commitDestination(lat, lon, (p && placeLead(p)) || fmtCoord(lat, lon));
+    return true;
+  };
+  if (!restore()) {
+    let tries = 0;
+    const t = setInterval(() => { if (restore() || ++tries > 40) clearInterval(t); }, 250);
+  }
+}
 
 // Location only on request. A permission prompt on load, before the page has
 // said what it is for, is the one thing every browser now warns about, and

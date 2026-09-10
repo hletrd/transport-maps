@@ -92,11 +92,25 @@ echo "  zoom 3: $Z"
 echo "$Z" | grep -qE '"bands":[1-9]' && echo "$Z" | grep -qE '"water":[1-9]' || { echo "  !! nothing painted at zoom 3"; fail=1; }
 echo "$Z" | grep -qE '"borders":[1-9]' || { echo "  !! the borders layer rendered nothing"; fail=1; }
 agent-browser screenshot "$SHOTS/verify_zoom3.png" >/dev/null 2>&1
-# a permalink selects its departure
+# A permalink selects its departure AND restores the destination. ?from=
+# carried the departure and nothing else, so the interesting half of a reading
+# could not be shared: the link reopened the city, not the journey.
+agent-browser open "${URL}?from=tokyo&to=62.00243,99.78787" >/dev/null 2>&1; sleep 12
+P=$(agent-browser eval '(()=>JSON.stringify({from:document.getElementById("origin-name").textContent,
+  time:document.getElementById("time").innerText.replace(/\n/g," "),
+  pinned:!!document.querySelector("#legs .leg.total"),search:location.search}))()' 2>&1 | tail -1 | tr -d '\')
+echo "  permalink: $P"
+echo "$P" | grep -q '"from":"Tokyo"' || { echo "  !! ?from=tokyo did not select Tokyo"; fail=1; }
+echo "$P" | grep -q '"pinned":true' || { echo "  !! ?to= did not restore the destination"; fail=1; }
+echo "$P" | grep -qE '"time":"[0-9]' || { echo "  !! ?to= restored no reading"; fail=1; }
+echo "$P" | grep -q '"search":"?from=tokyo&to=' || { echo "  !! the address bar dropped the destination"; fail=1; }
+# ...and a slug that does not exist must SAY so, not be silently swallowed and
+# then written out of the address bar as though the link had worked.
+agent-browser open "${URL}?from=atlantis" >/dev/null 2>&1; sleep 10
+B=$(agent-browser eval 'document.getElementById("here").textContent' 2>&1 | tail -1)
+echo "  ?from=atlantis -> $B"
+echo "$B" | grep -qi "no departure city called" || { echo "  !! an unknown ?from= slug is swallowed silently"; fail=1; }
 agent-browser open "${URL}?from=tokyo" >/dev/null 2>&1; sleep 10
-P=$(agent-browser eval 'document.getElementById("origin-name").textContent' 2>&1 | tail -1 | tr -d '\\"')
-echo "  ?from=tokyo -> $P"
-[ "$P" = "Tokyo" ] || { echo "  !! ?from=tokyo did not select Tokyo"; fail=1; }
 echo "=== a searched destination writes the answer, not only the itinerary ==="
 # The two search branches used to call renderPins()+renderLegs() and nothing
 # else, so the 50px headline kept the PREVIOUS destination's time above an
