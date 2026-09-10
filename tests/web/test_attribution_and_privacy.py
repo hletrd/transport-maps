@@ -128,3 +128,40 @@ def test_the_privacy_policy_describes_what_the_page_actually_does():
 
     # Nominatim is never called per keystroke.
     assert "never sent as you type" in body or "never as you type" in body
+
+
+# --- U16: one live region, and it must be displayed when it is written ------
+
+def test_only_one_live_region_exists():
+    """T4 moved the page's live region into #status and left #pins as one.
+
+    With two, an origin switch announced the whole route block up to six times
+    and every click announced twice -- which is the same as announcing nothing.
+    """
+    import re
+    live = re.findall(r'<[^>]*\baria-live="[^"]*"[^>]*>', HTML)
+    assert live == [], f"aria-live outside the single role=status region: {live}"
+    assert 'id="status" role="status"' in HTML, "the one live region is gone"
+
+
+def test_the_live_region_is_not_hidden_by_the_folded_sheet():
+    """#status is a direct child of .reading and is not .legend, so the folded
+    rule matched it: the region was display:none exactly when a phone user had
+    folded the sheet to see the globe and then tapped it. ARIA does not present
+    changes to a hidden region, and the click handler wrote it BEFORE the
+    reveal, so the reveal produced no mutation either."""
+    fold = [ln for ln in HTML.splitlines() if ".rail.folded .reading >" in ln]
+    assert any("#status{display:block}" in ln for ln in fold), (
+        "nothing keeps #status displayed while the sheet is folded")
+    assert any(":not(#status)" in ln for ln in fold), (
+        "the blanket folded rule still matches #status")
+
+
+def test_the_announcement_follows_the_reveal():
+    """Writing a hidden region and then revealing it announces nothing: the
+    reveal is not a mutation of the region's content."""
+    for fn in ("commitDestination", 'map.on("click"'):
+        body = APP[APP.index(fn):]
+        body = body[:body.index("renderLegs()")]
+        assert body.index("unfoldSheet()") < body.index("announceReading("), (
+            f"{fn} announces before it reveals")

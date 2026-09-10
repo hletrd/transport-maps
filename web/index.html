@@ -341,13 +341,19 @@ body.crowded .depart-card{display:none}
 .results .addresses{list-style:none;margin:6px 0 0;padding:6px 0 0;border-top:1px solid var(--line)}
 .results .addresses .head{font-size:11px;color:var(--text-3);padding:2px 0 4px}
 .results .addresses .credit{font-size:10.5px;color:var(--text-3);padding:6px 0 0}
-/* An airport code or a travel mode in the route explains itself on hover. */
+/* An airport code or a travel mode in the route explains itself on hover.
+   The explanation used to be an ::after on the row, inside .legs -- which is a
+   scroll box, so it was clipped: measured at 390x844 on Seoul->JFK, hovering
+   the first airport code painted 8px of a ~40px tooltip, and on the desktop it
+   was cut at the panel's right edge. It is the page's only gloss on an IATA
+   code or a surface mode. CSS cannot rescue it (overflow-x:visible beside a
+   non-visible y computes to auto), so app.js paints it into a fixed element
+   outside the box, which also gives it somewhere to go on a phone. */
 .ap,.mode{position:relative;cursor:help;border-bottom:1px dotted var(--text-3)}
-.ap:hover::after,.ap:focus::after,.mode:hover::after,.mode:focus::after{content:attr(data-tip);
-  position:absolute;left:0;bottom:calc(100% + 5px);z-index:6;min-width:180px;max-width:260px;
+.legtip{position:fixed;z-index:9;min-width:150px;max-width:min(280px,calc(100vw - 16px));
   white-space:normal;font-weight:400;font-size:11.5px;line-height:1.4;color:var(--text);
   background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:5px 8px;
-  box-shadow:0 4px 14px rgba(0,0,0,.45)}
+  box-shadow:0 4px 14px rgba(0,0,0,.45);pointer-events:none}
 .ap:focus:not(:focus-visible),.mode:focus:not(:focus-visible){outline:none}
 .ap:focus-visible,.mode:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .tip i{font-style:normal;color:var(--text-3)}
@@ -461,7 +467,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
      standing rule that the legend is always visible -- and dropped the one
      line that says the figures are door to door, which the modelling rule
      requires wherever a figure is presented. */
-  .rail.folded .reading > :not(.legend),
+  /* #status is a direct child of .reading and is not .legend, so the folded
+     sheet hid the page's only live region -- and the click handler wrote it
+     BEFORE unfolding, so the reveal produced no mutation and nothing was
+     announced at all. It is .sr-only, so keeping it displayed costs no space. */
+  .rail.folded .reading > #status{display:block}
+  .rail.folded .reading > :not(.legend):not(#status),
   .rail.folded .legend > :not(.tints):not(.scale):not(.keys):not(.legend-cap):not(.legend-credit){display:none}
   .rail.folded .keys{margin-top:5px}
   .rail.folded .legend-cap{margin-top:4px}
@@ -523,8 +534,11 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
        pointer frame: a MutationObserver recorded one mutation per pointer
        step, so a screen reader was asked to announce ~60 times a second while
        the answer itself, #time, sat in no live region at all. One region,
-       written only when a reading is committed (a click, a tap, a keyboard
-       pick, an origin switch), and it carries the number. -->
+       written only when a reading is COMMITTED, and it carries the number:
+       a map click, a searched airport, a searched address, and the failure of
+       an origin's arrays. An origin switch announces that it is loading and
+       says nothing more until a reading is committed on the new city -- there
+       is no reading to announce until then. -->
   <p id="status" role="status" class="sr-only"></p>
 
   <div class="legend">
@@ -557,6 +571,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 </div>
 
 <div class="tip" id="tip" hidden></div>
+<div class="legtip" id="legtip" hidden></div>
 
 <!-- WCAG 2.2 SC 2.5.7: the globe panned and zoomed by drag alone, with no
      single-pointer alternative and no NavigationControl. MapLibre's own
@@ -602,7 +617,11 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
         the map, or click near a city and press “Depart from”. Only the
         <span id="n-cities">…</span> departure cities have a computed surface, so a
         departure snaps to the nearest of them.</p>
-      <div class="pins" id="pins" aria-live="polite"></div>
+      <!-- NOT a live region. T4 moved the page's one live region into
+           #status; this was left behind, so an origin switch announced the
+           whole route block up to six times and every click announced twice.
+           The committed reading is announced once, from #status. -->
+      <div class="pins" id="pins"></div>
       <button class="btn" id="clear-pins" style="margin-top:10px">Clear</button>
     </div>
   </details>

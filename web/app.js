@@ -898,6 +898,14 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     get(`./origins/${o.slug}.rail.json`).then((r) => (r.ok ? r.json() : null)),
   ]).then(([b, j]) => {
     if (!current() || !b || !j) return;
+    // T13 hardened {slug}.json's shape and stopped one file short of its
+    // sibling. railVia() does rail.table[k] on every rail-served cell, so a
+    // .rail.json without a stations array threw out of the click handler and
+    // left the PREVIOUS destination's itinerary on screen, with no error.
+    if (!Array.isArray(j.stations)) {
+      console.warn(`${o.slug}.rail.json has no stations array; station names unavailable`);
+      return;
+    }
     origin.rail = { idx: checked(b, 2, `${o.slug}.rail.bin`), table: j.stations };
     settle();
   }).catch((err) => { if (current() && !sig.aborted) console.warn("rail detail unavailable:", err.message); });
@@ -912,7 +920,15 @@ function paintOrigin(o, { keepZoom = false } = {}) {
       console.error("hover data unavailable:", err);
       origin.failed = err.message;       // so the readout says "unavailable", not "loading"
       $("where").textContent = `Times unavailable for ${o.name}: ${err.message}.`;
+      // renderDeparture, not only renderPins: without it the card's own
+      // "Travel times for this city are unavailable." string was unreachable
+      // and it sat on "Reading the travel times..." for ever. And announce()
+      // or #status keeps saying "Loading travel times" with nothing ever
+      // correcting it (WCAG 4.1.3).
+      announce(`Travel times for ${o.name} could not be loaded.`);
       renderPins();
+      renderLegs();
+      renderDeparture();
     });
   // The leg breakdown is a progressive extra: an origin built before these
   // files existed still shows times, just without the itinerary.
@@ -1223,8 +1239,12 @@ map.on("mousemove", (e) => {
     const tip = $("tip");
     if (t == null) { tip.hidden = true; clearHighlight(); return; }
     highlight(lat, lng);
-    const p = nearestPlace(lat, lng);
-    const lead = placeLead(p);
+    // The setting is respected in describe() and announceReading() and was
+    // ignored here -- so unticking a box labelled "Name the place under the
+    // cursor" left the panel reading 37.57N 126.98E while the tip glued to
+    // the cursor went on saying "Seoul, South Korea".
+    const p = namePlaces ? nearestPlace(lat, lng) : null;
+    const lead = p && placeLead(p);
     const where = lead ? lead + (p.country ? `, ${p.country}` : "") : fmtCoord(lat, lng);
     const [big, unit] = fmtTime(t);
     tip.innerHTML = t >= MAX_MINUTES
@@ -1319,9 +1339,9 @@ function commitDestination(lat, lon, label, { geocoded = false } = {}) {
   pinB = (t === null || (t != null && t >= MAX_MINUTES))
     ? null
     : { lat, lon, label, geocoded };
-  announceReading(lat, lon, t, label);
   openRoutePanel();
   unfoldSheet();
+  announceReading(lat, lon, t, label);   // after the reveal: see #status, below
   renderPins();
   renderLegs();
   revealReading();
@@ -1749,6 +1769,36 @@ for (const a of document.querySelectorAll('a[href^="#"]')) {
   });
 }
 
+// The route's own explanations, painted outside .legs so its scroll box
+// cannot clip them. Hover and focus both, so a tap on a phone works too.
+const legTip = $("legtip");
+function hideLegTip() { legTip.hidden = true; }
+function showLegTip(el) {
+  const text = el.dataset.tip;
+  if (!text) return hideLegTip();
+  legTip.textContent = text;
+  legTip.hidden = false;
+  const r = el.getBoundingClientRect();
+  const w = legTip.offsetWidth, h = legTip.offsetHeight;
+  legTip.style.left = `${Math.min(Math.max(8, r.left), Math.max(8, innerWidth - w - 8))}px`;
+  legTip.style.top = `${r.top - h - 6 < 8 ? r.bottom + 6 : r.top - h - 6}px`;
+}
+{
+  const legs = $("legs");
+  legs.addEventListener("mouseover", (e) => {
+    const el = e.target.closest?.("[data-tip]");
+    if (el) showLegTip(el); else hideLegTip();
+  });
+  legs.addEventListener("mouseleave", hideLegTip);
+  legs.addEventListener("focusin", (e) => {
+    const el = e.target.closest?.("[data-tip]");
+    if (el) showLegTip(el);
+  });
+  legs.addEventListener("focusout", hideLegTip);
+  legs.addEventListener("scroll", hideLegTip, { passive: true });
+  addEventListener("resize", hideLegTip);
+}
+
 const lockBox = $("lock-north");
 lockBox.checked = lockNorth;
 lockBox.addEventListener("change", () => {
@@ -1762,6 +1812,11 @@ placesBox.checked = namePlaces;
 placesBox.addEventListener("change", () => {
   namePlaces = placesBox.checked;
   store.set("namePlaces", namePlaces);
+  // Nothing re-rendered, so the visible reading kept its old form until the
+  // next pointer move -- and on a coarse pointer there is no next move, so the
+  // control appeared to do nothing at all.
+  if (lastPointer) rereadPointer();
+  $("tip").hidden = true;
 });
 
 function paintRampPicker() {
