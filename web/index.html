@@ -207,6 +207,14 @@ body.crowded .depart-card{display:none}
 .reading .v .waiting{font-size:13px;color:var(--text-3);font-weight:400}
 .reading .at{margin:4px 0 0;font-size:12px;color:var(--text-2);min-height:2.6em}
 .listcap{margin:8px 0 4px;font-size:11.5px;line-height:1.45;color:var(--text-3)}
+/* WCAG 2.2 SC 2.5.8 asks for 24x24 CSS px. The two Settings checkboxes
+   measured 15x15 at the UA default, and the label beside each is a separate
+   target of its own -- so both halves are sized here rather than only the box.
+   `accent-color` keeps the native control (and its focus ring) instead of
+   rebuilding one, which is what the dark theme wants anyway. */
+.row input[type=checkbox]{width:18px;height:18px;margin:3px;accent-color:var(--accent);cursor:pointer}
+.row{min-height:24px}
+.row label{display:flex;align-items:center;min-height:24px;cursor:pointer}
 /* Its own line, so the pointer readout cannot erase it. Warm rather than red:
    the times below are still correct, only the shading is missing. */
 .reading .trouble{margin:6px 0 0;padding:6px 8px;font-size:12px;line-height:1.4;
@@ -303,6 +311,9 @@ body.crowded .depart-card{display:none}
   width:100%;text-align:left;background:none;border:0;cursor:pointer;color:var(--text-2);
   font-family:inherit;font-weight:400;font-size:13px;line-height:1.4;padding:4px 2px;
   display:flex;justify-content:space-between;gap:10px;align-items:baseline;
+  /* SC 2.5.8: 26.2px at the desktop size, but the small-layout rules drop the
+     font and it measured 23px below 860px. A floor costs nothing above it. */
+  min-height:24px;
 }
 /* The ring is drawn INSIDE the row: the list is a scroll box whose edges meet
    the buttons', so an outset ring was clipped to a one-pixel underline. */
@@ -501,9 +512,14 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   /* grab handle; the sheet folds to this strip plus the legend, which is
      always visible (a standing rule): the readout's number, the keys and
      the route fold away, the band strip and its ticks stay. */
+  /* revealReading() scrolls the rail, and the handle went with it: measured
+     at 390x844 it sat at y 378-406 above a rail whose top edge is 405, i.e.
+     off screen, on the only control that folds the sheet away from the map.
+     Sticky keeps it at the top of its own scroll box. */
   .sheet-toggle{
     display:block;width:100%;height:28px;flex:none;cursor:pointer;
     background:var(--surface);border:0;border-bottom:1px solid var(--line);padding:0;
+    position:sticky;top:0;z-index:2;
   }
   .sheet-toggle span{display:block;width:38px;height:4px;margin:12px auto;border-radius:2px;background:var(--line-2)}
   .rail.folded > :not(.sheet-toggle):not(.reading){display:none}
@@ -698,7 +714,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
         the map, or click near a city and press “Depart from”. Only the
         <span id="n-cities">…</span> departure cities have a computed surface, so a
         departure snaps to the nearest of them.</p>
-      <button class="btn" id="clear-pins" style="margin-top:10px">Clear</button>
+      <div class="qrow" style="margin-top:10px">
+        <button class="btn" id="clear-pins">Clear</button>
+        <!-- The permalink carries the departure AND the destination, and until
+             now the only way to reach it was to read the address bar. -->
+        <button class="btn" id="copy-link">Copy link to this journey</button>
+      </div>
     </div>
   </details>
 

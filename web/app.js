@@ -448,7 +448,14 @@ const map = new maplibregl.Map({
   // The globe projection can look at the poles; the default latitude
   // clamp is a Mercator constraint that does not apply here.
   maxPitch: 0, renderWorldCopies: false,
-  attributionControl: false, dragRotate: true
+  attributionControl: false, dragRotate: true,
+  // MapLibre labels its own canvas "Map", and that string -- not #map's
+  // aria-label, which is on the container -- is what a screen reader reads
+  // when focus lands on the canvas. WCAG 4.1.2.
+  locale: {
+    "Map.Title": "Globe shaded by travel time from the departure city. "
+      + "Arrow keys pan, plus and minus zoom, Enter sets a destination.",
+  }
 });
 
 // The only listener MapLibre has for `error` is a console.error, so a missing
@@ -1019,6 +1026,11 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     if (origin.times && listTimesFor !== origin.times) {
       listTimesFor = origin.times;
       render($("q").value);
+      // paintOrigin announces "Loading travel times" and nothing resolved it:
+      // #status kept saying so until a reading was committed, which may be
+      // never. Once per arrival, on the same guard as the list rebuild.
+      announce(`Travel times from ${origin_name()} are ready. `
+        + "Move the pointer over the map, or choose a destination.");
     }
     // The reading under the pointer (or the last tap) is redone once the
     // times land; with no pointer yet, the idle prompt replaces "loading".
@@ -1384,6 +1396,7 @@ function showReading(lat, lng, point) {
 // COMMITTED. The pointer must never reach it: showReading runs once per
 // animation frame, and announcing sixty times a second is the same as
 // announcing nothing.
+const origin_name = () => active?.name ?? "the departure city";
 function announce(text) {
   const el = $("status");
   if (el) el.textContent = text;
@@ -1636,6 +1649,22 @@ function originNear(lat, lon, maxKm = 80) {
 
 function clearRoute() { pinB = null; lastFrom = null; renderPins(); renderLegs(); syncPermalink(); }
 $("clear-pins").addEventListener("click", clearRoute);
+$("copy-link").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  const said = (msg) => {
+    btn.textContent = msg;
+    announce(msg);
+    setTimeout(() => { btn.textContent = "Copy link to this journey"; }, 2400);
+  };
+  // clipboard.writeText needs a secure context and can be refused outright;
+  // saying so is better than a button that appears to do nothing.
+  try {
+    await navigator.clipboard.writeText(location.href);
+    said("Link copied");
+  } catch {
+    said("Copy failed — the link is in the address bar");
+  }
+});
 
 // ---- city and airport list ----
 // Accents are folded on both sides, so "Sao Paulo", "Zurich" and "Bogota"
@@ -1782,6 +1811,16 @@ function render(filter = "") {
     li.className = "empty"; li.setAttribute("role", "none");
     li.textContent = `No departure city or airport matches “${filter.trim()}”. Press Enter or “Search address” to look it up.`;
     list.append(li);
+  }
+  // Filtering 553 origins down to none changed the list and said nothing: the
+  // live region is the only channel a screen-reader user has for "your query
+  // matched nothing". Announced only when a filter is active, so the
+  // once-per-origin rebuild in settle() stays silent.
+  if (f) {
+    const n = hits.length + apHits.length;
+    announce(n
+      ? `${n} match${n === 1 ? "" : "es"} for “${filter.trim()}”.`
+      : `No match for “${filter.trim()}”. Press Enter or Search address to look it up.`);
   }
   const cap = $("listcap");
   if (cap) {
