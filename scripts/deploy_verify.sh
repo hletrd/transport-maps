@@ -63,11 +63,31 @@ else
 fi
 
 echo "=== 3. live checks ==="
-for f in index.json app.js index.html places.json airports.json borders.json origins/seoul.air.bin origins/seoul.modes.bin; do
-  printf "  %-26s %s\n" "$f" "$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/$f")"
+# These used to PRINT ten status codes and assert none of them: a deploy in
+# which places.json, airports.json or borders.json 404'd still ended with
+# "ALL CHECKS PASSED". Each probe now fails the deploy. The range probes are
+# the only regression detector for PMTiles byte serving, so they assert 206
+# specifically -- a server that answers 200 to a Range request has stopped
+# byte-serving and the globe goes blank with no console error.
+live_fail=0
+probe() {  # probe <label> <url-path> <expected> [curl args...]
+  local label="$1" path="$2" want="$3"; shift 3
+  local got; got=$(curl -s -o /dev/null -w '%{http_code}' "$@" "$SITE_URL/$path" || echo 000)
+  printf "  %-26s %s\n" "$label" "$got"
+  [ "$got" = "$want" ] || { echo "  !! $path returned $got, expected $want"; live_fail=1; }
+}
+# The origin probed is the first one the DEPLOYED index.json lists, not a
+# hard-coded "seoul": a build whose origin set changed must still be checked.
+LIVE_SLUG=$(curl -sf "$SITE_URL/index.json" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["origins"][0]["slug"])' 2>/dev/null || true)
+: "${LIVE_SLUG:=seoul}"
+for f in index.json app.js index.html places.json airports.json borders.json \
+         "origins/$LIVE_SLUG.air.bin" "origins/$LIVE_SLUG.modes.bin" "origins/$LIVE_SLUG.bin"; do
+  probe "$f" "$f" 200
 done
-printf "  %-26s %s\n" "seoul.pmtiles range" "$(curl -s -o /dev/null -w '%{http_code}' -r 0-99 "$SITE_URL/origins/seoul.pmtiles")"
-printf "  %-26s %s\n" "water.pmtiles range" "$(curl -s -o /dev/null -w '%{http_code}' -r 0-99 "$SITE_URL/water.pmtiles")"
+probe "$LIVE_SLUG.pmtiles range" "origins/$LIVE_SLUG.pmtiles" 206 -r 0-99
+probe "water.pmtiles range" "water.pmtiles" 206 -r 0-99
+[ "$live_fail" -eq 0 ] || { echo "!! live checks failed"; exit 1; }
 # Report (not yet assert -- the corrected nginx conf is an owner install) the
 # security headers on the page assets; absent CSP means the old conf is live.
 for f in "" app.js index.json; do
