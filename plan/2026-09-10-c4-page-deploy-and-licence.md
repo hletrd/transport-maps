@@ -544,6 +544,37 @@ whose output only changes at the next build; both say so.
   paths were corrected for the `cycle-3/` move; VER3-6 is recorded in
   `deferred.md` (the docs are right and the SDD ledger is a generated file).
 
+  **Gates at `5683067`.** `uv run ruff check .` all checks passed, exit 0.
+  `uv run pytest -q` **460 passed, 4 deselected, 5 warnings, exit 0**, in
+  23 min 13 s under the rebuild's load. 460 against cycle 3's 390: 70 new
+  tests. The five warnings are the recorded `W1` class unchanged -- the same
+  two forked-pool tests in `tests/test_cli.py`, fork of a multi-threaded
+  process -- still not suppressed, because the production build forks on
+  purpose.
+
+  **Deploy: refused, correctly, for the second cycle running.**
+  `scripts/deploy_verify.sh` was run once and stopped at step 1: "a build-all
+  is running (pids 4143 4144 4145 4146 4147); refusing to deploy a mixed
+  dist/". Nothing under `dist/` was touched and `browser_verify.sh` did not
+  run. The rebuild stood at 435 of 553 origins with no errors. Recorded as
+  `per-cycle-failed:artifacts-mid-rebuild`; not retried, per the run brief.
+
+  Worth noting because it is this cycle's own U1 working: the refusal names
+  five pids, not the seventeen `ps` matches on this machine. Twelve are
+  orphans of a build killed on 9 September, and before U1 the Python half of
+  the same guard counted them -- so `reindex`, the command scheduled to run
+  the moment this build exits, would have refused for them.
+
+  The page changes were therefore verified on a local range-capable preview
+  only -- `dist/` with `web/` overlaid, which is what the deploy assembles --
+  at all four CLAUDE.md viewports, with `browser_verify.sh` reporting ALL
+  CHECKS PASSED and zero console entries. CLAUDE.md's deploy rule still owes
+  them a pass on the live site, and cycles 3 and 4 have now both ended that
+  way: **the payload about to ship has never run in a browser against its own
+  index.json**, which the cycle-4 critic named as the single biggest risk to
+  this shipping well. Cycle 5's first task should be the reindex-then-deploy
+  sequence, not new work.
+
   **Cycle-4 IDs carry the cycle number.** Cycle 3's designer used a bare
   `A1…A8`, colliding with the build plan's `A1…A17`, and six of those findings
   reached no table at all — the one gap in the audit `plan/README.md` records.
