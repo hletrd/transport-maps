@@ -136,3 +136,93 @@ def test_a_ferry_clipped_at_the_antimeridian_is_dropped(tmp_path):
 
     df = osm.ferry_links(extracts_dir=tmp_path)
     assert df["way_id"].to_list() == [11], "kept a way clipped at the antimeridian"
+
+
+def test_a_cross_border_route_keeps_one_extract_whole_never_spliced():
+    """A route in two regional extracts must keep ONE extract's sequence.
+
+    `_parse` renumbers `seq` from 0 per extract, so the previous merge --
+    which counted rows per route_id over the concatenation of both, making the
+    "longer one wins" sort a no-op -- kept whichever row of each seq came
+    first and interleaved the two truncated sequences. Measured on the shipped
+    cache: 1,823 duplicated (route_id, stop_id) pairs across 469 routes, 891
+    routes with a >200 km "consecutive" hop, max 6,351 km.
+    """
+    import polars as pl
+
+    from transport_maps.sources import osm
+
+    def rows(extract, route, stops):
+        return [{"route_id": route, "seq": i, "stop_id": s, "lat": 0.0, "lon": float(s),
+                 "name": f"stop{s}", "highspeed": False, "route_name": "R",
+                 "_extract": extract} for i, s in enumerate(stops)]
+
+    df = pl.DataFrame(
+        rows("east.osm.pbf", 1, [10, 11]) + rows("west.osm.pbf", 1, [20, 21, 22, 23]),
+        schema={**osm.SCHEMA, "_extract": pl.Utf8})
+    out = osm._pick_one_extract_per_route(df)
+
+    assert out["stop_id"].to_list() == [20, 21, 22, 23], "the longer extract must win, whole"
+    assert out["seq"].to_list() == [0, 1, 2, 3], "seq stays gapless"
+    assert out.height == out.select(["route_id", "seq"]).unique().height
+
+
+def test_no_route_carries_two_extracts_stops():
+    """Forty cross-border routes at once.
+
+    One route is not enough to prove this: the old merge's `sort("_n")` had
+    nothing to order by, and polars does not promise a stable sort, so a
+    single route could come out right by luck. Across forty the old code
+    interleaves, and the invariant -- every route's stops come from exactly
+    one extract -- is what the shipped cache violates on 469 real routes.
+    """
+    import polars as pl
+
+    from transport_maps.sources import osm
+
+    rows = []
+    for route in range(40):
+        for extract, base, n in (("east.pbf", 1000, 3), ("west.pbf", 2000, 5)):
+            for i in range(n):
+                rows.append({"route_id": route, "seq": i, "stop_id": base + route * 10 + i,
+                             "lat": 0.0, "lon": 0.0, "name": "x", "highspeed": False,
+                             "route_name": "R", "_extract": extract})
+    out = osm._pick_one_extract_per_route(
+        pl.DataFrame(rows, schema={**osm.SCHEMA, "_extract": pl.Utf8}))
+
+    assert out.height == 40 * 5, "the five-stop extract wins every route, whole"
+    for route in range(40):
+        stops = out.filter(pl.col("route_id") == route)["stop_id"].to_list()
+        assert all(s >= 2000 for s in stops), f"route {route} mixes extracts: {stops}"
+        assert stops == sorted(stops) and len(set(stops)) == len(stops)
+
+
+def test_a_tie_is_broken_by_extract_name_not_by_directory_order():
+    import polars as pl
+
+    from transport_maps.sources import osm
+
+    def frame(order):
+        return pl.DataFrame(
+            [{"route_id": 3, "seq": i, "stop_id": s, "lat": 0.0, "lon": 0.0, "name": "x",
+              "highspeed": False, "route_name": "R", "_extract": e}
+             for e, stops in order for i, s in enumerate(stops)],
+            schema={**osm.SCHEMA, "_extract": pl.Utf8})
+
+    a = osm._pick_one_extract_per_route(frame([("alpha.pbf", [1, 2]), ("beta.pbf", [3, 4])]))
+    b = osm._pick_one_extract_per_route(frame([("beta.pbf", [3, 4]), ("alpha.pbf", [1, 2])]))
+    assert a["stop_id"].to_list() == b["stop_id"].to_list() == [1, 2]
+
+
+def test_the_parser_version_is_in_the_rail_cache_key():
+    """A cache built by the splicing parser must be a MISS, not a silent reuse."""
+    from transport_maps.sources import osm
+
+    fp = [("dir", "x-rail.osm.pbf", 1, 2)]
+    before = osm._rail_cache_path(fp)
+    original = osm.RAIL_PARSER_VERSION
+    try:
+        osm.RAIL_PARSER_VERSION = original + 1
+        assert osm._rail_cache_path(fp) != before
+    finally:
+        osm.RAIL_PARSER_VERSION = original

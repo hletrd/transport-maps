@@ -150,8 +150,16 @@ def _ferry_cache_path(fingerprint) -> pathlib.Path:
     return config.CACHE / f"ferry_links-{key}.parquet"
 
 
+# Bumped when the parse or the cross-extract merge changes shape, so a cache
+# built by the old code is a MISS and not a silently reused wrong answer.
+# 2: the cross-extract merge below stopped interleaving two extracts' stop
+# sequences into one route.
+RAIL_PARSER_VERSION = 2
+
+
 def _rail_cache_path(fingerprint) -> pathlib.Path:
-    key = _params_hash(fingerprint, STOP_ROLES, PLATFORM_ROLES, MIN_STOPS, sorted(SCHEMA))
+    key = _params_hash(fingerprint, STOP_ROLES, PLATFORM_ROLES, MIN_STOPS, sorted(SCHEMA),
+                       RAIL_PARSER_VERSION)
     return config.CACHE / f"rail_routes-{key}.parquet"
 
 
@@ -201,23 +209,49 @@ def rail_routes(*, extracts_dir=None) -> pl.DataFrame:
     rows = []
     for p in paths:
         before = len(rows)
-        rows.extend(_parse(p))
+        # Which extract a row came from is what the merge below needs, and it
+        # was not recorded: without it the counts are per route_id over BOTH
+        # extracts and carry no information about either.
+        for row in _parse(p):
+            rows.append({**row, "_extract": p.name})
         print(f"  {p.name}: {len(rows) - before:,} stop rows", flush=True)
 
-    df = pl.DataFrame(rows, schema=SCHEMA)
+    df = pl.DataFrame(rows, schema={**SCHEMA, "_extract": pl.Utf8})
     if df.is_empty():
         raise RuntimeError(
             "parsed every extract and found no train routes at all; the filter "
             "step most likely dropped the route relations"
         )
-    # One route id can appear in two regional extracts (a cross-border service),
-    # each holding only the stops inside that region. Keeping both would emit
-    # two conflicting sequences under the same id, so the longer one wins.
-    df = (df.sort("route_id", "seq")
-            .join(df.group_by("route_id").len().rename({"len": "_n"}), on="route_id")
-            .sort("_n", descending=True)
-            .unique(subset=["route_id", "seq"], keep="first")
-            .drop("_n")
-            .sort("route_id", "seq"))
+    df = _pick_one_extract_per_route(df)
     _atomic_write(cached, lambda tmp: df.write_parquet(tmp))
     return df
+
+
+def _pick_one_extract_per_route(df: pl.DataFrame) -> pl.DataFrame:
+    """One route id, one extract's stop sequence -- whole, never spliced.
+
+    A cross-border service appears in two regional extracts, each holding only
+    the stops inside its own region, and `_parse` renumbers `seq` from 0 per
+    extract. The previous merge counted rows per `route_id` over the
+    CONCATENATION of both, so `_n` was one constant per route, the
+    `sort("_n", descending=True)` that was meant to make "the longer one wins"
+    happen was a no-op, and `unique(["route_id","seq"])` then kept whichever
+    row of each seq came first -- an interleaving of the two truncated
+    sequences.
+
+    Measured on the shipped cache before this fix: 1,823 duplicated
+    (route_id, stop_id) pairs across 469 routes, 891 routes with a
+    >200 km "consecutive" hop and a maximum of 6,351 km. Route 8382151 read
+    Vladivostok -> Nizhny Novgorod -> Ozernaya Pad -> Moscow -> Muchnaya, and
+    `rail.ride_edges` books every one of those fabricated hops at line speed.
+
+    The extract with the most stops for a route wins, ties broken by extract
+    name so the result does not depend on directory iteration order.
+    """
+    counts = (df.group_by(["route_id", "_extract"]).len().rename({"len": "_n"})
+                .sort(["route_id", "_n", "_extract"], descending=[False, True, False])
+                .unique(subset=["route_id"], keep="first")
+                .select("route_id", "_extract"))
+    return (df.join(counts, on=["route_id", "_extract"], how="inner")
+              .drop("_extract")
+              .sort("route_id", "seq"))
