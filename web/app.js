@@ -890,9 +890,14 @@ function renderDepartureInto() {
     const dd = document.createElement("dd"); dd.textContent = pct(counts[k]);
     return [dt, dd];
   }));
+  // "from here" was wrong, and identically wrong from every departure city:
+  // a cell counts as unreached when no scheduled service reaches it at ALL,
+  // which is a property of that cell's isolation, not of where you started.
+  // Eight origins on six continents printed the same 1.851 %.
   $("depart-note").textContent =
     `Share of charted land outside Antarctica, door to door. `
-    + `${pct(unreached)} has no scheduled route from here.`;
+    + `${pct(unreached)} is reached by no scheduled service from anywhere, `
+    + `so it is the same share from every departure city.`;
 }
 
 // ?from= carried the departure and nothing else, so the interesting half of a

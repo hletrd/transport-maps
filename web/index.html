@@ -755,7 +755,11 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          cost of leaving the terminal and re-entering it — which is the
          disembark and check-in times for that airport&rsquo;s size, so about
          55 minutes at a small airport and an hour and forty at a large one;
-         rail and ferry legs carry no wait.</p>
+         rail and ferry legs carry no wait. That cap is a consequence of the
+         graph, not a claim about airports: a connection can always be routed
+         out through the terminal and back in, so no wait can cost more than
+         that, and where the real wait is longer the figure is an
+         underestimate.</p>
       <p>Door to door, not gate to gate. The time includes the trip to the
          airport, check-in and security, border control where one is crossed, and
          the trip from the arrival airport into the city. A flight of two hours
@@ -766,11 +770,37 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          by Google Analytics. Everything else is computed in the browser from
          files on this site. What each of those collects is set out under
          <a href="#privacy" class="inline-link">Privacy</a> below.</p>
+      <h3 id="limits">What this does not know</h3>
+      <p>The air model is a regression on 107,366 flight legs. Held out of its
+         own fit, it is wrong by a median of about 9 minutes on the flying
+         part alone, and it runs a few minutes long between 400 and 800 km and
+         about six minutes long between 3,000 and 6,000 km. Every figure on
+         this page is printed to the minute; none of them is accurate to the
+         minute.</p>
+      <p>That fit is valid between 150 and 6,000 km. Beyond 6,000 km it is
+         extrapolation — receiver coverage over oceans is too sparse to
+         measure a transpacific flight end to end — so the intercontinental
+         readings, the ones a visitor is most likely to look up, are the least
+         certain on the map. Long-haul flying also varies by about an hour on
+         winds alone, which a distance-only model cannot represent. Treat
+         anything over 10,000 km as approximate.</p>
+      <p>Flight frequency is a gravity model fitted to two anchor routes, not
+         a timetable. Rail and ferry legs carry no waiting time at all.
+         Ground speeds come from 2,998 sampled driving journeys and describe a
+         road class, not a road. And the build that is being served may lag
+         the code: <code>index.json</code> records what was actually
+         computed.</p>
       <p class="src" id="credits"></p>
 
       <h3 id="privacy">Privacy</h3>
       <p>This site has no accounts, no sign-in and no advertising, and nothing
          collected here is sold or shared beyond the two services named below.</p>
+      <p><b>The link in the address bar.</b> Choosing a destination writes it
+         into the address bar, to about a metre, so the journey can be shared
+         or reloaded. That address is part of what the analytics tag below
+         records as the page location. Reverse geocoding is deliberately
+         coarser: a clicked point is rounded to about 110 m before it is sent
+         to Nominatim.</p>
       <p><b>Google Analytics.</b> Page views are counted by Google Analytics,
          which sets cookies and identifiers in your browser and sends Google
          your approximate location (derived from your IP address), your

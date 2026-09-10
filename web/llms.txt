@@ -44,6 +44,15 @@ ids as little-endian uint64.
 
 ## Known limits
 
+- The air model is a regression on 107,366 legs with a held-out median error
+  of about 9 minutes on the airborne portion, and a signed bias by distance:
+  +2 min at 150-400 km, +3 at 400-800, 0 at 800-1500, -1 at 1500-3000, +6 at
+  3000-6000. Figures are printed to the minute; none is accurate to the minute.
+- That fit is VALID ONLY BETWEEN 150 AND 6000 km. Beyond 6000 km it is
+  extrapolation: ocean receiver coverage trips the 900 s split rule, so only 2
+  of 107,366 legs exceed it. Intercontinental readings are therefore the least
+  certain, and long-haul varies by about an hour on winds alone. Treat
+  10,000 km+ as approximate.
 - Flight frequency is a gravity model hand-fitted to two anchor routes, not
   published timetables.
 - Rail and ferry legs carry no waiting time.
