@@ -177,6 +177,12 @@ let active = null;              // the departure city
 let originGen = 0, originAbort = null;
 const origin = { times: null, failed: null, air: null, modes: null, routes: null, rail: null };
 let lastPointer = null;         // {lat, lng, point} of the last reading, re-run when data lands
+// The one comparison the page offers: the figure read at the current pin from
+// the PREVIOUS departure city. Switching city used to discard it -- Turkmenabat
+// is 14 h 39 min from Seoul and 18 h 22 min from Tokyo, and nothing on screen
+// ever said so. Captured before the arrays are dropped, keyed to the pin it
+// was measured at, cleared when the pin moves.
+let lastFrom = null;
 // The readout's resting copy; a phone has no pointer.
 const IDLE_PROMPT = window.matchMedia("(pointer: coarse)").matches
   ? "Tap the map to read a travel time. Tap a city name to depart from it."
@@ -413,6 +419,17 @@ map.addLayer({ id: "me-dot", type: "circle", source: "me",
   paint: { "circle-radius": 4, "circle-color": "#ffffff",
            "circle-stroke-color": "#0a0b0d", "circle-stroke-width": 1.5 } });
 
+// The destination itself. The point-to-point panel described a point the map
+// never drew: `pinB` had no source, no layer and no marker anywhere, so the
+// itinerary named a place with nothing on the globe to say where it was.
+// Accent, not white, so it cannot be mistaken for "you are here".
+map.addSource("pin", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+map.addLayer({ id: "pin-halo", type: "circle", source: "pin",
+  paint: { "circle-radius": 10, "circle-color": "#e48f35", "circle-opacity": 0.22 } });
+map.addLayer({ id: "pin-dot", type: "circle", source: "pin",
+  paint: { "circle-radius": 4.5, "circle-color": "#e48f35",
+           "circle-stroke-color": "#0a0b0d", "circle-stroke-width": 1.5 } });
+
 // International boundaries, drawn above the bands and below the labels.
 fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
   if (!g) return;
@@ -424,7 +441,7 @@ fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
   map.addLayer({ id: "borders", type: "line", source: "borders",
     paint: { "line-color": "#ffffff", "line-opacity": 0.42,
              "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.6, 5, 1.1] } });
-  for (const id of ["hover-halo", "hover-fill", "hover-line", "me-halo", "me-dot"])
+  for (const id of ["hover-halo", "hover-fill", "hover-line", "pin-halo", "pin-dot", "me-halo", "me-dot"])
     if (map.getLayer(id)) map.moveLayer(id);
 }).catch(() => {});
 
@@ -619,7 +636,15 @@ function placeLead(p) {
 }
 
 // ---- the departure city ----
+function captureComparison() {
+  if (!pinB || !active) return (lastFrom = null);
+  const t = lookup(pinB.lat, pinB.lon);
+  lastFrom = (typeof t === "number" && t < MAX_MINUTES)
+    ? { name: active.name, min: t, lat: pinB.lat, lon: pinB.lon } : null;
+}
+
 function paintOrigin(o, { keepZoom = false } = {}) {
+  if (o.slug !== active?.slug) captureComparison();
   active = o;
   const gen = ++originGen;
   originAbort?.abort();
@@ -1000,7 +1025,16 @@ map.on("mousemove", (e) => {
 });
 
 // ---- point to point ----
+function drawPin() {
+  const src = map.getSource("pin");
+  if (!src) return;
+  src.setData({ type: "FeatureCollection", features: pinB
+    ? [{ type: "Feature", geometry: { type: "Point", coordinates: [pinB.lon, pinB.lat] } }]
+    : [] });
+}
+
 function renderPins() {
+  drawPin();
   const box = $("pins");
   if (!active) { box.replaceChildren(); return; }
   const rows = [["From", active.name]];
@@ -1009,6 +1043,16 @@ function renderPins() {
     rows.push(["To", pinB.label]);
     rows.push(["Time", t === undefined ? (origin.failed ? "unavailable" : "loading…")
       : t === null ? "open water" : t >= MAX_MINUTES ? "no scheduled route" : `${fmtDur(t)}, door to door`]);
+    // "3 h 43 min slower than from Seoul": the figure you were looking at
+    // before you switched city, against the one you are looking at now.
+    if (lastFrom && typeof t === "number" && t < MAX_MINUTES
+        && lastFrom.lat === pinB.lat && lastFrom.lon === pinB.lon
+        && lastFrom.name !== active.name) {
+      const d = Math.round(t) - Math.round(lastFrom.min);
+      rows.push(["Versus", d === 0
+        ? `the same as from ${lastFrom.name}`
+        : `${fmtDur(Math.abs(d))} ${d > 0 ? "slower" : "faster"} than from ${lastFrom.name}`]);
+    }
   } else {
     rows.push(["To", "click anywhere on the map"]);
   }
@@ -1054,6 +1098,7 @@ map.on("click", (e) => {
   // and no request to Nominatim for a point with nothing to say.
   if (t === null || (t != null && t >= MAX_MINUTES)) return;
   const p = nearestPlace(lat, lng);
+  if (lastFrom && (lastFrom.lat !== lat || lastFrom.lon !== lng)) lastFrom = null;
   pinB = { lat, lon: lng, label: placeLead(p) ?? fmtCoord(lat, lng), geocoded: false };
   announceReading(lat, lng, t);
   $("route").open = true;
@@ -1079,7 +1124,7 @@ function originNear(lat, lon, maxKm = 80) {
   return best;
 }
 
-function clearRoute() { pinB = null; renderPins(); renderLegs(); }
+function clearRoute() { pinB = null; lastFrom = null; renderPins(); renderLegs(); }
 $("clear-pins").addEventListener("click", clearRoute);
 
 // ---- city and airport list ----
