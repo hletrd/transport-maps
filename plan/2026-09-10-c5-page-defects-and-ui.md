@@ -176,3 +176,48 @@ gate as the exit criterion.
 **`dist/` is mid-rebuild as this plan closes.** `index.json` says `solveRes: 5`,
 `hoverRes: 4` and 157 origins while 461 `{slug}.json` on disk are res-6. That is
 the state `reindex` exists to correct and V18 now refuses to correct wrongly.
+
+### Evidence from running the gate against the real `dist/` (17:41, mid-rebuild)
+
+`uv run python scripts/check_dist.py --dist dist --web web`, read-only, with the
+build still running. Three of this cycle's tasks are confirmed on the actual
+artifacts rather than on a fixture:
+
+**V19 — the grouped warning report.** `water.pmtiles` is now the *first* line:
+
+```
+  WARNINGS (not blocking):
+    1 x metadata contains '/users/': a build-host path served to every visitor  [water.pmtiles]
+    157 x metadata contains '/var/folders/': ...  [abu-dhabi.pmtiles, abuja.pmtiles and 155 more]
+```
+
+Under the old `sorted(set(warnings))[:8]` those 158 warnings printed as eight
+filenames beginning with "a", and the one archive carrying a `/users/` path --
+the only one `build-all` can never fix -- was never shown. It is now
+unmissable, and the 157 are one line instead of an unreadable truncation.
+
+**V28 — the attribution gate, on the live index:**
+
+```
+    index.json attribution does not credit GeoNames, HydroLAKES, which the
+    pipeline consumes and whose licence requires it.
+```
+
+That is `DOC5-1` reproduced against the artifact that is serving the public site
+right now. HydroLAKES is CC BY 4.0 and its lakes are drawn on the live map.
+**This cycle's deploy is the remedy**, which is why shipping it is an
+obligation rather than a nicety.
+
+**V27 — the stray, confirmed as a blocker:**
+
+```
+    stray file origins/las-vegas.pmtiles-journal (an aborted writer's leftover)
+```
+
+The other three problems (157 of 553 origins, no `modeChannels`, no
+`hoverCellCount`) are the mid-rebuild state and are what `reindex` exists to
+resolve once the build exits.
+
+`deploy_verify.sh`'s step-1 guard was also checked against the live process
+table and correctly identifies the four busy workers, so it will refuse a
+mixed `dist/` without being asked to.
