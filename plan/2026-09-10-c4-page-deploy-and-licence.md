@@ -43,7 +43,7 @@ whose output only changes at the next build; both say so.
 
 ## A. The deploy blockers
 
-- [ ] **U1 / Y3 (ARCH4-1)** `cli._other_builds()` has no CPU filter, so
+- [x] **U1 / Y3 (ARCH4-1)** `cli._other_builds()` has no CPU filter, so
       `transport-maps reindex` refuses the moment it is needed. It returned 16 pids
       at review time; eight (12633–12640) are orphans from a build killed on
       9 September — `ppid=1`, `stat=SN`, 0.0 % CPU, resident 18 hours — and
@@ -58,7 +58,7 @@ whose output only changes at the next build; both say so.
       many candidates were filtered. Mutation: drop the filter → a test with a
       synthetic 0 %-CPU process must go red.
 
-- [ ] **U2 / Y2 (CR4-2, ARCH4-2, FCR4-5)** `emit/index.py:226` hard-codes
+- [x] **U2 / Y2 (CR4-2, ARCH4-2, FCR4-5)** `emit/index.py:226` hard-codes
       `"railDetail": True` with no parameter, so `reindex` prints "rail detail
       absent" and writes `true` in the same breath (`cli.py:411,426,450-452`
       computes `rail_seen` and uses it only for `graph.rail`). `check_dist.py:110,
@@ -75,7 +75,7 @@ whose output only changes at the next build; both say so.
       `.rail.json` as its own docstring already claims, and the test corrected to
       assert what its name says. Mutation: hard-code `True` again → red.
 
-- [ ] **U3 / Y1 (CR4-1, FCR4-4)** `_reindex` carries `identity` forward
+- [x] **U3 / Y1 (CR4-1, FCR4-4)** `_reindex` carries `identity` forward
       deliberately — `cli.py:435-444`: "The identity of a build cannot be recovered
       from its artifacts, so it is carried forward, never invented" — and then
       `emit/index.py:214-233` writes `bandEdgesMin`, `solveRes`, `modeChannels` and
@@ -97,7 +97,7 @@ whose output only changes at the next build; both say so.
 
 ## B. The page — the answer a visitor reads
 
-- [ ] **U4 / Y4 (CRIT4-1, CR4-6)** The departure card's headline is a dataset
+- [x] **U4 / Y4 (CRIT4-1, CR4-6)** The departure card's headline is a dataset
       constant. `web/app.js:713-727` counts unreachable cells over *every* hover
       cell, so Seoul, Tokyo, London and Sydney all print exactly **10.23 %** "has
       no scheduled route from here", and **83.5 % of that is Antarctica**, which
@@ -110,7 +110,7 @@ whose output only changes at the next build; both say so.
       cities stop agreeing to three significant figures; Seoul's unreachable share
       lands near 1.85 %.
 
-- [ ] **U5 / Y5 (CRIT4-2)** On a phone, one tap scrolls the answer and the whole
+- [x] **U5 / Y5 (CRIT4-2)** On a phone, one tap scrolls the answer and the whole
       legend off screen. Reproduced at 390×844 on a clean load: `rail.scrollTop`
       297, `#time` at y=149 above the sheet top of 405, `#tints` and `#scale` gone.
       `app.js:1203` opens the Route panel and T27's `scrollIntoView`
@@ -124,7 +124,7 @@ whose output only changes at the next build; both say so.
       against the viewport box **after a tap** at 390×844. Mutation: restore the
       unconditional `scrollIntoView` → the new check goes red.
 
-- [ ] **U6 / Y6 (CRIT4-3, FCR4-1)** At 1280×800 an open itinerary covers the
+- [x] **U6 / Y6 (CRIT4-3, FCR4-1)** At 1280×800 an open itinerary covers the
       departure card, including the line carrying its door-to-door qualifier.
       `.depart-card` (`index.html:147`) is fixed at `top:104px` and grows down;
       `.reading` (`:166-167`) is fixed at `bottom:14px` and grows up; both are
@@ -139,7 +139,7 @@ whose output only changes at the next build; both say so.
       pair — and run the viewport checks **after** the route click it already
       performs. Mutation: revert the CSS → the desktop assertion goes red.
 
-- [ ] **U7 / Y7 + Y11 (CRIT4-4, designer, VER4-1)** The departure block renders at
+- [x] **U7 / Y7 + Y11 (CRIT4-4, designer, VER4-1)** The departure block renders at
       one of five viewports measured: `display:none` at 820×1180, 390×844, 844×390,
       320×800 and 1280×400, and absent in a default browser window
       (`innerHeight` 577). On a phone the departure city is then named exactly once
@@ -153,7 +153,7 @@ whose output only changes at the next build; both say so.
       Fix: the 600–900 px breakpoint T27 owes, and a compact form of the reach
       figures that survives the phone. Check at all four CLAUDE.md viewports.
 
-- [ ] **U8 / Y8 (designer #1)** A searched destination never writes the readout, so
+- [x] **U8 / Y8 (designer #1)** A searched destination never writes the readout, so
       the page states two different answers at once and the bigger one is wrong.
       Reproduced: click Keene NH from Seoul, then type "JFK" and press Enter —
       `#time` (50 px) still reads `19 h 51 min`, `#where` still says "Keene… from
@@ -165,7 +165,7 @@ whose output only changes at the next build; both say so.
       `:1193-1208`. Search is the only keyboard and screen-reader path to a
       destination, and the page advertises it. About six lines.
 
-- [ ] **U9 / Y22 (CRIT4-5) — the addition** There is no way to ask "how long to
+- [x] **U9 / Y22 (CRIT4-5) — the addition** There is no way to ask "how long to
       X". Typing "London" and pressing Enter on a Seoul page **departs from
       London**; cities are departures only. Put the door-to-door time from the
       active origin in the city list, in place of the lat/lon column nobody reads:
@@ -175,7 +175,7 @@ whose output only changes at the next build; both say so.
       letter-spacing, no tabular figures. Recompute the cost at 553 rows before
       shipping; if it exceeds one frame, rank lazily.
 
-- [ ] **U10 / T26 carried (UX3-9, UX3-10, UX3-12, UX3-14)** Carried from cycle 3
+- [x] **U10 / T26 carried (UX3-9, UX3-10, UX3-12, UX3-14)** Carried from cycle 3
       for the second time, and now load-bearing: after U5 the Route panel is the
       only place a phone visitor's answer survives. The big number splits one
       quantity across two sizes and two colours; at rest the largest element on the
@@ -185,14 +185,14 @@ whose output only changes at the next build; both say so.
       empty state in place of the dash, the answer above the instructions, and
       `<main>`/`<nav>`/`<aside>` with accessible names.
 
-- [ ] **U11 / T28 carried (CRIT3-12)** The permalink carries the departure but not
+- [x] **U11 / T28 carried (CRIT3-12)** The permalink carries the departure but not
       the destination, so the interesting half of a reading cannot be shared:
       `?from=seoul` reopens the city, not the journey. Carry the pinned destination
       in the URL and restore it on load, through the same validated path `?from=`
       already uses. About fifteen lines. While here, fix the designer's related
       note: an unknown `?from=` slug is silently swallowed *and* the URL rewritten.
 
-- [ ] **U12 / Y26 (FCR4-3) + Y28 (designer #3)** Two things the visitor is looking
+- [x] **U12 / Y26 (FCR4-3) + Y28 (designer #3)** Two things the visitor is looking
       directly at. (a) "Name the place under the cursor" does not govern the
       tooltip that follows the cursor: the setting is respected in `describe()` and
       `announceReading()` and ignored in `mousemove` (`app.js:1110-1116`), so
@@ -204,7 +204,7 @@ whose output only changes at the next build; both say so.
       own scroll box: 8 px of a roughly 40 px tooltip at 390×844 on Seoul→JFK, and
       cut at the panel edge on desktop.
 
-- [ ] **U13 / Y23 (TR4-3) + TR4-4** `#tip` is written only in `mousemove` and
+- [x] **U13 / Y23 (TR4-3) + TR4-4** `#tip` is written only in `mousemove` and
       hidden only by `mouseout`; `paintOrigin` never touches it. Departing by
       clicking a globe label keeps the pointer on the canvas, so the previous
       city's door-to-door figure floats at the cursor beside the new city's
@@ -214,7 +214,7 @@ whose output only changes at the next build; both say so.
       handler (`app.js:1459`) does not, so re-picking the city you are already on
       refetches everything and wipes the reading.
 
-- [ ] **U14 / Y10 (FCR4-2, designer)** `layoutForSize`'s large branch
+- [x] **U14 / Y10 (FCR4-2, designer)** `layoutForSize`'s large branch
       (`app.js:1619-1623`) never removes or hides `#sheet-toggle`, and
       `.sheet-toggle` has no `display` rule outside `@media (max-width:860px)`. On
       desktop the leftover renders as UA chrome (measured 264×6 px,
@@ -226,7 +226,7 @@ whose output only changes at the next build; both say so.
       it. Fix: one top-level `display:none`, and extend the browser check with a
       desktop → small → desktop sequence. Mutation: delete the declaration → red.
 
-- [ ] **U15 / Y24 (designer)** T7's accessible-name fix is a no-op for every
+- [x] **U15 / Y24 (designer)** T7's accessible-name fix is a no-op for every
       non-origin globe label: 29 of 29 plain labels at zoom 5.2 are still
       `role="button" aria-label="Map marker"`. Root cause in the vendored library:
       `addTo()` re-applies both attributes behind `hasAttribute` guards, and
@@ -234,7 +234,7 @@ whose output only changes at the next build; both say so.
       labels survive only because their branch sets the attributes. WCAG 4.1.2.
       Fix: name the marker after `addTo`. Check: re-count the labels.
 
-- [ ] **U16 / Y14 (CR4-4, designer, TR4-5, FCR4-6, VER4-6)** The announcement layer
+- [x] **U16 / Y14 (CR4-4, designer, TR4-5, FCR4-6, VER4-6)** The announcement layer
       contradicts itself in five places, all from T4's incomplete landing.
       `#pins` still carries `aria-live="polite"`, so an origin switch announces the
       route block up to six times and every click announces twice. A failed origin
@@ -249,7 +249,7 @@ whose output only changes at the next build; both say so.
       Fix all five; one live region, written after the reveal, on every committed
       reading including failure. Check with a `MutationObserver` count per path.
 
-- [ ] **U17 / Y30 (CR4-5, DBG4-4)** Two unreachable-or-throwing states.
+- [x] **U17 / Y30 (CR4-5, DBG4-4)** Two unreachable-or-throwing states.
       The `{slug}.bin` failure path calls `renderPins()` but not
       `renderDeparture()`, so the departure card's "Travel times… are unavailable"
       string is unreachable and the card sits on "Reading the travel times…" for
@@ -261,7 +261,7 @@ whose output only changes at the next build; both say so.
 
 ## C. Two obligations that are not discretionary
 
-- [ ] **U18 / Y12 (DOC4-1) — reclassified from deferred** The OpenStreetMap credit
+- [x] **U18 / Y12 (DOC4-1) — reclassified from deferred** The OpenStreetMap credit
       cannot be seen without interacting with the page. `app.js:362` sets
       `attributionControl: false` and adds no control; the only credit line
       (`index.html:574`) is inside `<details id="key">` at `:557`, which has no
@@ -280,7 +280,7 @@ whose output only changes at the next build; both say so.
       must not cover the legend at any of the four viewports.
       Source: https://osmfoundation.org/wiki/Licence/Attribution_Guidelines
 
-- [ ] **U19 / Y13 (DOC4-2)** Google Analytics ships with no privacy policy. GA
+- [x] **U19 / Y13 (DOC4-2)** Google Analytics ships with no privacy policy. GA
       ToS §7, verbatim: *"You must post a Privacy Policy … You must disclose the
       use of Google Analytics, and how it collects and processes data,"*
       satisfiable by a prominent link to google.com/policies/privacy/partners/.
@@ -293,7 +293,7 @@ whose output only changes at the next build; both say so.
 
 ## D. The failure CLAUDE.md names as this project's recurring one
 
-- [ ] **U20 / Y9 (TR4-1, DBG4-1, ARCH4-4)** Three more routes to a blank or wrong
+- [x] **U20 / Y9 (TR4-1, DBG4-1, ARCH4-4)** Three more routes to a blank or wrong
       globe with nothing in the console.
       (a) **No `map.on("error")` anywhere** — seven `map.on(...)` handlers, none for
       `error`. `index.json` and `hover_cells.bin` go through `fatal()`; all five
@@ -318,7 +318,7 @@ whose output only changes at the next build; both say so.
 
 ## E. Gates, tests and the build
 
-- [ ] **U21 / Y17 (TE4-1…TE4-6, TE4-8, TE4-9)** Six tests that pass when the code
+- [x] **U21 / Y17 (TE4-1…TE4-6, TE4-8, TE4-9)** Six tests that pass when the code
       is deliberately broken, demonstrated by mutation (eleven run, seven green).
       **TE4-1** `tests/web/test_ramps.py:60` cannot detect the literal it names —
       reverting `check_ramps.py:26` to `N_BANDS = 37` leaves all seven ramp tests
@@ -342,7 +342,7 @@ whose output only changes at the next build; both say so.
       commit body. Where a test cannot be fixed in place (TE4-1's import-time
       binding), rewrite it against a parameter rather than deleting it.
 
-- [ ] **U22 / Y25 (CR4-3, TR4-2)** `check_dist` calls a `dist/` consistent in three
+- [x] **U22 / Y25 (CR4-3, TR4-2)** `check_dist` calls a `dist/` consistent in three
       states the page cannot survive: an `index.json` with no `bandEdgesMin`
       (`app.js` then `fatal()`s on load); a `{slug}.json` with empty `offsets` (the
       route panel silently disappears); and a res-5/res-6 mixture, because the
@@ -354,7 +354,7 @@ whose output only changes at the next build; both say so.
       (all 349 agree today, byte-identical) and the bound `49·H ≤ n_cells ≤ 343·H`.
       Mutation: perturb one origin's `offsets.airports` in a fixture → red.
 
-- [ ] **U23 / Y15 (PR4-1)** `emit/borders.py:20,38-40` ships 15 significant digits
+- [x] **U23 / Y15 (PR4-1)** `emit/borders.py:20,38-40` ships 15 significant digits
       for geometry already simplified to a kilometre. The first shipped vertex is
       `[-124.75886592699995,48.49401784300004]` — 38 characters for a point
       accurate to 1,100 m. Over the real file (515 features, 31,182 vertices):
@@ -365,7 +365,7 @@ whose output only changes at the next build; both say so.
       the deferred D13, which changes *when* it is fetched. **Takes effect at the
       next build**; the shipped `borders.json` is unchanged this cycle.
 
-- [ ] **U24 / Y16 (PR4-2) + Y20 (SEC4-1) + Y21 (SEC4-2)** Three things about what
+- [x] **U24 / Y16 (PR4-2) + Y20 (SEC4-1) + Y21 (SEC4-2)** Three things about what
       the deploy ships.
       (a) **42.7 % of `water.pmtiles` is at a zoom the page cannot request.**
       `emit/water.py:33` builds z0–12; `app.js:358` caps at `maxZoom: 11`, and
@@ -400,7 +400,7 @@ whose output only changes at the next build; both say so.
       pointed at a `web`-shaped scratch tree. `--page-only` is *the* documented mode
       for a page fix while a rebuild owns `dist/` — today's situation.
 
-- [ ] **U25 / Y18 (DBG4-2) + Y19 (DBG4-3)** Two things the 553-origin build makes
+- [x] **U25 / Y18 (DBG4-2) + Y19 (DBG4-3)** Two things the 553-origin build makes
       wrong the moment it publishes.
       (a) A ticked plan item was silently reverted. `plan/…-c2-web-ui-detail.md:123`
       ticks O4 ("more than a hundred cities" → "hundreds"). Git shows the round
@@ -420,7 +420,7 @@ whose output only changes at the next build; both say so.
       displayed name, and gate the comparison on slug. The existing C11 covers only
       the picker-display half and was written when duplicates were hypothetical.
 
-- [ ] **U26 / Y27 (PR4-3) — reopens a deferral on new evidence** `deferred.md:47`
+- [x] **U26 / Y27 (PR4-3) — reopens a deferral on new evidence** `deferred.md:47`
       records H14 as "2–5 ms measured", Low, "below the 50 ms trigger". The
       `.sort()` with comparator-side `rankAirport` landed **later**, in `05f88a5`,
       and the pathological query is the word *Airport*: six two-letter substrings
@@ -431,7 +431,7 @@ whose output only changes at the next build; both say so.
       synchronous `input` handler, a mid-range phone lands at 65–125 ms per
       keystroke — past the deferral's own exit criterion. Three lines.
 
-- [ ] **U27 (small, grouped)** Four one-line fixes the reviewers proved and nothing
+- [x] **U27 (small, grouped)** Four one-line fixes the reviewers proved and nothing
       else covers: `check_ramps.py:169` rewrites `web/app.js` with a bare
       `write_text`, the only writer bypassing `_io.atomic_write` (SEC4-3);
       `app.js:1414` rounds the reverse-geocode cache key to 3 dp but `:1418` sends
@@ -447,7 +447,7 @@ whose output only changes at the next build; both say so.
 
 ## F. The record
 
-- [ ] **U28 / Y29 + T24 carried** The documentation and record corrections, one
+- [x] **U28 / Y29 + T24 carried** The documentation and record corrections, one
       commit. From the reviews: DOC4-3 (`emit/index.py:147` and `app.js:150` ship
       "Tertiary and local roads, **fitted** at 18-25 km/h" into the visitor-facing
       route tooltip, but `graph/ground.py:21-25` says the local 25 km/h is a
@@ -492,3 +492,54 @@ whose output only changes at the next build; both say so.
   findings, clusters Y1–Y30). Every cycle-4 finding is either scheduled above or
   recorded in `deferred.md` with its citation, unchanged severity and confidence,
   a concrete reason and an exit criterion.
+
+- 2026-09-10 cycle 4 done: **all 28 tasks landed**, across 19 signed commits
+  (`d291fca`…`0b9c3bc`).
+
+  **The deploy blockers.** U1 `d291fca` — `_other_builds` had no CPU filter and
+  counted eight orphans of a build killed the previous day, so `reindex` would
+  have refused the moment it was needed. U2 `ee1325a` — `railDetail` was
+  hard-coded `True`, so `reindex` printed "rail detail absent" and wrote `true`
+  in the same breath, and `check_dist` then refused the result naming `reindex`
+  as the remedy. U3 `b69d8b5` — `modeDetail` carried forward instead of
+  re-derived, and a refusal when `bandEdgesMin`, `solveRes` or `modeChannels`
+  have moved since the artifacts were built.
+
+  **The page.** U4 `e833faa` (the departure card counted Antarctica, so four
+  cities printed the same 10.2%; now 1.9%, and Seoul's "within two days" moves
+  from 82.5% to 90.2%); U5, U6, U7, U8, U13, U14 and U15 in `9536f75`, with the
+  browser gate that guards them in `cb0c97d`; U18 and U19 `099f55b`; U20
+  `71aec12`; U12, U16 and U17 `87fd7e1`; U11 `f1b4a01`; U9 and U26 `4192d80`;
+  U25 `1000bd3`; U27 `f8adfc7`; U10 `fe86c4a` — T26, carried twice, landed.
+
+  **Gates, build and the record.** U21 `80947e5` (seven vacuous tests, each
+  re-mutated after the fix); U22 `162aa38`; U23 `d70e194` (211 KB off every
+  cold load); U24 `8f590ff`; U28 `0b9c3bc`.
+
+  Every guard added was shown to go red under a deliberate mutation, named in
+  its commit body (CLAUDE.md testing rule). Every page change was verified in a
+  browser against a local range-capable preview of `dist/` with `web/` over it,
+  at 1280x800, 820x1180, 390x844 and 844x390.
+
+  **One defect introduced and caught inside the cycle.** U25's shared-name set
+  was first written as an IIFE several hundred lines above the `cities`
+  declaration it reads, so it threw in the temporal dead zone at module scope
+  and left a blank page with an empty city list — CLAUDE.md's named recurring
+  failure, reproduced inside the commit meant to guard against it, and caught
+  by opening the page rather than by any test. Recorded because the lesson is
+  which gate actually worked.
+
+  **Two cycle-3 ticks the verifier found do not hold**, both scheduled and
+  landed here rather than quietly corrected: T27's 600–900 px tablet breakpoint
+  was never written (U7), and T3's promised `#scale` check did not exist (U5).
+
+  **T24, carried from cycle 3 and closed here.** N23 is confirmed shipped
+  (`index.html:84-85`, in `9d0a401`); ARCH-4 is fixed at HEAD
+  (`app.js:152-179`), though the cycle-4 architect notes its comment invariant
+  is violated by seven declarations with no live TDZ; `plan/README.md`'s review
+  paths were corrected for the `cycle-3/` move; VER3-6 is recorded in
+  `deferred.md` (the docs are right and the SDD ledger is a generated file).
+
+  **Cycle-4 IDs carry the cycle number.** Cycle 3's designer used a bare
+  `A1…A8`, colliding with the build plan's `A1…A17`, and six of those findings
+  reached no table at all — the one gap in the audit `plan/README.md` records.
