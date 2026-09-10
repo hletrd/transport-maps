@@ -159,10 +159,25 @@ class _TinyGraphIdx:
 
 
 def _graph(edges: list[tuple[int, int]], n: int = 4) -> sp.csr_matrix:
+    """Symmetrised: every edge is added in both directions."""
     rows = [e[0] for e in edges] + [e[1] for e in edges]
     cols = [e[1] for e in edges] + [e[0] for e in edges]
     data = np.ones(len(rows))
     return sp.coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
+
+
+def _directed(edges: list[tuple[int, int]], n: int = 4) -> sp.csr_matrix:
+    """As given, with no symmetrising, so weak and strong connectivity differ.
+
+    Every fixture in this file went through _graph, which makes the two notions
+    coincide -- so `connection="weak"` could be changed to `"strong"` and all
+    fifteen tests stayed green, while the real graph IS directed (ground hops
+    and access/egress are charged asymmetrically) and the check would start
+    rejecting most of the network.
+    """
+    data = np.ones(len(edges))
+    return sp.coo_matrix((data, ([e[0] for e in edges], [e[1] for e in edges])),
+                         shape=(n, n)).tocsr()
 
 
 def test_a_fully_wired_graph_passes():
@@ -175,6 +190,25 @@ def test_an_airport_in_a_severed_component_is_rejected():
     # Half the airports are isolated -- far above the 1% bound.
     with pytest.raises(ValueError, match="disconnected"):
         validate.check_airport_connectivity(_TinyGraphIdx(), _graph([(0, 2), (1, 3)]))
+
+
+def test_weak_connectivity_is_the_notion_used_not_strong():
+    """The docstring says why: the graph is directed only because ground hops
+    and access/egress are charged asymmetrically, so a node reachable in
+    EITHER direction is genuinely wired in. This graph is one-way throughout
+    -- c0 -> c1 -> AAA(2) and c1 -> BBB(3) -- so nothing can reach c0 and
+    strong connectivity would put every node in its own component and reject
+    both airports.
+    """
+    validate.check_airport_connectivity(
+        _TinyGraphIdx(), _directed([(0, 1), (1, 2), (1, 3)]))
+
+
+def test_a_one_way_graph_with_a_genuinely_severed_airport_is_still_rejected():
+    """Weak is not "anything goes": BBB has no edge at all in either
+    direction, so it is isolated under both notions."""
+    with pytest.raises(ValueError, match="disconnected"):
+        validate.check_airport_connectivity(_TinyGraphIdx(), _directed([(0, 1), (1, 2)]))
 
 
 def test_the_isolated_airports_are_reported_by_name():

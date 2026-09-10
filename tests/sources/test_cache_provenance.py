@@ -276,17 +276,44 @@ def test_params_hash_refuses_a_set_rather_than_hashing_its_repr():
     assert params_hash(sorted({"c", "a", "b"})) == params_hash(["a", "b", "c"])
 
 
-def test_params_hash_is_stable_across_interpreter_hash_seeds():
-    """Two calls inside one process cannot detect a seed-dependent digest;
-    the whole hazard is that the seed differs between RUNS."""
+def test_the_real_cache_path_names_are_stable_across_interpreter_hash_seeds():
+    """The seed hazard is about the paths the BUILD computes, not about three
+    literals.
+
+    This test used to hash ['a','b','c'], {'k': 1} and (2, 3) in a subprocess
+    under four seeds. Those inputs are order-stable under
+    json.dumps(sort_keys=True) whatever `default=` does, so deleting the
+    _reject_unordered guard the test was written to protect left it green --
+    a permanent pass. (The guard IS covered, by the test above that passes a
+    set and requires a raise; this one added nothing.)
+
+    What actually matters is that the derived cache paths do not move between
+    runs. A seed-dependent digest is silent: it is a permanent cache miss that
+    re-downloads GRIP4 and re-polyfills four million cells on every run while
+    reporting success. `airports._table_cache_path` is the live example --
+    `sorted(REQUIRED_SOURCE_COLUMNS)` is exactly the sort that stops a set's
+    repr reaching the digest, and dropping it is a one-character edit.
+    """
     import subprocess
     import sys
 
-    code = ("import sys; sys.path.insert(0, 'src');"
-            "from transport_maps._io import params_hash;"
-            "print(params_hash(['a','b','c'], {'k': 1}, (2, 3)))")
-    out = {subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                          env={"PYTHONHASHSEED": str(seed), "PATH": "/usr/bin:/bin"},
-                          check=True).stdout.strip()
-           for seed in (0, 1, 2, 7)}
-    assert len(out) == 1, f"digest moved with PYTHONHASHSEED: {out}"
+    code = (
+        "import sys; sys.path.insert(0, 'src');"
+        "from transport_maps.sources import airports, landmask, roads;"
+        "print(airports._table_cache_path().name);"
+        "print(landmask._cells_cache_path(6).name);"
+        "print(roads._grid_cache_path().name)"
+    )
+    out = set()
+    for seed in (0, 1, 2, 7, 31):
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                           env={"PYTHONHASHSEED": str(seed), "PATH": "/usr/bin:/bin"},
+                           check=True)
+        out.add(r.stdout.strip())
+    assert len(out) == 1, (
+        "a derived cache path moved with PYTHONHASHSEED, so every run is a cache "
+        f"miss that re-downloads its source and reports success:\n{chr(10).join(sorted(out))}")
+    # ...and the names really are digests, not constants that could not move.
+    names = next(iter(out)).splitlines()
+    assert len(names) == 3
+    assert all(any(ch.isdigit() for ch in n) and len(n) > 12 for n in names), names

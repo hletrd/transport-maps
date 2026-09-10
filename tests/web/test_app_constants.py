@@ -50,9 +50,21 @@ def test_the_page_reads_the_tile_layer_the_emitter_writes():
 
 
 def test_airports_json_column_order_matches_the_reads():
-    """app.js reads a[0]=code, a[1]=name, a[2]=country, a[3]=lat, a[4]=lon."""
+    """app.js reads a[0]=code, a[1]=name, a[2]=country, a[3]=lat, a[4]=lon, a[5]=size.
+
+    The slice used to stop at five, so dropping "size" from the emitter left
+    93 tests green -- and app.js reads it as `SIZE_RANK[a[5]] ?? 3`, where the
+    `??` swallows `undefined`. Every airport would silently rank equal and
+    T9's fix would come back: "tok" returning ACC Kotoka, ENT Eniwetok, FYN
+    Koktokay and GTA Gatokae before HND. check_dist would stay green too,
+    because it checks that airports.json exists.
+    """
     fields = airports_json.FIELDS
-    assert fields[:5] == ("iata", "name", "country", "lat", "lon"), fields
+    assert fields == ("iata", "name", "country", "lat", "lon", "size"), fields
+    # ...and each position is actually read at that index in the page.
+    for i, name in enumerate(("code", "name", "country", "lat", "lon", "size")):
+        assert f"a[{i}]" in APP or f"x[{i}]" in APP, f"nothing reads column {i} ({name})"
+    assert "SIZE_RANK[" in APP, "the size column is emitted and never used"
 
 
 def test_every_index_json_key_the_page_reads_is_written(tmp_path):
@@ -193,3 +205,45 @@ def test_the_map_reports_its_own_errors():
     missing tile archive gave a sea-coloured globe with no message."""
     assert 'map.on("error"' in APP
     assert "did not finish loading" in APP, "await map.on('load') has no timeout"
+
+
+# --- U21 / TE4-6: two page-load guards no test could see -------------------
+#
+# Both were demonstrated deletable with all 34 tests in tests/web/ green, and
+# both guard the blank-globe-with-no-console-error class CLAUDE.md names as
+# this project's recurring failure. They live in browser code that pytest
+# cannot execute, so the assertion is on the source: a future edit that
+# removes the guard has to remove the reason too.
+
+def test_a_stored_colour_scheme_cannot_be_a_prototype_property():
+    """`RAMPS[r]` is truthy for "constructor", "toString" and "__proto__",
+    none of which has a `.c`, so localStorage.ramp = "constructor" threw at
+    module scope -- before fatal() existed to catch it -- and the globe was
+    blank with nothing in the console."""
+    i = APP.index('localStorage.getItem("ramp")')
+    line = APP[i:i + 200]
+    assert "Object.hasOwn(RAMPS" in line, (
+        "the stored scheme is read back without an own-property check")
+    assert "RAMPS[r] " not in line and "if (r && RAMPS[r])" not in line
+
+
+def test_the_route_file_is_shape_checked_before_it_is_destructured():
+    """The four .bin files are length-checked against hoverCells, but a rebuild
+    that changes only the dense-split rule leaves the res-4 parent set
+    bit-identical while offsets.airports moves by millions. Unguarded, the page
+    then printed the POSITIVE claim "No flight on this journey: surface travel"
+    with a full surface breakdown for a journey that flew."""
+    i = APP.index("origin.routes = {")
+    before = APP[max(0, i - 700):i]
+    assert "Number.isFinite(off.airports)" in before
+    assert "Number.isFinite(off.stations)" in before
+    assert "Array.isArray(j.nodes)" in before
+
+
+def test_the_rail_file_is_shape_checked_too():
+    """T13 stopped one file short of its sibling: railVia() indexes
+    rail.table on every rail-served cell, so a .rail.json without a stations
+    array threw out of the click handler and left the previous destination's
+    itinerary on screen."""
+    i = APP.index("origin.rail = {")
+    assert "Array.isArray(j.stations)" in APP[max(0, i - 500):i]

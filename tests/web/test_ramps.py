@@ -57,17 +57,36 @@ def test_a_grey_that_matches_a_band_is_caught(check_ramps):
     assert any("grey" in p for p in check_ramps.scheme_problems(r, check_ramps.constant("SPACE")))
 
 
-def test_the_band_count_follows_the_emitter_not_a_literal(check_ramps):
+def test_the_band_count_follows_the_emitter_not_a_literal(check_ramps, monkeypatch):
     """`expand()` and `scheme_problems()` hard-coded 37. The number of painted
     bands is one more than config.BAND_EDGES_MIN, and the moment an edge is
     added or removed a literal stops describing the legend the page draws --
     the gate would keep measuring 37 colours for a ramp that no longer has 37,
     and every guarantee in this file would be about the wrong colours.
+
+    This test used to be unable to detect that. It asserted
+    `N_BANDS == len(BAND_EDGES_MIN) + 1`, which reads 37 == 37 whether N_BANDS
+    is derived or the literal it replaced; `len(expand(c)) == N_BANDS` compared
+    N_BANDS with expand's own default, which WAS N_BANDS; and
+    `len(expand(c, 11)) == 11` checked a literal the test passed in. Reverting
+    the whole fix left all seven ramp tests green -- exactly the vacuity
+    CLAUDE.md says to assume until shown otherwise. The fix that made it
+    testable is in the source: a function read at call time, not a constant
+    frozen at import into a default argument.
     """
     from transport_maps import config
 
-    assert check_ramps.N_BANDS == len(config.BAND_EDGES_MIN) + 1
     r = check_ramps.ramps()["muted"]
-    assert len(check_ramps.expand(r["c"])) == check_ramps.N_BANDS
-    # And a different ladder really does change what is measured.
-    assert len(check_ramps.expand(r["c"], 11)) == 11
+    real = len(config.BAND_EDGES_MIN) + 1
+    assert check_ramps.n_bands() == real
+    assert len(check_ramps.expand(r["c"])) == real
+
+    # Move the ladder and the gate must follow it, with no argument passed.
+    monkeypatch.setattr(config, "BAND_EDGES_MIN", tuple(range(10, 10 + 12)))
+    assert check_ramps.n_bands() == 13, "the count is frozen at import, not read from the emitter"
+    assert len(check_ramps.expand(r["c"])) == 13, "expand() kept its old default"
+    assert len(check_ramps.expand(r["c"], 11)) == 11, "an explicit count must still win"
+    # ...and the measurements built on it follow too, rather than silently
+    # continuing to grade a 37-band ladder that no longer exists.
+    assert check_ramps.scheme_problems(r, check_ramps.constant("SPACE")) == \
+        check_ramps.scheme_problems(r, check_ramps.constant("SPACE"), 13)

@@ -168,31 +168,60 @@ def test_the_page_credit_fallbacks_agree_with_the_emitters_licences():
         assert lic == ours[name], f"{name}: page says {lic}, emitter says {ours[name]}"
 
 
-def test_build_identity_is_sampled_when_it_is_called_not_when_the_build_ends(tmp_path, monkeypatch):
+def test_build_identity_is_sampled_when_it_is_called_not_when_the_build_ends(monkeypatch):
     """The build stamps itself with the inputs it USED, not with the tree as it
     stands when it finishes. build_identity() reads the git head and hashes
     calibration.toml and origins.toml at call time, so calling it as the last
     statement of a sixteen-hour build recorded a checkout 38 commits ahead of
     the one that weighted the graph.
+
+    This test used to edit the REAL calibration.toml in the working tree and
+    restore it in a finally. Two problems, both real: _git_head() runs
+    `git status --porcelain`, so any build or reindex that called
+    build_identity() inside that window stamped itself `<head>-dirty` with a
+    wrong inputsHash -- the exact defect a71954d was written to fix -- and a
+    hard kill during the window left the tracked file modified. It reads a
+    stubbed hash instead, which tests the same property without touching the
+    repository.
     """
-    from transport_maps import config
     from transport_maps.emit import index as index_mod
 
-    cal = config.ROOT / "calibration.toml"
-    original = cal.read_bytes()
     monkeypatch.setattr(index_mod, "_git_head", lambda: "frozen-head")
+    contents = {"cal": b"speed = 90\n", "origins": b"[[origin]]\n"}
+
+    def fake_sha256(path):
+        import hashlib
+        key = "cal" if path.name == "calibration.toml" else "origins"
+        return hashlib.sha256(contents[key]).hexdigest()
+
+    monkeypatch.setattr(index_mod, "_sha256", fake_sha256)
+
     at_start = index_mod.build_identity()
-    try:
-        cal.write_bytes(original + b"\n# a mid-build edit\n")
-        at_end = index_mod.build_identity()
-    finally:
-        cal.write_bytes(original)
+    contents["cal"] = b"speed = 95\n"          # the mid-build edit
+    at_end = index_mod.build_identity()
 
     assert at_start["inputsHash"] != at_end["inputsHash"], (
         "build_identity must reflect the file it read; if this is equal the test "
         "cannot detect an end-of-build sample")
-    # And the value the build actually publishes is the one captured at the top.
-    assert index_mod.build_identity()["inputsHash"] == at_start["inputsHash"]
+    # Both hand-edited inputs are covered, not only the first.
+    contents["cal"] = b"speed = 90\n"
+    contents["origins"] = b"[[origin]]\n[[origin]]\n"
+    assert index_mod.build_identity()["inputsHash"] != at_start["inputsHash"], (
+        "origins.toml is not in the identity")
+
+
+def test_build_identity_does_not_touch_the_working_tree(monkeypatch, tmp_path):
+    """A guard on the guard: nothing in this module may write to a tracked
+    file, because a dirty tree changes what _git_head() reports for any build
+    running at the same time."""
+    from transport_maps import config
+
+    cal = config.ROOT / "calibration.toml"
+    before = cal.read_bytes()
+    from transport_maps.emit import index as index_mod
+    monkeypatch.setattr(index_mod, "_git_head", lambda: "frozen-head")
+    index_mod.build_identity()
+    assert cal.read_bytes() == before
 
 
 def test_write_index_uses_the_mode_prose_it_is_given(tmp_path):
@@ -204,3 +233,36 @@ def test_write_index_uses_the_mode_prose_it_is_given(tmp_path):
     index_mod.write_index([{"slug": "a", "name": "A", "lat": 0, "lon": 0}], out,
                           modes_detail={"rail": "frozen at build start"})
     assert json.loads(out.read_text())["modeDetail"] == {"rail": "frozen at build start"}
+
+
+def test_every_fitted_range_in_the_mode_prose_reads_low_to_high():
+    """T23 fixed one backwards range and nothing stops the next one.
+
+    The speed table is ordered by road class, not by speed, so classes 2 and 3
+    (57 and 50 km/h) printed "fitted at 57-50 km/h" -- shipped in index.json
+    and read out in the page's route tooltip beside an ascending "18-25".
+    Reverting the min()/max() left all thirteen tests in this file green.
+    """
+    import re
+
+    prose = index.mode_detail()
+    ranges = [(m.group(1), m.group(2), key)
+              for key, text in prose.items()
+              for m in re.finditer(r"(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\s*km/h", text)]
+    assert ranges, f"no speed range found in the mode prose: {prose}"
+    for lo, hi, key in ranges:
+        assert float(lo) <= float(hi), f"{key}: {lo}-{hi} km/h reads backwards"
+
+
+def test_the_mode_prose_covers_every_channel_the_page_expects():
+    """Six surface mode names live in four places and only MODE_NAMES was
+    pinned to modes.CHANNELS. Add a seventh channel and the suite goes green
+    while mode_detail() silently lacks it, so the new mode's route tooltip is
+    empty. (ARCH4-3.)"""
+    from transport_maps.emit import modes
+
+    prose = index.mode_detail()
+    missing = [c for c in modes.CHANNELS if c not in prose]
+    assert not missing, f"mode_detail() has no prose for {missing}"
+    for c in modes.CHANNELS:
+        assert prose[c].strip(), f"{c}: empty prose"

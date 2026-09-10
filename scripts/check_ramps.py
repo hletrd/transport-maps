@@ -18,12 +18,20 @@ from pathlib import Path
 
 from transport_maps import config
 
+
 # The number of painted bands is one more than the number of edges, and it is
 # the emitter that decides it. Hard-coded as 37 in three places, this gate
 # silently stopped covering the shipped ladder the moment an edge was added or
 # removed -- it would keep measuring 37 interpolated colours for a legend that
 # no longer had 37.
-N_BANDS = len(config.BAND_EDGES_MIN) + 1
+#
+# A FUNCTION, not a module constant. Bound at import, the derivation could not
+# be told apart from the literal it replaced: `N_BANDS == len(BAND_EDGES_MIN)
+# + 1` reads 37 == 37 either way, and the default argument had frozen too, so
+# no test could reach it. Reverting the fix left all seven ramp tests green --
+# exactly the vacuity CLAUDE.md says to assume until shown otherwise.
+def n_bands() -> int:
+    return len(config.BAND_EDGES_MIN) + 1
 
 # Between ANCHORS. Eleven anchors from near-white to near-black span about 70
 # OKLab units, so ~7 per step is the ceiling for a single ramp; the shipped
@@ -69,10 +77,12 @@ def constant(name: str, source: str = None) -> str:
     return m.group(1)
 
 
-def expand(control: list[str], n: int = N_BANDS) -> list[tuple[float, float, float]]:
-    """The 37 painted bands, interpolated between the anchors in OKLab the
-    way app.js's expandRamp does."""
+def expand(control: list[str], n: int | None = None) -> list[tuple[float, float, float]]:
+    """The painted bands, interpolated between the anchors in OKLab the
+    way app.js's expandRamp does. `n` defaults to the emitter's count."""
     import math
+    if n is None:
+        n = n_bands()
     lab = [srgb_to_oklab(c) for c in control]
     out = []
     for i in range(n):
@@ -87,10 +97,10 @@ def delta_e(p, q) -> float:
     return 100 * sum((a - b) ** 2 for a, b in zip(p, q)) ** 0.5
 
 
-def scheme_problems(r: dict, space: str, n_bands: int = N_BANDS) -> list[str]:
+def scheme_problems(r: dict, space: str, bands: int | None = None) -> list[str]:
     """The grey and the sea, measured against the scheme's own bands."""
     out = []
-    bands = expand(r["c"], n_bands)
+    bands = expand(r["c"], bands)
     grey = srgb_to_oklab(r["grey"])
     d = min(delta_e(grey, b) for b in bands)
     if d < MIN_GREY_DELTA_E:
