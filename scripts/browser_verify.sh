@@ -109,10 +109,19 @@ agent-browser set viewport 390 844 >/dev/null 2>&1; sleep 2
 F=$(agent-browser eval '(()=>{const t=document.getElementById("sheet-toggle");if(!t)return "no toggle";t.click();
   const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();const o={clientX:r.left+r.width*0.5,clientY:r.top+r.height*0.3,bubbles:true};
   c.dispatchEvent(new MouseEvent("mousedown",o));c.dispatchEvent(new MouseEvent("mouseup",o));c.dispatchEvent(new MouseEvent("click",o));
-  return new Promise(res=>setTimeout(()=>{const lg=document.getElementById("tints").getBoundingClientRect();
-   res(JSON.stringify({legendOnScreen:lg.width>40&&lg.top>=0&&lg.bottom<=innerHeight,time:document.getElementById("time").textContent.trim()}))},1500))})()' 2>&1 | tail -1 | tr -d '\\')
+  return new Promise(res=>setTimeout(()=>{const box=s=>document.getElementById(s).getBoundingClientRect();
+   const on=b=>b.width>20&&b.top>=0&&b.bottom<=innerHeight;const lg=box("tints");
+   res(JSON.stringify({legendOnScreen:lg.width>40&&lg.top>=0&&lg.bottom<=innerHeight,
+    keysOnScreen:on(box("keys")),capOnScreen:!!document.querySelector(".rail.folded .legend-cap")&&on(document.querySelector(".legend-cap").getBoundingClientRect()),
+    time:document.getElementById("time").textContent.trim()}))},1500))})()' 2>&1 | tail -1 | tr -d '\\')
 echo "  folded sheet: $F"
 echo "$F" | grep -q '"legendOnScreen":true' || { echo "  !! the legend is hidden while the sheet is folded"; fail=1; }
+# The band strip alone is not the legend: without the two keys the grey and the
+# sea colour have no meaning, and without the caption the figures lose the
+# door-to-door qualifier the modelling rule requires. The swatch COUNT cannot
+# catch this -- display:none leaves the nodes in the DOM.
+echo "$F" | grep -q '"keysOnScreen":true' || { echo "  !! the two legend keys are hidden while the sheet is folded"; fail=1; }
+echo "$F" | grep -q '"capOnScreen":true' || { echo "  !! the door-to-door caption is hidden while the sheet is folded"; fail=1; }
 echo "$F" | grep -qE '"time":"[0-9]' || { echo "  !! a tap did not write the reading"; fail=1; }
 agent-browser close >/dev/null 2>&1; sleep 1
 # Kill only the browser processes this run started (agent-browser's own

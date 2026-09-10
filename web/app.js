@@ -354,8 +354,14 @@ paintSea();
 
 // The hovered cell, outlined so the reading has a visible footprint.
 map.addSource("hover", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+// A dark halo under the white line. White alone measured 1.15:1 against the
+// palest band -- the ring around the departure city, where every visitor
+// points first, was invisible. The halo reads 17.0:1 there and disappears
+// into the darkest bands, where the white line is already unmissable.
+map.addLayer({ id: "hover-halo", type: "line", source: "hover",
+  paint: { "line-color": "#0a0b0d", "line-width": 3.5, "line-opacity": 0.55 } });
 map.addLayer({ id: "hover-line", type: "line", source: "hover",
-  paint: { "line-color": "#ffffff", "line-width": 1.5, "line-opacity": 0.85 } });
+  paint: { "line-color": "#ffffff", "line-width": 1.5, "line-opacity": 0.9 } });
 map.addLayer({ id: "hover-fill", type: "fill", source: "hover",
   paint: { "fill-color": "#ffffff", "fill-opacity": 0.10 } });
 
@@ -378,7 +384,7 @@ fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
   map.addLayer({ id: "borders", type: "line", source: "borders",
     paint: { "line-color": "#ffffff", "line-opacity": 0.42,
              "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.6, 5, 1.1] } });
-  for (const id of ["hover-fill", "hover-line", "me-halo", "me-dot"])
+  for (const id of ["hover-halo", "hover-fill", "hover-line", "me-halo", "me-dot"])
     if (map.getLayer(id)) map.moveLayer(id);
 }).catch(() => {});
 

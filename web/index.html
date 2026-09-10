@@ -174,7 +174,13 @@ details[open] > summary{border-bottom:1px solid var(--line)}
    the sea. Without them a tenth of the land is a grey the legend never names. */
 .keys{display:flex;gap:14px;margin-top:7px;font-size:11px;color:var(--text-3)}
 .key{display:inline-flex;align-items:center;gap:5px}
-.keys .sw{width:14px;height:9px;border-radius:1px;display:inline-block;border:1px solid var(--line)}
+/* The outline carries the affordance, not the fill: the fills are the map's
+   real colours and must stay truthful, but "open water" measured 1.09-1.22:1
+   against the scrim and its --line border 1.01:1, so the key was invisible.
+   --text-3 measures 4.76:1 on the same ground, past the 3:1 that WCAG 2.2
+   asks of a non-text indicator. */
+.keys .sw{width:14px;height:9px;border-radius:1px;display:inline-block;
+  border:1px solid var(--text-3)}
 
 /* Route summary, under the legend. Appears only once a destination is set. */
 .legs{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;
@@ -183,8 +189,12 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .legs h2{margin:0 0 7px;font-size:12px;font-weight:500;
   color:var(--text-3)}
 .leg{display:flex;gap:9px;align-items:baseline;padding:3px 0;font-size:12.5px}
-.leg .t{color:var(--text-3);width:58px;flex:none;
-  text-align:right}
+/* 76px, not 58: measured in this page's own 12.5px Plex, "2 h 14 min" is
+   59.6px, "14 h 39 min" 67.1px and "120 h 59 min" 74.6px, so at 58px eight
+   of the nine rows of a real itinerary wrapped with "min" orphaned on the
+   second line, and the door-to-door total was pushed below the fold. */
+.leg .t{color:var(--text-3);width:76px;flex:none;
+  text-align:right;white-space:nowrap}
 .leg .d{color:var(--text-2)}
 .leg .d b{color:var(--text);font-weight:500}
 .leg.total{border-top:1px solid var(--line);margin-top:5px;padding-top:6px}
@@ -363,7 +373,16 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   .sheet-toggle span{display:block;width:38px;height:4px;margin:12px auto;border-radius:2px;background:var(--line-2)}
   .rail.folded > :not(.sheet-toggle):not(.reading){display:none}
   .rail.folded > .reading{padding:6px 14px 8px;border-bottom:0}
-  .rail.folded .reading > :not(.legend),.rail.folded .legend > :not(.tints):not(.scale){display:none}
+  /* The keys and the door-to-door caption stay. `:not(.tints):not(.scale)`
+     also matched #keys, so a folded sheet showed the ramp and its hours with
+     nothing to say what the grey and the sea colour meant -- against the
+     standing rule that the legend is always visible -- and dropped the one
+     line that says the figures are door to door, which the modelling rule
+     requires wherever a figure is presented. */
+  .rail.folded .reading > :not(.legend),
+  .rail.folded .legend > :not(.tints):not(.scale):not(.keys):not(.legend-cap){display:none}
+  .rail.folded .keys{margin-top:5px}
+  .rail.folded .legend-cap{margin-top:4px}
   .rail.folded .legend{margin-top:0}
   .rail.folded{max-height:none}
 }
