@@ -674,7 +674,13 @@ function applyLockNorth() {
   } else {
     map.dragRotate.enable();
     map.touchZoomRotate.enableRotation();
-    map.keyboard.enable();
+    // enableRotation(), not enable(). MapLibre's KeyboardHandler keeps
+    // `_enabled` and `_rotationDisabled` as separate flags: disableRotation()
+    // sets the second, and enable() clears only the first -- which was never
+    // set, because nothing ever called disable(). So unticking "Lock to
+    // north" restored bearing and pitch for the mouse and for touch and
+    // silently left the keyboard locked for the rest of the session.
+    map.keyboard.enableRotation();
   }
   syncNeedle();
 }

@@ -122,10 +122,27 @@ def test_the_privacy_policy_describes_what_the_page_actually_does():
         "the policy says the position is never sent; something sends it")
 
     # localStorage holds preferences only: the ramp name and two booleans.
+    #
+    # This clause used to name "lock-north" and "show-places", which are the
+    # CHECKBOX ELEMENT IDS, not storage keys -- the real keys are "ramp",
+    # "lockNorth" and "namePlaces" -- and it then asserted only that "ramp"
+    # was among whichever of the three happened to appear anywhere in app.js.
+    # It bounded nothing: adding localStorage.setItem("visitor-id", ...) made
+    # the posted privacy policy false and left all 460 tests green.
+    #
+    # Derive the set the page actually writes and require the policy to be
+    # true of exactly that set. Mutation: add a setItem with a fourth key.
     assert "local storage" in body
-    keys = {m for m in ("ramp", "lock-north", "show-places")
-            if f'localStorage.getItem("{m}")' in APP or f'"{m}"' in APP}
-    assert "ramp" in keys
+    written = set(re.findall(r'localStorage\.setItem\(\s*"([^"]+)"', APP))
+    written |= set(re.findall(r'store\.set\(\s*"([^"]+)"', APP))
+    assert written == {"ramp", "lockNorth", "namePlaces"}, (
+        "the page writes a localStorage key the privacy policy does not "
+        f"account for: {sorted(written)}. Update both, or neither.")
+    # ...and every key it writes it also reads back, so none is write-only
+    # state a visitor cannot see the effect of.
+    read = set(re.findall(r'localStorage\.getItem\(\s*"([^"]+)"', APP))
+    read |= set(re.findall(r'store\.get\(\s*"([^"]+)"', APP))
+    assert written <= read, f"written but never read: {sorted(written - read)}"
 
     # Nominatim is never called per keystroke.
     assert "never sent as you type" in body or "never as you type" in body
