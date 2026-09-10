@@ -39,8 +39,19 @@ COUNT_CLAIM = re.compile(r"\b[0-9]{3} (cities|departure|origin)|\bhundreds of (c
 #: it by default. 64ab007 fixed the emitter; archives written before that, and
 #: any produced outside build-all (water.pmtiles is built by a standalone
 #: script), still carry a build host's home directory.
+#:
+#: "generator_options" was in this tuple and had to come out. tippecanoe writes
+#: that key on EVERY archive it produces, so the token matched a perfectly
+#: clean one -- the detector fired 100 % of the time and therefore carried no
+#: signal at all, and deferred.md's exit criterion ("becomes a failure in the
+#: same commit") would have failed every deploy on a clean build.
+#:
+#: Nothing is lost by removing it: the leak that actually reaches a visitor is
+#: a PATH, generator_options is merely where tippecanoe usually puts it, and
+#: the four prefixes below match it there. The Windows form is added because
+#: none of the POSIX prefixes would catch `C:\Users\...`.
 PMTILES_METADATA_LEAKS = ("/users/", "/home/", "/var/folders/", "/private/",
-                          "generator_options")
+                          "c:\\users\\")
 
 
 def _pmtiles_metadata_leak(path: Path) -> str | None:
@@ -69,6 +80,16 @@ def _pmtiles_metadata_leak(path: Path) -> str | None:
     hit = next((t for t in PMTILES_METADATA_LEAKS if t in text), None)
     return f"{path.name} metadata contains {hit!r}: a build-host path served to every visitor" \
         if hit else None
+
+
+def _group_warnings(warnings: list[str]) -> dict[str, set[str]]:
+    """{leak kind: {filenames}}. A warning reads "<name> <kind>"; anything that
+    does not is its own group, so a future warning shape is still printed."""
+    groups: dict[str, set[str]] = {}
+    for w in set(warnings):
+        name, _, rest = w.partition(" ")
+        groups.setdefault(rest or w, set()).add(name if rest else "-")
+    return groups
 
 
 def _pmtiles_ok(path: Path) -> str | None:
@@ -152,6 +173,24 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
                    "stops on load. Run `uv run transport-maps reindex`.")
     elif list(edges) != sorted(edges) or len(set(edges)) != len(edges):
         bad.append(f"index.json bandEdgesMin is not strictly ascending: {edges[:8]}...")
+
+    # Attribution is a LICENCE OBLIGATION, not a nicety, and it is the one
+    # class of defect where the shipped artifact can be wrong while the code is
+    # right -- which is exactly what happened: HydroLAKES lakes (CC BY 4.0)
+    # have been drawn on the live map with the live index.json naming seven
+    # sources and neither HydroLAKES nor GeoNames among them, because the
+    # deployed index predates their addition to emit.index.ATTRIBUTION. No gate
+    # could see it, because nothing compared the two.
+    from transport_maps.emit.index import ATTRIBUTION
+    if ATTRIBUTION:
+        named = {(a or {}).get("name") for a in idx.get("attribution") or []}
+        missing = [a["name"] for a in ATTRIBUTION if a["name"] not in named]
+        if missing:
+            bad.append(
+                "index.json attribution does not credit "
+                + ", ".join(missing)
+                + ", which the pipeline consumes and whose licence requires it. "
+                  "Run `uv run transport-maps reindex`.")
 
     cells_path = dist / "hover_cells.bin"
     if not cells_path.exists():
@@ -259,9 +298,16 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
 def check_copy(web: Path) -> list[str]:
     """The page copy must not state a city count the data can contradict."""
     bad = []
+    # A --web path that does not exist returned [] -- "no problems" -- so a
+    # typo in deploy_verify.sh, or a rename of web/, skipped the page gate in
+    # complete silence and the deploy went ahead. An absent tree is a problem
+    # with the invocation, not a clean bill of health.
+    if not Path(web).is_dir():
+        return [f"--web {web} is not a directory: the page copy was never checked"]
     for name in ("index.html", "llms.txt"):
         p = Path(web) / name
         if not p.exists():
+            bad.append(f"web/{name} missing from {web}: the page copy gate cannot run")
             continue
         for m in COUNT_CLAIM.finditer(p.read_text(encoding="utf-8")):
             bad.append(f"web/{name} states a city count ({m.group(0)!r}); derive it from index.json")
@@ -297,9 +343,18 @@ def main() -> None:
     if warnings:
         # Reported, not fatal; see check_dist's docstring for why, and
         # plan/deferred.md for the exit criterion that makes it fatal.
-        print("  WARNINGS (not blocking):", *sorted(set(warnings))[:8], sep="\n    ")
-        if len(set(warnings)) > 8:
-            print(f"    ... and {len(set(warnings)) - 8} more")
+        #
+        # Grouped by KIND, not truncated alphabetically. With 447 archives
+        # warning, `sorted(...)[:8]` printed eight filenames beginning with
+        # "a" and dropped the rest -- so water.pmtiles, the only archive
+        # carrying a '/users/' path and the only one build-all can never fix,
+        # was never once shown. One line per distinct leak, with a count and
+        # two examples, fits every kind on screen however many files share it.
+        print("  WARNINGS (not blocking):")
+        for kind, names in sorted(_group_warnings(warnings).items()):
+            shown = ", ".join(sorted(names)[:2])
+            more = f" and {len(names) - 2} more" if len(names) > 2 else ""
+            print(f"    {len(names)} x {kind}  [{shown}{more}]")
     if problems:
         print("  PROBLEMS:", *problems[:15], sep="\n    ")
         if len(problems) > 15:

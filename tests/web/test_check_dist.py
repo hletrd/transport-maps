@@ -7,6 +7,7 @@ import struct
 import pytest
 
 from transport_maps import config
+from transport_maps.emit.index import ATTRIBUTION
 from transport_maps.emit.modes import CHANNELS
 
 
@@ -59,7 +60,10 @@ def _good_dist(tmp_path, slugs=("seoul",), rail=True):
     (d / "index.json").write_text(json.dumps({
         "origins": [{"slug": s, "name": s, "lat": 0, "lon": 0} for s in slugs],
         "bandEdgesMin": [30, 60], "railDetail": rail, "hoverCellCount": N_CELLS,
-        "modeChannels": list(CHANNELS), "attribution": [],
+        "modeChannels": list(CHANNELS),
+        # Every source the pipeline consumes, because crediting them is a
+        # licence obligation and a "good" dist/ is one that meets it.
+        "attribution": [dict(a) for a in ATTRIBUTION],
     }))
     return d
 
@@ -176,23 +180,31 @@ def test_an_index_written_by_an_older_emitter_is_refused(check_dist, tmp_path, m
     assert any("reindex" in m for m in problems), "the refusal must name the remedy"
 
 
-def test_the_summary_survives_an_index_without_attribution(check_dist, tmp_path, capsys):
+def test_the_summary_survives_an_index_missing_its_optional_fields(check_dist, tmp_path, capsys):
     """check_dist declared the build consistent and then died with a KeyError
-    printing its own summary, because it never required the field.
+    printing its own summary, because it never required the fields it read.
 
     It used to assert `bands == 1` from an expression the test computed the
     same way the code does, and never called main() -- so reverting the fix
     kept it green. It runs the real entry point now.
+
+    It also used to prove the point by deleting `attribution`, which is no
+    longer an optional field: crediting every source the pipeline consumes is
+    a licence obligation and check_dist refuses an index that drops one, so
+    such a dist/ is never declared consistent and the summary is never
+    reached. The crash-safety question is unchanged, so it is asked of the
+    fields that ARE optional -- buildId and solveRes, both read by the
+    summary line and neither required anywhere.
     """
     d = _good_dist(tmp_path)
     idx = json.loads((d / "index.json").read_text())
-    del idx["attribution"]
+    idx.pop("buildId", None)
+    idx.pop("solveRes", None)
     (d / "index.json").write_text(json.dumps(idx))
     import sys
     argv = sys.argv
-    sys.argv = ["check_dist", "--dist", str(d), "--web", str(tmp_path / "empty-web"),
+    sys.argv = ["check_dist", "--dist", str(d), "--web", str(_page_tree(tmp_path, "summary-web")),
                 "--no-origins"]
-    (tmp_path / "empty-web").mkdir()
     try:
         check_dist.main()
     except SystemExit as exc:                       # pragma: no cover - only on failure
@@ -200,9 +212,13 @@ def test_the_summary_survives_an_index_without_attribution(check_dist, tmp_path,
     finally:
         sys.argv = argv
     out = capsys.readouterr().out
-    assert "attribution []" in out, out
+    assert "build unstamped" in out, out
+    assert "solveRes None" in out, out
     assert "bands 3" in out, out                    # two edges in the fixture
     assert "dist/ is consistent" in out, out
+    # ...and the summary still names the credits, which is how an operator
+    # sees at a glance that the obligation is met.
+    assert "HydroLAKES" in out, out
 
 
 def test_an_index_without_band_edges_is_refused(check_dist, tmp_path):
@@ -280,6 +296,23 @@ def test_a_gzipped_metadata_blob_is_decoded_before_it_is_scanned(check_dist, tmp
     assert any("/var/folders/" in w for w in warn), warn
 
 
+def test_an_index_that_drops_a_credit_is_refused(check_dist, tmp_path):
+    """HydroLAKES lakes (CC BY 4.0) are drawn on the live map today and the
+    live index.json credits seven sources, neither HydroLAKES nor GeoNames
+    among them -- the deployed index predates their addition to ATTRIBUTION.
+    Nothing could see it, because nothing compared the two.
+
+    Mutation: delete the attribution block from check_dist.check_dist.
+    """
+    d = _good_dist(tmp_path)
+    idx = json.loads((d / "index.json").read_text())
+    idx["attribution"] = [a for a in idx["attribution"] if a["name"] != "HydroLAKES"]
+    (d / "index.json").write_text(json.dumps(idx))
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=[])
+    assert any("HydroLAKES" in p for p in problems), problems
+    assert any("licence" in p for p in problems), problems
+
+
 def test_a_clean_metadata_blob_raises_nothing(check_dist, tmp_path):
     d = _good_dist(tmp_path)
     warn: list[str] = []
@@ -294,3 +327,90 @@ def test_the_leak_scan_survives_a_header_it_cannot_read(check_dist, tmp_path):
     warn: list[str] = []
     check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=warn)
     assert warn == []
+
+
+# ---- the exit code, and the refusals nothing asserted -------------------
+#
+# deploy_verify.sh reads ONE thing from this script: its exit status. Nothing
+# asserted it. Deleting `sys.exit(1)` from main() left every test above green
+# and turned the artifact gate into a program that prints its complaints and
+# then lets the rsync run.
+
+def _page_tree(tmp_path, name="page"):
+    """A web/ the copy gate accepts: it now refuses a missing tree outright."""
+    web = tmp_path / name
+    web.mkdir(exist_ok=True)
+    (web / "index.html").write_text("<!doctype html><title>x</title>")
+    (web / "llms.txt").write_text("x")
+    return web
+
+
+def _run_main(check_dist, d, tmp_path, capsys, extra=()):
+    import sys
+    web = _page_tree(tmp_path)
+    argv = sys.argv
+    sys.argv = ["check_dist", "--dist", str(d), "--web", str(web), "--no-origins", *extra]
+    try:
+        check_dist.main()
+        code = 0
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+    finally:
+        sys.argv = argv
+    return code, capsys.readouterr().out
+
+
+def test_a_consistent_dist_exits_zero(check_dist, tmp_path, capsys):
+    code, out = _run_main(check_dist, _good_dist(tmp_path), tmp_path, capsys)
+    assert code == 0, out
+
+
+def test_a_broken_dist_exits_nonzero(check_dist, tmp_path, capsys):
+    """Mutation: delete `sys.exit(1)` from check_dist.main()."""
+    d = _good_dist(tmp_path)
+    (d / "origins" / "seoul.bin").write_bytes(b"\0" * 4)      # wrong length
+    code, out = _run_main(check_dist, d, tmp_path, capsys)
+    assert code != 0, f"a broken dist/ exited 0, so the deploy would proceed:\n{out}"
+    assert "PROBLEMS" in out, out
+
+
+def test_a_missing_index_exits_nonzero(check_dist, tmp_path, capsys):
+    d = _good_dist(tmp_path)
+    (d / "index.json").unlink()
+    code, out = _run_main(check_dist, d, tmp_path, capsys)
+    assert code != 0, out
+
+
+# ---- refusal messages asserted by nothing ------------------------------
+#
+# Two of these are exactly the states cli._reindex's own test fixture writes,
+# so check_dist would refuse a dist/ that reindex had just called complete.
+
+def test_a_rail_array_of_the_wrong_length_is_refused(check_dist, tmp_path):
+    d = _good_dist(tmp_path)
+    # One cell short of N_CELLS, derived rather than typed: written as a bare
+    # byte count this test passed a CORRECT length and proved nothing.
+    (d / "origins" / "seoul.rail.bin").write_bytes(b"\0" * 2 * (N_CELLS - 1))
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=[])
+    assert any("rail.bin" in p for p in problems), problems
+
+
+def test_a_rail_json_without_stations_is_refused(check_dist, tmp_path):
+    d = _good_dist(tmp_path)
+    (d / "origins" / "seoul.rail.json").write_text('{"fields":[]}')
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=[])
+    assert problems, "a rail table with no stations key passed the gate"
+
+
+def test_an_origin_json_without_offsets_is_refused(check_dist, tmp_path):
+    d = _good_dist(tmp_path)
+    (d / "origins" / "seoul.json").write_text("{}")
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=[])
+    assert problems, "an origin json with no offsets passed the gate"
+
+
+def test_a_missing_web_tree_is_reported_not_silently_empty(check_dist, tmp_path):
+    """check_copy returned [] for a --web path that does not exist, so a typo
+    in deploy_verify.sh would have skipped the page gate in silence."""
+    problems = check_dist.check_copy(tmp_path / "no-such-tree")
+    assert problems, "a missing web/ tree reported no problems at all"
