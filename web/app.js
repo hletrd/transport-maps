@@ -493,6 +493,15 @@ originLabel.setAttribute("aria-current", "true");
 originLabel.tabIndex = -1;
 originLabel.addEventListener("click", (ev) => ev.stopPropagation());
 const originMarker = new maplibregl.Marker({ element: originLabel, anchor: "top" });
+// MapLibre stamps role="button" aria-label="Map marker" on every marker
+// element, so the departure city announced as "Map marker, button, current"
+// and its visible name was nowhere in its accessible name (WCAG 2.2 SC 2.5.3,
+// Label in Name). Set after construction, which is when MapLibre has applied
+// its defaults.
+const nameMarker = (el, label) => {
+  if (label) { el.setAttribute("aria-label", label); el.setAttribute("role", "button"); }
+  else { el.removeAttribute("aria-label"); el.removeAttribute("role"); }
+};
 let originMarkerOn = false;
 let showLabels = () => {};
 
@@ -536,6 +545,10 @@ fetch("./places.json")
       }
       const m = new maplibregl.Marker({ element: el, anchor: "top" })
         .setLngLat([r[4], r[3]]);
+      // A label that departs is a button and says so; every other label is
+      // map furniture, not a control, and was being announced as a button
+      // that does nothing.
+      nameMarker(el, origin ? `Depart from ${origin.name}` : null);
       return { m, rank: i, on: false, lat: r[3], lon: r[4], slug: origin?.slug };
     });
     showLabels = () => {
@@ -718,6 +731,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   originLabel.textContent = o.name;
   originLabel.title = `Departure city: ${o.name}`;
   originMarker.setLngLat([o.lon, o.lat]);
+  nameMarker(originLabel, `${o.name}, the departure city`);
   showLabels();
   // The readout belongs to the departure it names: say the new one is
   // loading rather than keep the old figure beside the new header.
@@ -735,6 +749,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // origin's files 404, it stayed there permanently beside "Times unavailable
   // for Tokyo".
   renderPins(); renderLegs();
+  announce(`Departing from ${o.name}. Loading travel times.`);
 }
 
 // ---- readout ----
@@ -929,6 +944,23 @@ function showReading(lat, lng, point) {
       + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`;
   return t;
 }
+// One live region for the whole page, written only when a reading is
+// COMMITTED. The pointer must never reach it: showReading runs once per
+// animation frame, and announcing sixty times a second is the same as
+// announcing nothing.
+function announce(text) {
+  const el = $("status");
+  if (el) el.textContent = text;
+}
+function announceReading(lat, lng, t) {
+  if (t === undefined) return announce(`Times not yet loaded for ${active?.name ?? "the departure city"}.`);
+  if (t === null) return announce("Open water: no destination there.");
+  const p = namePlaces ? nearestPlace(lat, lng) : null;
+  const where = (p && placeLead(p)) || fmtCoord(lat, lng);
+  if (t >= MAX_MINUTES) return announce(`${where}: no scheduled route from ${active?.name ?? ""}.`);
+  announce(`${where}: ${fmtDur(t)} from ${active?.name ?? "the departure city"}, door to door.`);
+}
+
 // Once an origin's times land, the reading under the pointer (or the last
 // tap) is redone, so it never keeps saying "loading".
 function rereadPointer() {
@@ -1023,6 +1055,7 @@ map.on("click", (e) => {
   if (t === null || (t != null && t >= MAX_MINUTES)) return;
   const p = nearestPlace(lat, lng);
   pinB = { lat, lon: lng, label: placeLead(p) ?? fmtCoord(lat, lng), geocoded: false };
+  announceReading(lat, lng, t);
   $("route").open = true;
   unfoldSheet();
   renderPins();
