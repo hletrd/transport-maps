@@ -1039,7 +1039,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
       // paintOrigin announces "Loading travel times" and nothing resolved it:
       // #status kept saying so until a reading was committed, which may be
       // never. Once per arrival, on the same guard as the list rebuild.
-      announce(`Travel times from ${origin_name()} are ready. `
+      announce(`Travel times from ${originName()} are ready. `
         + "Move the pointer over the map, or choose a destination.");
     }
     // The reading under the pointer (or the last tap) is redone once the
@@ -1413,7 +1413,7 @@ function showReading(lat, lng, point) {
 // COMMITTED. The pointer must never reach it: showReading runs once per
 // animation frame, and announcing sixty times a second is the same as
 // announcing nothing.
-const origin_name = () => active?.name ?? "the departure city";
+const originName = () => active?.name ?? "the departure city";
 function announce(text) {
   const el = $("status");
   if (el) el.textContent = text;
