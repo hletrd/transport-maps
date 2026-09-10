@@ -196,8 +196,12 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
                 modes_detail: dict[str, str] | None = None) -> None:
     """index.json: what the page needs to read every other artifact.
 
-    `hover_cell_count` lets the page refuse a per-origin array whose length
-    disagrees with hover_cells.bin; `graph` says whether rail and ferries
+    `hover_cell_count` is checked by the page against the length of
+    hover_cells.bin itself (app.js: `meta.hoverCellCount !== hoverCells.length`
+    -> fatal), which catches an index.json and a cell ordering from two
+    different builds. It is NOT what validates the per-origin arrays -- those
+    are checked against `hoverCells.length` on arrival, whether or not this
+    field is present; `graph` says whether rail and ferries
     were in the build (a road-and-air build is otherwise indistinguishable);
     `identity` is build_identity(). All are optional so a stale index.json is
     still valid -- the page has a fallback for each.

@@ -8,10 +8,20 @@ cycle 1: `cycle-1/_aggregate.md` with A1…J9). Finding IDs are stable across cy
 cycle-1 ID (C5, D13, F3, G1 …) keeps its name when it is carried into a cycle-2
 plan.
 
-Every review finding is either scheduled in one of the plans here (with a target
-cycle) or recorded in `deferred.md` with its citation, original severity and
-confidence, the reason, and the exit criterion that reopens it. Nothing is
-dropped.
+**`.context/reviews/` is deliberately NOT committed** (`.gitignore:29`, from
+`5cb3f89`): twenty of the cycle-1 and cycle-2 review files quoted this machine's
+absolute home path and two quoted the build host's private addresses and
+aliases, none of which belong in the repository. The review files are still
+written to disk every cycle and still read from disk by the next one -- they are
+the working notes -- but **this directory is the durable record.**
+
+So: every review finding is either scheduled in one of the plans here (with a
+target cycle), fixed in a commit whose body carries the evidence, or recorded in
+`deferred.md` with its citation, original severity and confidence, the reason,
+and the exit criterion that reopens it. Nothing is dropped, and nothing needed
+to act on a finding lives only in an untracked file. Cycle 3 audited this
+mechanically: all 142 finding IDs its reviewers raised are named in `plan/`,
+including thirteen that had been carried only in the review text.
 
 | Plan | Scope | Status |
 |---|---|---|
