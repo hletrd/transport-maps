@@ -38,6 +38,7 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
 | `2026-09-10-c4-page-deploy-and-licence.md` | Cycle 4: the page a visitor reads, the three defects that would break the deploy, and two licence obligations (U1…U28) | cycle 4: open |
+| `2026-09-10-c5-page-defects-and-ui.md` | Cycle 5: the page defects a visitor hits, the designer's ranked ease-of-use work, the model's own error, and the deploy gates (V1…V28) | cycle 5: open |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
 | `archive/2026-09-10-c3-*.md` | Cycle 3 (T1…T31): 28 done; T24, T26 and T28 carried into the cycle-4 plan as U28, U10 and U11 | archived (cycle 4) |
@@ -50,6 +51,20 @@ fix.
 
 End-of-cycle-3 gate state at `43b99f5`: `uv run ruff check .` all checks passed,
 exit 0; `uv run pytest -q` 390 passed, 4 deselected, 5 warnings (all W1), exit 0.
+
+Cycle-5 gate state at `ef31d02`, run independently by two reviewers: `uv run
+ruff check .` all checks passed, exit 0; `uv run pytest -q` 460 passed, 4
+deselected, 5 warnings (all W1), exit 0.
+
+Cycle 5's reviewers raised 83 findings, 70 after dedupe -- the taper held (269,
+112, 137, 78, 70). Twenty-eight are scheduled in the c5 plan; every other one
+has a row in `deferred.md` under `# Cycle 5` with its citation, its unchanged
+severity and confidence, the reason, and the exit criterion. Cycle-5 IDs carry
+the cycle number (`CR5-n`, `UX5-n`, `TR5-n` ...), and the merged clusters are
+`Z1`...`Z10` in `.context/reviews/_aggregate.md`.
+
+The cycle also closed the one hole the cycle-3 audit left: **TE4-7** reached no
+plan row and no deferred row. It now has one.
 
 Cycle-4 IDs carry the cycle number (`CR4-n`, `PR4-n`, `UX4-n` ...). Cycle 3's
 designer used a bare `A1…A8`, which collided with the build plan's `A1…A17`,
