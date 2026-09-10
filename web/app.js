@@ -530,6 +530,7 @@ addEventListener("resize", () => {
   const wasFramed = map.getZoom() <= framedZoom + 0.01;
   const z = openingZoom();
   if (wasFramed) map.jumpTo({ zoom: z, padding: viewPadding() });
+  fitReading();
 });
 
 // Whether a point is on the visible face of the globe: project() happily
@@ -655,7 +656,8 @@ fetch("./places.json")
       // A label that departs is a button and says so; every other label is
       // map furniture, not a control, and was being announced as a button
       // that does nothing.
-      nameMarker(el, cityHere ? `Depart from ${cityHere.name}` : null);
+      if (cityHere) el.dataset.label = `Depart from ${cityHere.name}`;
+      nameMarker(el, cityHere ? el.dataset.label : null);
       return { m, rank: i, on: false, lat: r[3], lon: r[4], slug: cityHere?.slug };
     });
     showLabels = () => {
@@ -673,7 +675,10 @@ fetch("./places.json")
       if (active && onNearSide(active.lat, active.lon)) {
         const pt = map.project([active.lon, active.lat]);
         placed.push(pt);
-        if (!originMarkerOn) { originMarker.addTo(map); originMarkerOn = true; }
+        if (!originMarkerOn) {
+          originMarker.addTo(map); originMarkerOn = true;
+          nameMarker(originLabel, `${active.name}, the departure city`);
+        }
       } else if (originMarkerOn) { originMarker.remove(); originMarkerOn = false; }
       for (const l of labelPool) {
         let want = l.rank < n && onNearSide(l.lat, l.lon);
@@ -683,8 +688,16 @@ fetch("./places.json")
               && pt.y < window.innerHeight + 20 && !collides(pt);
           if (want) placed.push(pt);
         }
-        if (want && !l.on) { l.m.addTo(map); l.on = true; }
-        else if (!want && l.on) { l.m.remove(); l.on = false; }
+        if (want && !l.on) {
+          l.m.addTo(map); l.on = true;
+          // AFTER addTo, not before. Marker.addTo() re-applies
+          // role="button" aria-label="Map marker" behind hasAttribute
+          // guards, so removing them at construction did nothing: 29 of 29
+          // plain labels still announced as "Map marker, button" (WCAG
+          // 4.1.2). Origin labels survived only because their branch SETS
+          // the attributes rather than removing them.
+          nameMarker(l.m.getElement(), l.slug ? l.m.getElement().dataset.label : null);
+        } else if (!want && l.on) { l.m.remove(); l.on = false; }
       }
     };
     // On every frame of a move, not only at rest: otherwise nothing appears
@@ -730,7 +743,10 @@ function placeLead(p) {
 // new request, no rebuild. Thresholds a person thinks in -- half a day, a
 // day, two days -- as a share of the charted land the hover grid covers.
 const REACH_STEPS = [[720, "12 hours"], [1440, "a day"], [2880, "two days"]];
-function renderDeparture() {
+// Wrapper for the same reason as renderLegs: the card's height is one of the
+// two inputs to fitReading, and every early return changes it.
+function renderDeparture() { renderDepartureInto(); fitReading(); }
+function renderDepartureInto() {
   const box = $("depart");
   if (!box) return;
   if (!active) { box.hidden = true; return; }
@@ -905,6 +921,12 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // loading rather than keep the old figure beside the new header.
   $("time").textContent = "—";
   $("where").textContent = `Loading the times from ${o.name}…`;
+  // #tip is written on mousemove and hidden on mouseout, and nothing else
+  // touched it. Departing by CLICKING A GLOBE LABEL leaves the pointer on the
+  // canvas, so the previous city's door-to-door figure went on floating at the
+  // cursor beside the new city's readout: two numbers for one place. The other
+  // three switch paths were safe only because they leave the canvas.
+  $("tip").hidden = true;
   // The address bar follows the departure, so the view can be shared.
   try {
     const url = new URL(location.href);
@@ -980,7 +1002,9 @@ function railVia(i) {
   return ` via ${station || "a station"}${line ? ` (${line})` : ""}`;
 }
 
-function renderLegs() {
+// Wrapper so every early return still re-fits the column (U6).
+function renderLegs() { renderLegsInto(); fitReading(); }
+function renderLegsInto() {
   const box = $("legs");
   if (!pinB) { box.hidden = true; return; }
 
@@ -1120,11 +1144,11 @@ function announce(text) {
   const el = $("status");
   if (el) el.textContent = text;
 }
-function announceReading(lat, lng, t) {
+function announceReading(lat, lng, t, label) {
   if (t === undefined) return announce(`Times not yet loaded for ${active?.name ?? "the departure city"}.`);
   if (t === null) return announce("Open water: no destination there.");
-  const p = namePlaces ? nearestPlace(lat, lng) : null;
-  const where = (p && placeLead(p)) || fmtCoord(lat, lng);
+  const p = !label && namePlaces ? nearestPlace(lat, lng) : null;
+  const where = label || (p && placeLead(p)) || fmtCoord(lat, lng);
   if (t >= MAX_MINUTES) return announce(`${where}: no scheduled route from ${active?.name ?? ""}.`);
   announce(`${where}: ${fmtDur(t)} from ${active?.name ?? "the departure city"}, door to door.`);
 }
@@ -1227,11 +1251,103 @@ function renderPins() {
   }
 }
 
+// Both search routes to a destination end here, so neither can forget half the
+// job. They used to call renderPins()+renderLegs() and nothing else, which
+// left the 50 px headline reading the PREVIOUS destination's time
+// while the itinerary below it described the new one: from Seoul, clicking
+// Keene NH and then searching JFK showed "19 h 51 min" over an itinerary
+// totalling 17 h 17 min. From a fresh load it showed an em dash over a full
+// journey. Search is the only keyboard and screen-reader path to a
+// destination, and the page advertises it. (The map click keeps its own body:
+// it has a real pointer position to show the reading at, and it deliberately
+// does NOT open the panel for open water, where a search for a named place
+// should say why it found nothing.)
+function commitDestination(lat, lon, label, { geocoded = false } = {}) {
+  const t = showReading(lat, lon, onNearSide(lat, lon) ? map.project([lon, lat]) : null);
+  if (lastFrom && (lastFrom.lat !== lat || lastFrom.lon !== lon)) lastFrom = null;
+  // A point with no journey is not a destination: keep the reading, which now
+  // says why, and drop the pin. `undefined` means the arrays are still in
+  // flight, so the pin stays and settles when they land.
+  pinB = (t === null || (t != null && t >= MAX_MINUTES))
+    ? null
+    : { lat, lon, label, geocoded };
+  announceReading(lat, lon, t, label);
+  openRoutePanel();
+  unfoldSheet();
+  renderPins();
+  renderLegs();
+  revealReading();
+  return t;
+}
+
 function unfoldSheet() {
   const rail = document.querySelector(".rail");
   if (!rail.classList.contains("folded")) return;
   rail.classList.remove("folded");
   $("sheet-toggle")?.setAttribute("aria-expanded", "true");
+}
+
+// Opening the Route panel as a SIDE EFFECT of reading a cell must not scroll
+// the answer away. On a phone the reading lives inside the rail, above both
+// panels, so bringing #route into view scrolled #time and the whole legend
+// out: measured at 390x844 on a clean load, one tap left rail.scrollTop at
+// 297 with #time at y=149, above the sheet top of 405, and #tints and #scale
+// gone. CLAUDE.md: the legend is always visible.
+//
+// Opening the panel BY TAPPING ITS SUMMARY still scrolls -- that is T27, and
+// the city list really is what you want to see then. The difference is who
+// asked, so the flag is set at the call site.
+function openRoutePanel() {
+  const d = $("route");
+  if (!d.open) d.dataset.noScroll = "1";
+  d.open = true;
+}
+
+// ...and the answer itself is scrolled back into view if anything else moved
+// it. On the desktop layout the reading is position:fixed and this is a no-op.
+function revealReading() {
+  const reading = document.querySelector(".reading");
+  const rail = reading?.closest(".rail");
+  if (!rail) return;
+  const box = reading.getBoundingClientRect(), view = rail.getBoundingClientRect();
+  if (box.top >= view.top && box.bottom <= view.bottom) return;
+  reading.scrollIntoView({ block: "nearest", behavior: REDUCED_MOTION.matches ? "auto" : "smooth" });
+}
+
+// U6: .depart-card is fixed at top:104 and grows down; .reading is fixed at
+// bottom:14 and grows up; both are 306px wide in the same column at z-index 6
+// and neither knew the other's height. At 1280x800 a nine-leg itinerary put
+// them 43px into each other, covering the reach list's last row and the whole
+// "Share of charted land ... door to door" note -- the line the modelling rule
+// requires. The itinerary is the elastic part and already scrolls, so it is
+// what gets bounded; the legend above it never moves.
+const MIN_LEGS_PX = 96;
+function fitReading() {
+  const reading = document.querySelector(".reading");
+  const legs = $("legs");
+  if (!reading || !legs) return;
+  legs.style.maxHeight = "";
+  document.body.classList.remove("crowded");
+  // The small layout puts the reading in the scrolling rail; nothing is fixed
+  // and nothing can overlap.
+  if (reading.closest(".rail") || legs.hidden) return;
+  const card = document.querySelector(".depart-card");
+  const rest = reading.offsetHeight - legs.offsetHeight;
+  const floor = (n) => innerHeight - 14 - n - rest;
+  // NOT offsetParent: it is null for a position:fixed element, so the card
+  // measured as absent and the clamp never fired (1 px of overlap survived
+  // the first attempt at this).
+  const shown = card && !card.hidden && getComputedStyle(card).display !== "none";
+  const cardBottom = shown ? card.getBoundingClientRect().bottom + 10 : 0;
+  let room = floor(cardBottom);
+  if (room < MIN_LEGS_PX && cardBottom) {
+    // No arrangement fits both. The answer wins: the card's figures are a
+    // summary of the city, the itinerary is what was just asked for.
+    document.body.classList.add("crowded");
+    const mast = document.querySelector(".mast");
+    room = floor(mast ? mast.getBoundingClientRect().bottom + 10 : 0);
+  }
+  legs.style.maxHeight = Math.max(MIN_LEGS_PX, Math.min(room, 0.34 * innerHeight)) + "px";
 }
 
 map.on("click", (e) => {
@@ -1243,11 +1359,12 @@ map.on("click", (e) => {
   const p = nearestPlace(lat, lng);
   if (lastFrom && (lastFrom.lat !== lat || lastFrom.lon !== lng)) lastFrom = null;
   pinB = { lat, lon: lng, label: placeLead(p) ?? fmtCoord(lat, lng), geocoded: false };
-  announceReading(lat, lng, t);
-  $("route").open = true;
+  openRoutePanel();
   unfoldSheet();
+  announceReading(lat, lng, t);
   renderPins();
   renderLegs();
+  revealReading();
   reverseGeocode(lat, lng);
 });
 
@@ -1479,20 +1596,17 @@ $("results").addEventListener("click", (e) => {
   const gb = e.target.closest("button[data-geo]");
   if (gb) {
     const [lat, lon] = gb.dataset.geo.split(",").map(Number);
-    pinB = { lat, lon, label: gb.dataset.label.split(",").slice(0, 3).join(","), geocoded: true };
     moveTo({ center: [lon, lat], zoom: 8, speed: 0.9 });
-    $("route").open = true;
-    renderPins(); renderLegs();
+    commitDestination(lat, lon, gb.dataset.label.split(",").slice(0, 3).join(","),
+                      { geocoded: true });
     return;
   }
   const ab = e.target.closest("button[data-airport]");
   if (ab) {
     const a = airports.find((x) => x[0] === ab.dataset.airport);
     if (!a) return;
-    pinB = { lat: a[3], lon: a[4], label: `${a[0]} — ${a[1]}`, geocoded: false };
     moveTo({ center: [a[4], a[3]], zoom: 5, speed: 0.9 });
-    $("route").open = true;
-    renderPins(); renderLegs();
+    commitDestination(a[3], a[4], `${a[0]} — ${a[1]}`);
     return;
   }
   const b = e.target.closest("button[data-slug]");
@@ -1562,7 +1676,9 @@ syncZoomButtons();
 // scrolling box, so bring the panel that just opened into it.
 for (const d of document.querySelectorAll(".rail details.panel")) {
   d.addEventListener("toggle", () => {
-    if (!d.open) return;
+    const skip = d.dataset.noScroll;
+    delete d.dataset.noScroll;
+    if (!d.open || skip) return;
     const rail = d.closest(".rail");
     if (!rail) return;
     const box = d.getBoundingClientRect(), view = rail.getBoundingClientRect();
@@ -1641,7 +1757,9 @@ const SMALL = window.matchMedia("(max-width: 860px)");
 let smallEntered = false;
 function layoutForSize() {
   const reading = document.querySelector(".reading");
+  const card = document.querySelector(".depart-card");
   const rail = document.querySelector(".rail");
+  document.body.classList.toggle("smallui", SMALL.matches);
   if (SMALL.matches) {
     if (!document.getElementById("sheet-toggle")) {
       // A grab handle that folds the sheet down to the handle and the legend
@@ -1659,12 +1777,16 @@ function layoutForSize() {
       rail.prepend(t);
     }
     if (reading.parentElement !== rail) rail.insertBefore(reading, document.getElementById("sheet-toggle").nextSibling);
+    // Under the reading, above the panels: the figures belong with the answer.
+    if (card && card.parentElement !== rail) rail.insertBefore(card, reading.nextSibling);
     if (!smallEntered) { for (const d of rail.querySelectorAll("details")) d.open = false; smallEntered = true; }
   } else if (reading.parentElement === rail) {
     document.body.insertBefore(reading, document.getElementById("tip"));
+    if (card) document.body.insertBefore(card, reading);
     rail.classList.remove("folded");
     $("departure").open = true;
   }
+  fitReading();
 }
 layoutForSize();
 SMALL.addEventListener("change", layoutForSize);
