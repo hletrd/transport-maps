@@ -1824,7 +1824,13 @@ async function searchAddress(q) {
   const head = document.createElement("li");
   head.className = "head"; head.setAttribute("role", "none");
   ul.append(head);
-  box.append(ul);
+  // PREPEND, not append. With 553 origins the results list is ~12,000 px tall,
+  // so appending put "Type at least three characters" at viewport y 12,326 in
+  // a box that ends at 471: the visitor pressed "Search address", nothing
+  // visible happened, and the button read as broken. What the search has to
+  // say belongs where the search box is.
+  box.prepend(ul);
+  box.scrollTop = 0;
   if (q.length < 3) { head.textContent = "Type at least three characters to search an address."; return; }
   head.textContent = "Searching addresses…";
   let hits = [], failed = false;
@@ -1836,6 +1842,16 @@ async function searchAddress(q) {
   // A newer search, or a changed query, supersedes this one: its results
   // must not reappear under a different filter.
   if (seq !== addressSeq || $("q").value.trim() !== q) return;
+  // Both staleness guards above can pass while render() -- which settle() runs
+  // once per origin, up to a second after a city click -- has already called
+  // replaceChildren on #results and detached this <ul>. Writing into a
+  // detached node produces nothing, silently. Re-attach if that happened.
+  if (!ul.isConnected) {
+    const live = $("results");
+    live.querySelector(".addresses")?.remove();
+    live.prepend(ul);
+    live.scrollTop = 0;
+  }
   ul.replaceChildren(head);
   head.textContent = failed ? "Address search is unavailable right now."
     : hits.length ? "Addresses (each becomes the destination)" : `No address found for “${q}”.`;
