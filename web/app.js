@@ -111,8 +111,21 @@ function charted() {
   return chartedMask;
 }
 (function primeCharted() {
+  // The fallback used to hand back `timeRemaining: () => 8` -- a CONSTANT, so
+  // the budget test three lines down never tripped and the whole 90,740-cell
+  // pass ran inside one setTimeout(0) task. The comment above measures that
+  // pass at 50.3 ms and calls it "too much to spend on the load path", which
+  // is exactly what it was spending, on every browser without the real API.
+  //
+  // That is not a rare browser. requestIdleCallback is disabled by default in
+  // every shipping Safari (desktop and iOS), so this was every iPhone and iPad
+  // visitor: a 50 ms main-thread block while the page is still loading.
+  // A real clock makes the existing loop yield as it was written to.
   const idle = globalThis.requestIdleCallback
-    || ((fn) => setTimeout(() => fn({ timeRemaining: () => 8 }), 0));
+    || ((fn) => setTimeout(() => {
+      const start = performance.now();
+      fn({ timeRemaining: () => Math.max(0, 8 - (performance.now() - start)) });
+    }, 0));
   idle(function step(deadline) {
     // ~8000 cells per millisecond of measured budget, floor of one slice.
     while (chartedDone < hoverCells.length && deadline.timeRemaining() > 1) chartedSlice(4000);
