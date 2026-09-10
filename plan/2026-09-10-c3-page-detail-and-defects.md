@@ -383,6 +383,27 @@ has exited.
   within its brief: T14 already puts real content in the space T26's empty
   state was about, and both are recorded as carried forward rather than done.
 
+  **Gates at `43b99f5`.** `uv run ruff check .` all checks passed, exit 0.
+  `uv run pytest -q` 390 passed, 4 deselected, 5 warnings, exit 0, in 23 min 04 s
+  under the rebuild's load. 390 against cycle 2's 356: 34 new tests. The five
+  warnings are the recorded `W1` class unchanged -- the same two forked-pool
+  tests in `tests/test_cli.py`, fork of a multi-threaded process -- still not
+  suppressed, because the production build forks on purpose.
+
+  **Deploy: refused, correctly.** `scripts/deploy_verify.sh` was run once and
+  stopped at step 1: "a build-all is running (pids 4143 4144 4145 4147);
+  refusing to deploy a mixed dist/". Nothing under `dist/` was touched and
+  `browser_verify.sh` did not run. The rebuild stood at 317 of 553 origins with
+  no errors. Recorded as `per-cycle-failed:artifacts-mid-rebuild`; not retried.
+  The page changes were therefore verified on a local range-capable preview
+  only, and CLAUDE.md's deploy rule still owes them a pass on the live site.
+
+  **When the rebuild exits, in this order:** `uv run transport-maps reindex`
+  (verified refusing against the live build today, releasing its lock and
+  leaving `dist/` untouched), then `scripts/deploy_verify.sh`. Without the
+  reindex, `check_dist` will now refuse the unstamped index rather than pass it
+  -- that is T19 working, not a regression, and the refusal names the remedy.
+
   **Data halves still owed to a build.** T29 fixes the rail splice in code and
   bumps `RAIL_PARSER_VERSION`, so the next build re-parses; the fabricated
   hops remain in the shipped artifacts until then. T19's `reindex` was NOT run
