@@ -2477,6 +2477,13 @@ function nearest(lat, lon) {
 // first frame wait on a permission prompt is exactly the initial wait we do not
 // want. If a position arrives later, quietly re-centre on the nearest city.
 paintOrigin(requested ?? FALLBACK);
+// The signal boot.js's watchdog waits for. It must be a fact about THIS
+// module having run to the end, not about anything the visitor can change:
+// the watchdog used to count `.results button[data-slug]`, which is the
+// SEARCH-FILTERED city list, so typing an airport code -- which this page
+// invites, and which matches no city -- emptied it and the watchdog declared
+// a perfectly healthy page broken twenty-five seconds later.
+document.documentElement.dataset.appReady = "1";
 $("here").textContent = badSlug
   ? `No departure city called "${badSlug}"; showing ${(requested ?? FALLBACK).name}.`
   : `Showing ${(requested ?? FALLBACK).name}.`;

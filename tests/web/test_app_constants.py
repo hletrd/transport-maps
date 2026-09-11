@@ -179,8 +179,10 @@ def test_the_boot_guard_covers_the_three_silent_failures():
     for hook in ("addEventListener(\"error\"", "addEventListener(\"unhandledrejection\""):
         assert hook in BOOT, f"boot.js does not listen for {hook}"
     assert "e.target" in BOOT, "a 404 on a <script> arrives with a target, not an error"
-    # ...and the case with no error at all.
-    assert "setTimeout" in BOOT and "data-slug" in BOOT, (
+    # ...and the case with no error at all. The signal is app.js's own start
+    # flag, not a count of rows in the search-filtered city list -- that is
+    # what made the watchdog fire on healthy pages.
+    assert "setTimeout" in BOOT and "appReady" in BOOT, (
         "nothing covers 'everything resolved and nothing drew'")
 
 
@@ -331,3 +333,31 @@ def test_the_route_layers_exist_and_sit_under_the_pins():
         assert layer in lifted, f"{layer} is not lifted above the borders"
     assert lifted.index("route-air") < lifted.index("pin-halo"), (
         "the route must be lifted before the pins, so the pins end up on top")
+
+
+def test_the_boot_watchdog_tests_a_start_signal_not_the_visible_list():
+    """It counted `.results button[data-slug]`, the SEARCH-FILTERED city list.
+
+    Typing an airport code empties that list, and the page invites exactly
+    that -- so twenty-five seconds after load the watchdog declared a healthy
+    page broken, wiped a correct reading and wrote "The page could not start".
+    Reproduced live: the writes to #time were "17 h 17 min" and then an em
+    dash, while the itinerary below it still read ICN to JFK correctly.
+
+    The signal has to be a fact about app.js having run to the end, and one a
+    visitor cannot change.
+    """
+    assert 'dataset.appReady === "1"' in BOOT, "the watchdog does not test the start flag"
+    assert "data-slug" not in BOOT, (
+        "the watchdog is back to counting the search-filtered city list")
+    # ...and app.js has to actually set it, as its last statement.
+    assert 'document.documentElement.dataset.appReady = "1";' in APP
+    assert APP.index("dataset.appReady") > APP.index("paintOrigin(requested"), (
+        "the flag must be set after startup, not before it")
+
+
+def test_the_boot_guard_does_not_write_an_em_dash():
+    """say() put an em dash in #time, which is the 50px piece of punctuation
+    the empty state exists to avoid, and it overwrote a correct reading. The
+    message belongs in #where; #time is only cleared."""
+    assert '"—"' not in BOOT, "the boot guard writes an em dash again"

@@ -53,9 +53,15 @@ const document = {
     },
   },
   getElementById: element,
-  // The watchdog counts departure-city buttons. `opts.cities` is how many the
-  // page managed to render before the 25-second deadline.
-  querySelectorAll: () => new Array(opts.cities).fill({}),
+  // The watchdog reads a flag app.js sets as its last statement. It used to
+  // count departure-city buttons, which is the SEARCH-FILTERED list -- typing
+  // an airport code emptied it and the watchdog called a healthy page dead.
+  // `opts.ready` is whether app.js finished starting.
+  documentElement: { dataset: opts.ready ? { appReady: "1" } : {} },
+  // Still provided, so a watchdog that goes back to counting rows is running
+  // against a list that is EMPTY on a page that started fine -- which is the
+  // bug, and the test below would then fail as it should.
+  querySelectorAll: () => new Array(opts.cities || 0).fill({}),
 };
 const location = { href: opts.href, origin: new URL(opts.href).origin };
 const setTimeout = (fn, ms) => timers.push({ fn, ms }) - 1;
@@ -103,8 +109,9 @@ def harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return path
 
 
-def run_boot(harness: Path, *steps: dict, cities: int = 0, href: str = SITE) -> dict:
-    opts = {"cities": cities, "href": href, "steps": list(steps)}
+def run_boot(harness: Path, *steps: dict, ready: bool = False, cities: int = 0,
+             href: str = SITE) -> dict:
+    opts = {"ready": ready, "cities": cities, "href": href, "steps": list(steps)}
     out = subprocess.run(
         ["node", str(harness), str(BOOT), json.dumps(opts)],
         capture_output=True, text=True, check=True, cwd=ROOT)
@@ -123,7 +130,7 @@ def test_a_blocked_analytics_tag_does_not_declare_the_page_dead(harness: Path) -
 
     Mutation: delete the `ourOwn(url)` test from boot.js's resource branch.
     """
-    seen = run_boot(harness, {"kind": "resourceError", "src": GTAG}, cities=553)
+    seen = run_boot(harness, {"kind": "resourceError", "src": GTAG}, ready=True)
     assert not seen["fatal"], (
         "a blocked third-party analytics tag set body.fatal, which hides the "
         "departure list, the search box, Settings and the sources panel")
@@ -135,7 +142,7 @@ def test_a_missing_file_from_this_origin_still_declares_the_page_dead(harness: P
 
     Mutation: make `ourOwn` return false unconditionally.
     """
-    seen = run_boot(harness, {"kind": "resourceError", "src": SITE + "app.js"}, cities=0)
+    seen = run_boot(harness, {"kind": "resourceError", "src": SITE + "app.js"}, ready=False)
     assert seen["fatal"], "a 404 on this origin's own app.js must still be reported"
     assert "app.js" in seen["where"], "the message must name the file that failed"
 
@@ -166,31 +173,33 @@ def test_the_blocked_tag_does_not_latch_the_watchdog_shut(harness: Path) -> None
     seen = run_boot(harness,
                     {"kind": "resourceError", "src": GTAG},
                     {"kind": "settle"},
-                    cities=0)
+                    ready=False)
     assert seen["fatal"], (
         "after a blocked analytics tag, the real 'nothing drew' watchdog never fired")
-    assert "no departure cities" in seen["where"]
+    assert "did not finish starting" in seen["where"]
 
 
 def test_the_watchdog_fires_when_nothing_drew(harness: Path) -> None:
     """CLAUDE.md's named recurring failure: everything resolves, nothing paints.
 
-    Mutation: `if (cities > 0) return;` -> `if (cities >= 0) return;`. One
-    character, and the three substring assertions in test_app_constants.py stay
-    green while the watchdog is permanently inert.
+    Mutation: make the appReady check unconditional (`return;`). The
+    substring assertions in test_app_constants.py stay green while the
+    watchdog is permanently inert.
     """
-    seen = run_boot(harness, {"kind": "settle"}, cities=0)
+    seen = run_boot(harness, {"kind": "settle"}, ready=False)
     assert seen["watchdogArmed"], "no 25-second timer was ever scheduled"
-    assert seen["fatal"], "zero departure cities after 25 seconds went unreported"
-    assert seen["time"] == "—"
+    assert seen["fatal"], "a page that never finished starting went unreported"
+    # NOT an em dash: that is the 50px piece of punctuation the empty state
+    # exists to avoid, and writing it here overwrote a correct reading.
+    assert seen["time"] == ""
 
 
 def test_the_watchdog_stays_quiet_when_the_page_worked(harness: Path) -> None:
     """The other half of the same mutation: `cities >= 0` would make this fail
     too, which is what makes the pair non-vacuous in both directions.
     """
-    seen = run_boot(harness, {"kind": "settle"}, cities=553)
-    assert not seen["fatal"], "a page with 553 departure cities was called dead"
+    seen = run_boot(harness, {"kind": "settle"}, ready=True, cities=553)
+    assert not seen["fatal"], "a page that finished starting was called dead"
 
 
 def test_a_script_error_and_a_rejection_are_both_reported(harness: Path) -> None:
@@ -211,3 +220,28 @@ def test_only_the_first_report_is_shown(harness: Path) -> None:
                     {"kind": "resourceError", "src": SITE + "app.js"},
                     {"kind": "scriptError", "message": "secondary"})
     assert "app.js" in seen["where"] and "secondary" not in seen["where"]
+
+
+def test_a_filtered_city_list_does_not_declare_a_working_page_dead(harness: Path) -> None:
+    """The defect this watchdog shipped with, found on the live site.
+
+    It counted `.results button[data-slug]`, which is the SEARCH-FILTERED
+    departure list. Typing an airport code -- which the page invites, and which
+    matches no city -- empties it, so twenty-five seconds later the watchdog
+    declared a perfectly healthy page broken: it wiped a correct reading and
+    wrote "The page could not start" over the readout, while the itinerary
+    below it still listed ICN to JFK.
+
+    Reproduced live with a MutationObserver on #time: the writes were
+    "17 h 17 min" and then an em dash.
+
+    Mutation: point the watchdog back at querySelectorAll -- this test goes red
+    while every other test in this file stays green, which is what makes the
+    pair meaningful.
+    """
+    seen = run_boot(harness, {"kind": "settle"}, ready=True, cities=0)
+    assert not seen["fatal"], (
+        "a page that started fine was called dead because the visitor had "
+        "typed a search that matches no departure city")
+    assert seen["where"] == "", "and it wrote a failure message over the readout"
+    assert seen["time"] == "", "and it overwrote the reading"

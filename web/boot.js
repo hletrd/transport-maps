@@ -22,7 +22,10 @@
     document.body.classList.add("fatal");
     var where = document.getElementById("where");
     var time = document.getElementById("time");
-    if (time) time.textContent = "—";
+    // NOT an em dash: that is the 50px piece of punctuation the empty state
+    // was built to get rid of, and writing it here wiped a correct reading.
+    // The message goes in #where; this only clears a stale figure.
+    if (time) time.textContent = "";
     if (where) {
       where.textContent = "The page could not start (" + kind + ": "
         + String(detail || "no detail").slice(0, 160) + "). Reloading usually "
@@ -71,16 +74,19 @@
   });
 
   // ...and the case with no error at all: everything resolved, nothing drew.
-  // The city list is the test, not the canvas -- MapLibre creates a <canvas>
-  // before it throws on a missing WebGL context, so "the canvas exists" is
-  // true on a page that can never paint.
+  //
+  // The test is a flag app.js sets as its last statement, NOT the canvas and
+  // NOT the city list. The canvas is wrong because MapLibre creates one before
+  // it throws on a missing WebGL context. The city list is wrong because it is
+  // search-filtered: typing an airport code empties it, and this page invites
+  // exactly that, so the watchdog fired on healthy pages and replaced a correct
+  // reading with "The page could not start". Shipped, seen live, fixed here.
   window.addEventListener("load", function () {
     setTimeout(function () {
       if (document.body.classList.contains("fatal")) return;
-      var cities = document.querySelectorAll(".results button[data-slug]").length;
-      if (cities > 0) return;
+      if (document.documentElement.dataset.appReady === "1") return;
       say("nothing finished loading",
-          "no departure cities after 25 seconds and no error was reported");
+          "the page did not finish starting within 25 seconds and reported no error");
     }, 25000);
   });
 })();
