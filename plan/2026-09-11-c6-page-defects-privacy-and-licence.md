@@ -305,3 +305,57 @@ deploy before the rsync rather than after it.
 
 Cleanup: `agent-browser` processes left **0**; the user's Google Chrome
 untouched (11 processes, as before).
+
+## A scope change that arrived after the cycle had finished
+
+The orchestrator issued a freeze on `web/` mid-run -- **do not modify anything
+under `web/`, do not deploy, record `DEPLOY: none`** -- because the owner was
+iterating live with cycle 4 on UI bugs and two agents editing `web/app.js`
+while one deploys every few minutes is a collision waiting to happen. That is a
+sound call. It arrived after this cycle's 16 commits had landed and after the
+second deploy had passed, so it could not be applied to the work it describes.
+
+Recorded here rather than smoothed over, because the ledger has to say what
+happened:
+
+- **The deploy is NOT recorded as `none`.** It ran and it succeeded. Writing
+  `DEPLOY: none` would put a false line in the record of a cycle whose whole
+  subject was pages that say things the code does not do. The instruction is
+  noted; the outcome is reported as it was.
+- **Ten of the sixteen commits touch `web/`.** They are listed in the progress
+  table above and are live.
+
+**Cycle 4's work was not lost, and this was verified rather than assumed.**
+This cycle rebased onto `dcc99cf`, so `f968217`, `f914f00`, `1fb1430` and
+`a5be9a4` are all ancestors of HEAD, and all four fixes are present **in the
+files the server is currently serving**, not merely in the working copy: the
+`appReady` watchdog in `boot.js`, `OFF_GLOBE_PX`, the left-anchored dot, and
+the pinned-headline branch in `app.js`.
+
+**The collision the freeze exists to prevent did occur during this cycle.**
+Cycle 4's six commits landed while the reviewers were running; three of them
+reported HEAD moving under them from `056515e` to `dcc99cf` mid-review. Nothing
+broke, because each re-anchored on the new HEAD, but that was luck rather than
+coordination and it is the argument for the freeze.
+
+**Two things the next agent to touch `web/` needs.**
+
+1. **Pull first.** A deploy from a checkout older than `c129e46` would revert
+   the privacy fix (C6-11), the tile-failure notice (C6-9) and the
+   departure-list fixes (C6-1, C6-2), all of which are live now.
+2. **The landscape phone is the sharp edge.** `#legs` is inside `.reading`, so
+   uncapping the itinerary makes the reading block taller than the 390 px rail
+   and `revealReading()`'s `scrollIntoView({block:"nearest"})` carries the
+   legend off screen. That is what the first deploy refused for. The cap is
+   30vh, measured as the largest that fits, and
+   `tests/web/test_page_affordances.py` holds it there.
+
+**Nothing needed routing for severity.** Both HIGH `web/` findings this cycle
+raised are fixed and verified live: the privacy section that promised a setting
+stopped the reverse-geocode while the code called it unconditionally (`AA2`),
+and the blank-globe notice whose filter matched none of the messages pmtiles.js
+emits (`AA1`). The rest of the UI findings are in `deferred.md` with their
+severity and exit criteria, available to whichever cycle picks them up.
+
+From this point the cycle made no further `web/` edits and ran no further
+deploys.
