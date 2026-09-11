@@ -278,3 +278,56 @@ def test_the_bands_layer_turns_off_fill_antialias():
     # fast, so an aliased edge lands on the adjacent band rather than on space.
     assert '"fill-opacity": 1' in block
     assert "fill-sort-key" in APP[APP.index('id: "bands", type: "fill"'):][:1200]
+
+
+# --- the journey drawn on the globe ----------------------------------------
+
+def test_the_route_line_is_built_from_the_same_walk_as_the_itinerary():
+    """Two readings of one chain is how a map and its caption drift apart.
+
+    renderLegsInto() and renderRoute() both walk the chain legsTo() returns,
+    and they must agree on what it means: chain[0] is reached from the
+    departure city by ground, an "arr" node is a flight from the node before
+    it, a "dep" node is a connection at an airport already stood in, and the
+    last node is where the journey lands. So renderRoute is driven from
+    renderLegs and from nowhere else.
+    """
+    assert "function renderLegs() { renderLegsInto(); renderRoute(); fitReading(); }" in APP
+    # The semicolon is what distinguishes a call from the definition and from
+    # the comment that names it.
+    assert APP.count("renderRoute();") == 1, (
+        "renderRoute must have exactly one call site; a second one is a second "
+        "interpretation of the same chain")
+    body = APP[APP.index("function renderRoute()"):]
+    body = body[:body.index("\nfunction ")]
+    # A connection is the same airport twice; drawing it would be a zero-length
+    # segment claiming a movement that did not happen.
+    assert 'chain[k].kind !== "arr"' in body and "continue" in body
+
+
+def test_flights_are_great_circles_and_ground_legs_are_not():
+    """A flight really does follow a great circle, and Seoul to New York
+    passes near the pole -- drawn as a straight line in longitude and latitude
+    it would cross the Pacific instead. A ground leg is a straight line between
+    two points the model never routed between, so it is drawn as one, dashed,
+    rather than pretending to a path it does not have."""
+    body = APP[APP.index("function renderRoute()"):]
+    body = body[:body.index("\nfunction ")]
+    assert 'add(greatCircle(a, b), "air")' in body
+    assert 'unwrap([from, to]), "ground"' in body or 'unwrap([from, first]), "ground"' in body
+    assert "function greatCircle" in APP and "function unwrap" in APP
+
+
+def test_the_route_layers_exist_and_sit_under_the_pins():
+    """Three layers: one dark halo under both kinds, then solid for air and
+    dashed for ground -- line-dasharray is not data-driven in MapLibre, so one
+    layer cannot do both. They are lifted above the borders with the rest, but
+    before the pins, so a destination marker is never hidden by its own line."""
+    for layer in ("route-halo", "route-air", "route-ground"):
+        assert f'id: "{layer}"' in APP, f"{layer} is not added"
+    lifted = APP[APP.index('for (const id of ["route-halo"'):]
+    lifted = lifted[:lifted.index("]")]
+    for layer in ("route-halo", "route-ground", "route-air"):
+        assert layer in lifted, f"{layer} is not lifted above the borders"
+    assert lifted.index("route-air") < lifted.index("pin-halo"), (
+        "the route must be lifted before the pins, so the pins end up on top")

@@ -595,6 +595,32 @@ map.addLayer({ id: "hover-line", type: "line", source: "hover",
 map.addLayer({ id: "hover-fill", type: "fill", source: "hover",
   paint: { "fill-color": "#ffffff", "fill-opacity": 0.10 } });
 
+// ---- the journey, drawn on the globe ----
+// The itinerary panel already lists the legs; this is the same walk of the
+// same chain, so the line and the text cannot disagree -- renderLegs() calls
+// renderRoute() and nothing else builds it.
+//
+// White over a dark halo, the treatment the hover ring already uses, because
+// it has to read on all 37 bands of twelve schemes and on any ocean. Flights
+// are solid and ground legs dashed: the flight path is a real great circle,
+// while a ground leg is a straight line between two points the model never
+// claimed to route between, and it should not pretend otherwise.
+map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+map.addLayer({ id: "route-halo", type: "line", source: "route",
+  layout: { "line-cap": "round", "line-join": "round" },
+  paint: { "line-color": "#0a0b0d", "line-width": 4.5, "line-opacity": 0.5 } });
+map.addLayer({ id: "route-air", type: "line", source: "route",
+  filter: ["==", ["get", "kind"], "air"],
+  layout: { "line-cap": "round", "line-join": "round" },
+  paint: { "line-color": "#ffffff", "line-width": 1.6, "line-opacity": 0.92 } });
+// line-dasharray is not data-driven in MapLibre, so the two kinds need two
+// layers rather than one expression.
+map.addLayer({ id: "route-ground", type: "line", source: "route",
+  filter: ["==", ["get", "kind"], "ground"],
+  layout: { "line-cap": "butt", "line-join": "round" },
+  paint: { "line-color": "#ffffff", "line-width": 1.4, "line-opacity": 0.75,
+           "line-dasharray": [2, 2.5] } });
+
 // Your own position, once geolocation answers.
 map.addSource("me", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 map.addLayer({ id: "me-halo", type: "circle", source: "me",
@@ -625,7 +651,9 @@ fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
   map.addLayer({ id: "borders", type: "line", source: "borders",
     paint: { "line-color": "#ffffff", "line-opacity": 0.42,
              "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.6, 5, 1.1] } });
-  for (const id of ["hover-halo", "hover-fill", "hover-line", "pin-halo", "pin-dot", "me-halo", "me-dot"])
+  for (const id of ["route-halo", "route-ground", "route-air",
+                    "hover-halo", "hover-fill", "hover-line",
+                    "pin-halo", "pin-dot", "me-halo", "me-dot"])
     if (map.getLayer(id)) map.moveLayer(id);
 }).catch(() => {});
 
@@ -1250,6 +1278,82 @@ function lookup(lat, lon) {
 // Walk the shortest-path tree back from where the journey landed. The chain is
 // cell -> A_dep -> B_arr -> B_dep -> C_arr, so a connection shows up as an
 // arrival immediately followed by a departure at the same airport.
+// Longitudes made continuous, so a leg across the antimeridian is drawn the
+// short way instead of all the way round the world.
+function unwrap(pts) {
+  const out = [pts[0].slice()];
+  for (let i = 1; i < pts.length; i++) {
+    const prev = out[i - 1], p = pts[i].slice();
+    while (p[0] - prev[0] > 180) p[0] -= 360;
+    while (p[0] - prev[0] < -180) p[0] += 360;
+    out.push(p);
+  }
+  return out;
+}
+
+// A flight is a great circle, not a straight line in longitude and latitude:
+// Seoul to New York passes near the pole, and drawn flat it would cross the
+// Pacific instead. Sampled, then unwrapped.
+function greatCircle(a, b) {
+  const rad = Math.PI / 180, deg = 180 / Math.PI;
+  const [lo1, la1] = [a[0] * rad, a[1] * rad], [lo2, la2] = [b[0] * rad, b[1] * rad];
+  const d = 2 * Math.asin(Math.sqrt(
+    Math.sin((la2 - la1) / 2) ** 2 +
+    Math.cos(la1) * Math.cos(la2) * Math.sin((lo2 - lo1) / 2) ** 2));
+  if (!(d > 1e-9)) return unwrap([a, b]);
+  const n = Math.max(2, Math.min(64, Math.round(d * deg / 2)));
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const f = i / n;
+    const A = Math.sin((1 - f) * d) / Math.sin(d), B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(la1) * Math.cos(lo1) + B * Math.cos(la2) * Math.cos(lo2);
+    const y = A * Math.cos(la1) * Math.sin(lo1) + B * Math.cos(la2) * Math.sin(lo2);
+    const z = A * Math.sin(la1) + B * Math.sin(la2);
+    pts.push([Math.atan2(y, x) * deg, Math.atan2(z, Math.hypot(x, y)) * deg]);
+  }
+  return unwrap(pts);
+}
+
+// The same chain renderLegsInto walks, in the same order, with the same
+// meaning: chain[0] is the airport reached from the departure city by ground,
+// an "arr" node is a flight from the node before it, a "dep" node is a
+// connection at the airport already stood in, and the last node is where the
+// journey lands before going on to the pin by ground.
+function renderRoute() {
+  const src = map.getSource("route");
+  if (!src) return;
+  const clear = () => src.setData({ type: "FeatureCollection", features: [] });
+  if (!pinB || !active) return clear();
+  const total = lookup(pinB.lat, pinB.lon);
+  const chain = legsTo(pinB.lat, pinB.lon);
+  if (total == null || total >= MAX_MINUTES || chain == null) return clear();
+
+  const at = (code) => { const a = airports.find((x) => x[0] === code); return a && [a[4], a[3]]; };
+  const same = (p, q) => p && q && Math.abs(p[0] - q[0]) < 1e-6 && Math.abs(p[1] - q[1]) < 1e-6;
+  const from = [active.lon, active.lat], to = [pinB.lon, pinB.lat];
+  const feats = [];
+  const add = (coords, kind) => {
+    if (coords && coords.length > 1)
+      feats.push({ type: "Feature", properties: { kind },
+                   geometry: { type: "LineString", coordinates: coords } });
+  };
+
+  if (!chain.length) {
+    if (!same(from, to)) add(unwrap([from, to]), "ground");
+  } else {
+    const first = at(chain[0].code);
+    if (first && !same(from, first)) add(unwrap([from, first]), "ground");
+    for (let k = 1; k < chain.length; k++) {
+      if (chain[k].kind !== "arr") continue;      // a connection stays put
+      const a = at(chain[k - 1].code), b = at(chain[k].code);
+      if (a && b) add(greatCircle(a, b), "air");
+    }
+    const last = at(chain[chain.length - 1].code);
+    if (last && !same(last, to)) add(unwrap([last, to]), "ground");
+  }
+  src.setData({ type: "FeatureCollection", features: feats });
+}
+
 function legsTo(lat, lon) {
   if (!origin.air || !origin.routes) return null;
   const i = cellIndex(lat, lon);
@@ -1285,7 +1389,7 @@ function railVia(i) {
 }
 
 // Wrapper so every early return still re-fits the column (U6).
-function renderLegs() { renderLegsInto(); fitReading(); }
+function renderLegs() { renderLegsInto(); renderRoute(); fitReading(); }
 function renderLegsInto() {
   const box = $("legs");
   if (!pinB) { box.hidden = true; return; }
