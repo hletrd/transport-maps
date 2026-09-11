@@ -135,7 +135,20 @@ def test_the_privacy_policy_describes_what_the_page_actually_does():
     assert "local storage" in body
     written = set(re.findall(r'localStorage\.setItem\(\s*"([^"]+)"', APP))
     written |= set(re.findall(r'store\.set\(\s*"([^"]+)"', APP))
-    assert written == {"ramp", "lockNorth", "namePlaces"}, (
+    # ...and the PROSE has to keep up with the set, not just the set with the
+    # code. Removing "your ocean colour" from the policy left this test green
+    # until this assertion existed: the key check alone cannot tell whether the
+    # sentence still describes what is stored.
+    for key, phrase in (("ramp", "colour scheme"), ("ocean", "ocean colour"),
+                        ("lockNorth", "Settings switches"),
+                        ("namePlaces", "Settings switches")):
+        if key in re.findall(r'localStorage\.setItem\(\s*"([^"]+)"', APP) + \
+                   re.findall(r'store\.set\(\s*"([^"]+)"', APP):
+            assert phrase in body, (
+                f"the page stores {key!r} and the privacy policy does not say so "
+                f"(expected to find {phrase!r})")
+
+    assert written == {"ramp", "ocean", "lockNorth", "namePlaces"}, (
         "the page writes a localStorage key the privacy policy does not "
         f"account for: {sorted(written)}. Update both, or neither.")
     # ...and every key it writes it also reads back, so none is write-only
