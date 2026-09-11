@@ -498,12 +498,29 @@ const map = new maplibregl.Map({
 // sea-coloured globe with a full legend, a working readout and no message.
 // index.json and hover_cells.bin go through fatal(); all five per-origin
 // fetches have a .catch; the tile archive had nothing.
+//: The map source id for the coastline archive. Declared here, above its only
+//: two readers, so `noteTileTrouble` and `addSource` cannot drift apart and
+//: leave the notice naming the wrong layer.
+const WATER_SOURCE = "water";
 map.on("error", (e) => {
   const msg = e?.error?.message || String(e?.error || "unknown map error");
   console.error("map error:", msg);
   // A tile or source failure is not fatal to the page -- the readout still
   // works from the arrays -- but it must not be silent.
-  if (/pmtiles|tile|source/i.test(msg)) noteTileTrouble(msg);
+  //
+  // It WAS silent. This used to test the message text against
+  // /pmtiles|tile|source/i, and pmtiles.js emits none of those words: its real
+  // failures read "Bad response code: 404" and "archive does not appear to
+  // support HTTP Byte Serving". Served the real dist/ with the archives
+  // withheld, the page measured bandsRendered:0, waterRendered:0 and
+  // #tiletrouble still hidden -- a blank globe with nothing said about it,
+  // which CLAUDE.md's deploy rule records as having shipped twice. The guard
+  // passed review because its verification fired a synthetic error carrying the
+  // literal string "pmtiles".
+  //
+  // MapLibre already names the failing source on the event. Use that; keep the
+  // message test only as a fallback for errors raised outside a source.
+  if (e?.sourceId || /pmtiles|tile|source/i.test(msg)) noteTileTrouble(msg, e?.sourceId);
 });
 // This used to write into #where, which showReading rewrites on every pointer
 // frame: the one sentence that explains a blank globe was erased milliseconds
@@ -515,10 +532,12 @@ map.on("error", (e) => {
 // coastline arrive as .pmtiles, and "the globe is blank" is wrong when it is
 // the water that is missing and the bands are fine.
 let tileTroubleFor = null;
-function noteTileTrouble(msg) {
+function noteTileTrouble(msg, sourceId) {
   const el = document.getElementById("tiletrouble");
   if (!el) return;
-  const water = /water\.pmtiles/i.test(msg);
+  // sourceId is the map's own answer to "which layer?"; the URL in the message
+  // is a guess that only worked while the message happened to carry one.
+  const water = sourceId ? sourceId === WATER_SOURCE : /water\.pmtiles/i.test(msg);
   const key = (water ? "water:" : "bands:") + (active?.slug || "");
   if (tileTroubleFor === key) return;      // do not restate the same failure
   tileTroubleFor = key;
@@ -567,8 +586,8 @@ map.addLayer({ id: "sphere", type: "fill", source: "sphere",
 // this static water layer, built once from OpenStreetMap coastlines, cuts
 // them back to the real outline. It sits above the bands and below the
 // borders and the cursor; paintOrigin inserts each origin's bands beneath it.
-map.addSource("water", { type: "vector", url: "pmtiles://./water.pmtiles" });
-map.addLayer({ id: "water", type: "fill", source: "water", "source-layer": "water",
+map.addSource(WATER_SOURCE, { type: "vector", url: "pmtiles://./water.pmtiles" });
+map.addLayer({ id: "water", type: "fill", source: WATER_SOURCE, "source-layer": "water",
   paint: { "fill-color": SEA, "fill-opacity": 1 } });
 // Sea and lakes take the colour scheme's own ground, so switching schemes
 // recolours the water as well as the land.

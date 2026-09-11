@@ -159,6 +159,30 @@ echo "  zoom 3: $Z"
 echo "$Z" | grep -qE '"bands":[1-9]' && echo "$Z" | grep -qE '"water":[1-9]' || { echo "  !! nothing painted at zoom 3"; fail=1; }
 echo "$Z" | grep -qE '"borders":[1-9]' || { echo "  !! the borders layer rendered nothing"; fail=1; }
 agent-browser screenshot "$SHOTS/verify_zoom3.png" >/dev/null 2>&1
+# The notice that explains a blank globe has to be reachable by the errors that
+# actually cause one. It was not: the handler tested the message text against
+# /pmtiles|tile|source/i, and pmtiles.js emits none of those words -- its real
+# failures read "Bad response code: 404" and "archive does not appear to support
+# HTTP Byte Serving". Withholding the archives from a local copy of the real
+# dist/ measured bandsRendered:0, waterRendered:0 and #tiletrouble still hidden.
+# The old guard passed review because its check fired a synthetic error carrying
+# the literal string "pmtiles".
+#
+# Fire the two REAL messages through the map's own error channel, with the
+# sourceId MapLibre attaches, and require the notice to appear and to name the
+# right layer. The page is reopened immediately after, which clears it.
+TT=$(agent-browser eval '(()=>{const m=window.__map,el=document.getElementById("tiletrouble");
+  const fire=(sourceId,message)=>{m.fire("error",{error:new Error(message),sourceId:sourceId});
+    return {hidden:el.hidden,text:el.textContent.slice(0,60)};};
+  const bands=fire("bands","Bad response code: 404");
+  el.hidden=true;el.textContent="";
+  const water=fire("water","archive does not appear to support HTTP Byte Serving");
+  return JSON.stringify({bands:bands,water:water})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  tile-failure notice: $TT"
+echo "$TT" | grep -q '"bands":{"hidden":false' || { echo "  !! a real band-tile failure shows no notice: a blank globe would be silent"; fail=1; }
+echo "$TT" | grep -q '"water":{"hidden":false' || { echo "  !! a real coastline failure shows no notice"; fail=1; }
+echo "$TT" | grep -q 'The shaded bands could not be loaded' || { echo "  !! the band-tile notice names the wrong layer"; fail=1; }
+echo "$TT" | grep -q 'The coastline could not be loaded' || { echo "  !! the coastline notice names the wrong layer"; fail=1; }
 # A permalink selects its departure AND restores the destination. ?from=
 # carried the departure and nothing else, so the interesting half of a reading
 # could not be shared: the link reopened the city, not the journey.
