@@ -344,8 +344,8 @@ def test_every_constant_write_index_derives_is_in_the_refusal_set():
 
     Mutation: remove any entry from _CURRENT_INDEX_CONSTANTS.
     """
-    governed = {"bandEdgesMin", "solveRes", "modeChannels", "hoverRes",
-                "fineRes", "unreachable"}
+    governed = _config_derived_index_keys()
+    assert governed, "no config-derived key found in write_index; re-derive this test"
     assert governed <= set(cli._CURRENT_INDEX_CONSTANTS), (
         "a constant index.json publishes is not covered by the drift refusal: "
         f"{governed - set(cli._CURRENT_INDEX_CONSTANTS)}")
@@ -364,3 +364,45 @@ def test_the_inputs_hash_covers_the_unreachable_sentinel(monkeypatch):
     before = cli.index.build_identity()["inputsHash"]
     monkeypatch.setattr(config, "UNREACHABLE", config.UNREACHABLE - 1)
     assert cli.index.build_identity()["inputsHash"] != before
+
+
+# --- C6-20: the refusal set, derived rather than re-typed --------------------
+
+#: The modules whose values are "the code's constants" for this purpose: a
+#: payload field computed from either is frozen into the artifact at build time
+#: and must be refused when it has since moved. `mode_detail()` is deliberately
+#: NOT one of them -- it reads calibration.toml and reindex carries it forward
+#: by design (U3), which is recorded as AA9 in plan/deferred.md.
+_CONSTANT_MODULES = {"config", "modes"}
+
+
+def _config_derived_index_keys() -> set[str]:
+    """Parse `write_index` and return the payload keys computed from constants.
+
+    The test this serves said in its own docstring that it derives the question
+    from the artifact "instead of re-typing the answer", and then re-typed the
+    answer: a hard-coded set of six. Growing `write_index` by one
+    config-derived scalar left 201 tests green -- the exact regression the test
+    is named for. This reads the source.
+    """
+    import ast
+
+    src = (config.ROOT / "src" / "transport_maps" / "emit" / "index.py").read_text(
+        encoding="utf-8")
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "write_index")
+    payload = next(
+        node.value for node in ast.walk(fn)
+        if isinstance(node, ast.Assign)
+        and any(getattr(t, "id", None) == "payload" for t in node.targets))
+    assert isinstance(payload, ast.Dict), "write_index no longer builds a dict literal"
+
+    derived = set()
+    for key, value in zip(payload.keys, payload.values):
+        if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+            continue
+        names = {n.value.id for n in ast.walk(value)
+                 if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)}
+        if names & _CONSTANT_MODULES:
+            derived.add(key.value)
+    return derived

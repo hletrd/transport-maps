@@ -320,6 +320,37 @@ def test_a_clean_metadata_blob_raises_nothing(check_dist, tmp_path):
     assert warn == [], warn
 
 
+def test_clean_tippecanoe_generator_options_are_not_a_leak(check_dist, tmp_path):
+    """V19's fixture, which V19 never landed.
+
+    `"generator_options"` was dropped from PMTILES_METADATA_LEAKS because
+    tippecanoe writes that key into EVERY archive it produces: the detector
+    fired 100 % of the time, carried no signal, and would have failed every
+    deploy on a clean build. Nothing tested that, though -- the existing
+    leak fixture pairs `generator_options` with `/Users/someone/x.pmtiles`, so
+    it is caught by the `/users/` prefix whether or not the token is in the
+    tuple, and re-adding the token today left all 31 tests in this file green.
+    The claim V19 rests on was therefore unguarded and the deadlock SEC5-2
+    removed could come back silently.
+
+    This is the missing half: a real tippecanoe options string with no host
+    path in it, which must raise nothing.
+
+    Mutation performed and reverted: add "generator_options" back to
+    PMTILES_METADATA_LEAKS -> red.
+    """
+    d = _good_dist(tmp_path)
+    _pmtiles(d / "origins" / "seoul.pmtiles",
+             metadata=b'{"name":"seoul","format":"pbf","generator":"tippecanoe v2.78.0",'
+                       b'"generator_options":"tippecanoe -o out.pmtiles -l bands -z 12 '
+                       b'-Z 0 --no-tile-compression --drop-densest-as-needed"}')
+    warn: list[str] = []
+    assert check_dist.check_dist(d, [{"slug": "seoul"}], warn_out=warn) == []
+    assert warn == [], (
+        "a clean tippecanoe archive is reported as leaking a build-host path; "
+        "the detector fires on every build and therefore says nothing")
+
+
 def test_the_leak_scan_survives_a_header_it_cannot_read(check_dist, tmp_path):
     """A zero-length or absurd metadata range must not raise out of the gate."""
     d = _good_dist(tmp_path)
