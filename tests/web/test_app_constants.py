@@ -448,3 +448,39 @@ def test_the_label_does_not_override_maplibres_own_positioning():
     assert "position:relative" not in rule, (
         "position:relative overrides MapLibre's position:absolute and the "
         "markers stop being positioned at all")
+
+
+def test_a_committed_reading_owns_the_headline():
+    """Click a place and the big number must stay that place's answer.
+
+    #time was a pure hover readout, so the very next mouse move overwrote it:
+    the figure you clicked for survived about a tenth of a second, and on a
+    desktop it was almost impossible to read. Once a destination is pinned the
+    headline belongs to the pin, and hovering explores through the tooltip
+    instead -- which already carries the hovered time.
+    """
+    move = APP[APP.index('map.on("mousemove"'):]
+    move = move[:move.index("\nmap.on(")]
+    assert "pinB ? lookup(lat, lng) : showReading(lat, lng, e.point)" in move, (
+        "the hover handler writes the headline even when a destination is pinned")
+    # The tooltip must still be fed, or hovering stops telling you anything.
+    assert "tip.innerHTML" in move and "door to door" in move
+
+
+def test_the_pin_is_what_gets_re_read_when_the_arrays_land():
+    """An origin switch re-reads the reading once the new city's times arrive.
+    With a pin, the thing to re-read is the PIN -- not wherever the pointer was
+    left -- or switching city silently swapped the headline to a different
+    place. Verified: Seoul to a Siberian cell reads 39 h 8 min, and switching
+    to Tokyo makes the same pin read 40 h 31 min."""
+    body = APP[APP.index("function rereadPointer()"):]
+    body = body[:body.index("\nfunction ")]
+    assert "pinB ?" in body and "lastPointer" in body
+
+
+def test_clearing_the_route_hands_the_headline_back():
+    """With the pin gone the number would otherwise sit there as an answer for
+    a destination no longer shown."""
+    body = APP[APP.index("function clearRoute()"):]
+    body = body[:body.index("\n}") + 2]
+    assert "clearTime()" in body and "IDLE_PROMPT" in body

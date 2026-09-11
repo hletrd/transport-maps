@@ -1625,8 +1625,11 @@ function announceReading(lat, lng, t, label) {
 // Once an origin's times land, the reading under the pointer (or the last
 // tap) is redone, so it never keeps saying "loading".
 function rereadPointer() {
-  if (!lastPointer) return;
-  const { lat, lng } = lastPointer;
+  // A pinned destination owns the headline, so when the arrays land it is the
+  // PIN that has to be re-read, not the last place the pointer happened to be.
+  const from = pinB ? { lat: pinB.lat, lng: pinB.lon } : lastPointer;
+  if (!from) return;
+  const { lat, lng } = from;
   // The stored screen point may have moved with the map (an origin switch
   // flies to the new city); project the coordinates afresh, and skip the
   // band when the place is now on the far side of the globe.
@@ -1644,7 +1647,14 @@ map.on("mousemove", (e) => {
     // last real reading standing rather than inventing one.
     if (!onGlobe(e.point)) { $("tip").hidden = true; clearHighlight(); return; }
     const { lat, lng } = e.lngLat;
-    const t = showReading(lat, lng, e.point);
+    // A COMMITTED reading owns the headline. Once a destination is pinned the
+    // big number is that destination's answer, not whatever the pointer is
+    // passing over -- it used to be overwritten by the very next mouse move,
+    // so the figure you clicked for survived about a tenth of a second.
+    // Hovering still explores: the tooltip below follows the pointer and
+    // carries the hovered time, the ring still moves, and clearing the route
+    // hands the headline back.
+    const t = pinB ? lookup(lat, lng) : showReading(lat, lng, e.point);
     const tip = $("tip");
     if (t == null) { tip.hidden = true; clearHighlight(); return; }
     highlight(lat, lng);
@@ -1866,7 +1876,16 @@ function originNear(lat, lon, maxKm = 80) {
   return best;
 }
 
-function clearRoute() { pinB = null; lastFrom = null; renderPins(); renderLegs(); syncPermalink(); }
+function clearRoute() {
+  pinB = null; lastFrom = null;
+  renderPins(); renderLegs(); syncPermalink();
+  // The headline was the pin's; with the pin gone it would otherwise sit there
+  // as a number for a destination that is no longer shown. Hand it back to the
+  // pointer, which fills it again on the next move.
+  clearTime();
+  $("where").textContent = IDLE_PROMPT;
+  markBand(null);
+}
 $("clear-pins").addEventListener("click", clearRoute);
 $("copy-link").addEventListener("click", async (e) => {
   const btn = e.currentTarget;
