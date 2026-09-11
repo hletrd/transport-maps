@@ -788,6 +788,44 @@ whose output only changes at the next build; both say so.
   arc and not a straight line. Recorded because the first number looked like a
   bug and was an artefact of how it was taken.
 
+  **USER-5 -- the watchdog I added in U20 called a working page dead.**
+  Found on the LIVE site while verifying the route, and it was mine. The
+  25-second boot watchdog counted `.results button[data-slug]`, which is the
+  SEARCH-FILTERED departure list. Typing an airport code empties it -- and the
+  page invites exactly that in its own first line of copy -- so twenty-five
+  seconds after load the guard declared a healthy page broken.
+
+  Reproduced with a MutationObserver on `#time`: searching JFK from Seoul
+  wrote "17 h 17 min" and then an em dash, and `#where` read "The page could
+  not start (nothing finished loading: no departure cities after 25 seconds)",
+  while the itinerary underneath still listed ICN to JFK and the route line
+  was drawn on the globe.
+
+  Two faults, both mine. The test was a fact about the visible list, which the
+  visitor changes; it is now a flag `app.js` sets as its last statement, which
+  nothing the visitor does can clear, and which is still absent when the module
+  throws part-way -- the case the watchdog exists for. And `say()` wrote an em
+  dash into `#time`, the 50 px of punctuation U10 removed, overwriting a
+  correct reading; the message belongs in `#where`.
+
+  Fixed in `f968217` and verified live against the exact failing sequence:
+  one write to `#time` ("17 h 17 min"), no em dash, `fatal` false,
+  `appReady` set, and **zero rows in the filtered list** -- the very condition
+  that used to trigger it.
+
+  `tests/web/test_boot_behaviour.py` is cycle 5's and is a better test than the
+  substring checks it replaced: it runs `boot.js` under a DOM shim and asserts
+  on observable effects. Four of its tests encoded the old contract and now
+  assert the new one; the harness keeps `querySelectorAll` deliberately, so a
+  watchdog that goes back to counting rows runs against an empty list on a page
+  that started fine. One test added for exactly that. Mutation: point the
+  watchdog back at `querySelectorAll` -> that one goes red, the other nine stay
+  green.
+
+  The lesson is the one this cycle keeps relearning: a guard against a silent
+  failure is itself code that can fail silently, and the only thing that found
+  this was opening the page and doing what a visitor would do.
+
   **Cycle-4 IDs carry the cycle number.** Cycle 3's designer used a bare
   `A1…A8`, colliding with the build plan's `A1…A17`, and six of those findings
   reached no table at all — the one gap in the audit `plan/README.md` records.
