@@ -5,10 +5,15 @@
 #
 #   scripts/deploy_verify.sh               # full: gate dist/, sync web/ into it, run the page-asset
 #                                          # gate (licence firewall + every tests/web/ test), check
-#                                          # free space on the server, rsync, then live checks.
-#                                          # scripts/browser_verify.sh is a SEPARATE stage and is
-#                                          # not run from here -- CLAUDE.md's deploy rule means it
-#                                          # must still be run before a deploy counts as done.
+#                                          # free space on the server, rsync, then live checks,
+#                                          # ENDING with scripts/browser_verify.sh against the
+#                                          # deployed URL (step 4). Under `set -euo pipefail` its
+#                                          # exit code is this script's, so a page that does not
+#                                          # RUN fails the deploy, which is CLAUDE.md's rule.
+#                                          # (This block said browser_verify "is not run from
+#                                          # here" until cycle 6. The stage was added in 29c6330
+#                                          # and the sentence contradicting it in 83fb802 -- the
+#                                          # commit that corrected this header for DOC3-14.)
 #   scripts/deploy_verify.sh --page-only   # web/ only: no dist gate, no --delete (a page fix
 #                                          # while a rebuild owns dist/); the page reads every
 #                                          # new index.json field with a fallback, so it is safe
@@ -37,10 +42,17 @@ page_gate() {
   # full deploy had left in dist/.
   # The list was hand-typed and omitted tests/web/test_ramps.py -- the
   # band-colour separation CLAUDE.md makes a standing rule and the only thing
-  # that measures it -- and tests/web/test_water.py. A test's teeth should not
-  # depend on whether someone remembered its filename, so this runs the whole
-  # tests/web/ directory plus the licence firewall. It is 87 tests and about
-  # two seconds; the previous five files were not meaningfully cheaper.
+  # that measures it -- and the water test, which lives under tests/emit/ and
+  # which this comment used to place under tests/web/, where no such file has
+  # ever existed. A test's teeth should not depend on whether someone
+  # remembered its filename, so this runs the whole tests/web/ directory plus
+  # the licence firewall: 139 tests and about two seconds at the time of
+  # writing, and it grows by itself. The count is here to say the order of
+  # magnitude, not to be kept exact.
+  #
+  # tests/web/test_parses.py is why this stage is worth having at all: nothing
+  # else in the repository parses app.js, and a syntax error in it would
+  # otherwise be rsynced live before step 4 ever opened a browser.
   uv run pytest -q -p no:cacheprovider \
     tests/test_licence_firewall.py tests/web/ tests/emit/test_water.py
 }
@@ -75,18 +87,25 @@ if [ "$MODE" = full ]; then
   # before the merge (as the licence firewall was) it scanned the PREVIOUS
   # deploy's copies and said nothing about the new ones.
   page_gate
-  # --delay-updates stages the ENTIRE new payload alongside the old one before
-  # it renames anything, so the peak requirement is both sets at once. The
-  # pending payload is about 14 GB against roughly 2.6 GB live -- a five-fold
-  # growth that has never been rehearsed -- and there was no free-space check
-  # anywhere. Running out mid-rename produces exactly the mixed dist/ that
-  # step 1 exists to prevent, on the server, where no gate can see it.
+  # --delay-updates stages the new payload alongside the old one before it
+  # renames anything, so the peak requirement is the payload plus whatever the
+  # old set already occupies. The 553-origin payload measures 15.69 GiB against
+  # roughly 2.6 GB live when this check was written -- a six-fold growth that
+  # had never been rehearsed -- and there was no free-space check anywhere.
+  # Running out mid-rename produces exactly the mixed dist/ that step 1 exists
+  # to prevent, on the server, where no gate can see it.
   #
   # Read-only: `df -Pk` over the connection rsync is about to use. A server
   # that will not answer is a warning, not a refusal -- this must not be a new
   # way for a good deploy to fail.
   need_kb=$(/usr/bin/du -sk dist | awk '{print $1}')
-  want_kb=$(( need_kb * 23 / 10 ))          # the new payload plus the old set, plus 15%
+  # x1.3, not x2.3. The old set is ALREADY on the disk, so `df` has already
+  # excluded it from the free figure; adding it back counted it twice and
+  # demanded 36.1 GiB for a measured 15.69 GiB dist. --delay-updates stages the
+  # NEW payload beside the old one, so the transient requirement is the payload
+  # plus a margin, which is what V26 specified and what the run it was written
+  # for actually measured: 18 GB peak for a ~16 GB payload.
+  want_kb=$(( need_kb * 13 / 10 ))          # the staged payload, plus 30%
   free_kb=$(ssh -o BatchMode=yes "$DEPLOY_HOST" "df -Pk $DEPLOY_ROOT | awk 'NR==2{print \$4}'" 2>/dev/null || true)
   if [ -z "$free_kb" ]; then
     echo "  could not read free space on $DEPLOY_HOST; continuing without the check"

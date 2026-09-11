@@ -15,7 +15,10 @@ refuses to ship an inconsistent build:
    `.rail.json` has its `stations` list, every `.pmtiles` header is sane,
    `index.json` lists exactly the origins of `data/origins.toml`, no stray
    `*-journal`/`.tmp`/dotfile is present, and the page copy states no city
-   count (it must come from `index.json`). It also WARNS, without blocking, on
+   count (it must come from `index.json`). **It also refuses an `index.json`
+   whose `attribution` block does not credit every source the pipeline
+   consumes** -- the only automated licence gate in the project, and the reason
+   the nine credits reach the live site at all. It WARNS, without blocking, on
    a build-host path in a PMTiles metadata blob;
 3. assembles the page into the build output — `web/vendor/` mirrored with
    `--delete`, the rest of `web/` (everything but `web/README.md`) on top — so
@@ -26,11 +29,23 @@ refuses to ship an inconsistent build:
    CSP inline-script hash, and the attribution and privacy obligations. This
    runs in BOTH modes — `--page-only` publishes `web/` and nothing else, so
    before it did, that path shipped ungated;
-5. rsyncs `dist/` to the server with `--delete --delete-delay --delay-updates`,
+5. checks free space on the server before moving a byte -- `df -Pk` over the
+   connection rsync is about to use, against the measured payload plus 30 %.
+   `--delay-updates` stages the new set beside the old one, and running out
+   mid-rename leaves exactly the mixed `dist/` step 1 exists to prevent, on the
+   server, where no gate can see it. A server that will not answer is a
+   warning, not a refusal;
+6. rsyncs `dist/` to the server with `--delete --delete-delay --delay-updates`,
    explicit modes and `deploy/rsync-excludes.txt`, logging to a temp file;
-6. curls the live files, including two byte-range requests against a
+7. curls the live files, including two byte-range requests against a
    `.pmtiles`, and ASSERTS each status (200, or 206 on the range probes) rather
-   than printing it; then reports whether the security headers are present.
+   than printing it; then reports whether the security headers are present;
+8. runs `scripts/browser_verify.sh` against the deployed URL. Under
+   `set -euo pipefail` its exit code is the deploy's, so a page that does not
+   RUN fails the deploy. CLAUDE.md: "No deploy is done until it has been opened
+   in a browser... `curl` returning 200 proves nothing about whether the page
+   runs." This script therefore does not leave that stage to the operator; it
+   is step 8, and the header of `deploy_verify.sh` said otherwise until cycle 6.
 
 The order of 3 and 4 matters and was wrong until cycle 3: the gate used to run
 before the page was merged in, so `index.html`, `app.js`, `llms.txt` and

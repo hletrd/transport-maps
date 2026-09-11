@@ -54,6 +54,14 @@ echo "  $R"
 # found by opening the page and by nothing else -- `node --check` passes, since
 # a TDZ error is valid syntax). CLAUDE.md records that class of failure as
 # having blanked this site twice.
+# ...and body.fatal being false proves nothing if boot.js never loaded: its
+# ABSENCE disarms the blank-page detector and makes the check below pass. Ask
+# the server for it before trusting the answer.
+if ! curl -sfI "${URL}boot.js" >/dev/null 2>&1; then
+  echo "  !! boot.js is not served: the blank-page detector is absent, and the"
+  echo "     body.fatal check below would pass for that reason alone."
+  fail=1
+fi
 echo "$R" | grep -q '"fatal":false' || {
   echo "  !! body.fatal is set: boot.js says the page could not start."
   echo "     #where: $(echo "$R" | sed -n 's/.*"where":"\([^"]*\)".*/\1/p')"
