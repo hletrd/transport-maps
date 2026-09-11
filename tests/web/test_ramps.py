@@ -100,3 +100,63 @@ def test_respace_writes_atomically(check_ramps):
     src = (check_ramps.__file__ and open(check_ramps.__file__, encoding="utf-8").read())
     assert "atomic_write(APP" in src
     assert "APP.write_text(" not in src, "a bare write_text truncates before it writes"
+
+
+# --- the ocean palette, chosen independently of the colour scheme ----------
+
+def test_every_ocean_clears_the_sea_rules_against_every_scheme(check_ramps):
+    """A scheme's own `sea` only has to work with that scheme's bands. An
+    OCEAN is picked independently, so it has to work with all twelve at once:
+    lighter than SPACE or the globe's edge vanishes into the page, darker than
+    the darkest band of every scheme or that band stops reading as land, and
+    at least MIN_GREY_DELTA_E from all 37 painted bands of every scheme or the
+    sea reads as a band.
+
+    Those three leave a lightness window of about 0.17 to 0.22 in OKLab, so
+    what the palette varies is hue, not brightness. The worst margin of the
+    five shipped is charcoal at 8.8 against the floor of 8.
+    """
+    space = check_ramps.constant("SPACE")
+    schemes = check_ramps.ramps()
+    found = check_ramps.oceans()
+    assert len(found) == 5, f"parsed {len(found)} fixed oceans from app.js, expected 5"
+    for key, sea in found.items():
+        assert not check_ramps.ocean_problems(sea, space, schemes), \
+            f"{key}: {check_ramps.ocean_problems(sea, space, schemes)}"
+
+
+def test_the_default_ocean_follows_the_scheme_and_carries_no_colour(check_ramps):
+    """The first entry must stay `sea: null`: it means "whatever the scheme
+    says", which is the behaviour every build before this one had, and it is
+    what keeps this setting additive rather than a redefinition."""
+    src = (check_ramps.APP).read_text(encoding="utf-8")
+    import re
+    m = re.search(r"const OCEANS = \{(.*?)\n\};", src, re.S)
+    assert m, "OCEANS not found"
+    first = m.group(1).strip().splitlines()[0]
+    assert first.lstrip().startswith("scheme:"), f"first ocean is {first!r}"
+    assert "sea: null" in first, "the default ocean must carry no fixed colour"
+
+
+def test_the_oceans_are_told_apart_from_each_other(check_ramps):
+    """Five swatches a visitor chooses between; two that look identical are
+    one choice wearing two names."""
+    found = list(check_ramps.oceans().items())
+    worst = min(
+        (check_ramps.delta_e(check_ramps.srgb_to_oklab(a[1]),
+                             check_ramps.srgb_to_oklab(b[1])), a[0], b[0])
+        for i, a in enumerate(found) for b in found[i + 1:])
+    assert worst[0] >= 3.0, f"{worst[1]} and {worst[2]} are only {worst[0]:.1f} apart"
+
+
+def test_the_page_reads_the_sea_from_one_place(check_ramps):
+    """The globe, the legend's "open water" key and the picker's own swatch
+    must agree. Before the ocean setting they each derived it separately, and
+    adding a second source of sea colour is exactly how they drift."""
+    src = (check_ramps.APP).read_text(encoding="utf-8")
+    assert "const seaNow = () =>" in src
+    # The legend key and the globe both go through it.
+    assert '$("sw-sea").style.background = seaNow();' in src
+    assert src.count('RAMPS[rampName]?.sea ?? SEA') <= 2, (
+        "more than the two deliberate uses (seaNow itself, and what "
+        '"Match the scheme" shows in the picker) derive the sea directly')

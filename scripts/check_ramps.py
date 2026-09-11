@@ -82,6 +82,38 @@ def ramps(source: str = None) -> dict[str, dict]:
     return out
 
 
+def oceans(source: str = None) -> dict[str, str]:
+    """The OCEANS palette from app.js: key -> hex, skipping the null entry.
+
+    "scheme" carries `sea: null` and means "use the active scheme's own sea",
+    which is already measured by scheme_problems; only the fixed colours need
+    checking here, and they must hold for EVERY scheme, because the ocean is
+    chosen independently of the ramp.
+    """
+    src = source if source is not None else APP.read_text(encoding="utf-8")
+    m = re.search(r"const OCEANS = \{(.*?)\n\};", src, re.S)
+    if not m:
+        raise ValueError("OCEANS not found in app.js")
+    return dict(re.findall(r'(\w+):\s*\{[^}]*sea:\s*"(#[0-9a-fA-F]{6})"', m.group(1)))
+
+
+def ocean_problems(sea: str, space: str, all_ramps: dict) -> list[str]:
+    """An ocean is chosen independently of the scheme, so it must satisfy the
+    sea rules against every scheme at once, not just the active one."""
+    out = []
+    lab = srgb_to_oklab(sea)
+    if lab[0] <= srgb_to_oklab(space)[0] + SEA_ABOVE_SPACE:
+        out.append(f"ocean {sea} is not lighter than space")
+    for key, r in all_ramps.items():
+        if lab[0] >= srgb_to_oklab(r["c"][-1])[0] - SEA_BELOW_BAND:
+            out.append(f"ocean {sea} is not darker than {key}'s darkest band")
+        d = min(delta_e(lab, b) for b in expand(r["c"]))
+        if d < MIN_GREY_DELTA_E:
+            out.append(f"ocean {sea} is only {d:.1f} from a {key} band "
+                       f"(need {MIN_GREY_DELTA_E:.0f})")
+    return out
+
+
 def constant(name: str, source: str = None) -> str:
     """A hex colour constant from app.js, e.g. SPACE or BG."""
     src = source if source is not None else APP.read_text(encoding="utf-8")

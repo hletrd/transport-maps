@@ -133,6 +133,29 @@ function charted() {
   });
 })();
 
+// The ocean, independent of the colour scheme. Each scheme already carries
+// its own `sea`, and "scheme" keeps that -- but the sea is most of the globe
+// and wanting it a different colour is not the same wish as wanting different
+// bands.
+//
+// These are NOT free choices. scripts/check_ramps.py enforces three things on
+// any sea: lighter than SPACE (or the globe's edge disappears into the page),
+// darker than the darkest band of EVERY scheme (or the darkest band stops
+// reading as land), and at least MIN_GREY_DELTA_E from every one of the 37
+// painted bands of every scheme (or the sea reads as a band). That leaves a
+// lightness window of roughly 0.17 to 0.22 in OKLab, so what varies here is
+// hue, not brightness. Each was found by searching that window and is
+// measured by tests/web/test_ramps.py against all twelve schemes; the worst
+// margin of the five is charcoal, at 8.8 against a floor of 8.
+const OCEANS = {
+  scheme:   { name: "Match the scheme", sea: null },
+  deep:     { name: "Deep blue", sea: "#00142b" },
+  teal:     { name: "Teal",      sea: "#001619" },
+  forest:   { name: "Forest",    sea: "#051902" },
+  umber:    { name: "Umber",     sea: "#210d00" },
+  charcoal: { name: "Charcoal",  sea: "#131112" },
+};
+
 const RAMPS = {
   // Eleven anchors per scheme; adjacent-anchor separation in OKLab (x100) is
   // at least 6 and aimed at 8. Lightness is strictly monotonic in every ramp,
@@ -272,6 +295,17 @@ const store = {
 // the console is this project's signature failure.
 try { const r = localStorage.getItem("ramp"); if (r && Object.hasOwn(RAMPS, r)) rampName = r; }
 catch { /* private mode */ }
+// Object.hasOwn for the same reason as the ramp above: a stored "constructor"
+// or "__proto__" is truthy on any object literal and would reach paintSea as
+// a prototype method.
+let oceanName = "scheme";
+// What the sea is actually painted with: the chosen ocean, or the scheme's
+// own when "Match the scheme" is selected. The legend key, the globe and the
+// picker's own swatch must all agree, and before this they read it three
+// different ways.
+const seaNow = () => OCEANS[oceanName]?.sea ?? RAMPS[rampName]?.sea ?? SEA;
+try { const o = localStorage.getItem("ocean"); if (o && Object.hasOwn(OCEANS, o)) oceanName = o; }
+catch { /* private mode */ }
 BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
 lockNorth = store.get("lockNorth", false);
 namePlaces = store.get("namePlaces", true);
@@ -310,7 +344,9 @@ function paintLegend() {
   // The two tones outside the ramp, so the grey of Antarctica or Siberia and
   // the scheme's sea are named rather than left for the reader to guess.
   $("sw-uncharted").style.background = greyOf();
-  $("sw-sea").style.background = RAMPS[rampName]?.sea ?? SEA;
+  // seaNow(), not the ramp's: the legend's "open water" key has to be the
+  // colour the globe's water actually is, or the key stops being a key.
+  $("sw-sea").style.background = seaNow();
 }
 paintLegend();
 
@@ -537,7 +573,7 @@ map.addLayer({ id: "water", type: "fill", source: "water", "source-layer": "wate
 // Sea and lakes take the colour scheme's own ground, so switching schemes
 // recolours the water as well as the land.
 function paintSea() {
-  const sea = RAMPS[rampName]?.sea ?? SEA;
+  const sea = seaNow();
   for (const id of ["sphere", "water"])
     if (map.getLayer(id)) map.setPaintProperty(id, "fill-color", sea);
 }
@@ -2203,10 +2239,49 @@ function pickRamp(key) {
   if (map.getLayer("bands"))
     map.setPaintProperty("bands", "fill-color", bandColorExpression());
   paintSea();
+  // "Match the scheme" shows whatever the scheme's sea is, so its swatch
+  // has to follow a scheme change.
+  paintOceanPicker();
 }
 $("ramps").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-ramp]");
   if (b) pickRamp(b.dataset.ramp);
+});
+
+function paintOceanPicker() {
+  const scheme = RAMPS[rampName]?.sea ?? SEA;   // what "Match the scheme" means
+
+  document.documentElement.style.setProperty("--ocean-now", scheme);
+  $("oceans").replaceChildren(...Object.entries(OCEANS).map(([key, o]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.ocean = key;
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", String(key === oceanName));
+    b.setAttribute("aria-current", String(key === oceanName));
+    b.tabIndex = key === oceanName ? 0 : -1;
+    const sw = document.createElement("span");
+    sw.className = o.sea ? "sw" : "sw follow";
+    sw.style.background = o.sea || scheme;
+    const nm = document.createElement("span");
+    nm.textContent = o.name;
+    b.append(sw, nm);
+    return b;
+  }));
+}
+paintOceanPicker();
+
+function pickOcean(key) {
+  if (!Object.hasOwn(OCEANS, key)) return;
+  oceanName = key;
+  try { localStorage.setItem("ocean", oceanName); } catch { /* private mode */ }
+  paintSea();
+  paintOceanPicker();
+  paintLegend();          // the "open water" key swatch is the sea colour
+}
+$("oceans").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-ocean]");
+  if (b) pickOcean(b.dataset.ocean);
 });
 $("ramps").addEventListener("keydown", (e) => {
   if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;

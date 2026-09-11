@@ -376,6 +376,20 @@ body.crowded .depart-card{display:none}
 .ramps .strip{display:flex;height:11px;flex:1;border-radius:1px;overflow:hidden}
 .ramps .strip span{flex:1}
 .ramps .nm{width:52px;flex:none}
+/* The ocean picker: one swatch per choice, wrapped, with the name below it so
+   nothing depends on colour alone (the first entry has no colour at all). */
+.oceans{display:flex;flex-wrap:wrap;gap:6px}
+.oceans button{
+  background:none;border:1px solid var(--line);border-radius:var(--r);
+  color:var(--text-3);font:inherit;font-size:10.5px;line-height:1.2;
+  padding:5px 6px 6px;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;gap:4px;width:60px;
+}
+.oceans button:hover{color:var(--text-2)}
+.oceans button[aria-current="true"]{border-color:var(--line-2);color:var(--text)}
+.oceans .sw{width:100%;height:14px;border-radius:1px;border:1px solid var(--line-2)}
+/* "Match the scheme" has no fixed colour, so its swatch shows the scheme's. */
+.oceans .sw.follow{background:linear-gradient(135deg,var(--ocean-now) 50%,transparent 50%)}
 
 /* Follows the pointer, so the reading is where the eye already is. */
 .tip{
@@ -453,7 +467,7 @@ body.crowded .depart-card{display:none}
   display:grid;place-items:center;
 }
 .compass:hover{border-color:var(--line-2)}
-.compass:focus-visible,.btn:focus-visible,.ramps button:focus-visible,
+.compass:focus-visible,.btn:focus-visible,.ramps button:focus-visible,.oceans button:focus-visible,
 summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .compass svg{width:26px;height:26px;display:block}
 .compass .needle{transform-origin:12px 12px}
@@ -749,6 +763,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
       <div class="rampwrap">
         <div class="rowlabel" id="ramps-label">Colour scheme</div>
         <div id="ramps" class="ramps" role="radiogroup" aria-labelledby="ramps-label"></div>
+      </div>
+      <div class="rampwrap">
+        <div class="rowlabel" id="oceans-label">Ocean</div>
+        <!-- Laid out as a row of swatches rather than the scheme picker's
+             stacked rows: there are six, each is one colour rather than a
+             ramp, and they do not need a strip to be told apart. -->
+        <div id="oceans" class="oceans" role="radiogroup" aria-labelledby="oceans-label"></div>
       </div>
       <p class="hint">Drag to rotate the globe; zoom with the + and &minus;
         buttons, the scroll wheel, or a pinch. Locking to north disables
