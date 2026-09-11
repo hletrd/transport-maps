@@ -408,10 +408,22 @@ body.crowded .depart-card{display:none}
    from a place name, and the active departure is in the accent. The padding
    and negative margin give a 24 px hit area without moving the text. */
 .lbl{pointer-events:auto}
-.lbl.origin{cursor:pointer;background:none;border:0;padding:5px 6px;margin:-5px -6px;
+/* No negative margins, and the dot is a real absolutely-positioned element
+   rather than an inline ::before. Both changes exist so the dot's position is
+   arithmetic we control instead of a result of font metrics and margin
+   collapsing: with the marker anchored "left", MapLibre puts the element's
+   left edge, vertically centred, on the coordinate -- so a dot at left:0,
+   top:50%, pulled back by half its own size, sits exactly on it whatever the
+   font size or the length of the name. */
+/* NO position:relative here. MapLibre sets position:absolute on a marker
+   element, and declaring relative overrode it: every label fell back into
+   normal flow and stacked left to right, putting Tokyo's dot 726 km from
+   Tokyo. An absolutely positioned element is already a containing block for
+   its absolutely positioned children, so the dot below needs nothing. */
+.lbl.origin{cursor:pointer;background:none;border:0;padding:5px 6px 5px 12px;
   font-weight:500;color:var(--text)}
-.lbl.origin::before{content:"";display:inline-block;width:4px;height:4px;border-radius:50%;
-  background:currentColor;margin:0 4px 2px 0;vertical-align:middle}
+.lbl.origin .dot{position:absolute;left:0;top:50%;width:4px;height:4px;
+  margin:-2px 0 0 -2px;border-radius:50%;background:currentColor}
 .lbl.origin:hover{text-decoration:underline}
 .lbl.origin[aria-current="true"]{color:var(--accent);cursor:default}
 .lbl.origin[aria-current="true"]:hover{text-decoration:none}

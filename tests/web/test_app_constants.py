@@ -401,3 +401,50 @@ def test_the_off_globe_tolerance_is_a_distance_not_a_guess():
     assert "OFF_GLOBE_PX" in body
     tol = float(re.search(r"const OFF_GLOBE_PX = ([\d.]+);", APP).group(1))
     assert 0 < tol <= 3, f"{tol} px either rejects the limb itself or accepts open space"
+
+
+def test_a_city_dot_is_anchored_by_the_dot_not_by_the_label_box():
+    """A label carrying a dot claims the dot marks the city. It did not.
+
+    With anchor "top" the coordinate is the top-centre of the whole box, which
+    falls in the middle of the TEXT, while the dot sat to its left -- so the
+    error grew with the length of the name. Measured live at zoom 5: 23 px
+    from Tokyo, 27 from Beijing, 32 from Shanghai, 34 from Hangzhou, which is
+    56 to 83 km on the ground. After: every dot within 1.2 px, 0.6 to 3 km,
+    and that residue is places.json against origins.toml, not layout.
+
+    Anchoring "left" puts the element's left edge, vertically centred, on the
+    point, and the dot is placed there by CSS -- so no pixel offset exists to
+    go stale when the font size changes at the phone breakpoint.
+    """
+    assert 'element: originLabel, anchor: "left"' in APP
+    assert 'anchor: cityHere ? "left" : "top"' in APP, (
+        "a bare place name should still hang below its point; only a dotted "
+        "label is anchored by its dot")
+
+
+def test_the_dot_is_a_real_element_positioned_by_css():
+    """It was an inline ::before, so where it landed was a result of font
+    metrics and margins rather than anything the code controlled."""
+    assert "function setDottedLabel" in APP
+    assert ".lbl.origin .dot{" in INDEX
+    rule = INDEX[INDEX.index(".lbl.origin .dot{"):]
+    rule = rule[:rule.index("}")]
+    for part in ("position:absolute", "left:0", "top:50%", "margin:-2px 0 0 -2px"):
+        assert part in rule, f"{part} missing from the dot rule: {rule}"
+
+
+def test_the_label_does_not_override_maplibres_own_positioning():
+    """The regression this fix first introduced, caught by measuring.
+
+    MapLibre sets position:absolute on a marker element. Declaring
+    position:relative on .lbl.origin overrode it, every label fell back into
+    normal flow and stacked left to right, and Tokyo's dot ended up 726 km
+    from Tokyo. An absolutely positioned element is already a containing block
+    for its absolutely positioned children, so the dot needs nothing here.
+    """
+    rule = INDEX[INDEX.index(".lbl.origin{"):]
+    rule = rule[:rule.index("}")]
+    assert "position:relative" not in rule, (
+        "position:relative overrides MapLibre's position:absolute and the "
+        "markers stop being positioned at all")

@@ -789,13 +789,31 @@ function bandColorExpression() {
 // The departure city always carries its own label: it is what the visitor is
 // looking at, and the gazetteer ranks Seoul 22nd, Tokyo 24th and Paris 201st,
 // far outside the opening view's budget of eighteen.
+// A dotted label is a dot plus a name, in that order, because the dot is what
+// sits on the coordinate. textContent would wipe the dot, so both label paths
+// go through here.
+function setDottedLabel(el, name) {
+  const dot = el.querySelector(".dot") || document.createElement("span");
+  dot.className = "dot";
+  el.replaceChildren(dot, document.createTextNode(name));
+}
+
 const originLabel = document.createElement("button");
 originLabel.type = "button";
 originLabel.className = "lbl origin";
 originLabel.setAttribute("aria-current", "true");
 originLabel.tabIndex = -1;
 originLabel.addEventListener("click", (ev) => ev.stopPropagation());
-const originMarker = new maplibregl.Marker({ element: originLabel, anchor: "top" });
+// anchor "left", not "top". A label that carries a dot is claiming the dot
+// marks the city -- but with anchor "top" the coordinate is the top-centre of
+// the whole box, which is in the middle of the TEXT, and the dot sits to its
+// left. Measured live at zoom 5: the dot was 23 px from Tokyo, 27 from
+// Beijing, 32 from Shanghai and 34 from Hangzhou, the error growing with the
+// width of the name -- 20 to 30 km on the ground. Anchoring left puts the
+// element's left edge, vertically centred, on the point -- and the dot is
+// placed there by CSS, so no pixel offset is needed and none can go stale
+// when the font size changes.
+const originMarker = new maplibregl.Marker({ element: originLabel, anchor: "left" });
 // MapLibre stamps role="button" aria-label="Map marker" on every marker
 // element, so the departure city announced as "Map marker, button, current"
 // and its visible name was nowhere in its accessible name (WCAG 2.2 SC 2.5.3,
@@ -847,8 +865,8 @@ fetch("./places.json")
       const cityHere = originNear(r[3], r[4], 15);
       const el = document.createElement(cityHere ? "button" : "div");
       el.className = cityHere ? "lbl origin" : "lbl";
-      el.textContent = r[0];
       if (cityHere) {
+        setDottedLabel(el, r[0]);
         el.type = "button";
         el.tabIndex = -1;                  // the city list is the keyboard path
         el.title = `Depart from ${cityHere.name}`;
@@ -859,9 +877,13 @@ fetch("./places.json")
           if (cityHere.slug !== active?.slug) paintOrigin(cityHere, { keepZoom: true });
         });
       } else {
+        el.textContent = r[0];
         el.addEventListener("click", (ev) => ev.stopPropagation());
       }
-      const m = new maplibregl.Marker({ element: el, anchor: "top" })
+      // A name with a dot is anchored by its dot; a bare place name keeps the
+      // conventional treatment of hanging below its point.
+      const m = new maplibregl.Marker(
+        { element: el, anchor: cityHere ? "left" : "top" })
         .setLngLat([r[4], r[3]]);
       // A label that departs is a button and says so; every other label is
       // map furniture, not a control, and was being announced as a button
@@ -1250,7 +1272,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   for (const b of document.querySelectorAll(".results button[data-slug]"))
     b.setAttribute("aria-current", String(b.dataset.slug === o.slug));
   $("origin-name").textContent = o.name;
-  originLabel.textContent = o.name;
+  setDottedLabel(originLabel, o.name);
   originLabel.title = `Departure city: ${o.name}`;
   originMarker.setLngLat([o.lon, o.lat]);
   nameMarker(originLabel, `${o.name}, the departure city`);
