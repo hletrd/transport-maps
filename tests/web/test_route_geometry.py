@@ -17,6 +17,7 @@ against a recorded output of the code under test.
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 import shutil
@@ -127,7 +128,7 @@ def test_the_short_way_round_is_the_way_drawn(run):
         assert span <= 180.0 + 1e-6, (
             f"{a} -> {b} is drawn {span:.1f} degrees round the globe; the short "
             "way is at most 180")
-        for p, q in zip(pts, pts[1:]):
+        for p, q in itertools.pairwise(pts):
             assert abs(q[0] - p[0]) <= 180.0, (
                 "a consecutive pair jumps more than 180 degrees of longitude, "
                 "which MapLibre draws as a line across the whole map")
@@ -144,7 +145,7 @@ def test_unwrap_moves_longitudes_only_by_whole_turns(run):
         turns = (moved[0] - original[0]) / 360
         assert abs(turns - round(turns)) < 1e-9, (
             f"unwrap moved {original[0]} to {moved[0]}, which is not a whole turn")
-    for p, q in zip(out, out[1:]):
+    for p, q in itertools.pairwise(out):
         assert abs(q[0] - p[0]) <= 180.0
 
 
