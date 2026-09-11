@@ -246,3 +246,62 @@ premise would have produced a worse page and a green test.
 - **`AA40`**, 478,986 bytes per cold load from serving an 867 MB static
   coastline `no-cache`, is a one-line server change nobody has approved.
 - `USER-2`, the coastline, is the owner's judgement and stays open.
+
+## The deploy — refused once, correctly, then clean
+
+`deploy_verify.sh` then `browser_verify.sh`, at `9ce7420`.
+
+**Gates, each run alone and read by its own exit status:** `uv run ruff check .`
+all checks passed, exit 0. `uv run pytest -q` -> **537 passed, 4 deselected,
+5 warnings in 19 min 10 s, exit 0**. Cycle 5 ended at 495; the 42 added are
+this cycle's. The five warnings are the recorded `W1` forked-pool class,
+unchanged.
+
+**The first run REFUSED, and one of its three failures was real.** The refusal
+is recorded here rather than smoothed over, because the brief is explicit that
+a gate failure is a failure until shown otherwise -- and the first instinct was
+that the check was flaky. It was not; it reproduced.
+
+| Failure | Whose fault | Outcome |
+|---|---|---|
+| "the legend's hour ticks are off screen at landscape" (`time:false, legend:false, scale:false` at 844x390) | **the page's — a real regression from C6-6** | landscape cap restored at a measured 30vh (`9ce7420`) |
+| "the headline and the itinerary total disagree after a search" | the gate's | total read by `.leg.total .t`, not by counting lines back from the end of `#legs` |
+| "errors: 2" in the console | the gate's | the tile-failure probe fires two REAL map errors, which `app.js` console.errors; the probe now runs after the console check |
+
+The regression is worth keeping in the record. `#legs` lives **inside**
+`.reading`, so uncapping it made the reading block taller than the 390 px
+landscape rail -- and `revealReading()`'s `scrollIntoView({block:"nearest"})`
+on an over-tall element aligns its **bottom**, carrying `#time`, `#tints` and
+`#scale` off the top. Measured at 844x390 with a nine-leg itinerary (natural
+height 418 px): `.reading` is 347 px at 20vh, 386 px at 30vh, 409 px at 36vh,
+against a 390 px viewport. 30vh is the largest cap that fits, so that is the
+cap -- 117 px of itinerary against the old 78, with the legend kept. Portrait
+and tablet stay uncapped and measure clean, so landscape is the exception and
+not a reversal of C6-6.
+
+**Second run: `ALL CHECKS PASSED`, exit 0, twice** (the deploy's own step 4 and
+the standalone re-run the deploy command chains).
+
+**Live, verified in a browser:**
+
+| | |
+|---|---|
+| page | `body.fatal` false, canvas present, **553 cities**, 552 durations, 0 clipped, console **0 errors** |
+| **C6-2** | current departure **in view**, `parent:"results"`, scrollTop 11,140 — it opened 131-176 px above the box before |
+| **C6-1** | filtering to "lond" gives `scrollTop:0` and **London itself first visible**, 0 hidden — the list began at "STN London Stansted Airport" before |
+| **C6-9** | both REAL pmtiles messages fire the notice: "Bad response code: 404" -> "The shaded bands could not be loaded"; "archive does not appear to support HTTP Byte Serving" -> "The coastline could not be loaded". Each names the right layer. Neither could fire at all before |
+| **C6-12** | `vendor/licences/maplibre-gl.LICENSE.txt` and `h3-js.NOTICE.txt` serve **200**; they were 404 |
+| **C6-13** | `?from=atlantis` -> *No departure city called "atlantis"; showing Seoul.* through `sayHere`, so it is announced as well as painted |
+| route | Tokyo -> Krasnoyarsk itemised GMP -> PKX -> KJA; headline and total **agree** |
+| viewports | 1280x800, 820x1180, 390x844, **844x390** — all four clean, legend on screen at every one |
+| bytes | `app.js`, `boot.js`, `index.html`, `llms.txt` all sha256-identical to HEAD |
+
+**Free space:** "190 GiB available, about 20 GiB needed" — C6-21's corrected
+1.3x multiplier. The old 2.3x would have demanded 36 GiB for the same payload.
+
+**Page-asset gate: 144 tests**, up from 139; the five added are `test_parses.py`
+and the vendor-notice checks, so a syntax error in `app.js` now blocks the
+deploy before the rsync rather than after it.
+
+Cleanup: `agent-browser` processes left **0**; the user's Google Chrome
+untouched (11 processes, as before).
