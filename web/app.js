@@ -1216,6 +1216,13 @@ function paintOrigin(o, { keepZoom = false } = {}) {
       console.error("hover data unavailable:", err);
       origin.failed = err.message;       // so the readout says "unavailable", not "loading"
       $("where").textContent = `Times unavailable for ${o.name}: ${err.message}.`;
+      // #time was left on the string paintOrigin put there, so the page said
+      // "Reading the travel times from Nairobi…" in 50 px directly above
+      // "Times unavailable for Nairobi" -- the two halves of the readout
+      // contradicting each other, with #where, #status and the departure card
+      // all already correct. Not the idle prompt either: inviting a visitor to
+      // point at a globe that has no numbers is its own small lie.
+      clearTime("Travel times unavailable.");
       // renderDeparture, not only renderPins: without it the card's own
       // "Travel times for this city are unavailable." string was unreachable
       // and it sat on "Reading the travel times..." for ever. And announce()
@@ -1731,7 +1738,12 @@ function renderPins() {
     b.textContent = `Depart from ${near.name}`;
     b.addEventListener("click", () => {
       $("here").textContent = "";
-      pinB = null;
+      // Clearing the pin and switching city in one synchronous handler: no
+      // mouse move can happen in between, so a stale lastPointer would be
+      // re-read by settle() a few hundred ms later and printed as a current
+      // reading for a place the pointer left long ago. Worst on touch, which
+      // has no pointer to overwrite it afterwards.
+      pinB = null; lastPointer = null;
       paintOrigin(near, { keepZoom: true });
     });
     box.append(b);
@@ -1877,7 +1889,13 @@ function originNear(lat, lon, maxKm = 80) {
 }
 
 function clearRoute() {
-  pinB = null; lastFrom = null;
+  // lastPointer has to go with the pin. While a destination is pinned the
+  // hover branch takes lookup() and never calls showReading, which is the only
+  // writer of lastPointer -- so it freezes at the pin and stops following the
+  // mouse. rereadPointer() then resurrects that dismissed location as a live
+  // headline reading the next time an origin's arrays land. See the "Depart
+  // from" handler for the reproduction that needs no mouse move at all.
+  pinB = null; lastFrom = null; lastPointer = null;
   renderPins(); renderLegs(); syncPermalink();
   // The headline was the pin's; with the pin gone it would otherwise sit there
   // as a number for a destination that is no longer shown. Hand it back to the
