@@ -224,3 +224,100 @@ resolve once the build exits.
 `deploy_verify.sh`'s step-1 guard was also checked against the live process
 table and correctly identifies the four busy workers, so it will refuse a
 mixed `dist/` without being asked to.
+
+---
+
+## The deploy — the first in a day, and the first of the 553-origin build
+
+`reindex` then `deploy_verify.sh`, run once each at `10faf66` + the gate fixes.
+
+**Preconditions verified independently, not taken on report:** `/tmp/rebuild16.log`
+ends `exit 0 at 18:56` with 553 origins; no `build-all` process above 1 % CPU;
+`find dist -name '*-journal' -o -name '*.part*' -o -name '*.tmp'` empty; 553
+`.pmtiles` and 553 `.rail.bin`; no `dist/.build.lock`;
+`hover_cells.bin` 725,920 B = 90,740 cells against `seoul.bin` 181,480 B =
+90,740 entries.
+
+**Gates:** `uv run ruff check .` all checks passed. `uv run pytest -q` →
+**485 passed, 4 deselected, 5 warnings, 0 failures** (the 5 are the recorded
+W1 forked-pool `DeprecationWarning`). Cycle 4 ended at 460; the 25 added are
+this cycle's.
+
+**`reindex`:** 553 origins, 90,740 hover cells, rail detail present, 0 skipped.
+The V18 drift refusal did not fire, correctly — `config.py` last changed at
+02:02 and the build started at 04:23, so nothing had moved. `buildId` stays
+absent: the build ran `bf9e5cc`'s two-argument `write_index`, which publishes
+no identity, and `reindex` refuses to invent one (**TR5-7**, deferred).
+
+**The three new gates all did their job on real data.**
+
+- **V26** free-space pre-flight: "free space ok: 203 GiB available, about
+  36 GiB needed". Peak measured on the server during the run was **18 GB** —
+  the new payload staged beside the old set, exactly what `--delay-updates`
+  does and exactly what the check was added to bound.
+- **V28** attribution gate: passed only because `reindex` had just written all
+  nine credits. Run against the *previous* index it refused with "index.json
+  attribution does not credit GeoNames, HydroLAKES".
+- **V19** grouped warnings: `water.pmtiles` printed **first**, as the single
+  `/users/` leak, above `553 x ... '/var/folders/'`. Under the old
+  alphabetical truncation it was never shown at all.
+
+**Live, verified in a browser** (`browser_verify.sh`, then by hand):
+
+| | |
+|---|---|
+| `index.json` | 553 origins, `solveRes` 6, `hoverCellCount` 90,740, **9 credits** |
+| page | `body.fatal` false, canvas present, **553 cities**, 552 durations, 0 clipped |
+| legend | 39 swatches, ticks at 1 h / 5 h / 24 h 30 / 72 h+, band marker tracking the reading |
+| water | 7,845 water features above 52 band features, `bandsBelowWater` true |
+| route | Seoul → Krasnoyarsk itemised GMP → PKX → KJA; airport tooltip "Seoul Gimpo International Airport, South Korea" |
+| **rail** | Paris → Lyon: **"by rail via Lyon Perrache (TER 35 : (Chambéry) - Culoz - Ambérieu - Lyon)"** |
+| scheme change | Muted → Vivid moved the water fill `#171a22` → `#15122c` and the first tint to `#fff7a8` **together** |
+| address search | six results; unknown `?from=` says *No departure city called "atlantis"* |
+| console | **0 errors** |
+| viewports | 1280x800, 820x1180, 390x844, 844x390 — all clean, no horizontal scroll, no overlap |
+
+**Cycle-5 work confirmed on the live 553-origin data**, not just locally: the
+departure list opens at Seoul (row 431 of 553, in view); the caption reads
+"Each time is how long it takes to reach that city from Seoul, door to door.
+Choosing one departs from it instead."; a row's accessible name is "Aba. 23 h
+42 min to get there from Seoul, door to door. Choose to depart from Aba.";
+**all eight duplicate rows now carry a suffix** (V5's race fix, which could not
+be observed on the 157-origin index); the "Copy link to this journey" button is
+present; *What this does not know* carries the held-out error; and the reach
+note reads "1.9 % is reached by no scheduled service from anywhere, so it is
+the same share from every departure city."
+
+**`DOC5-1` is closed on the live site.** The Sources panel now credits
+Wikipedia, Wikidata, OurAirports, Natural Earth, GRIP4, OpenStreetMap,
+**GeoNames (CC BY 4.0)**, **HydroLAKES (CC BY 4.0)**, adsb.lol and Nominatim.
+
+### Two failures, both the gate's, neither the page's
+
+The first run exited 1. Both were defects in `browser_verify.sh`, fixed in
+`ae4525a` with the evidence, and the page was correct in both cases.
+
+1. **"expected 18 colour schemes."** The count came from a grep that matched
+   the `RAMPS` table *and* the `OCEANS` table — six sea colours, a different
+   thing — so it demanded 18 from a page that correctly has 12. Wrong since
+   `OCEANS` was added; it would have failed every deploy from here on.
+2. **"an unknown ?from= slug is swallowed silently."** A single read of
+   `#here` ten seconds after navigation, which on a cold cache landed before
+   the message did. Two independent reproductions against the live site both
+   returned the correct text. It polls now.
+
+Re-run after both fixes: **ALL CHECKS PASSED, exit 0.**
+
+### Still open for the owner
+
+- **USER-2, the coastline**, stays open by design: it is the owner's visual
+  judgement, not a measurement. What can be measured is good — zoom-12
+  tileset, 219 water features at z6.2 over Denmark, fjords and islands
+  separated, `bandsBelowWater` true at every zoom checked. A screenshot at
+  z6.2 over Denmark and one at 390x844 over Paris are in the scratchpad.
+- **`TR5-2`**, the rail splice, ships in this data by the orchestrator's
+  decision. Measured on the shipped artifacts: line names are **99.6 %
+  complete** (59 blank of 16,422 across eight sampled origins).
+- **The `/var/folders/` leak** is now in all 553 origin archives as well as
+  `water.pmtiles`' `/users/` one (`U24(b)`, deferred): the build ran the
+  pre-fix emitter. It clears on the next rebuild.
