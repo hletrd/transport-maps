@@ -706,6 +706,31 @@ addEventListener("resize", () => {
 
 // Whether a point is on the visible face of the globe: project() happily
 // returns on-disc coordinates for Lima while the view faces Beijing.
+//: How far outside the globe's silhouette a pointer may stray and still be
+//: treated as pointing at the Earth. The round-trip error below IS that
+//: distance in pixels, so this is a literal tolerance, not a magic number.
+const OFF_GLOBE_PX = 2;
+
+// Is this screen point actually ON the globe?
+//
+// It has to be asked, because MapLibre's unproject does not say. Past the
+// silhouette it CLAMPS to the nearest point on the limb and returns that same
+// coordinate for every pixel further out: measured at zoom 2, every sample
+// from 200 px to 640 px from centre returned 154.87W 8.50N, while the round
+// trip drifted from 30 px to 470 px. So the page reported a real town with a
+// real travel time for a pointer sitting in black sky -- at 225 degrees it
+// read "Munster, Lower Saxony, Germany, 16 h 58 min" with the cursor 600 px
+// out in space, and a click there would have pinned a destination in Germany.
+//
+// project(unproject(p)) round-trips exactly on the globe and misses by the
+// distance outside it beyond the limb, which makes it both the test and the
+// measure.
+function onGlobe(point) {
+  if (!point) return false;
+  const back = map.project(map.unproject(point));
+  return Math.hypot(back.x - point.x, back.y - point.y) <= OFF_GLOBE_PX;
+}
+
 function onNearSide(lat, lng) {
   const ctr = map.getCenter(), rad = Math.PI / 180;
   const cosArc = Math.sin(ctr.lat * rad) * Math.sin(lat * rad)
@@ -1592,6 +1617,10 @@ map.on("mousemove", (e) => {
   if (raf) return;
   raf = requestAnimationFrame(() => {
     raf = 0;
+    // Space is not a place. Off the globe, treat it exactly as the pointer
+    // leaving the canvas does: hide the tip, drop the highlight, and leave the
+    // last real reading standing rather than inventing one.
+    if (!onGlobe(e.point)) { $("tip").hidden = true; clearHighlight(); return; }
     const { lat, lng } = e.lngLat;
     const t = showReading(lat, lng, e.point);
     const tip = $("tip");
@@ -1778,6 +1807,9 @@ function fitReading() {
 }
 
 map.on("click", (e) => {
+  // A click in space is not a destination; without this it pinned whatever
+  // the limb clamped to.
+  if (!onGlobe(e.point)) return;
   const { lat, lng } = e.lngLat;
   const t = showReading(lat, lng, e.point);
   // Open water and unreached land are not destinations: no pin, no panel,

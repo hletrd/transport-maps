@@ -361,3 +361,43 @@ def test_the_boot_guard_does_not_write_an_em_dash():
     the empty state exists to avoid, and it overwrote a correct reading. The
     message belongs in #where; #time is only cleared."""
     assert '"—"' not in BOOT, "the boot guard writes an em dash again"
+
+
+def test_the_pointer_must_be_on_the_globe_before_it_is_read():
+    """MapLibre's unproject does not tell you when it has left the Earth.
+
+    Past the silhouette it CLAMPS to the nearest point on the limb and returns
+    that same coordinate for every pixel further out. Measured live at zoom 2:
+    every sample from 200 px to 640 px from centre returned 154.87W 8.50N while
+    the round trip drifted from 30 px to 470 px. Eight directions were sampled
+    and four of the clamp points land on inhabited ground, so the page reported
+    a real town and a real travel time for a pointer sitting in black sky --
+    at 225 degrees it read "Munster, Lower Saxony, Germany, 16 h 58 min" with
+    the cursor 600 px out in space, and a click there pinned a destination in
+    Germany.
+
+    Both the hover readout and the click have to ask, because both take
+    `e.lngLat` straight from the event.
+    """
+    assert "function onGlobe(point)" in APP
+    move = APP[APP.index('map.on("mousemove"'):]
+    move = move[:move.index("\nmap.on(")]
+    assert "if (!onGlobe(e.point))" in move, "the hover readout reads space as a place"
+
+    click = APP[APP.index('map.on("click"'):]
+    click = click[:click.index("\n});") + 4]
+    assert "if (!onGlobe(e.point)) return;" in click, "a click in space still pins"
+
+
+def test_the_off_globe_tolerance_is_a_distance_not_a_guess():
+    """project(unproject(p)) round-trips exactly on the globe and misses by the
+    distance outside it beyond the limb, so the constant is a literal pixel
+    tolerance. Measured: accepted to 1.37 px past the limb, refused from
+    3.37 px, and the whole globe including the limb stays readable."""
+    body = APP[APP.index("function onGlobe(point)"):]
+    body = body[:body.index("\nfunction ")]
+    assert "map.project(map.unproject(point))" in body, (
+        "the test must be the round trip; nothing else measures how far out it is")
+    assert "OFF_GLOBE_PX" in body
+    tol = float(re.search(r"const OFF_GLOBE_PX = ([\d.]+);", APP).group(1))
+    assert 0 < tol <= 3, f"{tol} px either rejects the limb itself or accepts open space"
