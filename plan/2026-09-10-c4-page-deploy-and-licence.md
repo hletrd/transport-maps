@@ -747,6 +747,47 @@ whose output only changes at the next build; both say so.
   all stay as they were until the full deploy. USER-2's coastline row is NOT
   addressed by this.
 
+  **USER-3 and USER-4, asked for directly and shipped after the big deploy.**
+  Two requests came in after the 553-origin deploy landed, and both are live.
+
+  *An ocean colour, kept in localStorage (USER-3).* The sea was whatever the
+  scheme said. It is now six choices, default "Match the scheme". They were
+  searched for rather than picked: `check_ramps.py` enforces lighter than
+  SPACE, darker than the darkest band, and at least 8 OKLab from all 37 bands
+  -- and because the ocean is chosen independently of the scheme, all three
+  must hold against all twelve at once. That leaves a lightness window of
+  about 0.17 to 0.22, so only hue can vary. `deep #00142b`, `teal #001619`,
+  `forest #051902`, `umber #210d00`, `charcoal #131112`, worst margin 8.8
+  against a floor of 8, closest pair 3.4 apart.
+
+  The other half of the request was already true: the three existing settings
+  did persist, verified on the live site before anything was built. Reporting
+  that the premise was wrong, rather than "fixing" what worked, is recorded
+  here because the temptation runs the other way.
+
+  *The journey drawn on the globe (USER-4).* Dashed to the first airport, a
+  solid great circle per flight, dashed from where you land to the pin;
+  connections draw nothing. It is built from the SAME walk of the SAME chain
+  as the itinerary text -- `renderLegs()` calls `renderRoute()` and nothing
+  else does -- so the line and the caption cannot come to disagree.
+
+  Verified on the LIVE site: Seoul to JFK gives a ground leg to ICN and one
+  air leg of 51 points reaching **77.8 deg N** and unwrapping to longitude
+  **286.2** rather than jumping to -73.8. A surface-only journey draws one
+  dashed line and no air leg. Four viewports clean, zero console entries,
+  553 cities intact.
+
+  **The antimeridian scare, and why it was not one.** Measuring with
+  `map.project()` reported a 1,404 px step between consecutive points at zoom
+  3 -- exactly the wrap artefact to fear. It was the measurement:
+  `project()` normalises longitude into [-180, 180], so a sample at 179 and
+  the next at 181 land on opposite screen edges. Checked against the rendered
+  PIXELS instead: 631 near-white pixels in 113 horizontal runs, longest 32 px,
+  median 4, and **zero runs over 300 px**, which is what a wrap would be. The
+  drawn line also bows 37 px off its own chord over 968 px, so it is a real
+  arc and not a straight line. Recorded because the first number looked like a
+  bug and was an artefact of how it was taken.
+
   **Cycle-4 IDs carry the cycle number.** Cycle 3's designer used a bare
   `A1…A8`, colliding with the build plan's `A1…A17`, and six of those findings
   reached no table at all — the one gap in the audit `plan/README.md` records.
