@@ -1,7 +1,10 @@
 # Plans
 
 Implementation plans derived from the multi-agent reviews in `.context/reviews/`
-(cycle 4: per-agent files plus `_aggregate.md` with merged clusters Y1…Y30 and
+(cycle 6: per-agent files plus `_aggregate.md` with merged clusters AA1…AA47 and
+per-agent IDs CR6-n, PR6-n, SEC6-n, CRIT6-n, VER6-n, TE6-n, TR6-n, ARCH6-n,
+DBG6-n, DOC6-n, UX6-n, FCR6-n; cycle 5: `cycle-5/` with clusters Z1…Z10 and the
+matching `-5` suffixes; cycle 4: per-agent files plus `_aggregate.md` with merged clusters Y1…Y30 and
 per-agent IDs CR4-n, PR4-n, SEC4-n, CRIT4-n, VER4-n, TE4-n, TR4-n, ARCH4-n,
 DBG4-n, DOC4-n, UX4-n, FCR4-n; cycle 3: `cycle-3/` with clusters X1…X21 and
 per-agent IDs CR3-n, PR3-n, SEC3-n, CRIT3-n, VER3-n, TE3-n, TR3-n, ARCH3-n,
@@ -38,10 +41,11 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
 | `2026-09-10-c4-page-deploy-and-licence.md` | Cycle 4: the page a visitor reads, the three defects that would break the deploy, and two licence obligations (U1…U28) | cycle 4: open |
-| `2026-09-10-c5-page-defects-and-ui.md` | Cycle 5: the page defects a visitor hits, the designer's ranked ease-of-use work, the model's own error, and the deploy gates (V1…V28) | cycle 5: open |
+| `2026-09-11-c6-page-defects-privacy-and-licence.md` | Cycle 6: the page a visitor uses, two false statements the site makes about itself, and the gates that cannot see a broken page (C6-1…C6-21) | cycle 6: open |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
 | `archive/2026-09-10-c3-*.md` | Cycle 3 (T1…T31): 28 done; T24, T26 and T28 carried into the cycle-4 plan as U28, U10 and U11 | archived (cycle 4) |
+| `archive/2026-09-10-c5-*.md` | Cycle 5 (V1…V29): every task done or recorded, each with the mutation that proved it; the 553-origin deploy and its browser verification are in its progress section | archived (cycle 6) |
 
 The five cycle-2 plans do not move to `archive/` yet: 37 tasks across them are
 still open, and the archive convention below applies only when every task is
@@ -65,6 +69,29 @@ the cycle number (`CR5-n`, `UX5-n`, `TR5-n` ...), and the merged clusters are
 
 The cycle also closed the one hole the cycle-3 audit left: **TE4-7** reached no
 plan row and no deferred row. It now has one.
+
+Cycle-6 gate state at `dcc99cf`, run independently by two agents (18 min 24 s
+and 18 min 41 s, identical figures): `uv run ruff check .` all checks passed,
+exit 0; `uv run pytest -q` **495 passed, 4 deselected, 5 warnings** (all W1),
+exit 0.
+
+Cycle 6's reviewers raised 60 findings, **47 after dedupe** -- the taper held
+and steepened (269, 112, 137, 78, 70, 47). Twenty-one are scheduled in the c6
+plan; the other twenty-three have a row in `deferred.md` under `# Cycle 6`.
+Four of those are deferred under a rule quoted in their row: two under
+CLAUDE.md's standing design policy, two under the orchestrator's prohibition on
+touching the deploy host. Cycle-6 IDs carry the cycle number (`CR6-n`, `UX6-n`,
+`TR6-n` ...); the merged clusters are `AA1`...`AA47`, and the task IDs are
+`C6-1`...`C6-21` (`W` was not reused -- `W1` is the gates plan's recorded
+warning).
+
+Cycle 6 also corrected three ledger lines rather than leaving them to be
+re-derived: `U24(b)`'s premise (the completed rebuild did **not** clear the
+`/var/folders/` leak, because the build ran pre-fix code loaded at process
+start, so the exit criterion now says *started* after the fix); the c4 claim
+that `check_ramps.py:169` was the only writer bypassing `_io.atomic_write`
+(`calibrate/ground.py:127` and `scripts/adsb_extract.py:188` also do); and
+V21's recorded mutation count (1 red test, not 2).
 
 Cycle-4 IDs carry the cycle number (`CR4-n`, `PR4-n`, `UX4-n` ...). Cycle 3's
 designer used a bare `A1…A8`, which collided with the build plan's `A1…A17`,
