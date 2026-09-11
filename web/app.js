@@ -267,6 +267,10 @@ let lastFrom = null;
 let firstPaint = true;          // the opening view is jumped to, not flown to
 // The readout's resting copy; a phone has no pointer.
 const COARSE = window.matchMedia("(pointer: coarse)").matches;
+// The small-layout breakpoint. Declared here beside COARSE, above every reader,
+// rather than beside layoutForSize() 2,260 lines down: openRoutePanel consults
+// it, and U25 shipped a blank page from a const read before its declaration.
+const SMALL = window.matchMedia("(max-width: 860px)");
 const IDLE_PROMPT = COARSE
   ? "Tap the map to read a travel time. Tap a city name to depart from it."
   : $("where").textContent;
@@ -1540,6 +1544,19 @@ function renderLegsInto() {
     const ds = document.createElement("span"); ds.className = "d"; ds.innerHTML = text;
     d.append(ts, ds); frag.append(d);
   }
+  // The line drawn on the globe ships with no key anywhere a visitor can read
+  // -- "solid is the flown leg, dashed is the ground" lived only in a code
+  // comment beside renderRoute(). Say it under the itinerary the line belongs
+  // to, and only when there is a line: with no air leg there is nothing solid
+  // to distinguish and the sentence would be noise.
+  const flown = rows.some(([, text]) => /\bby air\b|onward by/.test(String(text)))
+    || chain.some((c) => c.kind === "arr");
+  const key = document.createElement("p");
+  key.className = "linekey";
+  key.textContent = flown
+    ? "On the globe, the solid arc is the flight and the dashed lines are the journeys to and from the airports."
+    : "On the globe, the dashed line joins your departure to your destination over the ground.";
+  frag.append(key);
   box.replaceChildren(frag);
   box.hidden = false;
 }
@@ -1818,7 +1835,13 @@ function unfoldSheet() {
 // asked, so the flag is set at the call site.
 function openRoutePanel() {
   const d = $("route");
-  if (!d.open) d.dataset.noScroll = "1";
+  // Suppressing the scroll-into-view is a SMALL-layout measure: there the
+  // panel opening under the reading would shove the answer off a phone. On the
+  // desktop the rail is a tall scrolling column and the guard did the opposite
+  // of its job -- at 1280x800 choosing a destination left "Clear" and "Copy
+  // link to this journey" at y 972-1000 with rail.scrollTop still 0, so the
+  // two things you do next were below the fold with no cue they existed.
+  if (!d.open && SMALL.matches) d.dataset.noScroll = "1";
   d.open = true;
 }
 
@@ -1869,12 +1892,14 @@ function fitReading() {
   legs.style.maxHeight = Math.max(MIN_LEGS_PX, Math.min(room, 0.34 * innerHeight)) + "px";
 }
 
-map.on("click", (e) => {
-  // A click in space is not a destination; without this it pinned whatever
-  // the limb clamped to.
-  if (!onGlobe(e.point)) return;
-  const { lat, lng } = e.lngLat;
-  const t = showReading(lat, lng, e.point);
+// Setting a destination, from a click or from a key press. One body, because
+// the two used to be one body and a promise: the globe is role="application"
+// with a name that says "click to set a destination", which is not something a
+// keyboard visitor can do. Arrows turned it and +/- zoomed it, and then the
+// page's whole point was unreachable without a pointer. Enter now does at the
+// centre of the view what a click does under the cursor.
+function setDestination(lat, lng, point) {
+  const t = showReading(lat, lng, point);
   // Open water and unreached land are not destinations: no pin, no panel,
   // and no request to Nominatim for a point with nothing to say.
   if (t === null || (t != null && t >= MAX_MINUTES)) return;
@@ -1895,6 +1920,30 @@ map.on("click", (e) => {
   // turned naming off still sent every clicked coordinate to Nominatim. The
   // page was telling them otherwise, in writing, on the live site.
   if (namePlaces) reverseGeocode(lat, lng);
+}
+
+map.on("click", (e) => {
+  // A click in space is not a destination; without this it pinned whatever
+  // the limb clamped to.
+  if (!onGlobe(e.point)) return;
+  setDestination(e.lngLat.lat, e.lngLat.lng, e.point);
+});
+// The keyboard route to the same thing. The map container is what MapLibre
+// gives keyboard focus, so the listener goes there; Enter and Space are the
+// two keys a role="application" surface is expected to answer to, and Space
+// would otherwise scroll the page behind the globe.
+$("map").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+  // A modified key press belongs to the browser, not to the globe.
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  e.preventDefault();
+  const c = map.getCenter();
+  const point = map.project(c);
+  // The centre of the view can be off the globe at a shallow pitch, exactly as
+  // a click can be; refuse it the same way rather than reading a clamped
+  // coordinate out of empty space (USER-6).
+  if (!onGlobe(point)) return announce("The centre of the view is not on the globe.");
+  setDestination(c.lat, c.lng, point);
 });
 
 function haversineKm(la1, lo1, la2, lo2) {
@@ -2117,10 +2166,15 @@ function render(filter = "") {
   const hadFocus = box.contains(document.activeElement)
     ? document.activeElement.dataset?.slug : null;
   box.replaceChildren(list);
-  // Roving tabindex: one stop in the tab order (the first row), the arrow
-  // keys walk the rest. 157 rows used to be 157 tab stops between the search
-  // box and the next panel.
-  const first = box.querySelector("button");
+  // Roving tabindex: one stop in the tab order, the arrow keys walk the rest.
+  // 157 rows used to be 157 tab stops between the search box and the next
+  // panel. That stop is the CURRENT DEPARTURE, not row 1: with 553 origins,
+  // tabbing in landed on "Aba" and focusing it reset scrollTop from 11,418 to
+  // 0, undoing by keyboard the very scroll that puts the current departure in
+  // view. A keyboard visitor arrived at the top of an alphabet with no sign
+  // which city the page was measuring from.
+  const first = box.querySelector(`button[aria-current="true"][data-slug]`)
+    ?? box.querySelector("button");
   if (first) first.tabIndex = 0;
   if (hadFocus) {
     const again = box.querySelector(`button[data-slug="${cssEscape(hadFocus)}"]`);
@@ -2526,7 +2580,6 @@ applyLockNorth();
 // closed, so the globe gets the screen. Re-evaluated on rotation; the panels
 // are closed only on the first entry into the small layout, not on every
 // rotation of a phone (which used to fold the route being read).
-const SMALL = window.matchMedia("(max-width: 860px)");
 let smallEntered = false;
 function layoutForSize() {
   const reading = document.querySelector(".reading");
@@ -2609,9 +2662,12 @@ paintOrigin(requested ?? FALLBACK);
 // invites, and which matches no city -- emptied it and the watchdog declared
 // a perfectly healthy page broken twenty-five seconds later.
 document.documentElement.dataset.appReady = "1";
-$("here").textContent = badSlug
+// Through sayHere, like every other outcome written here: a ?from= slug that
+// names no city is a failure a visitor needs told about, and painting it into
+// a plain <p> said it only to whoever was looking at that corner.
+sayHere(badSlug
   ? `No departure city called "${badSlug}"; showing ${(requested ?? FALLBACK).name}.`
-  : `Showing ${(requested ?? FALLBACK).name}.`;
+  : `Showing ${(requested ?? FALLBACK).name}.`);
 // The destination from the address, once the origin's arrays have landed --
 // the reading needs them, and the map needs somewhere to fly to.
 if (requestedPin) {
@@ -2633,17 +2689,24 @@ if (requestedPin) {
 // said what it is for, is the one thing every browser now warns about, and
 // it fired here on every first visit.
 const locate = $("locate");
+// Write the locate line and announce it in one call, so the two cannot drift:
+// every outcome of this button is both visible and spoken, and the empty
+// string clears the line without announcing silence.
+function sayHere(text) {
+  $("here").textContent = text;
+  if (text) announce(text);
+}
 if (!navigator.geolocation) locate.hidden = true;
 locate.addEventListener("click", () => {
   locate.disabled = true;
-  $("here").textContent = "Locating…";
+  sayHere("Locating…");
   // A dismissed permission prompt fires neither callback; do not stay disabled.
   // Clear the status line as well as the button: a dismissed prompt fires
   // neither callback, so re-enabling the button alone left "Locating…" on
   // screen for the rest of the session.
   const release = setTimeout(() => {
     locate.disabled = false;
-    if ($("here").textContent === "Locating…") $("here").textContent = "";
+    if ($("here").textContent === "Locating…") sayHere("");
   }, 10000);
   navigator.geolocation.getCurrentPosition(
     (pos) => {
@@ -2651,7 +2714,12 @@ locate.addEventListener("click", () => {
       locate.disabled = false;
       const { latitude: la, longitude: lo } = pos.coords;
       const c = nearest(la, lo);
-      $("here").textContent = `${c.name} is the nearest departure city to you.`;
+      // #here is a plain <p>: painting it is silent to a screen reader,
+      // and #status never changed, so the locate button had no outcome at
+      // all for anyone not looking at that corner (WCAG 2.2 SC 4.1.3).
+      // The page keeps exactly ONE live region by policy (T4), so this
+      // goes through it rather than making #here a second one.
+      sayHere(`${c.name} is the nearest departure city to you.`);
       map.getSource("me").setData({ type: "FeatureCollection", features: [
         { type: "Feature", geometry: { type: "Point", coordinates: [lo, la] } }] });
       // The surface is the nearest city's, but the view opens on where you
@@ -2664,7 +2732,8 @@ locate.addEventListener("click", () => {
       if (c.slug !== active?.slug && !REDUCED_MOTION.matches) { paintOrigin(c); map.once("moveend", () => moveTo(view)); }
       else { if (c.slug !== active?.slug) paintOrigin(c); moveTo(view); }
     },
-    () => { clearTimeout(release); locate.disabled = false; $("here").textContent = `Location unavailable — showing ${active?.name ?? FALLBACK.name}.`; },
+    () => { clearTimeout(release); locate.disabled = false;
+      sayHere(`Location unavailable — showing ${active?.name ?? FALLBACK.name}.`); },
     { timeout: 8000, maximumAge: 900000 }
   );
 });

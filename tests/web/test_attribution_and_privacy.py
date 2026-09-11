@@ -216,11 +216,20 @@ def test_the_live_region_is_not_hidden_by_the_folded_sheet():
 def test_the_announcement_follows_the_reveal():
     """Writing a hidden region and then revealing it announces nothing: the
     reveal is not a mutation of the region's content."""
-    for fn in ("commitDestination", 'map.on("click"'):
+    # `map.on("click"` used to be one of these. It is not a separate path any
+    # more: the click body became setDestination(), which the click handler and
+    # the new Enter-key handler both call, so the ordering is enforced in one
+    # place instead of two that could drift. Both entry points are asserted to
+    # go through it, so widening the list back out cannot be forgotten.
+    for fn in ("commitDestination", "function setDestination"):
         body = APP[APP.index(fn):]
         body = body[:body.index("renderLegs()")]
         assert body.index("unfoldSheet()") < body.index("announceReading("), (
             f"{fn} announces before it reveals")
+    assert "setDestination(e.lngLat.lat, e.lngLat.lng, e.point)" in APP, (
+        "the click handler no longer goes through setDestination")
+    assert "setDestination(c.lat, c.lng, point)" in APP, (
+        "the keyboard handler no longer goes through setDestination")
 
 
 # --- U27: WCAG 2.2 SC 1.4.11, the boundary that identifies a control --------

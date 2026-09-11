@@ -228,7 +228,7 @@ body.crowded .depart-card{display:none}
 /* Its own line, so the pointer readout cannot erase it. Warm rather than red:
    the times below are still correct, only the shading is missing. */
 .reading .trouble{margin:6px 0 0;padding:6px 8px;font-size:12px;line-height:1.4;
-  color:var(--text-1);background:rgba(224,168,74,.14);
+  color:var(--text-2);background:rgba(224,168,74,.14);
   border-left:2px solid rgba(224,168,74,.7);border-radius:3px}
 .reading .at b{color:var(--text);font-weight:500}
 
@@ -286,6 +286,7 @@ body.crowded .depart-card{display:none}
 .legs h2{margin:0 0 7px;font-size:12px;font-weight:500;
   color:var(--text-3)}
 .leg{display:flex;gap:9px;align-items:baseline;padding:3px 0;font-size:12.5px}
+.legs .linekey{margin:8px 0 0;font-size:11.5px;line-height:1.45;color:var(--text-3)}
 /* 76px, not 58: measured in this page's own 12.5px Plex, "2 h 14 min" is
    59.6px, "14 h 39 min" 67.1px and "120 h 59 min" 74.6px, so at 58px eight
    of the nine rows of a real itinerary wrapped with "min" orphaned on the
@@ -551,7 +552,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   .reading .v{font-size:34px;min-height:34px}
   .reading .at{min-height:0}
   .legend{margin-top:10px}
-  .legs{max-height:20vh}
+  /* NOT a nested scroll box. .rail is already the scrolling surface here, so
+     capping .legs put a second scroller inside it, with an overlay scrollbar,
+     no fade, and a 94%-opaque sticky total that reads as the end of the list.
+     Measured hidden: 99 px at 390x844 and 209 px -- seven of nine legs -- at
+     844x390, where the rail is full height and scrolls perfectly well. Let the
+     itinerary have its length and let the rail do the scrolling. */
+  .legs{max-height:none}
   .results{max-height:26vh}
   .lbl{font-size:10px}
   /* grab handle; the sheet folds to this strip plus the legend, which is
@@ -595,7 +602,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 @media (min-width:601px) and (max-width:860px) and (min-height:700px){
   .rail{max-height:60vh}
   .results{max-height:32vh}
-  .legs{max-height:28vh}
+  .legs{max-height:none}
   .mast{max-width:46vw}
   .mast p{display:block}
   .rail > .reading{padding:14px 18px 12px}
@@ -621,7 +628,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
      reading, and the panel rail -- each with an accessible name, and each
      named by a heading in the outline under the h1. -->
 <main aria-label="Globe">
-  <div id="map" role="application" aria-roledescription="globe" aria-label="Interactive globe shaded by travel time from the selected departure city; drag to rotate, zoom with the buttons or the scroll wheel, click to set a destination"></div>
+  <div id="map" role="application" aria-roledescription="globe" aria-label="Interactive globe shaded by travel time from the selected departure city; drag to rotate, zoom with the buttons or the scroll wheel, click to set a destination. With the globe focused, the arrow keys turn it, plus and minus zoom, and Enter sets the destination at the centre of the view."></div>
 </main>
 
 <header class="mast">
