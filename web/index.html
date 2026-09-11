@@ -315,7 +315,16 @@ body.crowded .depart-card{display:none}
 .rail > *{pointer-events:auto;flex:none}
 .rail .spacer{flex:1 1 auto;min-height:0}
 
+/* position:relative is load-bearing, not decoration. app.js scrolls the
+   current departure into view with `here.offsetTop`, which is measured against
+   the nearest POSITIONED ancestor. Without this the offsetParent was .rail, so
+   the offset carried the whole header above the list and the scroll overshot
+   by 131-176 px: at ?from=seoul the active row rendered at y 167-193 against a
+   box at y 298-618, and the list opened on "Shaoguan ... Srinagar". inView()
+   makes the same measurement, so it agreed the row was visible and never
+   corrected. Deleting this line reopens both. */
 .results{list-style:none;margin:8px 0 0;padding:0;max-height:40vh;overflow-y:auto;
+  position:relative;
   scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
 .results button{
   width:100%;text-align:left;background:none;border:0;cursor:pointer;color:var(--text-2);

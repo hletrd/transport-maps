@@ -2093,6 +2093,15 @@ function render(filter = "") {
     if (here && !inView(box, here)) {
       box.scrollTop = here.offsetTop - box.clientHeight / 2 + here.offsetHeight / 2;
     }
+  } else if (f) {
+    // ...and a filtered list must start at ITS top. replaceChildren does not
+    // reset scrollTop; the browser silently clamps the old value to the new,
+    // much shorter, scroll height. Typing "lond" left scrollTop at 152 -- the
+    // new maximum -- so London itself rendered at y 146-172 against a box at
+    // y 298-618 and the visible list began at "STN London Stansted Airport",
+    // under a live region announcing "9 matches". The answer was on screen in
+    // the DOM and off screen to the visitor.
+    box.scrollTop = 0;
   }
 }
 //: CSS.escape is not in every browser this page supports, and a slug can carry

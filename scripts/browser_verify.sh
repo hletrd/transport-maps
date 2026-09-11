@@ -80,6 +80,39 @@ echo "$CL" | grep -qE '"durations":[1-9][0-9]' || { echo "  !! the city list car
 echo "$CL" | grep -q '"coords":0' || { echo "  !! the city list still ends in coordinates"; fail=1; }
 echo "$CL" | grep -q '"clipped":0' || { echo "  !! a travel time is clipped in the city list"; fail=1; }
 echo "$CL" | grep -q '"departing":1' || { echo "  !! the current departure is not marked in the list"; fail=1; }
+# Where the rows ARE is a separate question from whether they exist, and the
+# page got it wrong twice with nothing to show for it: the list rendered the
+# right rows, announced the right count, and scrolled to a position that put
+# them off screen. Measure the boxes, do not trust the count.
+#   - the current departure must be inside the visible list (offsetTop was
+#     measured against .rail, so the scroll overshot by 131-176 px and the list
+#     opened on "Shaoguan ... Srinagar");
+#   - a filtered list must start at its own top (replaceChildren leaves the old
+#     scrollTop, which the browser clamps: typing "lond" put London itself
+#     126 px above the box while the visible list began at "STN London
+#     Stansted Airport").
+VIS=$(agent-browser eval '(()=>{const box=document.getElementById("results");
+  const here=box.querySelector("button[aria-current=\"true\"][data-slug]");
+  if(!here)return JSON.stringify({err:"no current departure row"});
+  const b=box.getBoundingClientRect(),h=here.getBoundingClientRect();
+  return JSON.stringify({name:here.textContent.trim().slice(0,24),
+    inView:h.top>=b.top-1&&h.bottom<=b.bottom+1,
+    above:Math.round(b.top-h.top),scrollTop:Math.round(box.scrollTop),
+    parent:(here.offsetParent||{}).id||"(none)"})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  current departure in view: $VIS"
+echo "$VIS" | grep -q '"inView":true' || { echo "  !! the current departure is scrolled out of the visible list"; fail=1; }
+echo "$VIS" | grep -q '"parent":"results"' || { echo "  !! .results is not the offsetParent the scroll maths assumes"; fail=1; }
+agent-browser eval '(()=>{const q=document.getElementById("q");q.value="lond";q.dispatchEvent(new Event("input",{bubbles:true}));return 1})()' >/dev/null 2>&1; sleep 2
+FIL=$(agent-browser eval '(()=>{const box=document.getElementById("results");
+  const bs=[...box.querySelectorAll("button[data-slug],button[data-code]")];
+  const b=box.getBoundingClientRect();
+  const shown=bs.filter(x=>{const r=x.getBoundingClientRect();return r.top>=b.top-1&&r.bottom<=b.bottom+1});
+  return JSON.stringify({rows:bs.length,scrollTop:Math.round(box.scrollTop),
+    firstVisible:(shown[0]||{textContent:""}).textContent.trim().slice(0,28),
+    hidden:bs.length-shown.length})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  filtered list: $FIL"
+echo "$FIL" | grep -q '"scrollTop":0' || { echo "  !! a filtered list keeps the unfiltered scroll position and hides its own matches"; fail=1; }
+agent-browser eval '(()=>{const q=document.getElementById("q");q.value="";q.dispatchEvent(new Event("input",{bubbles:true}));return 1})()' >/dev/null 2>&1; sleep 2
 # The coast is a separate static tileset drawn above the bands. A missing or
 # empty water.pmtiles shows no console error -- the shore just goes back to
 # being hex-shaped -- so ask the map whether water features actually rendered.
