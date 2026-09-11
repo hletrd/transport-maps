@@ -1888,7 +1888,13 @@ map.on("click", (e) => {
   renderLegs();
   revealReading();
   syncPermalink();
-  reverseGeocode(lat, lng);
+  // The setting is called "Name the place under the cursor" and the privacy
+  // section promises that unticking it "stops the second kind entirely" --
+  // the second kind being exactly this call. It was made unconditionally:
+  // namePlaces gated only the LOCAL places.json lookups, so a visitor who had
+  // turned naming off still sent every clicked coordinate to Nominatim. The
+  // page was telling them otherwise, in writing, on the live site.
+  if (namePlaces) reverseGeocode(lat, lng);
 });
 
 function haversineKm(la1, lo1, la2, lo2) {

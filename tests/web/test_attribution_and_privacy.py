@@ -115,11 +115,36 @@ def test_the_privacy_policy_describes_what_the_page_actually_does():
     body = HTML[HTML.index('id="privacy"'):]
     body = body[:body.index("</details>")]
 
-    # Geolocation is opt-in and never leaves the browser.
-    assert "not sent anywhere" in body
+    # Geolocation is opt-in and the POSITION never leaves the browser.
+    assert "never sent to this site or to anyone else" in body
     assert "navigator.geolocation.getCurrentPosition" in APP
     assert "geolocation" not in APP.split("const NOMINATIM")[1][:2000], (
         "the policy says the position is never sent; something sends it")
+    # ...but what it DERIVES does leave, and the policy said otherwise.
+    # "Show my location" picks the nearest departure city and calls
+    # paintOrigin, which calls syncPermalink, which writes ?from=<slug> into
+    # the address bar -- and the address bar is what GA4 records as
+    # page_location. The old wording, "it is not sent anywhere", was true of
+    # the coordinates and false of the answer. Both halves have to be said.
+    assert "address bar" in body and "page location" in body, (
+        "the locate paragraph no longer says the chosen city reaches the "
+        "address bar, and therefore the analytics page path")
+    assert 'syncPermalink' in APP
+
+    # The setting called "Name the place under the cursor" has to stop the
+    # thing the policy says it stops. namePlaces gated only the LOCAL
+    # places.json lookups, so a visitor who had switched naming off still sent
+    # every clicked coordinate to Nominatim while the page promised in writing
+    # that unticking the box "stops the second kind entirely".
+    assert "stops the" in body and "entirely" in body
+    assert re.search(r"if \(namePlaces\) reverseGeocode\(", APP), (
+        "the privacy policy promises the setting stops the click "
+        "reverse-geocode; reverseGeocode is called without consulting it")
+    # Nothing else may call it unconditionally either.
+    for m in re.finditer(r"^[^\n/]*\breverseGeocode\(", APP, re.M):
+        line = APP[APP.rfind("\n", 0, m.start()) + 1:APP.find("\n", m.start())]
+        assert "async function" in line or "namePlaces" in line, (
+            f"reverseGeocode is called without the setting: {line.strip()!r}")
 
     # localStorage holds preferences only: the ramp name and two booleans.
     #

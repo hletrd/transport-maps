@@ -869,8 +869,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          &ldquo;Name the place under the cursor&rdquo; in Settings stops the
          second kind entirely.</p>
       <p><b>What stays on your device.</b> &ldquo;Show my location&rdquo; asks
-         the browser for your position and uses it only in the page, to draw a
-         dot and name the nearest departure city; it is not sent anywhere. Your
+         the browser for your position. The position itself is used only in the
+         page, to draw a dot and work out which departure city is nearest, and
+         is never sent to this site or to anyone else. The city it picks does
+         leave, though, in the ordinary way: choosing a departure writes its
+         name into the address bar, and the address bar is what the analytics
+         tag records as the page location. So the reading is your nearest
+         listed city, not where you are. Your
          colour scheme, your ocean colour and the two Settings switches are
          kept in this browser&rsquo;s local storage and go no further.
          Everything else the map does is computed in your browser from files
