@@ -826,6 +826,57 @@ whose output only changes at the next build; both say so.
   failure is itself code that can fail silently, and the only thing that found
   this was opening the page and doing what a visitor would do.
 
+  **USER-6 -- a real town and a real time, out in empty space.** "지구본
+  가장자리로 갔을 때 맵 좌표가 틀리게 나오는것같아." MapLibre's `unproject`
+  does not say when it has left the Earth: past the silhouette it CLAMPS to
+  the nearest point on the limb and returns that coordinate for every pixel
+  further out. At zoom 2 every sample from 200 px to 640 px from centre came
+  back 154.87W 8.50N while the round trip drifted from 30 px to 470 px, and
+  four of eight sampled directions clamp onto inhabited ground. With the
+  cursor 600 px out in black sky the readout said "Munster -- Lower Saxony,
+  Germany, 16 h 58 min", and a click there pinned a destination in Germany.
+
+  This is worse than a wrong number, because nothing about it looks wrong.
+  Fixed in `f914f00`: `project(unproject(p))` round-trips exactly on the globe
+  and misses by the distance outside it beyond the limb, so the same quantity
+  is both the test and the measure, and `OFF_GLOBE_PX = 2` means literally two
+  pixels past the silhouette rather than a tuned constant. Off the globe the
+  hover behaves as the pointer leaving the canvas does; a click does nothing.
+  Accepted to 1.37 px past the limb, refused from 3.37 px, so no dead band.
+
+  **USER-7 -- the dot marking a city was not on the city.** "도시 점 찍힌
+  좌표가 틀려." The label was anchored "top", so the coordinate was the
+  top-centre of the whole box -- the middle of the NAME -- while the dot sat
+  inline to its left. The error therefore grew with the length of the name:
+  Tokyo 23 px, Beijing 27, Shanghai 32, Hangzhou 34, which is 56 to 83 km on
+  the ground at zoom 5. Fixed in `1fb1430` by anchoring dotted labels "left"
+  and placing the dot with CSS rather than a pixel offset that would go stale
+  at the phone breakpoint; a bare place name keeps hanging below its point,
+  since it claims nothing. Every dot now within 1.2 px, and the 0.6-3 km that
+  remains is places.json against origins.toml, not layout.
+
+  Recorded because of what happened in the middle: the first attempt put
+  `position:relative` on the label to anchor the dot, which overrode
+  MapLibre's own `position:absolute`, dropped every label into normal flow,
+  and put Tokyo's dot **726 km** from Tokyo. Caught by measuring, not by
+  rereading, and there is a test for it now.
+
+  **USER-8 -- the figure you clicked for lasted a tenth of a second.** "한번
+  클릭하면 시간 표출되는건 유지가 되어야지." `#time` was a pure hover readout,
+  so the next mouse move overwrote a committed reading. Fixed in `a5be9a4`: a
+  pinned destination owns the headline, and hovering explores through the
+  tooltip, which already carries the hovered time. Three paths had to follow
+  -- clearing hands the headline back, `rereadPointer` re-reads the PIN rather
+  than the last pointer position (or switching city silently swapped the
+  headline to another place), and with nothing pinned hover behaves as before.
+
+  **What the three have in common, and USER-5 with them.** None was found by
+  reading a diff. Each came from opening the live site and doing what a
+  visitor does, then measuring what came back rather than trusting how it
+  looked. Two of them -- the clamped coordinate and the watchdog -- produced
+  confident, plausible, completely wrong output that no error would ever have
+  reported.
+
   **Cycle-4 IDs carry the cycle number.** Cycle 3's designer used a bare
   `A1…A8`, colliding with the build plan's `A1…A17`, and six of those findings
   reached no table at all — the one gap in the audit `plan/README.md` records.
