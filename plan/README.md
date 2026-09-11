@@ -41,7 +41,7 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
 | `2026-09-10-c4-page-deploy-and-licence.md` | Cycle 4: the page a visitor reads, the three defects that would break the deploy, and two licence obligations (U1…U28) | cycle 4: open |
-| `2026-09-11-c6-page-defects-privacy-and-licence.md` | Cycle 6: the page a visitor uses, two false statements the site makes about itself, and the gates that cannot see a broken page (C6-1…C6-21) | cycle 6: open |
+| `2026-09-11-c6-page-defects-privacy-and-licence.md` | Cycle 6: the page a visitor uses, two false statements the site makes about itself, and the gates that cannot see a broken page (C6-1…C6-21) | cycle 6: **all 21 done** |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
 | `archive/2026-09-10-c3-*.md` | Cycle 3 (T1…T31): 28 done; T24, T26 and T28 carried into the cycle-4 plan as U28, U10 and U11 | archived (cycle 4) |
@@ -84,6 +84,17 @@ touching the deploy host. Cycle-6 IDs carry the cycle number (`CR6-n`, `UX6-n`,
 `TR6-n` ...); the merged clusters are `AA1`...`AA47`, and the task IDs are
 `C6-1`...`C6-21` (`W` was not reused -- `W1` is the gates plan's recorded
 warning).
+
+Cycle 6 landed all 21 of its tasks across twelve signed commits
+(`67993e2`…`ca40a83`), each guard shown red under the mutation named in the
+plan's progress table. Two of the cycle's OWN new tests were vacuous when first
+written -- in both cases an assertion over source text was satisfied by the
+comment explaining the code -- and both were caught by running the mutation
+rather than by rereading. The rule that follows is in the plan: **an assertion
+over source text must strip comments first.** A lint gate was also run as
+`ruff check . | tail -2 && git commit`, where the pipeline's exit status is
+`tail`'s; two errors shipped and were fixed in `ca40a83`. **Read a gate's own
+exit status; never chain it.**
 
 Cycle 6 also corrected three ledger lines rather than leaving them to be
 re-derived: `U24(b)`'s premise (the completed rebuild did **not** clear the

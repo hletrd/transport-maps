@@ -170,3 +170,79 @@ did.
   (60 raw findings, 47 after dedupe, clusters `AA1`–`AA47`). Every finding is
   either scheduled above or recorded in `deferred.md` with its citation,
   unchanged severity and confidence, a concrete reason and an exit criterion.
+
+- 2026-09-11 cycle 6 done: **all 21 tasks landed**, across 12 signed commits
+  (`67993e2`…`ca40a83`), plus the plan commit `88ebe07`.
+
+  | Task | Commit | The mutation that proved it |
+  |---|---|---|
+  | C6-1 | `67993e2` | `else if (f)` branch deleted -> red |
+  | C6-2 | `67993e2` | `position:relative` deleted from `.results` -> red |
+  | C6-3 | `890232f` | `lastPointer = null` dropped from either clear site -> red |
+  | C6-4 | `890232f` | `clearTime` dropped from the failure catch -> red |
+  | C6-5 | `318b341` | `&& SMALL.matches` dropped -> red |
+  | C6-6 | `318b341` | `.legs` capped at `20vh` again -> red |
+  | C6-7 | `318b341` | tab stop back on row 1 -> red |
+  | C6-8 | `cf6ec55` | the redraw call dropped -> red |
+  | C6-9 | `8e0c591` | `e?.sourceId` dropped -> red; layer decision reverted to the URL regex -> red |
+  | C6-10 | `c5efaf3` | `say()` called unconditionally -> 2 red; `ourRejection` always false -> 1 red |
+  | C6-11 | `f1229a9` | `reverseGeocode` ungated -> red; "not sent anywhere" restored -> red |
+  | C6-12 | `550b979` | a licence text deleted -> red; the NOTICE deleted -> red; the page link removed -> red |
+  | C6-13 | `318b341` | `announce(text)` dropped from `sayHere` -> red |
+  | C6-14 | `318b341` | the globe's keydown listener removed -> red |
+  | C6-15 | `550b979` | "median of about 9 minutes" restored -> red |
+  | C6-16 | `318b341` | the line key not appended -> red |
+  | C6-17 | `318b341` | `--text-1` restored -> red |
+  | C6-18 | `5035816` | a syntax error in `app.js` -> red; one in `boot.js` -> red; `boot.js` deleted -> red |
+  | C6-19 | `6afcc4a` | `greatCircle` flattened -> 1 red; `unwrap` made identity -> 2 red; the `d > 1e-9` guard deleted -> 1 red |
+  | C6-20 | `064399d` | a config-derived scalar added to `write_index` -> red on `'coarseRes'`; `"generator_options"` re-added -> 2 red |
+  | C6-21 | `5035816` | "is not run from here" restored -> red; `23/10` restored -> red; a non-existent test named -> red; the hand-typed list restored -> red |
+
+  Every guard above was run red under the mutation named and green after
+  reverting it, as CLAUDE.md requires. Nothing was taken on reading.
+
+### Three things this cycle got wrong, and how
+
+Recorded because the corrections are the reusable part.
+
+**Two of this cycle's own new tests were vacuous, and the mutation caught both
+after the test read as obviously correct.**
+
+- The airports-redraw test asserted `"renderRoute()" in` the fetch block. The
+  *explanatory comment* beside the call contains that string, so it stayed
+  green with the code deleted. Comments are stripped before matching now.
+- The page-gate test asserted `tests/web/` appeared in `page_gate`. The comment
+  explaining why the directory is used contains it. Same fix, same lesson,
+  twice in one cycle: **an assertion over source text must strip comments, or
+  the prose defending the code becomes the evidence for it.**
+
+**A lint gate was run as `ruff check . | tail -2 && git commit`, and a
+pipeline's exit status is its last command's.** `tail` succeeded, ruff's two
+RUF007 errors were invisible, and the commit went through carrying them. Fixed
+in `ca40a83`. This is the same `&&` trap the cycle-5 record names for pytest,
+reached from the other side: **read a gate's own exit status; never chain it
+behind anything.**
+
+**One finding's premise did not survive checking.** `UX6-5` said the canvas's
+accessible name promises "Enter sets a destination". It does not, at `dcc99cf`
+or on the live site: it says "click to set a destination". The finding was
+nonetheless real and larger than stated -- a `role="application"` surface that
+answers arrows and `+`/`-` but not Enter, telling a keyboard visitor to click.
+Fixed by making the promise true rather than by narrowing the name, which is
+what the brief ("ease of usage") asks for. Scheduling a fix on an unverified
+premise would have produced a worse page and a green test.
+
+### What this cycle did not do
+
+- **`AA6`**, the res-4 reading against the res-6 ring, is the largest remaining
+  honesty gap on the page: **28.0 % of sampled land points read a band the map
+  does not paint under them.** Its cheap fix is a visible change to the ring,
+  which CLAUDE.md's standing design policy puts outside a cycle's reach.
+  Deferred with that rule quoted. It is the first thing to raise with the owner.
+- **`AA9`**, four shipped route-mode tooltips carrying pre-fix prose including
+  a published-figure default described as "fitted", is a CLAUDE.md provenance
+  breach that no code change can reach: `reindex` carries `modeDetail` forward
+  by design. It clears on the orchestrator's next rebuild.
+- **`AA40`**, 478,986 bytes per cold load from serving an 867 MB static
+  coastline `no-cache`, is a one-line server change nobody has approved.
+- `USER-2`, the coastline, is the owner's judgement and stays open.
