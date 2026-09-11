@@ -68,8 +68,45 @@
     say("script error", e && (e.message || e.error));
   }, true);
 
+  // The same population, reaching the same conclusion down the other listener.
+  // f968217 stopped a BLOCKED SCRIPT LOAD from declaring the page dead; it did
+  // nothing about a blocked fetch. gtag.js loads fine and then POSTs to its
+  // collection endpoint, and extensions, Pi-hole and corporate resolvers
+  // commonly intercept at the fetch layer rather than the script load. That
+  // surfaces as an unhandled "TypeError: Failed to fetch", which set
+  // body.fatal and hid the entire side rail again -- the identical visible
+  // symptom, via the other listener.
+  //
+  // A PromiseRejectionEvent carries no URL, so ourOwn() cannot be applied to
+  // it. The stack is the only attribution available: a rejection raised by
+  // this origin's own code names this origin in it.
+  //
+  // Reporting is therefore conservative here, and deliberately so. app.js
+  // catches every promise chain it owns, so an unattributable rejection is
+  // almost always someone else's -- and if it is genuinely ours, appReady is
+  // never set and the 25-second watchdog below still reports it. The cost of
+  // being wrong in this direction is a generic message 25 seconds late; the
+  // cost of being wrong in the other is deleting the side rail from a page
+  // that is working, which this site has already shipped once.
+  function ourRejection(reason) {
+    var stack = reason && typeof reason === "object" && typeof reason.stack === "string"
+      ? reason.stack : "";
+    // A "null" origin (file://) would match half the strings in a stack.
+    if (!stack || location.origin.length < 8) return false;
+    return stack.indexOf(location.origin) !== -1;
+  }
+
   window.addEventListener("unhandledrejection", function (e) {
     var r = e && e.reason;
+    if (!ourRejection(r)) {
+      // Not silent: it goes to the console, where a developer looking at a
+      // misbehaving page will find it. It just does not condemn the page.
+      if (window.console && window.console.warn) {
+        window.console.warn("unattributed promise rejection (not treated as fatal):",
+                            r && (r.message || r));
+      }
+      return;
+    }
     say("unhandled error", r && (r.message || r));
   });
 

@@ -42,8 +42,12 @@ const timers = [];
 
 const element = (id) => (elements[id] ||= { id, textContent: "" });
 
+const warnings = [];
 const window = {
   addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+  // boot.js sends an unattributable rejection here instead of condemning the
+  // page. Capture it, so a test can assert it was reported rather than eaten.
+  console: { warn: (...a) => warnings.push(a.map(String).join(" ")) },
 };
 const document = {
   body: {
@@ -79,7 +83,12 @@ for (const step of opts.steps) {
   } else if (step.kind === "scriptError") {
     fire("error", { target: window, message: step.message });
   } else if (step.kind === "rejection") {
-    fire("unhandledrejection", { reason: { message: step.message } });
+    // A real PromiseRejectionEvent's reason is usually an Error, whose stack
+    // names the script that raised it. That stack is the only attribution
+    // boot.js has -- the event carries no URL the way a resource error does.
+    var reason = { message: step.message };
+    if (step.stack !== undefined) reason.stack = step.stack;
+    fire("unhandledrejection", { reason: reason });
   } else if (step.kind === "settle") {
     // The page finishes loading, then the watchdog's timer comes due.
     fire("load", {});
@@ -94,6 +103,7 @@ process.stdout.write(JSON.stringify({
   where: (elements.where || {}).textContent || "",
   time: (elements.time || {}).textContent || "",
   watchdogArmed: timers.some((t) => t.ms >= 20000),
+  warnings: warnings,
 }));
 """
 
@@ -202,13 +212,59 @@ def test_the_watchdog_stays_quiet_when_the_page_worked(harness: Path) -> None:
     assert not seen["fatal"], "a page that finished starting was called dead"
 
 
-def test_a_script_error_and_a_rejection_are_both_reported(harness: Path) -> None:
+def test_a_script_error_and_our_own_rejection_are_both_reported(harness: Path) -> None:
     """Mutation: remove either listener."""
     err = run_boot(harness, {"kind": "scriptError", "message": "x is not defined"})
     assert err["fatal"] and "x is not defined" in err["where"]
 
-    rej = run_boot(harness, {"kind": "rejection", "message": "fetch failed"})
+    rej = run_boot(harness, {"kind": "rejection", "message": "fetch failed",
+                             "stack": f"TypeError: fetch failed\n    at settle ({SITE}app.js:1166:9)"})
     assert rej["fatal"] and "fetch failed" in rej["where"]
+
+
+def test_a_blocked_analytics_beacon_does_not_declare_the_page_dead(harness: Path) -> None:
+    """The other half of the defect `f968217` fixed, down the other listener.
+
+    That commit stopped a BLOCKED SCRIPT LOAD from setting body.fatal. It did
+    nothing about a blocked fetch: gtag.js loads fine and then POSTs to its
+    collection endpoint, and extensions, Pi-hole and corporate resolvers
+    commonly intercept there rather than at the script load. The result is an
+    unhandled "TypeError: Failed to fetch" whose stack names googletagmanager,
+    not this origin -- and `index.html`'s `body.fatal .rail{display:none}` then
+    deleted the city list, the search box, Settings and the sources panel from
+    a page whose globe was drawing perfectly.
+
+    Mutation performed and reverted: drop the `ourRejection` guard and call
+    `say()` unconditionally -> this test goes red and the two below stay green,
+    which is what makes the set non-vacuous in both directions.
+    """
+    seen = run_boot(harness, {
+        "kind": "rejection", "message": "Failed to fetch",
+        "stack": ("TypeError: Failed to fetch\n"
+                  "    at https://www.googletagmanager.com/gtag/js?id=G-2NYW09JSK2:212:319"),
+    }, ready=True)
+    assert not seen["fatal"], (
+        "a blocked analytics beacon declared a working page dead")
+    assert seen["where"] == "", "it wrote the failure notice anyway"
+    assert any("Failed to fetch" in w for w in seen["warnings"]), (
+        "the rejection was swallowed entirely; it must still reach the console")
+
+
+def test_a_rejection_with_no_stack_is_not_fatal_but_the_watchdog_still_arms(
+        harness: Path) -> None:
+    """A rejection that cannot be attributed must not condemn the page.
+
+    A bare rejected string, or a cross-origin opaque failure, carries no stack.
+    Guessing "ours" there is what hid the side rail; guessing "theirs" costs
+    nothing, because if the page really did die then `appReady` is never set
+    and the 25-second watchdog reports it anyway. That backstop is the reason
+    this direction is safe, so assert it is still armed.
+    """
+    seen = run_boot(harness, {"kind": "rejection", "message": "nope"},
+                    {"kind": "settle"}, ready=False)
+    assert seen["fatal"], "the watchdog did not catch a page that never started"
+    assert "nothing finished loading" in seen["where"], (
+        "the rejection was reported as the cause when it could not be attributed")
 
 
 def test_only_the_first_report_is_shown(harness: Path) -> None:
