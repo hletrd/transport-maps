@@ -2025,7 +2025,22 @@ const countryName = (() => {
 
 fetch("./airports.json")
   .then((r) => (r.ok ? r.json() : null))
-  .then((a) => { if (a) airports = a.airports.map((row) => Object.assign(row, { key: fold(row[1]) })); })
+  .then((a) => {
+    if (!a) return;
+    airports = a.airports.map((row) => Object.assign(row, { key: fold(row[1]) }));
+    // The drawn journey resolves every one of its points through this table,
+    // and so does the itinerary's airport naming. Before it lands, every
+    // lookup returns undefined and the globe draws ZERO route features against
+    // a complete ICN -> EWR itinerary printed beside it -- which falsifies the
+    // drawing code's own comment that "the line and the text cannot disagree".
+    // Reachable on any cold load, and reliably through a ?to= permalink, which
+    // restores the destination while this fetch is still in flight.
+    //
+    // renderLegs, not the drawing half alone: it redraws BOTH from one walk of
+    // the chain, which is the invariant test_app_constants.py pins (one call
+    // site, so the line and the text can never be two interpretations).
+    if (pinB) renderLegs();
+  })
   .catch(() => {});
 function render(filter = "") {
   const f = fold(filter.trim());

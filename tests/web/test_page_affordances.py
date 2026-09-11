@@ -166,3 +166,32 @@ def test_the_journey_line_on_the_globe_has_a_key():
     body = body[:body.index("frag.append(key)")]
     assert "solid" in body and "dashed" in body, (
         "the key no longer says which line is which")
+
+
+def test_the_drawn_journey_is_redrawn_when_the_airport_table_lands():
+    """`renderRoute()` resolves every point through `airports`.
+
+    That table is fetched once, asynchronously, and nothing re-rendered when it
+    arrived. Before it lands every airport lookup returns undefined and the
+    globe draws ZERO route features against a complete ICN -> EWR itinerary
+    printed beside it -- falsifying renderRoute's own comment that "the line
+    and the text cannot disagree". A `?to=` permalink restores the destination
+    while the fetch is still in flight, so it is not a narrow race.
+
+    Mutation performed and reverted: drop the `renderRoute()` call from the
+    airports.json handler -> red.
+    """
+    m = re.search(r'fetch\("\./airports\.json"\)(.*?)\.catch', APP, re.S)
+    assert m, "the airports.json fetch has moved; re-derive this test"
+    # Strip the comments FIRST. Written without this, the assertion was
+    # satisfied by the explanatory comment beside the call -- the exact vacuity
+    # CLAUDE.md warns about, found here by running the mutation rather than by
+    # reading the test.
+    body = re.sub(r"//.*", "", m.group(1))
+    assert "renderLegs()" in body, (
+        "nothing redraws the journey when the airport table arrives")
+    # It must be renderLegs, not renderRoute: test_app_constants.py requires a
+    # single renderRoute call site so the line and the text cannot become two
+    # interpretations of one chain. Redrawing both from one walk satisfies
+    # both invariants, and the itinerary's airport NAMES need the table too.
+    assert "renderRoute()" not in body
