@@ -70,6 +70,32 @@ def test_the_itinerary_is_not_trapped_in_a_scroll_box_inside_a_scroll_box():
             f"the itinerary is capped inside a scrolling rail: {block!r}")
 
 
+def test_the_landscape_phone_keeps_the_legend_on_screen():
+    """The one place the itinerary MUST stay capped, and why.
+
+    `#legs` is inside `.reading`, so an uncapped itinerary makes the reading
+    block taller than the 390 px landscape rail -- and `revealReading()`'s
+    `scrollIntoView({block:"nearest"})` on an over-tall element aligns its
+    BOTTOM, carrying `#time`, `#tints` and `#scale` off the top. CLAUDE.md
+    makes the legend's visibility a standing rule, so it wins.
+
+    Measured live at 844x390 with a nine-leg itinerary (natural height 418 px):
+    `.reading` comes to 347 px at 20vh, 386 px at 30vh and 409 px at 36vh
+    against a 390 px viewport. 30vh is the largest cap that fits.
+
+    This is not a matter of taste, so it gets a test. Mutation performed and
+    reverted: raise the landscape cap to 36vh, or remove it -> the deploy
+    gate's landscape viewport check goes red on time, legend AND scale. That
+    failure was observed twice before this cap was chosen.
+    """
+    land = _media("@media (max-width:860px) and (orientation:landscape)")
+    m = re.search(r"\.legs\{max-height:(\d+)vh\}", land.replace(" ", ""))
+    assert m, "the landscape itinerary is uncapped; the legend scrolls off screen"
+    assert int(m.group(1)) <= 30, (
+        f"the landscape cap is {m.group(1)}vh; above 30vh the reading block "
+        "exceeds the 390 px rail and takes the legend with it")
+
+
 def test_the_route_panel_scrolls_itself_into_view_on_the_desktop():
     """The `noScroll` guard is a small-layout measure and was applied to both.
 

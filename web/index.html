@@ -614,6 +614,20 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 
 /* phones on their side: too short for a bottom sheet; use a narrow right rail */
 @media (max-width:860px) and (orientation:landscape){
+  /* The one place the itinerary must stay capped, and it is arithmetic rather
+     than taste. `#legs` lives INSIDE `.reading`, so an uncapped itinerary makes
+     the whole reading block taller than this rail -- and `revealReading()`'s
+     scrollIntoView({block:"nearest"}) on an over-tall element aligns its
+     BOTTOM, carrying #time, #tints and #scale off the top of the screen.
+     CLAUDE.md: "The legend is always visible."
+
+     Measured at 844x390 with a nine-leg itinerary (natural height 418 px,
+     viewport 390 px), `.reading` comes to: 20vh -> 347 px, 30vh -> 386 px,
+     36vh -> 409 px. 30vh is the largest cap that still fits, so that is the
+     cap: 117 px of itinerary rather than the old 78, and the legend stays.
+     Portrait and tablet are uncapped -- both measured clean at every viewport
+     the deploy gate checks -- so this rule is the exception, not the rule. */
+  .legs{max-height:30vh}
   .rail{top:0;bottom:0;left:auto;right:0;width:min(300px,46vw);max-height:none;
     border-top:0;border-left:1px solid var(--line)}
   .mast{max-width:40vw}

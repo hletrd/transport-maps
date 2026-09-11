@@ -167,30 +167,6 @@ echo "  zoom 3: $Z"
 echo "$Z" | grep -qE '"bands":[1-9]' && echo "$Z" | grep -qE '"water":[1-9]' || { echo "  !! nothing painted at zoom 3"; fail=1; }
 echo "$Z" | grep -qE '"borders":[1-9]' || { echo "  !! the borders layer rendered nothing"; fail=1; }
 agent-browser screenshot "$SHOTS/verify_zoom3.png" >/dev/null 2>&1
-# The notice that explains a blank globe has to be reachable by the errors that
-# actually cause one. It was not: the handler tested the message text against
-# /pmtiles|tile|source/i, and pmtiles.js emits none of those words -- its real
-# failures read "Bad response code: 404" and "archive does not appear to support
-# HTTP Byte Serving". Withholding the archives from a local copy of the real
-# dist/ measured bandsRendered:0, waterRendered:0 and #tiletrouble still hidden.
-# The old guard passed review because its check fired a synthetic error carrying
-# the literal string "pmtiles".
-#
-# Fire the two REAL messages through the map's own error channel, with the
-# sourceId MapLibre attaches, and require the notice to appear and to name the
-# right layer. The page is reopened immediately after, which clears it.
-TT=$(agent-browser eval '(()=>{const m=window.__map,el=document.getElementById("tiletrouble");
-  const fire=(sourceId,message)=>{m.fire("error",{error:new Error(message),sourceId:sourceId});
-    return {hidden:el.hidden,text:el.textContent.slice(0,60)};};
-  const bands=fire("bands","Bad response code: 404");
-  el.hidden=true;el.textContent="";
-  const water=fire("water","archive does not appear to support HTTP Byte Serving");
-  return JSON.stringify({bands:bands,water:water})})()' 2>&1 | tail -1 | tr -d '\\')
-echo "  tile-failure notice: $TT"
-echo "$TT" | grep -q '"bands":{"hidden":false' || { echo "  !! a real band-tile failure shows no notice: a blank globe would be silent"; fail=1; }
-echo "$TT" | grep -q '"water":{"hidden":false' || { echo "  !! a real coastline failure shows no notice"; fail=1; }
-echo "$TT" | grep -q 'The shaded bands could not be loaded' || { echo "  !! the band-tile notice names the wrong layer"; fail=1; }
-echo "$TT" | grep -q 'The coastline could not be loaded' || { echo "  !! the coastline notice names the wrong layer"; fail=1; }
 # A permalink selects its departure AND restores the destination. ?from=
 # carried the departure and nothing else, so the interesting half of a reading
 # could not be shared: the link reopened the city, not the journey.
@@ -227,10 +203,17 @@ echo "=== a searched destination writes the answer, not only the itinerary ==="
 # itinerary describing the new one. The check is that the two agree.
 agent-browser eval '(()=>{const q=document.getElementById("q");q.value="JFK";q.dispatchEvent(new Event("input",{bubbles:true}));
   const b=document.querySelector(".results button[data-airport]");if(!b)return 0;b.click();return 1})()' >/dev/null 2>&1; sleep 4
-S=$(agent-browser eval '(()=>{const l=document.getElementById("legs").innerText.split("\n").filter(Boolean);
-  const norm=t=>t.replace(/\s+/g,"").replace(/min$/,"");
-  return JSON.stringify({head:document.getElementById("time").innerText.replace(/\n/g," "),
-   total:(l[l.length-2]||""),agree:norm(document.getElementById("time").innerText)===norm(l[l.length-2]||"x"),
+# The total is found by its CLASS, not by counting lines from the end. It was
+# `l[l.length-2]`, which assumed the last two lines of #legs were the total's
+# time and its label -- so appending anything after the itinerary shifted the
+# read by one and the check failed on a page that was correct. It did exactly
+# that when the journey-line key landed. A positional read of rendered text is
+# the same fragility that produced two false failures in cycle 5.
+S=$(agent-browser eval '(()=>{const t=document.querySelector("#legs .leg.total .t");
+  const norm=x=>String(x).replace(/\s+/g,"").replace(/min$/,"");
+  const head=document.getElementById("time").innerText;
+  return JSON.stringify({head:head.replace(/\n/g," "),
+   total:t?t.textContent:"(no total row)",agree:!!t&&norm(head)===norm(t.textContent),
    announced:/JFK/.test(document.getElementById("status").textContent)})})()' 2>&1 | tail -1 | tr -d '\\')
 echo "  $S"
 echo "$S" | grep -q '"agree":true' || { echo "  !! the headline and the itinerary total disagree after a search"; fail=1; }
@@ -343,6 +326,35 @@ echo "  tap from folded: $TAP"
 echo "$TAP" | grep -qE '"time":"[0-9]' || { echo "  !! a tap did not write the reading"; fail=1; }
 echo "$TAP" | grep -q '"timeOnScreen":true' || { echo "  !! the reading a tap produced is off screen"; fail=1; }
 echo "$TAP" | grep -q '"legendOnScreen":true' || { echo "  !! the legend went off screen after a tap"; fail=1; }
+# Last, deliberately: this fires two real map errors through the map's own
+# error channel, and app.js console.errors each one. Run before the console
+# check above and the probe fails the gate with the errors it exists to
+# cause -- which it did on its first outing.
+echo "=== the notice that explains a blank globe ==="
+# The notice that explains a blank globe has to be reachable by the errors that
+# actually cause one. It was not: the handler tested the message text against
+# /pmtiles|tile|source/i, and pmtiles.js emits none of those words -- its real
+# failures read "Bad response code: 404" and "archive does not appear to support
+# HTTP Byte Serving". Withholding the archives from a local copy of the real
+# dist/ measured bandsRendered:0, waterRendered:0 and #tiletrouble still hidden.
+# The old guard passed review because its check fired a synthetic error carrying
+# the literal string "pmtiles".
+#
+# Fire the two REAL messages through the map's own error channel, with the
+# sourceId MapLibre attaches, and require the notice to appear and to name the
+# right layer. The page is reopened immediately after, which clears it.
+TT=$(agent-browser eval '(()=>{const m=window.__map,el=document.getElementById("tiletrouble");
+  const fire=(sourceId,message)=>{m.fire("error",{error:new Error(message),sourceId:sourceId});
+    return {hidden:el.hidden,text:el.textContent.slice(0,60)};};
+  const bands=fire("bands","Bad response code: 404");
+  el.hidden=true;el.textContent="";
+  const water=fire("water","archive does not appear to support HTTP Byte Serving");
+  return JSON.stringify({bands:bands,water:water})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  tile-failure notice: $TT"
+echo "$TT" | grep -q '"bands":{"hidden":false' || { echo "  !! a real band-tile failure shows no notice: a blank globe would be silent"; fail=1; }
+echo "$TT" | grep -q '"water":{"hidden":false' || { echo "  !! a real coastline failure shows no notice"; fail=1; }
+echo "$TT" | grep -q 'The shaded bands could not be loaded' || { echo "  !! the band-tile notice names the wrong layer"; fail=1; }
+echo "$TT" | grep -q 'The coastline could not be loaded' || { echo "  !! the coastline notice names the wrong layer"; fail=1; }
 agent-browser close >/dev/null 2>&1; sleep 1
 # Kill only the browser processes this run started (agent-browser's own
 # Chrome tree under ~/.agent-browser/), never the user's Google Chrome and
