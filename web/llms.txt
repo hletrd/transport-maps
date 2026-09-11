@@ -44,8 +44,10 @@ ids as little-endian uint64.
 
 ## Known limits
 
-- The air model is a regression on 107,366 legs with a held-out median error
-  of about 9 minutes on the airborne portion, and a signed bias by distance:
+- The air model is a regression on 107,366 legs with a held-out MEAN absolute
+  error of about 9 minutes on the airborne portion (`holdout_mae_min` in
+  calibration.toml; `calibrate/fit.py` takes `.mean()`, not a median), and a
+  signed bias by distance -- those bucket figures ARE medians:
   +2 min at 150-400 km, +3 at 400-800, 0 at 800-1500, -1 at 1500-3000, +6 at
   3000-6000. Figures are printed to the minute; none is accurate to the minute.
 - That fit is VALID ONLY BETWEEN 150 AND 6000 km. Beyond 6000 km it is
