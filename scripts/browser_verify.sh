@@ -18,8 +18,13 @@ read -r CITIES BANDS < <(printf '%s' "$IDX" | python3 -c 'import json, sys
 d = json.load(sys.stdin); print(len(d["origins"]), len(d["bandEdgesMin"]) + 1)')
 [ -n "${BANDS:-}" ] || { echo "!! index.json has no origins/bandEdgesMin"; exit 1; }
 TINTS=$((BANDS + 2))
-SCHEMES=$(grep -cE '^ +[a-z]+: +\{ name:' "$ROOT/web/app.js")   # one RAMPS entry per scheme
-[ "$SCHEMES" -ge 6 ] || SCHEMES=12
+# One entry per colour scheme, counted from the RAMPS table SPECIFICALLY.
+# The old heuristic grepped the whole file for `  name: {` lines, which also
+# matched the OCEANS table -- a different thing, six sea colours -- so it asked
+# the page for 18 schemes when 12 exist, and failed the deploy on a page that
+# was correct. Parse the block; do not pattern-match the file.
+SCHEMES=$(python3 -c 'import re,sys; s=open(sys.argv[1],encoding="utf-8").read(); m=re.search(r"const RAMPS = \{(.*?)\n\};", s, re.S); print(len(re.findall(r"^\s{2}[a-z]+:\s*\{", m.group(1), re.M)) if m else 0)' "$ROOT/web/app.js")
+[ "${SCHEMES:-0}" -ge 6 ] || { echo "!! could not read the RAMPS table from web/app.js"; exit 1; }
 echo "expecting $CITIES cities, $BANDS bands ($TINTS swatches) from index.json; $SCHEMES schemes; screenshots in $SHOTS"
 # Only the browser processes THIS run starts are killed at the end: another
 # agent's session on the same machine must survive a verification pass.
@@ -135,8 +140,19 @@ echo "$P" | grep -qE '"time":"[0-9]' || { echo "  !! ?to= restored no reading"; 
 echo "$P" | grep -q '"search":"?from=tokyo&to=' || { echo "  !! the address bar dropped the destination"; fail=1; }
 # ...and a slug that does not exist must SAY so, not be silently swallowed and
 # then written out of the address bar as though the link had worked.
-agent-browser open "${URL}?from=atlantis" >/dev/null 2>&1; sleep 10
-B=$(agent-browser eval 'document.getElementById("here").textContent' 2>&1 | tail -1)
+agent-browser open "${URL}?from=atlantis" >/dev/null 2>&1
+# Poll instead of reading once after a fixed sleep. #here is written at module
+# scope right after paintOrigin, but that is downstream of index.json -- now
+# 553 origins, not 157 -- and of app.js parsing, so on a cold cache a single
+# read at t+10s caught the page before the message landed and reported a
+# defect that two independent reproductions afterwards could not confirm.
+# Same ceiling, but it stops as soon as the answer is there.
+B=""
+for _ in $(seq 1 20); do
+  sleep 1
+  B=$(agent-browser eval 'document.getElementById("here").textContent' 2>&1 | tail -1)
+  case "$B" in *[Nn]"o departure city called"*) break;; esac
+done
 echo "  ?from=atlantis -> $B"
 echo "$B" | grep -qi "no departure city called" || { echo "  !! an unknown ?from= slug is swallowed silently"; fail=1; }
 agent-browser open "${URL}?from=tokyo" >/dev/null 2>&1; sleep 10
