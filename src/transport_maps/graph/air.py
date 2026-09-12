@@ -5,10 +5,14 @@ from dataclasses import dataclass
 
 from transport_maps import config
 
-MINUTES_PER_WEEK = 7 * 24 * 60
-# Sentinel weight for a route with no service. Large but finite so Dijkstra
-# never selects it while still keeping the matrix free of infinities.
-NO_SERVICE = 10**7
+# "Expected wait is half the headway" is not an air fact; ferries charge it
+# too. Re-exported here so `air.MINUTES_PER_WEEK` / `air.NO_SERVICE` /
+# `air.expected_wait_min` keep working for every existing caller and test.
+from transport_maps.graph.headway import (  # noqa: F401
+    MINUTES_PER_WEEK,
+    NO_SERVICE,
+    expected_wait_min,
+)
 
 
 @dataclass(frozen=True)
@@ -50,14 +54,6 @@ def block_time_min(distance_km: float, dep_size: str, arr_size: str, cal: Calibr
     airborne = cal.climb_descent_penalty_min + 60.0 * distance_km / cal.cruise_kmh
     total = cal.taxi_out_min[dep_size] + airborne + cal.taxi_in_min[arr_size]
     return round(total)
-
-
-def expected_wait_min(flights_per_week: float) -> int:
-    """"Leave now" semantics: expected wait is half the headway."""
-    if flights_per_week <= 0:
-        return NO_SERVICE
-    headway = MINUTES_PER_WEEK / flights_per_week
-    return round(headway / 2.0)
 
 
 MIN_FLIGHTS_PER_WEEK = 0.5
