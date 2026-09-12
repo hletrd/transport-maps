@@ -49,9 +49,23 @@ def main() -> None:
             print(f"  {label:18}   (no land cell)")
             continue
         m = sp.csgraph.dijkstra(csr, indices=[s])[0][t]
+        # `inf` when the two cells sit in different components -- a land-mask
+        # regression, or an airport cut off from its city. `real / inf` is 0.0,
+        # which silently dragged the median toward zero and read as "the model
+        # is 0.0x too fast", the most reassuring possible output for the worst
+        # possible input.
+        if not np.isfinite(m) or m <= 0:
+            print(f"  {label:18}   (no route: the two cells are not connected)")
+            continue
         ratios.append(real / m)
         print(f"  {label:18}{m:>8.1f}{real:>7}{real / m:>8.1f}x")
-    print(f"\n  median: the model is {np.median(ratios):.1f}x too fast on urban access")
+    # np.median([]) is nan with a RuntimeWarning, which this printed as
+    # "the model is nanx too fast" if every case had been skipped.
+    if not ratios:
+        print("\n  no case produced a route; nothing to compare.")
+        return
+    print(f"\n  median over {len(ratios)} of {len(CASES)} cases: the model is "
+          f"{np.median(ratios):.1f}x too fast on urban access")
 
 
 if __name__ == "__main__":

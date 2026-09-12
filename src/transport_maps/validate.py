@@ -11,10 +11,20 @@ KNOWN_UNREACHABLE_MAX_LAT = -60.0
 
 # A scheduled-service airport in a component cut off from the rest of the graph
 # is unreachable from every origin, whatever the coverage number says. A few
-# are genuine and permanent: 9 of 3,983 at res 5 (0.23%, 2026-09) -- AGJ, AJN, CYO, CYU,
-# FHZ, FUT, IBB, XYA, YAS -- small-island fields whose Wikipedia pages yield no
-# resolvable destination, so they sit alone with their island's land cells.
-# Hundreds would mean the route network or the land mask broke.
+# are genuine and permanent -- AGJ, AJN, CYO, CYU, FHZ, FUT, IBB, XYA, YAS --
+# small-island fields whose Wikipedia pages yield no resolvable destination, so
+# they sit alone with their island's land cells. Hundreds would mean the route
+# network or the land mask broke.
+#
+# The count that used to stand here, "9 of 3,983 at res 5 (0.23%, 2026-09)",
+# was measured before `config.SOLVE_RES` moved to 6 and has not been re-taken
+# since: the solver has not run at res 5 in this repository's recent history,
+# so the figure described a grid the build no longer uses. Three sibling files
+# carried the same class of stale measurement and were corrected in an earlier
+# cycle (`sources/countries.py`, `sources/roads.py`, `emit/tiles.py`); this one
+# was missed. The named airports are still the ones the allowlist covers; the
+# fraction is left unquantified rather than restated at a resolution nobody
+# measured, and the next full build can fill it in from the gate's own log.
 MAX_ISOLATED_AIRPORT_FRACTION = 0.01
 
 

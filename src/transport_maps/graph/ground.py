@@ -154,7 +154,14 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def haversine_km(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Great-circle distance between arrays of (lat, lon). Public: rail and ferry use it."""
+    """Great-circle distance between arrays of (lat, lon).
+
+    Public: `graph/build._ferry_edges` calls it. It used to say "rail and ferry
+    use it", and rail does not -- `graph/rail.py` has no import of this module
+    at all and carries its own `_haversine_km` with a different signature and
+    the same formula. Anyone who trusted the old sentence and changed the
+    distance maths here would have missed rail entirely.
+    """
     lat1, lon1 = np.radians(a[:, 0]), np.radians(a[:, 1])
     lat2, lon2 = np.radians(b[:, 0]), np.radians(b[:, 1])
     dlat, dlon = lat2 - lat1, lon2 - lon1
