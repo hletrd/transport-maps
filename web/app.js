@@ -248,7 +248,11 @@ const NO_RAIL = 0xFFFF;
 // worked only because the first call sat at the very end of the module; the
 // planned reordering of start-up would have thrown a ReferenceError after the
 // map existed -- a blank page with no useful error.
-let rampName = "muted";
+// The scheme and the sea a reader gets with no stored preference and no
+// address parameter. Named so syncPermalink can OMIT a value that equals the
+// default, which is what keeps the common link short.
+const RAMP_DEFAULT = "muted";
+let rampName = RAMP_DEFAULT;
 let BANDS;
 let lockNorth, namePlaces;
 let places = null;              // gazetteer: flat typed arrays plus the rows
@@ -304,6 +308,47 @@ const store = {
   },
   set(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch { /* private mode */ } },
 };
+// ---- state carried in the address ----
+//
+// `?from=` and `?to=` used to be the whole of it, so a link reopened the city
+// and the pin and nothing else: the colours reverted to the reader's own
+// defaults and the camera was recomputed from scratch. A pasted link is meant
+// to show what the sharer was looking at.
+//
+// Read HERE, above the localStorage reads, because `rampName` decides `BANDS`
+// forty lines down and a scheme applied after that would mean repainting the
+// legend and the globe. The address wins over the stored preference: the
+// preference is what this reader chose for themselves, the address is what
+// someone chose to show them.
+const URL_PARAMS = (() => {
+  try { return new URL(location.href).searchParams; }
+  catch { return new URLSearchParams(); }       // file:// or a sandbox with no URL API
+})();
+//: Parameters that were PRESENT and unusable. An unknown `?from=` slug has
+//: always been reported rather than swallowed, because a mistyped link that
+//: silently works is indistinguishable from one that does not; every
+//: parameter added since is held to the same standard. Read out by sayHere()
+//: once the page can speak.
+const URL_REJECTED = [];
+function urlChoice(key, table, fallback) {
+  const v = URL_PARAMS.get(key);
+  if (v == null) return fallback;
+  // Object.hasOwn for the same reason the localStorage reads use it, and the
+  // reason is sharper here: this string comes from whoever wrote the link.
+  // "constructor" and "__proto__" are truthy on any object literal.
+  if (Object.hasOwn(table, v)) return v;
+  URL_REJECTED.push(key);
+  return fallback;
+}
+function urlFlag(key, fallback) {
+  const v = URL_PARAMS.get(key);
+  if (v == null) return fallback;
+  if (v === "1") return true;
+  if (v === "0") return false;
+  URL_REJECTED.push(key);
+  return fallback;
+}
+
 // Object.hasOwn, not `RAMPS[r]`: "constructor", "toString" and "__proto__"
 // are all truthy on any object literal, so localStorage.ramp = "constructor"
 // set rampName to a prototype method, and the next line threw at module top
@@ -311,10 +356,12 @@ const store = {
 // the console is this project's signature failure.
 try { const r = localStorage.getItem("ramp"); if (r && Object.hasOwn(RAMPS, r)) rampName = r; }
 catch { /* private mode */ }
+rampName = urlChoice("scheme", RAMPS, rampName);
 // Object.hasOwn for the same reason as the ramp above: a stored "constructor"
 // or "__proto__" is truthy on any object literal and would reach paintSea as
 // a prototype method.
-let oceanName = "scheme";
+const OCEAN_DEFAULT = "scheme";
+let oceanName = OCEAN_DEFAULT;
 // What the sea is actually painted with: the chosen ocean, or the scheme's
 // own when "Match the scheme" is selected. The legend key, the globe and the
 // picker's own swatch must all agree, and before this they read it three
@@ -322,9 +369,10 @@ let oceanName = "scheme";
 const seaNow = () => OCEANS[oceanName]?.sea ?? RAMPS[rampName]?.sea ?? SEA;
 try { const o = localStorage.getItem("ocean"); if (o && Object.hasOwn(OCEANS, o)) oceanName = o; }
 catch { /* private mode */ }
+oceanName = urlChoice("sea", OCEANS, oceanName);
 BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
-lockNorth = store.get("lockNorth", false);
-namePlaces = store.get("namePlaces", true);
+lockNorth = urlFlag("north", store.get("lockNorth", false));
+namePlaces = urlFlag("places", store.get("namePlaces", true));
 const greyOf = () => RAMPS[rampName]?.grey ?? "#4a4d50";
 
 // ---- one time notation for the whole page ----
@@ -1061,15 +1109,96 @@ function renderDepartureInto() {
 // reading could not be shared: the link reopened the city, not the journey.
 // `to` is "lat,lon" rounded to five decimals -- about a metre, far finer than
 // the 5.4 km cell the answer is drawn from, and short enough to read.
+//
+// Everything a reader would expect to survive a paste is now here: the
+// journey, the colours, the camera, and the two settings that change what the
+// map shows. Three rules hold it together.
+//
+// 1. ANYTHING AT ITS DEFAULT IS OMITTED. The common link stays
+//    `?from=seoul&to=...`, and a parameter's presence means someone chose it.
+// 2. THE URL STAYS READABLE. `at=37.56650,126.97800,4.20` is a place and a
+//    zoom, not an encoded blob; a reader can see what a link will do before
+//    clicking it, and can edit it by hand.
+// 3. replaceState, NEVER pushState, and only on a committed change. A drag
+//    must not leave forty entries in the back button -- the camera write is
+//    debounced on moveend (see scheduleCameraSync).
+//
+// `label` carries the destination's NAME. Without it an address searched by
+// text came back as bare coordinates on restore: the sharer saw
+// "Tromso Airport" and the recipient saw "69.68, 18.92".
+// A pasted label is a string from whoever wrote the link. Every sink that
+// shows it uses textContent, so this is not the only defence -- but a length
+// bound and dropping control characters keeps a hostile link from filling the
+// pin list with a megabyte of newlines, and there is no name this truncates.
+const LABEL_MAX = 120;
+function cleanLabel(raw) {
+  if (!raw) return null;
+  // eslint-disable-next-line no-control-regex
+  const t = raw.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim();
+  return t ? t.slice(0, LABEL_MAX) : null;
+}
+
+const CAMERA_DEFAULT_ZOOM = 4.2;
 function syncPermalink() {
   try {
     const url = new URL(location.href);
-    if (active) url.searchParams.set("from", active.slug); else url.searchParams.delete("from");
-    if (pinB) url.searchParams.set("to", `${pinB.lat.toFixed(5)},${pinB.lon.toFixed(5)}`);
-    else url.searchParams.delete("to");
+    const q = url.searchParams;
+    const put = (k, v) => (v == null ? q.delete(k) : q.set(k, String(v)));
+
+    put("from", active ? active.slug : null);
+    put("to", pinB ? `${pinB.lat.toFixed(5)},${pinB.lon.toFixed(5)}` : null);
+    // Only for a pin whose label is a NAME. A coordinate pin's label is
+    // already `to`, spelled differently, and repeating it doubles the URL.
+    put("label", pinB && pinB.label && pinB.label !== fmtCoord(pinB.lat, pinB.lon)
+      ? pinB.label.slice(0, LABEL_MAX) : null);
+    put("scheme", rampName === RAMP_DEFAULT ? null : rampName);
+    put("sea", oceanName === OCEAN_DEFAULT ? null : oceanName);
+    put("north", lockNorth ? "1" : null);
+    put("places", namePlaces ? null : "0");
+
+    // The camera. Bearing and pitch appear only when the globe is actually
+    // turned or tilted, so an ordinary link carries three numbers, not five.
+    let at = null;
+    try {
+      const c = map.getCenter();
+      const parts = [c.lat.toFixed(5), c.lng.toFixed(5), map.getZoom().toFixed(2)];
+      const bearing = map.getBearing(), pitch = map.getPitch();
+      if (Math.abs(bearing) >= 0.5 || Math.abs(pitch) >= 0.5) parts.push(bearing.toFixed(1));
+      if (Math.abs(pitch) >= 0.5) parts.push(pitch.toFixed(1));
+      at = parts.join(",");
+    } catch { /* before the map exists */ }
+    put("at", at);
+
     history.replaceState(null, "", url);
   } catch { /* file:// or a sandbox without history */ }
 }
+
+//: "lat,lon,zoom[,bearing[,pitch]]" -> a flyTo/jumpTo option object, or null.
+//: Partially valid is not valid: a camera with a good centre and a nonsense
+//: zoom would fly somewhere nobody asked for, so the whole parameter is
+//: dropped and reported.
+function parseCamera(raw) {
+  if (!raw) return null;
+  const p = raw.split(",").map(Number);
+  if (p.length < 3 || p.length > 5 || !p.every(Number.isFinite)) return null;
+  const [lat, lon, zoom, bearing = 0, pitch = 0] = p;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  if (zoom < 0 || zoom > 24) return null;
+  if (Math.abs(bearing) > 360 || pitch < 0 || pitch > 85) return null;
+  return { center: [lon, lat], zoom, bearing, pitch };
+}
+
+// The camera changes continuously and must not write continuously. moveend
+// already fires at rest; the timer coalesces the burst a flyTo emits and the
+// tail of an inertial pan.
+let cameraTimer = 0;
+function scheduleCameraSync() {
+  clearTimeout(cameraTimer);
+  cameraTimer = setTimeout(syncPermalink, 350);
+}
+map.on("moveend", scheduleCameraSync);
+map.on("rotateend", scheduleCameraSync);
+map.on("pitchend", scheduleCameraSync);
 
 // The times array the city list was last built from; see settle().
 let listTimesFor = null;
@@ -2186,6 +2315,10 @@ $("copy-link").addEventListener("click", async (e) => {
     announce(msg);
     setTimeout(() => { btn.textContent = "Copy link to this journey"; }, 2400);
   };
+  // Flush the address first. The camera write is debounced on moveend, so a
+  // click within 350 ms of letting go of a drag would otherwise copy the view
+  // before the one on screen.
+  syncPermalink();
   // clipboard.writeText needs a secure context and can be refused outright;
   // saying so is better than a button that appears to do nothing.
   try {
@@ -2691,6 +2824,7 @@ lockBox.addEventListener("change", () => {
   lockNorth = lockBox.checked;
   store.set("lockNorth", lockNorth);
   applyLockNorth();
+  syncPermalink();
 });
 
 const placesBox = $("show-places");
@@ -2698,6 +2832,7 @@ placesBox.checked = namePlaces;
 placesBox.addEventListener("change", () => {
   namePlaces = placesBox.checked;
   store.set("namePlaces", namePlaces);
+  syncPermalink();
   // Nothing re-rendered, so the visible reading kept its old form until the
   // next pointer move -- and on a coarse pointer there is no next move, so the
   // control appeared to do nothing at all.
@@ -2773,6 +2908,7 @@ function pickOcean(key) {
   if (!Object.hasOwn(OCEANS, key)) return;
   oceanName = key;
   try { localStorage.setItem("ocean", oceanName); } catch { /* private mode */ }
+  syncPermalink();
   paintSea();
   paintOceanPicker();
   paintLegend();          // the "open water" key swatch is the sea colour
@@ -2872,9 +3008,9 @@ $("where").textContent = IDLE_PROMPT;
 // silently swallowing it and then rewriting the address made a mistyped link
 // indistinguishable from a working one.
 const FALLBACK = bySlug.get("seoul") ?? cities[0];
-let requested = null, requestedPin = null, badSlug = "";
+let requested = null, requestedPin = null, badSlug = "", requestedCamera = null;
 try {
-  const q = new URL(location.href).searchParams;
+  const q = URL_PARAMS;
   const want = q.get("from") ?? "";
   requested = bySlug.get(want) ?? null;
   if (want && !requested) badSlug = want;
@@ -2882,11 +3018,23 @@ try {
   // numbers in range, or nothing at all. Anything else is dropped, never
   // trusted into lookup() or the DOM.
   const to = (q.get("to") ?? "").split(",");
-  if (to.length === 2) {
+  if (q.get("to") != null) {
     const la = Number(to[0]), lo = Number(to[1]);
-    if (Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180) {
-      requestedPin = { lat: la, lon: lo };
+    if (to.length === 2 && Number.isFinite(la) && Number.isFinite(lo)
+        && Math.abs(la) <= 90 && Math.abs(lo) <= 180) {
+      // The label travels with the pin so a searched address comes back as
+      // its name rather than as the coordinates it resolved to.
+      requestedPin = { lat: la, lon: lo, label: cleanLabel(q.get("label")) };
+    } else {
+      URL_REJECTED.push("to");
     }
+  }
+  // ?at= -- the camera. Reported when unusable, for the same reason the slug
+  // is: a link that silently ignores half of what it carries looks identical
+  // to one that worked.
+  if (q.get("at") != null) {
+    requestedCamera = parseCamera(q.get("at"));
+    if (!requestedCamera) URL_REJECTED.push("at");
   }
 } catch { /* no URL API */ }
 
@@ -2913,18 +3061,33 @@ document.documentElement.dataset.appReady = "1";
 // Through sayHere, like every other outcome written here: a ?from= slug that
 // names no city is a failure a visitor needs told about, and painting it into
 // a plain <p> said it only to whoever was looking at that corner.
-sayHere(badSlug
+// Every unusable parameter is named, not swallowed. `?from=` has said so
+// since it was added; `to`, `at`, `scheme`, `sea`, `north` and `places` now
+// hold to the same rule, because a pasted link that quietly drops half its
+// state is indistinguishable from one that worked.
+const ignored = URL_REJECTED.length
+  ? ` Ignored unusable link setting${URL_REJECTED.length > 1 ? "s" : ""}: `
+    + `${[...new Set(URL_REJECTED)].join(", ")}.`
+  : "";
+sayHere((badSlug
   ? `No departure city called "${badSlug}"; showing ${(requested ?? FALLBACK).name}.`
-  : `Showing ${(requested ?? FALLBACK).name}.`);
+  : `Showing ${(requested ?? FALLBACK).name}.`) + ignored);
 // The destination from the address, once the origin's arrays have landed --
 // the reading needs them, and the map needs somewhere to fly to.
+// The camera the link asked for wins over the destination auto-fit. Before,
+// `?to=` always flew to a hard-coded zoom 4.2, so a link shared from a
+// city-level view reopened at continent scale and a link shared from the
+// globe reopened zoomed in -- neither was what the sharer saw.
+if (requestedCamera) moveTo({ ...requestedCamera, speed: 1.2 });
 if (requestedPin) {
   const { lat, lon } = requestedPin;
-  moveTo({ center: [lon, lat], zoom: 4.2, speed: 1.2 });
+  if (!requestedCamera) moveTo({ center: [lon, lat], zoom: CAMERA_DEFAULT_ZOOM, speed: 1.2 });
   const restore = () => {
     if (!origin.times) return false;
     const p = namePlaces ? nearestPlace(lat, lon) : null;
-    commitDestination(lat, lon, (p && placeLead(p)) || fmtCoord(lat, lon));
+    commitDestination(lat, lon,
+      requestedPin.label || (p && placeLead(p)) || fmtCoord(lat, lon),
+      { geocoded: Boolean(requestedPin.label) });
     return true;
   };
   if (!restore()) {
