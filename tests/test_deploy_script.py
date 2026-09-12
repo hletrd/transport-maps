@@ -89,3 +89,76 @@ def test_the_page_gate_runs_the_directory_rather_than_a_hand_typed_list():
     # mutation caught it and reading it did not.
     assert re.search(r"\btests/web/(?!\w)", _code(m.group(1))), (
         "the page gate runs named files again instead of the whole directory")
+
+
+def test_no_gate_in_the_browser_stage_passes_on_empty_output():
+    """A check that reports success when it did not run is worse than none.
+
+    `browser_verify.sh` is the gate CLAUDE.md's deploy rule rests on: "No deploy
+    is done until it has been opened in a browser... `curl` returning 200 proves
+    nothing about whether the page runs."
+
+    Two of its checks could report a pass without having read anything. The
+    console check was the only capture in the file using `2>/dev/null`, so a
+    dead session or a CDP disconnect gave empty stdout, `grep -ci` printed 0,
+    and it announced "errors: 0". The origin-label check fired only on a
+    POSITIVE grep for the old slug, so an empty result -- eval failed, page
+    never loaded, the probe's own "no origin label" string -- was a pass.
+
+    Mutations performed and reverted: restore `2>/dev/null` on the console
+    capture -> red; delete the `case "$C" in` guard -> red.
+    """
+    code = _code(BROWSER)
+    console = [ln for ln in code.splitlines() if "agent-browser console" in ln]
+    assert console, "the console check is gone from browser_verify.sh"
+    for line in console:
+        assert "2>/dev/null" not in line, (
+            "the console capture discards stderr, so a failed agent-browser "
+            f"call greps to 0 and the gate passes without reading it: {line.strip()}")
+    assert "could not be read" in code, (
+        "nothing in browser_verify.sh fails when the console comes back empty")
+
+    # NOT `'no origin label' in code`: that string is the probe's own return
+    # value and appears in the eval it sends to the browser, so the assertion
+    # was satisfied by the very thing it was meant to guard -- the fourth shape
+    # of vacuity this repository has now recorded (the assertion's scope is
+    # derived from its subject). The guard must be a line that BOTH matches the
+    # empty/failed result and sets fail=1.
+    guards = [ln.strip() for ln in code.splitlines()
+              if "no origin label" in ln and "fail=1" in ln]
+    assert guards, (
+        "an empty or failed origin-label probe does not set fail=1, so the "
+        "check passes when it did not run")
+    # ...and the source check must be positive, not only negative-on-seoul.
+    assert re.search(r'grep -q "origins/\.\*\\\.pmtiles" \|\|', code) or any(
+        'origins/' in ln and "||" in ln and "fail=1" in ln
+        for ln in code.splitlines()), (
+        "the bands-source check fires only when the OLD slug is still there, so "
+        "an empty result reads as a pass")
+
+    # Every capture in the file folds stderr in, so a tool failure shows up as
+    # unmatched content rather than as silence. Any that does not is the next
+    # instance of this bug.
+    silent = [ln.strip() for ln in code.splitlines()
+              if "agent-browser" in ln and "2>/dev/null" in ln and "$(" in ln
+              and "|| true" not in ln]
+    assert not silent, (
+        "these captures discard stderr, so a failed call is indistinguishable "
+        "from a clean one:\n  " + "\n  ".join(silent))
+
+
+def test_the_remote_free_space_check_quotes_the_deploy_root():
+    """`df -Pk $DEPLOY_ROOT` inside a double-quoted ssh command is expanded by
+    the LOCAL shell into the remote command string, then split by the REMOTE
+    shell. A root with a space in it makes df report on its first word -- a
+    different filesystem with different free space -- and the guard that exists
+    to stop a half-written dist/ reaching the server measures somewhere else.
+
+    Mutation performed and reverted: unquote it -> red.
+    """
+    code = _code(DEPLOY)
+    df = [ln for ln in code.splitlines() if "df -Pk" in ln]
+    assert df, "the free-space check is gone"
+    for line in df:
+        assert re.search(r"df -Pk\s+'\$DEPLOY_ROOT'|df -Pk\s+\\\"\$DEPLOY_ROOT\\\"", line), (
+            f"$DEPLOY_ROOT reaches the remote df unquoted: {line.strip()}")

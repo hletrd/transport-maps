@@ -106,7 +106,12 @@ if [ "$MODE" = full ]; then
   # plus a margin, which is what V26 specified and what the run it was written
   # for actually measured: 18 GB peak for a ~16 GB payload.
   want_kb=$(( need_kb * 13 / 10 ))          # the staged payload, plus 30%
-  free_kb=$(ssh -o BatchMode=yes "$DEPLOY_HOST" "df -Pk $DEPLOY_ROOT | awk 'NR==2{print \$4}'" 2>/dev/null || true)
+  # $DEPLOY_ROOT quoted for the REMOTE shell too. Unquoted, a root with a
+  # space in it made df read its first word -- usually /, a different
+  # filesystem with different free space -- and the guard that exists to stop a
+  # half-written dist/ reaching the server silently measured somewhere else.
+  free_kb=$(ssh -o BatchMode=yes "$DEPLOY_HOST" \
+    "df -Pk '$DEPLOY_ROOT' | awk 'NR==2{print \$4}'" 2>/dev/null || true)
   if [ -z "$free_kb" ]; then
     echo "  could not read free space on $DEPLOY_HOST; continuing without the check"
   elif [ "$free_kb" -lt "$want_kb" ]; then

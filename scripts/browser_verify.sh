@@ -158,6 +158,13 @@ C=$(agent-browser eval '(()=>{const b=Array.from(document.querySelectorAll(".lbl
 sleep 5
 SRC=$(agent-browser eval 'window.__map.getSource("bands").url' 2>&1 | tail -1 | tr -d '\\"')
 echo "  clicked label: $C -> $SRC"
+# Both halves must be POSITIVE. The old check fired only when $SRC still named
+# seoul, so an empty $SRC -- eval failed, no source, the page never loaded --
+# read as a pass, and so did "no origin label" from the probe itself.
+case "$C" in
+  ""|*"no origin label"*|*rror*) echo "  !! no origin label was clickable ($C)"; fail=1 ;;
+esac
+echo "$SRC" | grep -q "origins/.*\.pmtiles" || { echo "  !! the bands source is not an origin archive ($SRC)"; fail=1; }
 echo "$SRC" | grep -q "origins/seoul.pmtiles" && { echo "  !! clicking an origin label did not change the departure"; fail=1; }
 # low zoom: the coarse level must paint, the coast must be there, and the
 # borders layer must have rendered features (a 404 on borders.json or a failed
@@ -253,7 +260,19 @@ N=$(agent-browser eval '(()=>{const ls=[...document.querySelectorAll(".lbl")];
 echo "  $N"
 echo "$N" | grep -q '"mapMarker":0' || { echo "  !! globe labels are announced as \"Map marker\""; fail=1; }
 echo "$N" | grep -qE '"origin":"[A-Za-z].*departure city"' || { echo "  !! the departure label does not say its own name"; fail=1; }
-echo "=== console ==="; E=$(agent-browser console 2>/dev/null | grep -ciE "error|exception"); echo "  errors: $E"; [ "$E" -eq 0 ] || fail=1
+echo "=== console ==="
+# 2>&1, not 2>/dev/null -- every other capture in this file folds stderr into
+# the string for exactly this reason. With stderr discarded, a dead session, a
+# crashed tab or a CDP disconnect gave EMPTY stdout, `grep -ci` on empty input
+# printed 0, and the gate reported "errors: 0" without having read the console
+# at all. A check that passes when it did not run is worse than no check.
+CONSOLE=$(agent-browser console 2>&1 || true)
+if [ -z "${CONSOLE//[[:space:]]/}" ]; then
+  echo "  !! the console could not be read (empty output from agent-browser)"; fail=1
+else
+  E=$(printf '%s' "$CONSOLE" | grep -ciE "error|exception" || true)
+  echo "  errors: $E"; [ "$E" -eq 0 ] || fail=1
+fi
 echo "=== viewports ==="
 # With a route OPEN: .depart-card and .reading only collide once an itinerary
 # is on screen, so checking the viewports on an unpinned page cannot see it.
