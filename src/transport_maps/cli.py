@@ -251,14 +251,24 @@ def _solve_one_forked(origin: dict) -> str:
 
 
 def _log_reading_cost(path: Path) -> None:
-    """What one origin's reading array costs raw and on the wire."""
+    """What one origin's reading array costs raw and on the wire.
+
+    Reporting only. Every failure here is swallowed: a build that has solved
+    553 origins must not be lost to a log line, and this one reads a 10 MB
+    file and compresses it.
+    """
     if not path.exists():
         return
     raw = path.stat().st_size
     # Level 1 is what nginx serves: gzip_comp_level is not set in the site
     # config, and its default is 1. Reporting level 6 here would understate
     # the bytes a visitor actually receives.
-    wire = len(gzip.compress(path.read_bytes(), 1))
+    try:
+        wire = len(gzip.compress(path.read_bytes(), 1))
+    except OSError as exc:
+        logging.getLogger(__name__).warning(
+            "could not measure %s on the wire: %s", path.name, exc)
+        return
     print(f"reading tier: {path.name} {raw:,} B raw, {wire:,} B gzipped "
           f"(ratio {wire / raw:.3f}) -- one fetch per origin switch", flush=True)
 
@@ -406,7 +416,11 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
     # serves these gzipped -- deploy/worldmap.atik.kr.conf gzips
     # `location ~* \.bin$` at the default level 1. Measured on the first origin
     # built, so the plan's estimate is replaced by a fact in the build log.
-    _log_reading_cost(config.DIST / "origins" / f"{origins[0]['slug']}.r6.bin")
+    # `origins` can be empty (`--limit 0`), and a LOG LINE must never be able
+    # to fail a build that has already succeeded -- which an IndexError here
+    # would do, at the last statement before index.json is written.
+    if origins:
+        _log_reading_cost(config.DIST / "origins" / f"{origins[0]['slug']}.r6.bin")
 
     if partial:
         print("partial build (--limit / --only): index.json left untouched")

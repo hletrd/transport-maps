@@ -397,3 +397,47 @@ def test_the_build_stamps_itself_before_it_solves_anything(monkeypatch, tmp_path
     assert order[-1] == "write"
     assert seen[0]["identity"] == {"buildId": "B"}
     assert seen[0]["modes_detail"] == {"rail": "M"}
+
+
+def test_the_reading_cost_log_never_fails_a_build(tmp_path, capsys):
+    """It is reporting only, and it runs after 553 origins have succeeded.
+
+    An IndexError or an OSError here would lose a sixteen-hour build to a log
+    line -- and the first version could do exactly that: it indexed
+    `origins[0]` unguarded, so `--limit 0` crashed at the last statement
+    before index.json is written.
+
+    Mutation performed and reverted: drop the `if not path.exists(): return`
+    guard -> red; drop the `if origins:` guard in _build_all_locked and run
+    with limit=0 -> red (IndexError).
+    """
+    # absent: silent, no raise
+    cli._log_reading_cost(tmp_path / "nothing.r6.bin")
+    assert capsys.readouterr().out == ""
+
+    # a real file: reports raw and compressed bytes
+    payload = (tmp_path / "x.r6.bin")
+    payload.write_bytes(b"\x00\x01" * 5000)
+    cli._log_reading_cost(payload)
+    out = capsys.readouterr().out
+    assert "10,000 B raw" in out and "gzipped" in out, out
+
+    # unreadable: warns, does not raise
+    bad = tmp_path / "bad.r6.bin"
+    bad.write_bytes(b"\x00" * 16)
+    bad.chmod(0o000)
+    try:
+        cli._log_reading_cost(bad)
+    finally:
+        bad.chmod(0o644)
+
+
+def test_a_zero_limit_build_does_not_crash_on_the_cost_log(monkeypatch, tmp_path):
+    """`--limit 0` leaves `origins` empty, and the cost log indexes it."""
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    written: list = []
+    _stub_pipeline(monkeypatch, written, [])
+    monkeypatch.setattr(cli.index, "write_index",
+                        lambda origins, out, **kw: written.append("index"))
+    cli._build_all(limit=0)
+    assert "index" not in written, "a partial build must not rewrite index.json"
