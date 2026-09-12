@@ -2112,6 +2112,20 @@ map.on("moveend", scheduleScaleRefresh);
 map.on("zoomend", scheduleScaleRefresh);
 
 
+//: The two lines under the number: where you are, then the coordinate.
+//:
+//: describe() FALLS BACK to the coordinate -- when "name places" is off, and
+//: when no place is near enough to name -- so the old
+//: `${describe(...)}<br>${fmtCoord(...)}` printed the same coordinate twice,
+//: once on each line. Reproduced with the setting off, and on the page as it
+//: stood before this cycle, so it is not a regression: it has been there as
+//: long as the setting has.
+function placeLine(lat, lon) {
+  const lead = describe(lat, lon);
+  const coord = fmtCoord(lat, lon);
+  return lead === coord ? coord : `${lead}<br>${coord}`;
+}
+
 function describe(lat, lon) {
   if (!namePlaces) return fmtCoord(lat, lon);
   const p = nearestPlace(lat, lon);
@@ -2148,7 +2162,7 @@ function showReading(lat, lng, point) {
         ? `Times unavailable for ${esc(active.name)}.`
         : `Loading the times from ${esc(active?.name ?? "the departure city")}…`)
     : t === null ? "Open water."
-    : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}`
+    : placeLine(lat, lng)
       + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`
       // The ring is drawn at SOLVE_RES. Whenever the NUMBER came from a
       // coarser grid than that -- the reading tier still in flight, absent

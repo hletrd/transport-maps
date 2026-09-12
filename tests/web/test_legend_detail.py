@@ -302,3 +302,30 @@ console.log(JSON.stringify({{
     assert got["tight"] == {"lo": 3, "hi": 3}
     # ...and a world view stays wide, so the four world ticks stand unchanged.
     assert got["world"]["hi"] - got["world"]["lo"] + 1 >= int(0.6 * N_BANDS)
+
+
+def test_the_readout_never_prints_the_same_coordinate_twice(node, tmp_path):
+    """`describe()` falls back to the coordinate when "name places" is off and
+    when nothing is near enough to name, so the readout's two lines were the
+    same string. Reproduced in a browser with the setting off, and on the page
+    as it stood before this cycle -- a long-standing defect, not a regression.
+
+    Mutation performed and reverted: make placeLine return
+    `${lead}<br>${coord}` unconditionally -> red.
+    """
+    probe = f"""
+{_function("placeLine")}
+let mode = "name";
+function describe(lat, lon) {{ return mode === "name" ? "<b>Guri-si</b>" : fmtCoord(lat, lon); }}
+function fmtCoord(lat, lon) {{ return `${{lat}}N ${{lon}}E`; }}
+const named = placeLine(37.57, 127.12);
+mode = "coord";
+const bare = placeLine(37.57, 127.12);
+console.log(JSON.stringify({{ named, bare }}));
+"""
+    got = _run(node, tmp_path, probe)
+    # A named place keeps both lines: the name, then the coordinate under it.
+    assert got["named"] == "<b>Guri-si</b><br>37.57N 127.12E"
+    # With nothing to name, one line, not the same thing twice.
+    assert got["bare"] == "37.57N 127.12E"
+    assert got["bare"].count("37.57N") == 1
