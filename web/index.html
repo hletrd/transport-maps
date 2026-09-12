@@ -147,8 +147,20 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 .body{padding:12px 14px 14px}
 
 /* ---- masthead ---- */
+/* The masthead and the departure card stack in one fixed column. They were
+   positioned independently, with the card pinned at a hardcoded top:104px,
+   so whenever the masthead subtitle wrapped to a third line the two
+   overlapped. A column has no such constant to get wrong, at any font size,
+   text length or viewport. On small screens app.js moves the card into the
+   rail and this column simply holds the masthead alone. */
+.topleft{
+  position:fixed;top:14px;left:14px;z-index:6;
+  display:flex;flex-direction:column;align-items:flex-start;gap:10px;
+  max-width:calc(100vw - 28px);pointer-events:none;
+}
+.topleft > *{pointer-events:auto}
 .mast{
-  position:fixed;top:14px;left:14px;z-index:6;max-width:32ch;
+  max-width:32ch;
   padding:10px 14px 12px;border-radius:var(--r);
   /* The globe runs bright under this corner, and light text on a cream band is
      unreadable. A scrim rather than a card: no border, no shadow, just enough
@@ -161,7 +173,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
 
 /* ---- the departure city, between the masthead and the reading ---- */
 .depart-card{
-  position:fixed;left:14px;top:104px;z-index:6;width:306px;
+  width:306px;max-width:100%;
   padding:12px 16px 13px;border-radius:var(--r);
   background:color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
@@ -526,7 +538,8 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   .rail > .depart-card .reach{grid-template-columns:auto 1fr auto 1fr;column-gap:8px}
   .rail > .depart-card .note{margin-top:6px}
   body{overflow:hidden}
-  .mast{top:10px;left:10px;max-width:58vw;padding:7px 10px 8px}
+  .topleft{top:10px;left:10px;gap:8px;max-width:calc(100vw - 20px)}
+  .mast{max-width:58vw;padding:7px 10px 8px}
   .mast h1{font-size:14px}
   .mast p{display:none}
   .compass{top:10px;right:10px;bottom:auto;left:auto;width:38px;height:38px}
@@ -645,6 +658,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <div id="map" role="application" aria-roledescription="globe" aria-label="Interactive globe shaded by travel time from the selected departure city; drag to rotate, zoom with the buttons or the scroll wheel, click to set a destination. With the globe focused, the arrow keys turn it, plus and minus zoom, and Enter sets the destination at the centre of the view."></div>
 </main>
 
+<div class="topleft">
 <header class="mast">
   <h1>Isochronic Passage Chart</h1>
   <p>Hours to reach any point on Earth, door to door, by air, rail, road and ferry. After Galton, 1881.</p>
@@ -661,6 +675,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <dl class="reach" id="depart-reach"></dl>
   <p class="note" id="depart-note"></p>
 </section>
+</div>
 
 <section class="reading" aria-labelledby="reading-h">
   <h2 id="reading-h" class="sr-only">Travel time reading</h2>
