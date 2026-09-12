@@ -229,22 +229,33 @@ defect". Everything else is deferred.
 
 ## Progress
 
-**All eighteen tasks done**, across seven signed commits
-(`69052bb`…`552baac`). Every guard added was shown red under the mutation
-named beside it; **28 mutations were run in total and 28 went red**, after
+**All eighteen tasks done**, across eleven signed commits
+(`69052bb`…`f632edd`). Every guard added was shown red under the mutation
+named beside it; **33 mutations were run in total and 33 went red**, after
 three of them were first found to be vacuous and the guard rewritten.
+
+Two defects in this cycle's own work were found after the code was committed,
+both by measurement rather than by reading: the full suite found ten
+`test_cli.py` failures the per-directory runs had missed (`6ea3a46`), and the
+browser found a page claim no test could see (`f632edd`). Both are written up
+below rather than folded into the commits that caused them.
+
+**The lesson for the next cycle, stated plainly: running the tests for the
+directories you touched is not running the tests.** The reading tier changed
+`cli.py`'s shared setup, and the ten failures were in a file whose name has
+nothing to do with `emit/` or `web/`.
 
 | ID | Done | Commit | Mutation run, and what it did |
 |---|---|---|---|
 | C7-1 | yes | `5c08df1` | `READING_SLOTS = 342` → 4 tests red |
-| C7-2 | yes | `5c08df1` | `cell_to_child_pos` for the slot → **green at first**; see below. After the guard was rewritten: 2 tests red. Also: zero padding → red; uncleared low-digit mask → red; reversed directory → red; removed 45-day ceiling → red |
+| C7-2 | yes | `5c08df1`, `6ea3a46` | `cell_to_child_pos` for the slot → **green at first**; see below. After the guard was rewritten: 2 tests red. Also: zero padding → red; uncleared low-digit mask → red; reversed directory → red; removed 45-day ceiling → red; the `idx.cells` fallback restored → red; the base-grid resolution check removed → red |
 | C7-3 | yes | `5c08df1` | `readingParentCount` dropped → `check_dist` refuses |
 | C7-4 | yes | `5c08df1` | covered by C7-3 and C7-5 |
 | C7-5 | yes | `5c08df1` | `.r6.bin` truncated by one block → `check_dist` refuses |
 | C7-6 | yes | `5c08df1` | log line, no guard |
 | C7-7 | yes | `8a702c2` | reversed digit order in the page → 3 cross-language tests red |
 | C7-8 | yes | `8a702c2` | covered by C7-7 and C7-10 |
-| C7-9 | yes | `8a702c2` | visual; the browser gate covers the layout |
+| C7-9 | yes | `8a702c2`, `f632edd` | compare the reading grid against `READING_RES` rather than `SOLVE_RES` → red. Note: `8a702c2`'s first version of this was **wrong in a way only the browser found** — see below |
 | C7-10 | yes | `8a702c2` | `checkedParents` never refuses → red; `checkedReading` never refuses → red; stride hard-coded → red |
 | C7-11 | yes | `40239d5` | card returned to `<body>` → red |
 | C7-12 | yes | `40239d5` | the gate itself; C7-11's mutation is its proof |
@@ -287,6 +298,58 @@ value is produced by the code under test proves only that the code is
 self-consistent. Derive the expectation from the specification — the bit
 layout, the mathematics, the upstream library — or from a second
 implementation in another language.
+
+### The browser caught a claim no test could
+
+`C7-9` added a paragraph saying "the outlined hexagon under the pointer is the
+cell the time is read from", and a qualifier for the case where it is not. The
+qualifier was gated on `READING_RES`, which is **null on a build made before
+the tier existed** — that is, on the build that is live. So against the current
+data the page stated something false and qualified it with a line that could
+never appear.
+
+Every test passed. It was found by doing what CLAUDE.md's deploy rule requires
+and opening the page: Tokyo from Seoul read **"5 h 39 min"** with no qualifier,
+off the res-4 array, under a paragraph promising the res-6 cell. Fixed in
+`f632edd` by comparing against `SOLVE_RES` — what the ring is actually drawn at,
+and a field every `index.json` carries — and re-verified in the browser, where
+the same reading now ends "· read from a wider cell than the outline".
+
+This is the third thing this cycle that a green suite asserted and a
+measurement contradicted, and the only one a test could not have caught,
+because the defect was in the relationship between a sentence in the HTML and
+a condition in the JavaScript.
+
+### How the page was verified against the CURRENT resolution-4 data
+
+The tier only takes effect once the orchestrator rebuilds, so the deploy ships
+a page whose new code path is dormant. That had to be verified, not assumed.
+
+A preview tree was assembled in the scratchpad: symlinks to every `dist/`
+artifact, with the page-owned files replaced by the new `web/`. `dist/` itself
+was never written to. It was served by a **range-capable** local server, because
+`python3 -m http.server` answers no `Range` request and every `.pmtiles` fetch
+then fails in a way that looks exactly like a site defect (`AB58`, which cost a
+reviewer time this cycle).
+
+Measured against that preview, with `index.json` carrying no `readingRes` and
+no `reading_parents.bin` on disk:
+
+| | |
+|---|---|
+| canvas present, 553 cities listed, 37 legend bands | yes |
+| Tokyo from Seoul | **5 h 39 min**, band 5 h – 5 h 50, "from Seoul" |
+| reading grid qualifier | present, and accurate |
+| console errors over the whole session | **none** |
+| `vendor/licences/` | **200** (it is a live 403 today) |
+| all six licence texts | 200 |
+| departure card at 1280x800 → 820x1180 → 1280x800 | parent `topleft` → `rail` → `topleft`; masthead overlap **0 px**, from 25,912 px² |
+| ocean picker, from the checked radio | ArrowRight → deep, ArrowDown → teal, End → charcoal; all six reachable, `aria-checked` following |
+| 1280x800, 820x1180, 390x844, 844x390, and back to 1280x800 | no horizontal scroll, no chrome overlap, no card overlap, reading and legend and ticks on screen at every one |
+| licence page palette | ground `rgb(10,11,13)`, IBM Plex Sans, `letter-spacing: normal` |
+
+The browser session was closed afterwards and agent-browser's own Chrome tree
+killed (0 left); the user's Google Chrome was not touched.
 
 ### What was measured
 
