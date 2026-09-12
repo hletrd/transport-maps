@@ -245,6 +245,10 @@ agent-browser eval '(()=>{const m=window.__map,p=m.project([100,62]);const c=doc
 # `cardOverlap` is only meaningful on the desktop layout, where .depart-card and
 # .reading are both position:fixed in the same 306px column; in the rail they
 # are stacked and share a boundary, which is not an overlap.
+# It also compares the card against the MASTHEAD, which nothing did: the card
+# was pinned at a hardcoded top:104px while the masthead height follows its own
+# text, and they overlapped by 1,722 px on the live desktop layout while every
+# gate passed.
 CHECK='(()=>{const b=document.body,d=document.documentElement;const q=s=>document.querySelector(s).getBoundingClientRect();
  const rr=q(".reading"),rl=q(".rail"),ms=q(".mast"),cp=q("#compass"),lg=q("#tints"),sc=q("#scale");
  const ov=(a,c)=>!(a.right<c.left-1||c.right<a.left-1||a.bottom<c.top-1||c.bottom<a.top-1);
@@ -252,7 +256,7 @@ CHECK='(()=>{const b=document.body,d=document.documentElement;const q=s=>documen
  const card=document.querySelector(".depart-card");
  const cardFixed=card&&!card.closest(".rail")&&!card.hidden&&getComputedStyle(card).display!=="none";
  return JSON.stringify({vw:innerWidth,vh:innerHeight,canvas:!!document.querySelector("#map canvas"),hScroll:Math.max(b.scrollWidth,d.scrollWidth)>innerWidth+1,
-  overlap:ov(ms,cp)||ov(ms,rl)||ov(cp,rl),cardOverlap:!!(cardFixed&&ov(card.getBoundingClientRect(),rr)),
+  overlap:ov(ms,cp)||ov(ms,rl)||ov(cp,rl),cardOverlap:!!(cardFixed&&(ov(card.getBoundingClientRect(),rr)||ov(ms,card.getBoundingClientRect()))),
   time:onScreen(q("#time")),legend:onScreen(lg)&&lg.width>40,scale:onScreen(sc)})})()'
 for spec in "1280 800 desktop" "820 1180 tablet" "390 844 mobile" "844 390 landscape"; do
   w=${spec%% *}; rest=${spec#* }; h=${rest%% *}; name=${rest#* }
