@@ -351,6 +351,53 @@ no `reading_parents.bin` on disk:
 The browser session was closed afterwards and agent-browser's own Chrome tree
 killed (0 left); the user's Google Chrome was not touched.
 
+### The reading tier verified end to end, in a browser, with real bytes
+
+The checks above exercise the page with the tier ABSENT, which is what the
+deploy ships. The tier's own path had to be exercised too, and no build
+produces the artifacts yet — so a second preview was assembled in the
+scratchpad carrying them: the real `reading_parents.bin`, a real 10,014,228-byte
+`seoul.r6.bin` and a `tokyo.r6.bin`, and an `index.json` with the five new
+fields. `dist/` was not written to.
+
+**The decisive check is the slot.** Nothing in the file format connects the
+emitter's slot to the page's; a disagreement produces plausible wrong times at
+exactly the right file length. So three slots were overwritten with
+distinctive values and the page was asked to read them off the wire:
+
+| point | parent | digit slot | `cellToChildPos` | planted | the page printed |
+|---|---|---|---|---|---|
+| Tokyo, 35.6678 N 139.6693 E | `832f5afffffffff` | 88 | 88 | 1,234 min | **20 h 34 min** ✓ |
+| Sydney, 33.8429 S 151.1935 E | `83be0efffffffff` | 87 | 87 | 777 min | **12 h 57 min** ✓ |
+| near Dalian, 39.0559 N 121.9180 E | `833000fffffffff` — a **pentagon** | **130** | **73** | 4,321 min | **72 h 1 min** ✓ |
+
+The third row is the one that matters. Its parent is one of the two res-3
+pentagons that hold land, its digit slot is 130 and its child position is 73,
+and the page found 130. A page using `cellToChildPos` would have read a
+different slot and printed a plausible time from elsewhere in the same block,
+with nothing anywhere reporting a problem.
+
+**Loading order, measured from `performance.getEntriesByType("resource")`:**
+
+| fetch | bytes | started |
+|---|---|---|
+| `origins/seoul.bin` (tier A) | 181,480 | t = 144 ms |
+| `reading_parents.bin` | 116,784 | t = 250 ms |
+| `origins/seoul.r6.bin` | 10,014,228 | t = 256 ms |
+| `origins/tokyo.r6.bin`, after switching city | 10,014,228 | t = 38,887 ms |
+
+Tier B starts **after** tier A, as designed, so nothing on the critical path
+moved. `reading_parents.bin` was fetched **once** for both origins, which is
+the shared-directory claim holding: switching city re-fetched only the values.
+
+**Origin switch and eviction.** After switching Seoul → Tokyo, the same
+pentagon point read **6 h 7 min from Tokyo** — Tokyo's own array, not Seoul's
+planted 4,321. `performance.memory` reported 93 MB used with **one** 9.55 MB
+reading array held, so the previous origin's was released.
+
+**Console errors across the whole session, both previews, five viewports, an
+origin switch and three probes: none.**
+
 ### What was measured
 
 Every figure below is measured on this machine against the real 4,091,715-cell
