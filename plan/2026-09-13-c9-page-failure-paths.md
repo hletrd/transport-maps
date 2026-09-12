@@ -59,7 +59,7 @@ was about to work**. An Android URL bar collapsing during load is enough. `bandM
 (`:1927`) is in the same position and its own comment already narrates this exact bug having
 shipped once before.
 
-- [ ] **C9-1** Move `let bandMark = null` and `let bandSpan = null`, with their comments,
+- [x] **C9-1** Move `let bandMark = null` and `let bandSpan = null`, with their comments,
       into the state block at `app.js:255-283`, beside the `SMALL` declaration whose comment
       already records the same failure ("U25 shipped a blank page from a const read before
       its declaration"). Add a regex guard that every module-level binding a
@@ -78,7 +78,7 @@ silent: `if (total > landed.min)` (`:1858`) can be false, so the **onward leg fr
 arrival airport vanishes** from the itinerary; and the rows stop summing to the
 "Door to door" line (`:1869`) they are presented as decomposing.
 
-- [ ] **C9-2** Decompose the itinerary on the grid the chain comes from: take the panel's
+- [x] **C9-2** Decompose the itinerary on the grid the chain comes from: take the panel's
       total from `origin.times[i]` at the same res-4 index the legs use, so the rows sum. Keep
       the headline reading on the finer grid, and when the two differ say so in one line in
       the panel rather than letting them disagree in silence.
@@ -97,7 +97,7 @@ in others**. The gate calls this consistent. CLAUDE.md: "Never deploy a partial 
 per-origin arrays and `hover_cells.bin` must come from the same build; mixing them renders a
 blank globe with no error."
 
-- [ ] **C9-3** Make the mixed-build check use the pair, not the single offset: every origin
+- [x] **C9-3** Make the mixed-build check use the pair, not the single offset: every origin
       must agree on `(offsets.airports, offsets.stations)`. Report the disagreeing slugs and
       both values. This is a gate change only — it does not touch `dist/`.
       **Mutation:** a fixture with two origins differing only in `offsets.stations` → red.
@@ -114,7 +114,7 @@ blank globe with no error."
 behind it. Measured against real pixels on the default Muted scheme: **1.00–1.08:1**, where
 WCAG 2.2 SC 1.4.11 and 2.4.11 need 3:1. A keyboard visitor cannot see where focus is.
 
-- [ ] **C9-4** Use `outline-offset: -2px` on the three map controls — the pattern
+- [x] **C9-4** Use `outline-offset: -2px` on the three map controls — the pattern
       `.results button` already uses, which measured 7.11:1. No new colour, no policy change.
       **Mutation:** restore `1px` → the contrast guard goes red.
 
@@ -126,7 +126,7 @@ WCAG 2.2 SC 1.4.11 and 2.4.11 need 3:1. A keyboard visitor cannot see where focu
 `layoutForSize()` only runs after `await map.on("load")` — the very await the message exists
 to cover. The visitor sees a blank globe and no explanation.
 
-- [ ] **C9-5** Run the layout decision before the map-load await, so the sheet is positioned
+- [x] **C9-5** Run the layout decision before the map-load await, so the sheet is positioned
       correctly while the message is on screen.
       **Mutation:** move the call back below the await → the guard goes red.
 
@@ -139,70 +139,70 @@ and `.tip` is `display: none` at ≤860 px. The number the whole site exists to 
 screen nowhere — while the live region is deliberately kept alive, so a screen-reader user is
 told the time and a sighted user is not. That inversion is the finding.
 
-- [ ] **C9-6** Keep the reading visible when the rail is folded at short-landscape sizes.
+- [x] **C9-6** Keep the reading visible when the rail is folded at short-landscape sizes.
       **Mutation:** re-hide it → the guard goes red.
 
 ---
 
 ## C — Visible defects (MEDIUM)
 
-- [ ] **C9-7** (`AC14`, CR9-1 + ARCH9-2) `markBand` divides by `strip.children.length` minus
+- [x] **C9-7** (`AC14`, CR9-1 + ARCH9-2) `markBand` divides by `strip.children.length` minus
       the mark, while `markSpan` divides by `N_BANDS` on the same 37-swatch strip. When the
       zoom detail row is showing, the span is also a child, so the denominator is 38 and the
       pointer mark is about one band off — **on the live site today**. Use `N_BANDS`, the one
       owner of the band count. **Mutation:** restore the child count → red.
-- [ ] **C9-8** (`AC20`, CR9-2) `paintDetail` calls `prune(scale)` while `#detail` is still
+- [x] **C9-8** (`AC20`, CR9-2) `paintDetail` calls `prune(scale)` while `#detail` is still
       `hidden`, so every tick measures a zero-width rect and all but one label is deleted.
       Unhide before pruning. **Mutation:** prune first → red.
-- [ ] **C9-9** (`AC22`, CR9-4) `highlight()` never `unwrap()`s the H3 ring, so hovering a cell
+- [x] **C9-9** (`AC22`, CR9-4) `highlight()` never `unwrap()`s the H3 ring, so hovering a cell
       on the antimeridian paints a 360°-wide band across the globe. The file already has
       `unwrap`. **Mutation:** drop the unwrap → red.
-- [ ] **C9-10** (`AC21`, CR9-3) `render()`'s `replaceChildren` wipes the on-screen address
+- [x] **C9-10** (`AC21`, CR9-3) `render()`'s `replaceChildren` wipes the on-screen address
       results whenever a per-origin array lands; the re-attach guard covers only the in-flight
       case. **Mutation:** remove the guard → red.
-- [ ] **C9-11** (`AC40`, ARCH9-6) The permalink-restore `setInterval` (`:3302`) guards only on
+- [x] **C9-11** (`AC40`, ARCH9-6) The permalink-restore `setInterval` (`:3302`) guards only on
       `origin.times`, so for the first 10 s, and across an origin switch, it overwrites a
       destination the visitor chose by hand. **Mutation:** drop the guard → red.
-- [ ] **C9-12** (`AC44`, UX9-5) Escape deletes the pinned route from anywhere on the page
+- [x] **C9-12** (`AC44`, UX9-5) Escape deletes the pinned route from anywhere on the page
       (verified: focus on a city button, press Escape, the route is gone and focus is dumped
       to `<body>`). Scope it. **Mutation:** unscope → red.
-- [ ] **C9-13** (`AC23`, VER9-1) Cycle-8 task T5.3 is ticked but was never done: `app.js:2481`
+- [x] **C9-13** (`AC23`, VER9-1) Cycle-8 task T5.3 is ticked but was never done: `app.js:2481`
       still has a bare `6371` against Python's `6371.0088`, and `git log -S'6371.0088' --
       web/app.js` shows no commit ever touched it. Fix the number and correct the tick.
 
 ## D — What the page says about itself (MEDIUM; CLAUDE.md modelling and door-to-door rules)
 
-- [ ] **C9-14** (`AC16`, CRIT9-1) Three places say the reading "averages over" the seven res-7
+- [x] **C9-14** (`AC16`, CRIT9-1) Three places say the reading "averages over" the seven res-7
       sub-cells; `emit/hover.py:221-232` takes the **centre child only**. Correct
       `web/index.html:950-953`, `web/llms.txt:62-63` and `config.py:31-34` to what the code does.
-- [ ] **C9-15** (`AC17`, CRIT9-2) `web/index.html:933-934` says the ferry prior over-states the
+- [x] **C9-15** (`AC17`, CRIT9-2) `web/index.html:933-934` says the ferry prior over-states the
       wait on busy short-sea routes. `calibration.toml:221-234` measures the **opposite**:
       median predicted/observed 0.383 over 298 of 326 holdout observations, i.e. it
       under-states. `llms.txt` already states it correctly; the page does not.
-- [ ] **C9-16** (`AC18`, CRIT9-5) The departure card prints three travel-time figures with no
+- [x] **C9-16** (`AC18`, CRIT9-5) The departure card prints three travel-time figures with no
       door-to-door statement, against CLAUDE.md's standing rule that the composition is said
       wherever a figure is presented. `app.js:2390-2393` already asserts the note carries one.
-- [ ] **C9-17** (`AC55`, DOC9-7) Google Routes (`calibrate/ground.py:29`) sets every ground
+- [x] **C9-17** (`AC55`, DOC9-7) Google Routes (`calibrate/ground.py:29`) sets every ground
       speed and the urban factor, and appears in no page-visible credit and nowhere in
       `web/llms.txt`, which cites the 2,998 journeys without naming their source. `README.md`
       discloses it fully; the page does not. Close the asymmetry.
-- [ ] **C9-18** (`AC56`, DOC9-5 + CRIT9-9) `emit/index.py:174-176` calls the ferry sailing
+- [x] **C9-18** (`AC56`, DOC9-5 + CRIT9-9) `emit/index.py:174-176` calls the ferry sailing
       speed "a published figure" and credits a "tortuosity" term. `calibration.toml:276-280`
       says FITTED, and no tortuosity term exists — a detour factor was tried and rejected.
-- [ ] **C9-19** (`AC29`, SEC9-1) Cycle-8's `?label=` puts a **reverse-geocoded street address**
+- [x] **C9-19** (`AC29`, SEC9-1) Cycle-8's `?label=` puts a **reverse-geocoded street address**
       into the URL, and GA4 sends the URL as `page_location`. The privacy text discloses only
       the coordinate. Either keep the address out of what analytics receives, or disclose it.
       Prefer keeping it out: the page does not need to send it.
 
 ## E — Gates that pass on empty input (MEDIUM)
 
-- [ ] **C9-20** (`AC15`, FCR9-1 + ARCH9-7) `browser_verify.sh:256` is the only check in the
+- [x] **C9-20** (`AC15`, FCR9-1 + ARCH9-7) `browser_verify.sh:256` is the only check in the
       file using `2>/dev/null`; a failed `agent-browser console` call yields empty stdout,
       `grep -ci` prints `0`, and the gate reports "errors: 0" without having read the console.
       `:161` fails only on a positive grep, so an empty probe also reads as a pass. Both are
       the gate CLAUDE.md's deploy rule rests on. **Mutation:** point the probe at a
       nonexistent selector → red.
-- [ ] **C9-21** (`AC30`, SEC9-6) Unquoted `$DEPLOY_ROOT` in the remote `df` makes the
+- [x] **C9-21** (`AC30`, SEC9-6) Unquoted `$DEPLOY_ROOT` in the remote `df` makes the
       free-space gate read the wrong filesystem — the guard that exists to stop a mixed
       `dist/` reaching the server.
 
@@ -212,37 +212,37 @@ The test-engineer lane ran **18 mutations against scratchpad copies** and nine s
 A fourth shape of vacuity was named: *the assertion's scope is derived from the subject*, so
 breaking the code removes the assertion rather than failing it.
 
-- [ ] **C9-22** (`AC7`, TE9-1, **HIGH**) `tests/web/test_app_constants.py:66`: the airports
+- [x] **C9-22** (`AC7`, TE9-1, **HIGH**) `tests/web/test_app_constants.py:66`: the airports
       column-order guard is satisfied by `greatCircle`'s coordinate pair (`app.js:1713`) and by
       the **places** table (`:937`). Transposing airports lat/lon (TE-M14) or deleting the
       reads outright (TE-M15) both leave it **green**. Anchor the assertion to the airports
       table specifically. **Mutation:** TE-M14 must go red.
-- [ ] **C9-23** (`AC60`, TE9-2) `tests/test_calibration_provenance.py:133`: the only assertion
+- [x] **C9-23** (`AC60`, TE9-2) `tests/test_calibration_provenance.py:133`: the only assertion
       sits behind `if "2,998" not in text: continue`, so reprinting the sample count disarms
       the guard (TE-M3 green). `README.md` is already silently exempt.
-- [ ] **C9-24** (`AC62`, TE9-4) `tests/test_cli.py:219`: `"EXCLUDED"` is satisfied by the rail
+- [x] **C9-24** (`AC62`, TE9-4) `tests/test_cli.py:219`: `"EXCLUDED"` is satisfied by the rail
       line, so the ferry report — the suite's only assertion about it — is unguarded (TE-M9).
-- [ ] **C9-25** (`AC63`, TE9-5) `tests/sources/test_cache_provenance.py:141,325`: `"airports"`
+- [x] **C9-25** (`AC63`, TE9-5) `tests/sources/test_cache_provenance.py:141,325`: `"airports"`
       is itself 8 alphanumerics and `land_cells_r6` has a digit and more than 12 characters.
       Each predicate is vacuous for a different path and they cover for each other by luck
       (TE-M1, TE-M2b green).
-- [ ] **C9-26** (`AC64`, TE9-6) `test_reindex`: `assert current() is not None` cannot show the
+- [x] **C9-26** (`AC64`, TE9-6) `test_reindex`: `assert current() is not None` cannot show the
       lambdas read today's config; freezing `hoverRes` leaves both guards green (TE-M8 ×2).
-- [ ] **C9-27** (`AC26`, VER9-4) Only 2 of the 5 tier-B failure modes are pinned by a test
+- [x] **C9-27** (`AC26`, VER9-4) Only 2 of the 5 tier-B failure modes are pinned by a test
       that executes anything; deleting `current()` at `app.js:1394` leaves the suite green.
       Pin the HTML-body, abort and stale-in-flight modes. The behaviour is correct — what is
       missing is the guard that keeps it correct.
 
 ## G — The ledger (MEDIUM, docs)
 
-- [ ] **C9-28** (`AC57`, DOC9-1/DOC9-2) Six deferred rows have exit criteria that have already
+- [x] **C9-28** (`AC57`, DOC9-1/DOC9-2) Six deferred rows have exit criteria that have already
       fired: **TE3-15** (the defect is *fixed* — `tests/web/test_ramps.py:13` now pins `== 12`),
       DOC3-28, DOC5-8, AA37, CR5-7, AB41. Close TE3-15; reopen or restate the other five.
-- [ ] **C9-29** (`AC58`, DOC9-3) `plan/README.md` does not describe HEAD: cycle 8 is absent
+- [x] **C9-29** (`AC58`, DOC9-3) `plan/README.md` does not describe HEAD: cycle 8 is absent
       entirely, cycle 4 is marked "open" though 28/28 and archived, two archived files are
       given `plan/` paths, "V1…V28" should be 29, and the test-count headline is three
       revisions stale (**700 passed, 4 deselected** at HEAD).
-- [ ] **C9-30** (`AC59`/`AC24`/`AC25`, DOC9-4 + VER9-2 + VER9-3) Ledger integrity: `USER-n`
+- [x] **C9-30** (`AC59`/`AC24`/`AC25`, DOC9-4 + VER9-2 + VER9-3) Ledger integrity: `USER-n`
       names two incompatible things across cycles 4 and 8; `M8-14` is ticked while the same
       file says it was not fixed and the measurement worsened 1.8 px → 19 px; `ARCH5-6` is
       referenced and undefined; `J3`/`DOC3-21` are duplicated; one row is malformed. Plus two
@@ -250,7 +250,7 @@ breaking the code removes the assertion rather than failing it.
       by four ceiling-saturated anchors (on the four the ladder can resolve it is 3.5 → 2.5,
       and Helsinki–Tallinn gets **worse**, 2 → 4), and the Kerguelen/South Georgia "old model"
       column is transposed.
-- [ ] **C9-31** (`AC19` doc half, CR9-6 + DOC9-6) `graph/ferry.py:62-75` derives
+- [x] **C9-31** (`AC19` doc half, CR9-6 + DOC9-6) `graph/ferry.py:62-75` derives
       `MIN_SAILINGS_PER_WEEK` from a headroom sum that substitutes 8,640 minutes for the
       48,000 its own stated bound (`MAX_FERRY_KM` at `MIN_SAILING_KMH`) gives. With the real
       figure the sum is 98,475 against `MAX_MINUTES` 65,534, so **the guarantee fails at the
@@ -320,4 +320,109 @@ column-order guard (AC7) — are all scheduled above and fixed this cycle.
 
 ## Progress
 
-(filled in as tasks land)
+**All 31 tasks are done.** Every one was landed as a signed, conventional,
+fine-grained commit, and every guard was shown red under the mutation named in
+its task before the commit was made.
+
+Gate state at the cycle's starting HEAD `7a1465b`: `uv run ruff check .` all
+checks passed, exit 0; `uv run pytest -q` **700 passed, 4 deselected, 5
+warnings** in 22 min 37 s, exit 0. Final gate state is recorded at the bottom of
+this section. Exit statuses were read directly, never chained behind `&&` and
+never piped into `tail` — the cycle-8 rule.
+
+### The mutations, and what each proved
+
+| # | Task | Mutation | Result |
+|---|---|---|---|
+| 1 | C9-1 | move `let bandSpan = null` back below `markSpan()` | **red**, naming bandSpan, markSpan and the resize registration |
+| 2 | C9-1 | (guard extension) call `layoutForSize()` above the await with `smallEntered` still declared below | **red**, naming `MIN_LEGS_PX` and `smallEntered` — found two live hazards before they shipped |
+| 3 | C9-2 | take the itinerary's total from `lookup()` again | **red** on the missing onward row and on the row sum (300 against 460) |
+| 4 | C9-3 | key `n_nodes` on `off["airports"]` alone | **red** — the mixed build passes |
+| 5 | C9-4 | `outline-offset:1px` on `.mapbtn` | **red** |
+| 6 | C9-5 | move `layoutForSize()` back below the await | **red** |
+| 7 | C9-6 | drop `:not(#time)` from the fold rule | **red** on two assertions |
+| 8 | C9-7 | restore the child-count denominator in `markBand` | **red**, mark 2.7% (about one band) off its band |
+| 9 | C9-8 | prune the detail row before unhiding it | **red**, one tick of six |
+| 10 | C9-9 | drop `unwrap()` from `highlight()` | **red** |
+| 11 | C9-10 | delete the address re-prepend from `render()` | **red** |
+| 12 | C9-11 | drop the `originGen`/`pinB` clause from the permalink restore | **red** |
+| 13 | C9-12 | restore the unscoped Escape handler | **red** |
+| 14 | C9-13 | restore the bare `6371` | **red**, naming both radii |
+| 15 | C9-14 | restore "the reading averages over them" to `llms.txt` | **red**, naming the file and the line |
+| 16 | C9-19 | drop `!pinB.geocoded` from `syncPermalink` | **red** |
+| 17 | C9-19 | drop `searchParams.delete('label')` from the gtag bootstrap | **red** |
+| 18 | C9-20 | restore `2>/dev/null` on the console capture | **red** |
+| 19 | C9-20 | delete the origin-label `case` guard | **red** (green before the guard was tightened — see below) |
+| 20 | C9-21 | unquote `$DEPLOY_ROOT` | **red** |
+| 21 | C9-22 | transpose the airports latitude and longitude (TE-M14) | **red** — was green |
+| 22 | C9-22 | delete both airports coordinate reads (TE-M15) | **red** — was green |
+| 23 | C9-23 | delete the "published-figure default" label, keep "2,998" (TE-M3) | **red** |
+| 24 | C9-24 | print "ferries:  included" after a FileNotFoundError (TE-M9) | **red** — was green |
+| 25 | C9-25 | drop the stamp from `airports._table_cache_path` (TE-M1) | **red** — was green |
+| 26 | C9-25 | drop the stamp from `landmask._cells_cache_path` (TE-M2b) | **red** — was green |
+| 27 | C9-26 | freeze `"hoverRes"` to `lambda: 4` (TE-M8) | **red** — was green |
+| 28 | C9-27 | make `fetchReadingCells` call `fatal()` | **red** on three of the four new cases |
+| 29 | C9-27 | delete the inner `current()` from the reading write | **red** (green before the guard was rewritten — see below) |
+| 30 | C9-28 | make the boot watchdog's `appReady` check unconditional | **red** |
+| 31 | C9-28 | delete the watchdog's `appReady` check entirely | **red** on the sibling test — the pair is non-vacuous in both directions |
+
+### Two of this cycle's own new guards were vacuous when written
+
+Both were caught by running the mutation, not by rereading — which is the whole
+point of the rule.
+
+- The `browser_verify` guard asserted `'no origin label' in code`. That string
+  is the probe's own return value and appears in the `eval` the script sends to
+  the browser, so the assertion was satisfied by the very thing it was meant to
+  check. It now requires a line that both matches the failed result and sets
+  `fail=1`.
+- The tier-B generation guard looked backwards from the write for any
+  `current()` and found the *outer* callback's, so deleting the inner check left
+  it green. It also carried `body.count("{", guard, i) >= 0`, which is true of
+  every input. It now walks the brace structure and requires the check to be in
+  the same callback as the write.
+
+**The fourth vacuity shape**, named by the test-engineer lane and now recorded
+in `plan/README.md` beside the other three: *the assertion's scope is derived
+from its subject*, so breaking the code removes the assertion's reach rather
+than failing it.
+
+### What a visitor gets that they did not have
+
+- A `resize` during the globe's load no longer deletes the side rail. This was
+  reproducible, it is the failure mode `CLAUDE.md`'s deploy rule exists for, and
+  an Android URL bar collapsing was enough to fire it.
+- The legend's "you are here" mark now points at the band it is reading, not
+  about one band short of it, whenever the zoom detail row is showing.
+- The zoom detail row has six labels instead of one. It has had one for as long
+  as it has existed, because it was measured while it was still hidden.
+- A keyboard visitor can see where focus is on the three map controls: 7.11:1
+  against the 1.00–1.08:1 measured before, where WCAG 2.2 asks for 3:1.
+- A portrait phone sees "Loading the map…" during the load instead of a bottom
+  sheet covering it.
+- A phone in landscape with the sheet folded still shows the travel time. It
+  showed none, while the screen-reader live region announced one.
+- Hovering a cell on the antimeridian outlines the cell instead of painting a
+  band across the globe.
+- Address search results survive the city list rebuilding under them.
+- A shared link no longer overwrites a destination chosen while it was loading.
+- Escape dismisses the tooltip it is meant to dismiss, and stops deleting the
+  route from anywhere on the page.
+- A clicked street address no longer goes to Google Analytics.
+
+### What the page now says that is true and was not
+
+The reading is the centre sub-cell's value, not an average over seven. The ferry
+prior under-states the wait below 150 km and over-states it above, which is the
+opposite of what the page said. The departure card says its figures are door to
+door. Google Routes is named where the 2,998 driving journeys are cited.
+
+### A note for whoever runs the next FULL deploy
+
+`scripts/check_dist.py` will now refuse today's `dist/`, correctly: the gate
+keys on `(offsets.airports, offsets.stations)` and the tree holds two builds —
+13,751,643 cells / 3,990 airports in 493 origins, and 13,751,643 / 3,996 in 60.
+That refusal is the fix working. It clears when the running 553-origin rebuild
+republishes `dist/` from one build. This cycle deployed `--page-only`, which
+does not read `dist/`.
+
