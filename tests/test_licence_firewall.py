@@ -20,6 +20,41 @@ FORBIDDEN = ("fr24", "flightradar", "flightaware", "aeroapi", "fa_flight_id",
 # such that nothing under dist/ matches it, `_check_no_provider_fingerprints`
 # must SKIP visibly -- not silently pass having scanned zero files.
 SCANNED_SUFFIXES = {".json", ".geojson", ".toml", ".txt", ".md", ".html", ".js", ".xml"}
+# Everything above is text, and text is not where most of the published bytes
+# are: measured on the current dist/, .pmtiles is 15.5 GB and .bin is 1.4 GB
+# against 399 MB of .json. CLAUDE.md and deploy/README.md both call this
+# firewall "the only automated licence gate in the project", and it could not
+# see either format.
+#
+# Reading 17 GB in a unit test is not the answer. The two formats differ in
+# what they can even carry:
+#
+#   .pmtiles holds a JSON metadata blob, which is text, which a visitor can
+#     fetch with one unauthenticated `Range: 0-4095` GET. That IS a leak
+#     surface, and scripts/check_dist.py already locates and gunzips exactly
+#     that blob -- so this test reuses that function rather than writing a
+#     second PMTiles parser. It reads a few KB per archive, not 28 MB.
+#
+#   .bin is a fixed-width numeric array straight out of numpy.tobytes(): it
+#     has no string content by construction, and the emitter tests assert its
+#     exact byte length. There is nothing for a token to hide in, so it is NOT
+#     scanned, and that is a reasoned exclusion rather than an oversight.
+#
+# The tile bodies inside a .pmtiles are gzipped and are not inspected. What
+# could reach one is a feature PROPERTY, and tests/emit/ asserts on the
+# properties the emitter writes.
+SCANNED_BINARY_SUFFIXES = {".pmtiles"}
+
+
+def _check_dist():
+    """scripts/check_dist.py as a module. It is a script, not a package member;
+    tests/web/test_check_dist.py loads it the same way."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "check_dist", config.ROOT / "scripts" / "check_dist.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _check_no_provider_fingerprints(root: Path) -> None:
@@ -42,6 +77,24 @@ def _check_no_provider_fingerprints(root: Path) -> None:
         text = path.read_text(encoding="utf-8", errors="ignore").lower()
         for token in FORBIDDEN:
             assert token not in text, f"{path} contains '{token}'"
+
+    # The PMTiles metadata blobs, through check_dist's parser but against THIS
+    # module's token list. Not check_dist's `_pmtiles_metadata_leak`, which also
+    # refuses a build-host path: that is a privacy question, it belongs to the
+    # deploy gate that owns it, and the currently deployed `water.pmtiles`
+    # carries one -- so borrowing that check would have made this test fail on
+    # a fault it is not about, in an artefact only a rebuild can replace. The
+    # licence firewall's subject is commercial-provider fingerprints.
+    archives = [p for p in root.rglob("*") if p.is_file()
+                and p.suffix in SCANNED_BINARY_SUFFIXES and "vendor" not in p.parts]
+    if archives:
+        metadata_text = _check_dist().pmtiles_metadata_text
+        for path in archives:
+            text = metadata_text(path)
+            if text is None:
+                continue                      # not a readable PMTiles header
+            for token in FORBIDDEN:
+                assert token not in text, f"{path} metadata contains '{token}'"
 
 
 def test_no_provider_fingerprints_in_shipped_text():

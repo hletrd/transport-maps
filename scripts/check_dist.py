@@ -56,14 +56,30 @@ COUNT_CLAIM = re.compile(r"\b[0-9]{3} (cities|departure|origin)|\bhundreds of (c
 PMTILES_METADATA_LEAKS = ("/users/", "/home/", "/var/folders/", "/private/",
                           "c:\\users\\")
 
+#: Commercial-provider fingerprints, the same list the licence firewall
+#: enforces over text (`tests/test_licence_firewall.py`). That firewall's
+#: SCANNED_SUFFIXES is .json/.geojson/.toml/.txt/.md/.html/.js/.xml -- which
+#: excludes .pmtiles and .bin, i.e. every binary artefact an origin ships.
+#: CLAUDE.md and deploy/README.md both call the firewall "the only automated
+#: licence gate in the project", and it could not see the format most of the
+#: published bytes are in. No forbidden token reaches a .pmtiles today (the
+#: tippecanoe invocations and the feature properties were traced), so this
+#: closes a coverage gap rather than a live leak -- but the metadata blob is
+#: one unauthenticated `Range: 0-4095` GET from any visitor, and the decoded
+#: text is already in hand here, so the check costs nothing.
+PMTILES_FORBIDDEN = ("fr24", "flightradar", "flightaware", "aeroapi", "fa_flight_id",
+                     "routes.googleapis.com", "x-goog-api-key", "computeroutes",
+                     "google_routes")
 
-def _pmtiles_metadata_leak(path: Path) -> str | None:
-    """A build-host path served to every visitor, or None.
 
-    A single unauthenticated `Range: 0-4095` GET returns the metadata blob, so
-    this is public the moment the archive is. The emitter-side test builds a
-    fresh archive with today's code and asserts on that, which structurally
-    cannot see a file already on disk.
+def pmtiles_metadata_text(path: Path) -> str | None:
+    """The archive's JSON metadata blob, lowercased, or None if unreadable.
+
+    A single unauthenticated `Range: 0-4095` GET returns this blob, so whatever
+    is in it is public the moment the archive is. Split out from the leak check
+    below so `tests/test_licence_firewall.py` can apply ITS token list to the
+    same text without carrying a second PMTiles parser, and without reading the
+    28 MB of tile bodies behind it.
     """
     size = path.stat().st_size
     with open(path, "rb") as fh:
@@ -79,7 +95,22 @@ def _pmtiles_metadata_leak(path: Path) -> str | None:
             blob = gzip.decompress(blob)
         except OSError:
             return None
-    text = blob.decode("utf-8", "ignore").lower()
+    return blob.decode("utf-8", "ignore").lower()
+
+
+def _pmtiles_metadata_leak(path: Path) -> str | None:
+    """A build-host path or a commercial-provider fingerprint in the metadata.
+
+    The emitter-side test builds a fresh archive with today's code and asserts
+    on that, which structurally cannot see a file already on disk.
+    """
+    text = pmtiles_metadata_text(path)
+    if text is None:
+        return None
+    provider = next((t for t in PMTILES_FORBIDDEN if t in text), None)
+    if provider:
+        return (f"{path.name} metadata contains {provider!r}: a commercial-provider "
+                "fingerprint in a published archive, which the licence firewall forbids")
     hit = next((t for t in PMTILES_METADATA_LEAKS if t in text), None)
     return f"{path.name} metadata contains {hit!r}: a build-host path served to every visitor" \
         if hit else None
