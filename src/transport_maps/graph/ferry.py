@@ -65,13 +65,34 @@ KNEE_KM = 8.0
 #
 # The value is DERIVED, not chosen to taste. `emit/hover.py` ships readings as
 # uint16 with `MAX_MINUTES = 65534`; anything at or above it is written as the
-# "no scheduled route" sentinel. A crossing costs at most
-# wait + sailing + terminal + border, and the largest sailing this module will
-# accept is bounded by MAX_FERRY_KM at MIN_SAILING_KMH. At 0.1 sailings per
-# week the wait is 50,400 minutes, and 50,400 + 8,640 + 30 + 45 = 59,115 --
-# inside the sentinel with room to spare. Raising the floor would clamp real
-# services: Tristan da Cunha runs about nine sailings a year, 0.173 per week,
-# so at 0.1 no published anchor is clamped by this bound at all.
+# "no scheduled route" sentinel. A crossing costs
+# wait + sailing + terminal + border, and at 0.1 sailings per week the wait is
+# 50,400 minutes.
+#
+# What that guarantees, exactly. For a crossing whose sailing time this module
+# MODELS -- `berth_min + 60 * km / speed_kmh` -- the worst case is
+# MAX_FERRY_KM at the fitted speed: 11.2 + 60 * 4000 / 29.1 = 8,258 min, and
+# 50,400 + 8,258 + 30 + 45 = 58,733. Inside the sentinel, with room.
+#
+# What it does NOT guarantee, and this comment used to claim it did. A crossing
+# that carries a `duration` TAG is trusted up to `plausible_speed`'s lower
+# bound, so the accepted sailing is bounded by MAX_FERRY_KM at
+# MIN_SAILING_KMH -- 4000 / 5 = 800 h = 48,000 min, not the 8,640 this
+# derivation used to substitute for it (8,640 is 144 h, the largest tagged
+# duration actually observed, which is a different quantity). The real worst
+# case is 50,400 + 48,000 + 30 + 45 = 98,475, which OVERFLOWS the sentinel and
+# would ship as "no scheduled route" while `check_coverage` still counts the
+# cell covered.
+#
+# No such crossing exists in the extracts today -- it needs a 4,000 km link
+# tagged at about 5 km/h AND at the sailings floor -- so this is a latent gap,
+# not a live defect. The fix is a clamp on `crossing_min`, which changes an
+# emitted number and therefore waits for a cycle that may rebuild; it is
+# recorded as DEF9-8 in plan/2026-09-13-c9-page-failure-paths.md.
+#
+# Raising the floor would clamp real services: Tristan da Cunha runs about nine
+# sailings a year, 0.173 per week, so at 0.1 no published anchor is clamped by
+# this bound at all.
 MIN_SAILINGS_PER_WEEK = 0.1
 
 # A parsed `duration` is trusted only if it implies a plausible average speed
