@@ -2809,7 +2809,18 @@ function render(filter = "") {
   // give it back to the row with the same slug.
   const hadFocus = box.contains(document.activeElement)
     ? document.activeElement.dataset?.slug : null;
+  // ...and the address results are not ours to throw away. searchAddress()
+  // PREPENDS a <ul class="addresses"> to this same box, and replaceChildren
+  // deletes it. The re-attach at the end of searchAddress() covers only the
+  // case where the fetch is still in flight; once the addresses are on screen
+  // and the visitor is reading them, the next settle() -- which render()s once
+  // per origin, up to a second after a city click -- simply removed them, with
+  // nothing said. Carry the node across, and drop it only when the query it
+  // answers is no longer the query in the box.
+  const addresses = box.querySelector(".addresses");
+  const stale = addresses && addresses.dataset.q !== $("q").value.trim();
   box.replaceChildren(list);
+  if (addresses && !stale) box.prepend(addresses);
   // Roving tabindex: one stop in the tab order, the arrow keys walk the rest.
   // 157 rows used to be 157 tab stops between the search box and the next
   // panel. That stop is the CURRENT DEPARTURE, not row 1: with 553 origins,
@@ -2887,6 +2898,9 @@ async function searchAddress(q) {
   const seq = ++addressSeq;
   const ul = document.createElement("ul");
   ul.className = "addresses";
+  // The query these results answer, so render() can tell whether they still
+  // belong to what is in the search box.
+  ul.dataset.q = q;
   ul.setAttribute("role", "none");
   const head = document.createElement("li");
   head.className = "head"; head.setAttribute("role", "none");
@@ -3028,8 +3042,26 @@ $("results").addEventListener("keydown", (e) => {
 });
 $("find-address").addEventListener("click", () => searchAddress($("q").value.trim()));
 document.addEventListener("keydown", (e) => {
-  // Escape anywhere with a route open clears it, unless a field is using it.
-  if (e.key === "Escape" && pinB && document.activeElement !== $("q")) clearRoute();
+  if (e.key !== "Escape") return;
+  // WCAG 2.2 SC 1.4.13: content shown on hover or focus must be dismissible
+  // without moving the pointer or the focus. The .ap and .mode glosses in the
+  // itinerary appear on focus and had no dismissal at all, and the globe's own
+  // readout tooltip had none either. Escape now takes the topmost thing first.
+  if (!$("legtip").hidden || !$("tip").hidden) {
+    hideLegTip();
+    $("tip").hidden = true;
+    return;
+  }
+  // ...and only then the route. Not from anywhere: Escape inside the search
+  // box belongs to the search box, and Escape while reading the itinerary or
+  // a panel should not silently delete the journey being read -- pressing it
+  // with "ICN" focused deleted the route and dumped focus on <body>, with
+  // nothing said. The map and the readout are where a destination is set, so
+  // they are where it can be cleared.
+  const at = document.activeElement;
+  const owned = at === document.body || at === null
+    || at?.closest?.("#map, .reading, .tip");
+  if (pinB && owned) clearRoute();
 });
 render();
 
@@ -3381,7 +3413,16 @@ if (requestedCamera) moveTo({ ...requestedCamera, speed: 1.2 });
 if (requestedPin) {
   const { lat, lon } = requestedPin;
   if (!requestedCamera) moveTo({ center: [lon, lat], zoom: CAMERA_DEFAULT_ZOOM, speed: 1.2 });
+  // The departure the link named. A restore that fires after the visitor has
+  // switched city is restoring a pin measured from somewhere else.
+  const forGen = originGen;
   const restore = () => {
+    // Abandon, rather than wait: the retry loop runs for ten seconds at 250 ms,
+    // and it guarded only on `origin.times`. A visitor who pinned their own
+    // destination in that window, or switched departure city, had the link's
+    // pin written over the top of it with nothing said. Returning true stops
+    // the interval; the link's pin no longer applies either way.
+    if (originGen !== forGen || pinB) return true;
     if (!origin.times) return false;
     const p = namePlaces ? nearestPlace(lat, lon) : null;
     commitDestination(lat, lon,
