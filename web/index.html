@@ -31,11 +31,11 @@
       "@type": "Dataset",
       "@id": "https://worldmap.atik.kr/#dataset",
       "name": "Global travel-time isochrones from more than five hundred cities",
-      "description": "Expected door-to-door travel time from each of its origin cities to every land area on Earth, combining scheduled air routes, rail from OpenStreetMap route relations, ferry crossings, and a road-speed model calibrated against 2,998 real driving journeys, with check-in, border-control and transfer penalties. Distributed as PMTiles isochrone bands (37 continuous bands at four levels of detail) plus per-origin binary arrays of time, arrival airport, surface mode and rail station on an H3 grid, with coastlines from OpenStreetMap and lakes from HydroLAKES.",
+      "description": "Expected door-to-door travel time from each of its origin cities to every land area on Earth, combining scheduled air routes, rail from OpenStreetMap route relations, ferry crossings, and a road-speed model whose four middle road classes are fitted to 2,998 real driving journeys, the roadless and local classes keeping published-figure defaults, with check-in, border-control and transfer penalties. Distributed as PMTiles isochrone bands (37 continuous bands at four levels of detail) plus per-origin binary arrays of time, arrival airport, surface mode and rail station on an H3 grid, with coastlines from OpenStreetMap and lakes from HydroLAKES.",
       "url": "https://worldmap.atik.kr/",
       "keywords": ["isochrone", "travel time", "accessibility", "world map", "H3", "PMTiles", "aviation", "geography"],
       "spatialCoverage": { "@type": "Place", "name": "Earth" },
-      "measurementTechnique": "Single-source Dijkstra over a multi-modal graph of H3 hexagonal land cells at resolution 6 (about 36 km², 6.5 km across), refined to resolution 7 (about 5 km², 2.4 km across) wherever the road network reaches secondary grade or a metropolitan area lies, joined to the scheduled-service airports, rail stations and ferry crossings listed in index.json; air times fitted to 107,366 ADS-B flight legs, road speeds to 2,998 sampled driving journeys",
+      "measurementTechnique": "Single-source Dijkstra over a multi-modal graph of H3 hexagonal land cells at resolution 6 (about 36 km², 6.5 km across), refined to resolution 7 (about 5 km², 2.4 km across) wherever the road network reaches secondary grade or a metropolitan area lies, joined to the scheduled-service airports, rail stations and ferry crossings listed in index.json; air times fitted to 107,366 ADS-B flight legs, road speeds for four of the six GRIP road classes to 2,998 sampled driving journeys, the roadless and local classes keeping published-figure defaults",
       "creator": { "@type": "Person", "name": "Jiyong Youn" },
       "isBasedOn": [
         "https://ourairports.com/data/",
@@ -874,8 +874,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          anything over 10,000 km as approximate.</p>
       <p>Flight frequency is a gravity model fitted to two anchor routes, not
          a timetable. Rail and ferry legs carry no waiting time at all.
-         Ground speeds come from 2,998 sampled driving journeys and describe a
-         road class, not a road. And the build that is being served may lag
+         Ground speeds describe a road class, not a road. Four of the six
+         classes are fitted to 2,998 sampled driving journeys; roadless
+         terrain and local roads keep published-figure defaults, because the
+         fit wanted roadless terrain infinitely fast and drew local roads from
+         116 km of driving across four journeys. Those two are the slowest and
+         the second slowest classes, so they set the last kilometres of many
+         journeys. And the build that is being served may lag
          the code: <code>index.json</code> records what was actually
          computed.</p>
       <p><b>Where the number is read.</b> The outlined hexagon under the pointer

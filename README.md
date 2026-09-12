@@ -87,6 +87,10 @@ No commercial flight data (schedules, frequencies or positions) is used
 anywhere in this pipeline; `tests/test_licence_firewall.py` checks that no
 provider fingerprint reaches `dist/`. One commercial service is used during
 **calibration only**: `scripts/calibrate_ground.py` samples driving times from
-Google Routes and fits the per-road-class speeds in `graph/ground.py` and the
-urban factor in `sources/urban.py`. The sampled durations stay in
+Google Routes and fits four of the six per-road-class speeds in
+`graph/ground.py` (classes 1-4) and the urban factor in `sources/urban.py`.
+Roadless terrain and local roads keep published-figure defaults: the fit
+wanted roadless terrain infinitely fast, which its guard refuses, and local
+roads drew 116 km across four journeys. `graph/ground.py` says which is which
+at the constant itself, as CLAUDE.md's calibration rule requires. The sampled durations stay in
 `data/build/` (gitignored) and nothing from them reaches `dist/`.

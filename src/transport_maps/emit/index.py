@@ -178,7 +178,13 @@ def mode_detail() -> dict[str, str]:
         # ships into index.json and is read out in the page's route tooltip.
         "minor road": f"Tertiary roads, fitted at {kmh[4]:.0f} km/h; local roads at "
                       f"{kmh[5]:.0f} km/h, a published-figure default. Both {halved}.",
-        "track": f"No mapped road: {kmh[0]:.0f} km/h, walking pace.",
+        # Class 0 was the last speed in this table with no provenance on it.
+        # graph/ground.py keeps it as a published-figure default because the
+        # fit wanted roadless terrain infinitely fast -- a collinearity
+        # artefact its guard refuses -- and an earlier unguarded fit returned
+        # 58 km/h for terrain with no road at all.
+        "track": f"No mapped road: {kmh[0]:.0f} km/h, walking pace, a published-figure "
+                 "default (the fit for roadless terrain is degenerate).",
     }
 
 

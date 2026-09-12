@@ -104,3 +104,61 @@ def test_label_must_sit_immediately_above_the_header():
     dotted = "# Published-figure defaults; not fitted.\n[a.b]\nx = 1\n"
     assert unlabelled_tables(dotted) == []
     assert unlabelled_tables("[meta]\ncalibrated = true\n") == []
+
+
+# --- cycle 7: the claim the DOCUMENTS make, not only calibration.toml --------
+#: Every file that describes the road model to a reader. `graph/ground.py`
+#: says classes 1-4 are fitted and roadless and local keep published-figure
+#: defaults; five of these said, in one way or another, that the whole model
+#: was fitted to the 2,998 journeys. CLAUDE.md's calibration rule makes that a
+#: correctness question, not a wording one: "prefer a documented, reproducible
+#: error over a hidden one."
+_ROAD_CLAIM_FILES = (
+    "web/index.html",
+    "web/llms.txt",
+    "README.md",
+)
+
+
+def test_no_document_claims_the_whole_road_model_is_fitted():
+    """Wherever the 2,998 journeys are named, the two defaults are named too.
+
+    Mutation performed and reverted: restore "a road-speed model calibrated
+    against 2,998 real driving journeys" in web/index.html -> red.
+    """
+    from transport_maps import config
+
+    for rel in _ROAD_CLAIM_FILES:
+        text = (config.ROOT / rel).read_text(encoding="utf-8")
+        if "2,998" not in text:
+            continue
+        flat = " ".join(text.split())
+        assert "published-figure default" in flat, (
+            f"{rel} cites the 2,998 sampled journeys without saying that two of the six "
+            "road classes keep published-figure defaults, which graph/ground.py records "
+            "and CLAUDE.md's calibration rule requires")
+
+
+def test_every_speed_in_the_mode_tooltips_says_which_it_is():
+    """The six road-class sentences shipped in index.json are read out in the
+    page's route tooltip. Each must say fitted or published-figure default.
+
+    Mutation performed and reverted: drop "a published-figure default" from
+    the "track" entry in emit/index.py -> red.
+    """
+    from transport_maps.emit import index
+
+    detail = index.mode_detail()
+    for mode in ("highway", "major road", "minor road", "track"):
+        sentence = detail[mode]
+        assert "fitted" in sentence or "published-figure default" in sentence, (
+            f"the {mode!r} tooltip gives a speed with no provenance: {sentence!r}")
+    # "minor road" and "track" are the two that carry a default; they must say
+    # so rather than borrowing the word "fitted" from their neighbours.
+    assert "published-figure default" in detail["minor road"]
+    assert "published-figure default" in detail["track"]
+    # And no sentence may print a backwards range.
+    import re
+    for mode, sentence in detail.items():
+        for lo, hi in re.findall(r"(\d+)-(\d+) km/h", sentence):
+            assert int(lo) <= int(hi), f"the {mode!r} tooltip prints a backwards range: {sentence!r}"
