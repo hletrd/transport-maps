@@ -224,7 +224,7 @@ console.log(JSON.stringify({{ runs }}));
             assert not leading, "band 0 has no lower boundary to label"
         assert len(ticks) <= int(re.search(r"const DETAIL_TICKS = (\d+);", APP).group(1)) + 1
         # The caption names both ends of the view in true band-edge values.
-        assert "In view:" in run["cap"] and "door to door" in run["cap"]
+        assert "Most of this view:" in run["cap"] and "door to door" in run["cap"]
         # ...and the bracket on the main strip covers exactly those bands.
         b = run["bracket"]
         assert float(b["left"].rstrip("%")) == pytest.approx(100 * lo / N_BANDS)
@@ -257,3 +257,48 @@ def test_the_detail_row_is_an_addition_and_never_replaces_the_legend():
     assert ".tints .span{position:absolute" in html
 
 
+
+
+def test_the_on_screen_range_is_trimmed_so_one_outlier_cannot_claim_the_scale(node, tmp_path):
+    """Measured on the live page: at zoom 9.5 over Seoul, 81 sampled points run
+    from band 0 in the city to band 22 -- twelve hours -- on a single roadless
+    cell in the hills forty kilometres out. Taking the raw minimum and maximum
+    let that one cell declare 23 of 37 bands "on screen", which tripped the
+    wide-view guard and suppressed the detail row entirely: the opposite of
+    what zooming in is supposed to do. This is the fix, and it is the reason
+    the caption says "most of this view".
+
+    The sampling loop needs a map, so the TRIM is exercised directly here on
+    the same sorted-array arithmetic the function uses. The map-dependent half
+    is covered by the deploy's browser check.
+
+    Mutation performed and reverted: set SCALE_TRIM to 0 -> red (the Seoul
+    case widens back to 23 bands and the guard hides the row).
+    """
+    trim = float(re.search(r"const SCALE_TRIM = ([\d.]+);", APP).group(1))
+    assert 0 < trim < 0.5, "the trim must remove a tail, not a half"
+    probe = f"""
+const SCALE_TRIM = {trim};
+function trimmed(bands) {{
+  const n = bands.length;
+  bands.sort((a, b) => a - b);
+  const cut = Math.floor(n * SCALE_TRIM);
+  return {{ lo: bands[cut], hi: bands[n - 1 - cut] }};
+}}
+// The real Seoul sample: 80 readings in bands 0-9, one roadless cell at 22.
+const seoul = [...Array(80).keys()].map((i) => i % 10).concat([22]);
+console.log(JSON.stringify({{
+  seoul: trimmed(seoul),
+  tight: trimmed([...Array(81)].map(() => 3)),
+  world: trimmed([...Array(81).keys()].map((i) => Math.floor(i * 36 / 80))),
+}}));
+"""
+    got = _run(node, tmp_path, probe)
+    # The outlier is trimmed away, so the row covers where the view actually is.
+    assert got["seoul"] == {"lo": 0, "hi": 9}, got["seoul"]
+    assert got["seoul"]["hi"] - got["seoul"]["lo"] + 1 < int(0.6 * N_BANDS), (
+        "the Seoul view is still wide enough to suppress the detail row")
+    # A view sitting entirely in one band is a legitimate range, not an error.
+    assert got["tight"] == {"lo": 3, "hi": 3}
+    # ...and a world view stays wide, so the four world ticks stand unchanged.
+    assert got["world"]["hi"] - got["world"]["lo"] + 1 >= int(0.6 * N_BANDS)

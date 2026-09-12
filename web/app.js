@@ -1979,6 +1979,16 @@ const SCALE_SAMPLE = 9;
 // Below this many land readings the sample says nothing -- an ocean view, or
 // an origin whose arrays have not landed -- and the world scale stands.
 const MIN_SCALE_SAMPLES = 6;
+// The share of the sample trimmed from each end before the range is taken.
+// Measured: at zoom 9.5 over Seoul, 81 sampled points run from band 0 in the
+// city to band 22 -- twelve hours -- on a single roadless cell in the hills
+// forty kilometres out. Taking the raw minimum and maximum let that one cell
+// stretch the "range on screen" across 23 of 37 bands and suppressed the
+// detail row entirely, which is the opposite of the intended behaviour. The
+// trimmed range describes where the view actually is; the strip above still
+// covers every band, including the outlier, so nothing is hidden from a
+// reader who points at it.
+const SCALE_TRIM = 0.05;
 // The share of the ladder that counts as "most of it". Above this the detail
 // row would duplicate the strip, so the world ticks stand unchanged and the
 // row stays hidden. 60% of thirty-seven bands is twenty-three boundaries.
@@ -1995,7 +2005,7 @@ function onScreenBandRange() {
   try { canvas = map.getCanvas(); } catch { return null; }
   const w = canvas.clientWidth, h = canvas.clientHeight;
   if (!w || !h) return null;
-  let lo = N_BANDS, hi = -1, n = 0;
+  const bands = [];
   for (let i = 0; i < SCALE_SAMPLE; i++) {
     for (let j = 0; j < SCALE_SAMPLE; j++) {
       let ll;
@@ -2007,12 +2017,14 @@ function onScreenBandRange() {
       if (!ll || !Number.isFinite(ll.lat) || !Number.isFinite(ll.lng) || Math.abs(ll.lat) > 90) continue;
       const b = bandIndexOf(lookup(ll.lat, ll.lng));
       if (b < 0) continue;                       // sea, unreachable, or not loaded
-      if (b < lo) lo = b;
-      if (b > hi) hi = b;
-      n++;
+      bands.push(b);
     }
   }
-  return n >= MIN_SCALE_SAMPLES && hi >= lo ? { lo, hi, n } : null;
+  const n = bands.length;
+  if (n < MIN_SCALE_SAMPLES) return null;
+  bands.sort((a, b) => a - b);
+  const cut = Math.floor(n * SCALE_TRIM);
+  return { lo: bands[cut], hi: bands[n - 1 - cut], n };
 }
 
 // The bracket on the main strip. A div, not a span: browser_verify.sh counts
@@ -2070,8 +2082,10 @@ function paintDetail(range) {
   // What the row is, in words, with both ends named at their true values.
   const from = lo > 0 ? fmtTick(EDGES[lo - 1]) : "0 min";
   const to = hi < EDGES.length ? fmtTick(EDGES[hi]) : `over ${fmtTick(EDGES[EDGES.length - 1])}`;
+  // "Most of", not "all of": the range is trimmed, so a single outlying cell
+  // cannot claim the whole scale is in view. The strip above still covers it.
   $("detail-cap").textContent =
-    `In view: ${from} to ${to}, door to door. The bracket above shows this slice of the whole scale.`;
+    `Most of this view: ${from} to ${to}, door to door. The bracket above marks it on the full scale.`;
   $("detail").hidden = false;
   markSpan(range);
 }

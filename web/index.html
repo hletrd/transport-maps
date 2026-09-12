@@ -592,6 +592,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   .reading .v{font-size:34px;min-height:34px}
   .reading .at{min-height:0}
   .legend{margin-top:10px}
+  /* The zoom detail costs about 86 px, and the phone sheet has none spare:
+     measured at 390x844 it pushed the build-date line one pixel past the
+     rail's own box. The row earns its place there -- a phone is where a
+     reader is most often zoomed in -- so the spacing gives way instead. */
+  .detail{margin-top:6px;padding-top:6px}
+  .detail-cap{margin-top:4px}
   /* NOT a nested scroll box. .rail is already the scrolling surface here, so
      capping .legs put a second scroller inside it, with an overlay scrollbar,
      no fade, and a 94%-opaque sticky total that reads as the end of the list.
