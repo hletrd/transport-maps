@@ -424,7 +424,23 @@ paintLegend();
 // hours and minutes, and drop any label that would overprint its neighbour
 // once measured on screen.
 const TICK_TARGETS_MIN = [60, 300, 1440, 4320];
-function paintScale() {
+
+//: One tick element at a true band boundary. `at` is the fraction of the
+//: strip's width, which every caller computes from a band index so a label can
+//: never land between boundaries -- CLAUDE.md's rule that "its ticks sit at
+//: their true band boundaries", since the bands are equal width but the time
+//: scale is not.
+function tickEl(i, at) {
+  const el = document.createElement("span");
+  el.style.left = `${at * 100}%`;
+  el.dataset.min = String(EDGES[i]);
+  el.textContent = fmtTick(EDGES[i]) + (i === EDGES.length - 1 ? "+" : "");
+  el.title = `${EDGES[i]} minutes from the departure city, door to door`;
+  if (i === EDGES.length - 1) el.classList.add("last");   // right-anchored, never overhangs
+  return el;
+}
+
+function worldTicks() {
   const picked = new Set();
   for (const t of TICK_TARGETS_MIN) {
     let best = -1, bestErr = Infinity;
@@ -435,16 +451,13 @@ function paintScale() {
     });
     if (best >= 0) picked.add(best);
   }
+  return picked;
+}
+
+function paintScale() {
   const scale = $("scale");
-  scale.replaceChildren(...[...picked].sort((a, b) => a - b).map((i) => {
-    const el = document.createElement("span");
-    el.style.left = `${((i + 1) / N_BANDS) * 100}%`;
-    el.dataset.min = String(EDGES[i]);
-    el.textContent = fmtTick(EDGES[i]) + (i === EDGES.length - 1 ? "+" : "");
-    el.title = `${EDGES[i]} minutes from the departure city, door to door`;
-    if (i === EDGES.length - 1) el.classList.add("last");   // right-anchored, never overhangs
-    return el;
-  }));
+  scale.replaceChildren(...[...worldTicks()].sort((a, b) => a - b)
+    .map((i) => tickEl(i, (i + 1) / N_BANDS)));
   prune(scale);
 }
 
@@ -477,8 +490,14 @@ paintScale();
 // Re-measure when the box or the typeface changes: at load the labels were
 // laid out at whatever width the window happened to be, in whatever face had
 // arrived, and never again.
-addEventListener("resize", paintScale);
-if (document.fonts?.ready) document.fonts.ready.then(paintScale).catch(() => {});
+//
+// Through refreshScale(), not paintScale directly: a resize must not throw the
+// zoom detail away and leave the strip describing a range the map is not
+// showing. refreshScale is a hoisted function declaration and guards on the
+// state it needs, so it is safe to name here and at fonts.ready even though
+// `map` is created 60 lines below.
+addEventListener("resize", () => refreshScale());
+if (document.fonts?.ready) document.fonts.ready.then(() => refreshScale()).catch(() => {});
 
 // Credits: the pipeline's list from index.json, plus what the PAGE itself
 // adds (the address search), so a build whose index.json predates a source
@@ -1326,6 +1345,9 @@ function paintOrigin(o, { keepZoom = false } = {}) {
       announce(`Travel times from ${originName()} are ready. `
         + "Move the pointer over the map, or choose a destination.");
     }
+    // The legend's zoom detail is a function of the readings, so it is stale
+    // until they arrive and stale again on every origin switch.
+    refreshScale();
     // The reading under the pointer (or the last tap) is redone once the
     // times land; with no pointer yet, the idle prompt replaces "loading".
     if (lastPointer) rereadPointer();
@@ -1380,6 +1402,9 @@ function paintOrigin(o, { keepZoom = false } = {}) {
           if (lastPointer) rereadPointer();
           render($("q").value);
           renderDeparture();
+          // The zoom detail is sampled through lookup(), which now answers
+          // from the finer array; the range on screen can genuinely change.
+          refreshScale();
         });
     }).catch((err) => {
       if (current() && !sig.aborted) console.warn("finer readings unavailable:", err.message);
@@ -1896,7 +1921,9 @@ function bandIndexOf(min) {
   return b;
 }
 // The legend is a scale with no "you are here". Marking the band under the
-// pointer turns eleven anonymous colours into a reading you can place.
+// pointer turns thirty-seven anonymous colours into a reading you can place.
+// (Eleven is the number of ANCHORS a scheme defines; expandRamp interpolates
+// them to the 37 bands the strip actually shows.)
 let bandMark = null;
 // paintLegend() replaces the strip's children, which detaches this marker.
 // It does NOT need to null it: `isConnected` below is false afterwards and the
@@ -1925,6 +1952,151 @@ function bandRangeOf(min) {
   const hi = b < EDGES.length ? EDGES[b] : null;
   return hi == null ? `over ${fmtTick(lo)}` : `${fmtTick(lo)} – ${fmtTick(hi)}`;
 }
+
+// ---- the legend, in detail, for the part of the ladder actually on screen ----
+//
+// The strip spans all thirty-seven bands at equal width because it is the
+// colour key for the whole map, and the time scale it carries is geometric --
+// so at world zoom four ticks is all it can hold, and 30 min to 72 h+ is what
+// they have to cover. Zoomed into a city the visible readings often span three
+// or four bands: the labelled part of the strip then describes times nowhere
+// on screen, while the eight percent of it that IS in use carries no label at
+// all. Measured on the live page: ticks at 1 h, 5 h, 24 h 30 and 72 h+ stayed
+// byte-identical from zoom 1.9 to zoom 11, where every reading on screen was
+// under half an hour.
+//
+// The strip itself cannot be rescaled -- it must keep matching the colours the
+// globe is painted with. So a SECOND row appears under it, expanding just the
+// bands on screen to full width, with its own ticks at those bands' own
+// boundaries. The main strip gains a bracket showing which slice was expanded,
+// so the two rows read as one scale rather than two.
+//
+// Nine by nine unprojected canvas points, not the 90,740-cell array: this runs
+// on moveend and the answer only has to be the range a reader can see. Sea,
+// unreachable land and points off the globe all return -1 from bandIndexOf and
+// are skipped.
+const SCALE_SAMPLE = 9;
+// Below this many land readings the sample says nothing -- an ocean view, or
+// an origin whose arrays have not landed -- and the world scale stands.
+const MIN_SCALE_SAMPLES = 6;
+// The share of the ladder that counts as "most of it". Above this the detail
+// row would duplicate the strip, so the world ticks stand unchanged and the
+// row stays hidden. 60% of thirty-seven bands is twenty-three boundaries.
+const WIDE_VIEW_BANDS = Math.ceil(0.6 * N_BANDS);
+// Ticks the detail row aims for. prune() still drops any that would overprint
+// a neighbour once measured, and it keeps the ceiling through any collision.
+const DETAIL_TICKS = 6;
+
+//: The lowest and highest band with a reading on screen, or null when the
+//: sample is too thin to say. Exported shape: {lo, hi, n}.
+function onScreenBandRange() {
+  if (!origin.times) return null;
+  let canvas;
+  try { canvas = map.getCanvas(); } catch { return null; }
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return null;
+  let lo = N_BANDS, hi = -1, n = 0;
+  for (let i = 0; i < SCALE_SAMPLE; i++) {
+    for (let j = 0; j < SCALE_SAMPLE; j++) {
+      let ll;
+      try {
+        ll = map.unproject([((i + 0.5) / SCALE_SAMPLE) * w, ((j + 0.5) / SCALE_SAMPLE) * h]);
+      } catch { continue; }
+      // On a globe a canvas point can miss the sphere entirely; unproject
+      // still returns a LngLat, and it is not a place.
+      if (!ll || !Number.isFinite(ll.lat) || !Number.isFinite(ll.lng) || Math.abs(ll.lat) > 90) continue;
+      const b = bandIndexOf(lookup(ll.lat, ll.lng));
+      if (b < 0) continue;                       // sea, unreachable, or not loaded
+      if (b < lo) lo = b;
+      if (b > hi) hi = b;
+      n++;
+    }
+  }
+  return n >= MIN_SCALE_SAMPLES && hi >= lo ? { lo, hi, n } : null;
+}
+
+// The bracket on the main strip. A div, not a span: browser_verify.sh counts
+// `.tints span` against the band count, and the band swatches are the spans.
+// Same re-append dance as bandMark for the same reason -- paintLegend()
+// replaces the strip's children and detaches it.
+let bandSpan = null;
+function markSpan(range) {
+  const strip = $("tints");
+  if (!strip) return;
+  if (!range) { if (bandSpan) bandSpan.hidden = true; return; }
+  if (!bandSpan) { bandSpan = document.createElement("div"); bandSpan.className = "span"; }
+  if (!bandSpan.isConnected) strip.append(bandSpan);
+  bandSpan.hidden = false;
+  bandSpan.style.left = `${(100 * range.lo) / N_BANDS}%`;
+  bandSpan.style.width = `${(100 * (range.hi - range.lo + 1)) / N_BANDS}%`;
+}
+
+function hideDetail() {
+  $("detail").hidden = true;
+  markSpan(null);
+}
+
+//: Paint the detail row for bands lo..hi. Every tick is EDGES[k] for a k in
+//: range, so no label can sit anywhere but on a real boundary.
+function paintDetail(range) {
+  const { lo, hi } = range;
+  const m = hi - lo + 1;
+  $("detail-tints").replaceChildren(...Array.from({ length: m }, (_, k) => {
+    const sw = document.createElement("span");
+    sw.style.background = BANDS[lo + k];
+    return sw;
+  }));
+
+  // Boundary indices on this row: EDGES[lo-1] at its left edge (band 0 has no
+  // lower boundary of its own, so it is omitted there) and EDGES[lo+k] at
+  // (k+1)/m. Subsampled to DETAIL_TICKS so twenty-two boundaries do not all
+  // try to print.
+  const picked = new Set();
+  const steps = Math.min(DETAIL_TICKS, m);
+  for (let t = 0; t < steps; t++) picked.add(Math.round((t * (m - 1)) / Math.max(1, steps - 1)));
+  const scale = $("detail-scale");
+  const els = [];
+  if (lo > 0) {
+    const first = tickEl(lo - 1, 0);
+    first.classList.add("first");               // left-anchored, never overhangs
+    els.push(first);
+  }
+  for (const k of [...picked].sort((a, b) => a - b)) {
+    if (lo + k <= EDGES.length - 1) els.push(tickEl(lo + k, (k + 1) / m));
+  }
+  scale.replaceChildren(...els);
+  prune(scale);
+
+  // What the row is, in words, with both ends named at their true values.
+  const from = lo > 0 ? fmtTick(EDGES[lo - 1]) : "0 min";
+  const to = hi < EDGES.length ? fmtTick(EDGES[hi]) : `over ${fmtTick(EDGES[EDGES.length - 1])}`;
+  $("detail-cap").textContent =
+    `In view: ${from} to ${to}, door to door. The bracket above shows this slice of the whole scale.`;
+  $("detail").hidden = false;
+  markSpan(range);
+}
+
+//: Repaint both rows for whatever the map is showing now. Safe to call before
+//: the map or the arrays exist: it falls back to the world scale.
+function refreshScale() {
+  paintScale();
+  const range = onScreenBandRange();
+  if (!range || range.hi - range.lo + 1 >= WIDE_VIEW_BANDS) { hideDetail(); return; }
+  paintDetail(range);
+}
+
+// On moveend, not on move: sampling eighty-one readings per animation frame is
+// work a drag does not need, and CLAUDE.md's own warning about per-pointer-move
+// work applies to the scale as much as to the address bar. The extra timer
+// coalesces the burst of moveend events a flyTo emits.
+let scaleTimer = 0;
+function scheduleScaleRefresh() {
+  clearTimeout(scaleTimer);
+  scaleTimer = setTimeout(() => refreshScale(), 160);
+}
+map.on("moveend", scheduleScaleRefresh);
+map.on("zoomend", scheduleScaleRefresh);
+
 
 function describe(lat, lon) {
   if (!namePlaces) return fmtCoord(lat, lon);
@@ -2455,7 +2627,10 @@ function render(filter = "") {
     // nobody arrives with. The page could not say how long it takes to reach a
     // named city at all: typing "London" and pressing Enter DEPARTS from
     // London, because cities are departures only. The figure costs a lookup
-    // per row from an array already in memory -- all 157 measured at 4.5 ms.
+    // per row from an array already in memory. Measured at 4.5 ms for all of
+    // them when the site had 157 origins; it has 553 now, and the benchmark
+    // has not been re-run at that size -- so read the 4.5 ms as the figure
+    // for a list 3.5x smaller than today's, not as a current measurement.
     const val = document.createElement("span");
     val.className = "rowtime";
     if (active?.slug === c.slug) {
@@ -2866,7 +3041,11 @@ function pickRamp(key) {
   rampName = key;
   BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
   try { localStorage.setItem("ramp", rampName); } catch { /* private mode */ }
+  syncPermalink();
   paintLegend();
+  // paintLegend() replaced the strip's children, which detached the bracket
+  // and the band mark; refreshScale() rebuilds both rows in the new colours.
+  refreshScale();
   paintRampPicker();
   // Repaint in place; the tiles are already loaded.
   if (map.getLayer("bands"))

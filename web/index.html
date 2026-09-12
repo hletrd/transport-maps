@@ -261,6 +261,24 @@ body.crowded .depart-card{display:none}
 }
 /* The last tick sits on the strip's end and would overhang it. */
 .scale span.last{transform:translateX(-100%)}
+/* ...and the detail row's leading tick sits on its start, for the same reason
+   in the other direction. */
+.scale span.first{transform:translateX(0)}
+/* Which slice of the whole ladder the detail row below expands. A bracket, not
+   a tick: it carries no label, so CLAUDE.md's true-boundary rule is untouched.
+   Its edges ARE band boundaries regardless -- app.js positions it from band
+   indices. */
+.tints .span{position:absolute;top:-2px;bottom:-2px;pointer-events:none;
+  border:1px solid var(--text-2);border-radius:2px;
+  box-shadow:0 0 0 1px rgba(10,11,13,.6)}
+/* ---- the zoom detail ---- */
+.detail{margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+/* Same 9px bar as .tints and the same flex:1 slivers, so the two rows read as
+   one scale. A different class, not .tints: browser_verify.sh counts
+   `.tints span` against the band count. */
+.zoomstrip{display:flex;height:9px;border-radius:1px;overflow:hidden;position:relative}
+.zoomstrip span{flex:1}
+.detail-cap{margin:6px 0 0;font-size:11px;color:var(--text-3)}
 .legend-cap{margin:6px 0 0;font-size:11px;color:var(--text-3)}
 /* NOT .credit: that class is already taken by the pin and address lists. */
 .legend-credit{margin:3px 0 0;font-size:11px;color:var(--text-3)}
@@ -353,7 +371,16 @@ body.crowded .depart-card{display:none}
 .results .empty{font-size:11.5px;color:var(--text-3);padding:6px 0;line-height:1.45}
 .results button:hover{color:var(--text)}
 .results button[aria-current="true"]{color:var(--accent);font-weight:500}
-.results .coord{font-size:10.5px;color:var(--text-3);flex:none}
+/* `flex:none` meant a long secondary column could not shrink, and the row's
+   leading span could not either (a flex item's min-width defaults to auto, so
+   it never goes below its own text). A Nominatim `display_name` runs to
+   several hundred characters and Korean and Arabic names carry no spaces to
+   break at, so an address row overflowed its own scroll box with no ellipsis
+   and no scrollbar -- the text simply ran out of the panel. Both columns now
+   shrink and both end in an ellipsis. */
+.results .coord{font-size:10.5px;color:var(--text-3);
+  flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.results button > span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* Only on the four names two cities share; sentence case, no letter-spacing. */
 .results .disambig{font-style:normal;color:var(--text-3);font-size:11px}
 /* The city rows used to end in a latitude and a longitude, which answers a
@@ -627,6 +654,11 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 
 /* phones on their side: too short for a bottom sheet; use a narrow right rail */
 @media (max-width:860px) and (orientation:landscape){
+  /* 390 px of height for the masthead, the reading, the itinerary and the
+     whole legend. The zoom detail is an addition, and CLAUDE.md makes the
+     legend proper -- strip, ticks, keys, caption, credit -- a standing rule,
+     so the addition is what gives way here rather than the guarantee. */
+  .detail{display:none}
   /* The one place the itinerary must stay capped, and it is arithmetic rather
      than taste. `#legs` lives INSIDE `.reading`, so an uncapped itinerary makes
      the whole reading block taller than this rail -- and `revealReading()`'s
@@ -704,6 +736,20 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <div class="legend">
     <div class="tints" id="tints"></div>
     <div class="scale" id="scale"></div>
+    <!-- The zoom detail. The strip above always spans all thirty-seven bands,
+         because it is the colour key for the map and must keep matching what
+         the globe is painted with. Zoomed in, the readings on screen often
+         cover three or four of those bands, so this row expands just those to
+         full width with ticks at their own true boundaries, and the strip
+         above gains a bracket showing which slice was expanded. app.js shows
+         it only when the view is narrower than most of the ladder; hidden
+         until then, and hidden in the folded phone sheet, whose keys and
+         caption below are the guaranteed minimum. -->
+    <div class="detail" id="detail" hidden>
+      <div class="zoomstrip" id="detail-tints"></div>
+      <div class="scale" id="detail-scale"></div>
+      <p class="detail-cap" id="detail-cap"></p>
+    </div>
     <div class="keys" id="keys">
       <span class="key"><span class="sw" id="sw-uncharted"></span>no scheduled route</span>
       <span class="key"><span class="sw" id="sw-sea"></span>open water</span>
