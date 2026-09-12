@@ -276,7 +276,7 @@ nothing to do with `emit/` or `web/`.
 | C7-1 | yes | `5c08df1` | `READING_SLOTS = 342` → 4 tests red |
 | C7-2 | yes | `5c08df1`, `6ea3a46` | `cell_to_child_pos` for the slot → **green at first**; see below. After the guard was rewritten: 2 tests red. Also: zero padding → red; uncleared low-digit mask → red; reversed directory → red; removed 45-day ceiling → red; the `idx.cells` fallback restored → red; the base-grid resolution check removed → red |
 | C7-3 | yes | `5c08df1` | `readingParentCount` dropped → `check_dist` refuses |
-| C7-4 | yes | `5c08df1` | covered by C7-3 and C7-5 |
+| C7-4 | yes | `5c08df1` | covered by C7-3 and C7-5, **and by a cycle-6 gate that needed no change** — see below |
 | C7-5 | yes | `5c08df1` | `.r6.bin` truncated by one block → `check_dist` refuses |
 | C7-6 | yes | `5c08df1`, `c563975` | the `exists()` guard dropped → red; the `if origins:` guard dropped with `limit=0` → red (it was an unguarded `origins[0]`, so `--limit 0` lost a finished build to an IndexError at the last statement before `index.json`) |
 | C7-7 | yes | `8a702c2` | reversed digit order in the page → 3 cross-language tests red |
@@ -324,6 +324,34 @@ value is produced by the code under test proves only that the code is
 self-consistent. Derive the expectation from the specification — the bit
 layout, the mathematics, the upstream library — or from a second
 implementation in another language.
+
+### A cycle-6 gate caught up with this cycle by itself
+
+`C7-4` adds `readingRes`, `readingParentRes` and `readingSlots` to
+`_CURRENT_INDEX_CONSTANTS`, the set `reindex` refuses to republish stale. That
+needed a guard, and it turned out to have one already:
+cycle 6's `test_every_constant_write_index_derives_is_in_the_refusal_set`
+derives the question from `write_index`'s own AST rather than from a typed
+list, under the note *"the refusal set was three of five, and stayed three of
+five while write_index grew."*
+
+Checked in-process, without touching the tree: the gate now derives nine keys,
+including all three new ones, and removing **any one** of them from
+`_CURRENT_INDEX_CONSTANTS` fails it.
+
+```
+config-derived index.json keys the gate derives from write_index:
+  ['bandEdgesMin', 'fineRes', 'hoverRes', 'modeChannels',
+   'readingParentRes', 'readingRes', 'readingSlots', 'solveRes', 'unreachable']
+removing 'readingRes'       -> gate fails: True
+removing 'readingParentRes' -> gate fails: True
+removing 'readingSlots'     -> gate fails: True
+```
+
+A guard written to notice the NEXT constant noticed it. Worth recording
+because it is the return on cycle 6's more expensive choice, and the argument
+for making the same choice again: a derived gate covers work nobody had
+thought of when it was written, and a re-typed list does not.
 
 ### The browser caught a claim no test could
 
