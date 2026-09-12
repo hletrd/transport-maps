@@ -244,9 +244,9 @@ defect". Everything else is deferred.
 
 ## Progress
 
-**All eighteen tasks done**, across eleven signed commits
-(`69052bb`…`f632edd`). Every guard added was shown red under the mutation
-named beside it; **33 mutations were run in total and 33 went red**, after
+**All eighteen tasks done**, across fourteen signed commits
+(`69052bb`…`c563975`). Every guard added was shown red under the mutation
+named beside it; **35 mutations were run in total and 35 went red**, after
 three of them were first found to be vacuous and the guard rewritten.
 
 Two defects in this cycle's own work were found after the code was committed,
@@ -267,7 +267,7 @@ nothing to do with `emit/` or `web/`.
 | C7-3 | yes | `5c08df1` | `readingParentCount` dropped → `check_dist` refuses |
 | C7-4 | yes | `5c08df1` | covered by C7-3 and C7-5 |
 | C7-5 | yes | `5c08df1` | `.r6.bin` truncated by one block → `check_dist` refuses |
-| C7-6 | yes | `5c08df1` | log line, no guard |
+| C7-6 | yes | `5c08df1`, `c563975` | the `exists()` guard dropped → red; the `if origins:` guard dropped with `limit=0` → red (it was an unguarded `origins[0]`, so `--limit 0` lost a finished build to an IndexError at the last statement before `index.json`) |
 | C7-7 | yes | `8a702c2` | reversed digit order in the page → 3 cross-language tests red |
 | C7-8 | yes | `8a702c2` | covered by C7-7 and C7-10 |
 | C7-9 | yes | `8a702c2`, `f632edd` | compare the reading grid against `READING_RES` rather than `SOLVE_RES` → red. Note: `8a702c2`'s first version of this was **wrong in a way only the browser found** — see below |
@@ -447,8 +447,16 @@ scattering with numpy costs **0.4 s + 0.02 s × 553 ≈ 11 s**.
 Run at `552baac`, each alone, exit status read from `$?` and never chained or
 piped — the cycle-6 lesson.
 
-- `uv run ruff check .` → `All checks passed!`, exit 0.
-- `uv run pytest -q` → recorded in the cycle report.
+- `uv run ruff check .` → `All checks passed!`, exit **0**.
+- `uv run pytest -q` → recorded in the cycle report. An earlier run at
+  `6ea3a46` gave **588 passed, 4 deselected, 5 warnings, exit 0** in 17 min
+  20 s; the final run was taken at frozen `c563975` because two later commits
+  changed `cli.py` and `web/app.js` and a gate run that predates the code it
+  is supposed to gate is not a gate.
+
+**Two stale gate runs were discarded this cycle for exactly that reason.**
+The habit worth keeping: freeze the tree, then run the gate — not the other
+way round.
 
 ### What is NOT fixed, and is not being presented as fixed
 
