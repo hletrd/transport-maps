@@ -404,6 +404,83 @@ heliports and seaplane bases, which is 46 of Greenland's 60 scheduled-service
 airports. That is DEF8-16 and it must land in a later cycle, after this one is
 verified in a rebuild, so the two effects can be read apart.
 
+### What the model does to the shipped map, measured cell by cell
+
+Asked by the team lead's remote-area audit, and answered against the shipped
+`dist/` read-only rather than by rebuilding: `seoul.modes.bin`'s ferry channel
+gives the minutes each of the 90,740 reading cells spends on ferry edges, so
+the old per-leg cost can be inverted to a distance and re-priced under the new
+model. A single leg per path is assumed, which is an UPPER bound on the added
+wait: the prior's exponent is 1.51, so one long crossing is charged more than
+several short ones covering the same distance. The two-leg variant is given
+alongside and moves nothing material.
+
+| region | cells | unreachable | median before → after | p95 before → after |
+|---|---:|---:|---|---|
+| Arctic >66.5°N | 5,373 | 8.9% | 48.0 h → 48.4 h | **175.4 h → 175.4 h** |
+| sub-Arctic 60–66.5°N | 5,715 | 0.8% | 26.6 h → 26.6 h | 71.3 h → 71.8 h |
+| far south 40–60°S | 1,059 | 8.0% | 36.8 h → 36.8 h | 55.8 h → 60.0 h |
+| everywhere else | 70,844 | 1.3% | 22.7 h → 22.8 h | 46.7 h → 47.3 h |
+
+**The audit expected the Arctic p95 to rise substantially and it does not move
+at all**, which is worth recording because it corrects the assumption rather
+than confirming it. The reason is in the same file: only **222 of 4,893**
+reachable Arctic cells (4.5%) touch a ferry anywhere on their path. The Arctic
+is reached by AIR. Its 175-hour p95 is airport waiting and long ground legs,
+and the flat 30-minute ferry wait was never what made it large.
+
+What the model actually moves is remote ISLANDS, at every latitude. The twelve
+largest changes, by cell centre:
+
+| place | ferry km | before | after |
+|---|---:|---:|---:|
+| Tristan da Cunha (−37.23, −12.24) | 2,819 | 105.6 h | 865.9 h |
+| Spratly Islands (10.32, 114.29) | 1,526 | 49.9 h | 352.7 h |
+| Spratly Islands (9.76, 115.65) | 1,209 | 43.0 h | 256.6 h |
+| Ogasawara / Chichijima (26.60, 141.90) | 1,047 | 35.6 h | 208.0 h |
+| Juan Fernández (−33.76, −80.77) | 869 | 56.1 h | 186.5 h |
+| Tokelau (−8.60, −172.69) | 620 | 39.6 h | 118.5 h |
+| Nicobar Islands (7.34, 93.93) | 606 | 36.8 h | 113.0 h |
+
+Blast radius across the whole map: **1,740 of 90,740 cells (1.92%) change at
+all**, 1,143 change band, 299 by more than two bands, worst case 8 bands. And
+the answer to the audit's first question: **zero cells tip into the
+unreachable sentinel.** The floor does exactly what it was derived to do.
+
+Two of these are worth flagging as the documented error showing up in the map
+rather than in a table. Ogasawara is served weekly from Tokyo in about 24 h, so
+a true figure is near 108 h and the model says 208 — the over-charge the
+150–1,000 km band is on record for. Tokelau is served roughly fortnightly, so a
+true figure is near 195 h and the model says 118 — the under-charge. Both
+directions, both predicted, both inside the range `calibration.toml` states.
+
+### Kerguelen and South Georgia: the floor's upper end
+
+The audit names the only two inhabited places the model declines entirely, and
+they are the right regression cases. Confirmed against the shipped arrays:
+both read UNREACHABLE, and neither has a `route=ferry` way in the extracts, so
+the model is not asked to reach them and does not invent a service.
+
+They still pin the floor's upper end, and `tests/graph/test_ferry_model.py`
+now holds the rule: a crossing this sparse must read as WEEKS, not days, and
+must stay inside the uint16 sentinel.
+
+| crossing | km | modelled | old model | note |
+|---|---:|---:|---:|---|
+| Réunion–Kerguelen (Marion Dufresne, 4 sailings/yr) | 3,398 | 39.9 days | 1.7 days | **clamped by the floor** |
+| Falklands–South Georgia (no schedule) | 1,451 | 13.4 days | 4.0 days | prior, not clamped |
+
+**Kerguelen is the one case where the floor is known to bind, and it is
+recorded rather than hidden.** Four sailings a year is 0.0769 per week, below
+the 0.1 floor, so the model charges the floor's 35-day ceiling against a true
+expected wait of about 45.5 days — an understatement of about 1.3x. That is
+the price of keeping the total inside the 65,534-minute sentinel, and it does
+not contradict the claim made above that no ANCHOR is clamped: Tristan, the
+sparsest of the eight, runs 0.173 per week, well clear of the floor. Three
+mutations pin all of this and each goes red: removing the floor (Kerguelen
+overflows the sentinel), raising it to 1.0 per week (both crossings fall to
+days), and lowering it below Kerguelen's real rate.
+
 ### The honest part
 
 `calibration.toml` carries an independent holdout the fit never saw: against

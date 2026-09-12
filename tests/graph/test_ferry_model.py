@@ -253,3 +253,69 @@ def test_the_expected_wait_is_half_the_headway_and_says_so():
     assert headway.expected_wait_min(14.0) == 360       # twice daily -> 6 h
     assert headway.expected_wait_min(1.0) == 5040       # weekly -> 84 h
     assert headway.expected_wait_min(0.0) == headway.NO_SERVICE
+
+
+# ---- the floor's upper end, on the only two inhabited places the map declines
+
+
+#: Of every populated place in the gazetteer above 60N or below 40S, exactly
+#: two read unreachable from Seoul in the shipped build, and both are
+#: defensible rather than defects: Port-aux-Francais on Kerguelen, whose supply
+#: ship sails about four times a year, and Grytviken on South Georgia, which
+#: has no scheduled service at all. Neither has a `route=ferry` way in the
+#: extracts, so the model does not reach them and is not asked to.
+#:
+#: They are still the right regression cases for the floor's UPPER end, because
+#: they are the sparsest real services anywhere near the data. The rule they
+#: pin: if a crossing like this ever does enter the data, the model must
+#: produce WEEKS, not days, and must stay inside the uint16 sentinel rather
+#: than silently becoming "no scheduled route".
+SPARSEST = [
+    # (label, km, sailings per year or None where there is no schedule)
+    ("Reunion - Kerguelen (Marion Dufresne)", 3398.0, 4),
+    ("Falklands - South Georgia (no schedule)", 1451.0, None),
+]
+
+
+@pytest.mark.parametrize("label,km,per_year", SPARSEST, ids=[s[0] for s in SPARSEST])
+def test_the_sparsest_plausible_crossings_cost_weeks_and_stay_inside_the_sentinel(
+        label, km, per_year):
+    """Mutation: drop MIN_SAILINGS_PER_WEEK -> the Kerguelen case exceeds the
+    sentinel. Mutation: raise the floor to 1.0/week -> both fall under a week
+    and the "weeks, not days" assertion goes red."""
+    modelled = ferry.crossing_min(km, CAL)
+    assert modelled < hover.MAX_MINUTES, (
+        f"{label} costs {modelled:,.0f} min, at or above the {hover.MAX_MINUTES:,} "
+        "sentinel: a real if rare service would ship as 'no scheduled route'")
+    assert modelled > 7 * 1440, (
+        f"{label} costs only {modelled / 1440:.1f} days; a crossing this sparse "
+        "must read as weeks")
+    # The teeth: the OLD model charged the same two crossings 1.7 and 4.0 days,
+    # because it charged a flat half hour of waiting whatever the timetable.
+    old_model = 60.0 * km / 35.0 + 30.0
+    assert old_model < 5 * 1440
+    assert modelled > 3 * old_model
+
+
+def test_the_floor_clamps_kerguelen_and_the_plan_says_by_how_much():
+    """The one place the floor is known to bind, recorded rather than hidden.
+
+    Four sailings a year is 0.0769 per week, below the 0.1 floor, so the model
+    charges the floor's 35-day ceiling against a true expected wait of about
+    45.5 days. That understatement is the price of keeping the total inside the
+    uint16 sentinel, and it is stated in calibration.toml and the cycle plan
+    rather than left for someone to discover.
+
+    Mutation: lower MIN_SAILINGS_PER_WEEK below 0.0769 -> the clamp assertion
+    goes red, and the sentinel headroom shrinks toward the overflow the floor
+    exists to prevent."""
+    km, per_week = 3398.0, 4 / 52.0
+    assert per_week < ferry.MIN_SAILINGS_PER_WEEK, (
+        "Kerguelen is no longer below the floor; the clamp this test describes "
+        "has gone away and calibration.toml should say so")
+    assert ferry.sailings_per_week(km, CAL) == pytest.approx(ferry.MIN_SAILINGS_PER_WEEK)
+    clamped = ferry.expected_wait_min(ferry.MIN_SAILINGS_PER_WEEK)
+    true_wait = (7 * 24 * 60) / per_week / 2
+    assert clamped < true_wait, "the floor is meant to UNDER-state a sub-floor service"
+    # ...and the understatement stays within the factor the documents claim.
+    assert true_wait / clamped == pytest.approx(1.3, abs=0.05)
