@@ -890,7 +890,12 @@ function highlight(lat, lon) {
   const cell = h3.latLngToCell(lat, lon, SOLVE_RES);
   if (cell === hoveredCell) return;
   hoveredCell = cell;
-  const ring = h3.cellToBoundary(cell).map(([la, lo]) => [lo, la]);
+  // unwrap(), for the same reason renderRoute() uses it: a cell straddling the
+  // antimeridian has vertices at about +179 and about -179, and a polygon whose
+  // longitudes jump 358 degrees is drawn the long way -- a band right across
+  // the globe under the pointer instead of one hexagon. The ring comes back in
+  // [lat, lon]; unwrap takes [lon, lat], so it is applied after the swap.
+  const ring = unwrap(h3.cellToBoundary(cell).map(([la, lo]) => [lo, la]));
   ring.push(ring[0]);
   map.getSource("hover").setData({ type: "FeatureCollection", features: [
     { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] } }] });
@@ -2561,7 +2566,12 @@ $("map").addEventListener("keydown", (e) => {
 function haversineKm(la1, lo1, la2, lo2) {
   const r = Math.PI / 180, dLa = (la2 - la1) * r, dLo = (lo2 - lo1) * r;
   const a = Math.sin(dLa / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin(dLo / 2) ** 2;
-  return 6371 * 2 * Math.asin(Math.sqrt(a));
+  // 6371.0088, the same mean radius graph/ground.py:169 and graph/rail.py:59
+  // use. A bare 6371 is 0.014% short, which is metres on a city hop and
+  // about 1.4 km on a hemisphere -- immaterial to the 80 km reach test
+  // this feeds, but two earth radii in one project is a discrepancy
+  // waiting to be found rather than a decision.
+  return 6371.0088 * 2 * Math.asin(Math.sqrt(a));
 }
 // Departure city within reach of a point, if any. 80 km covers a metro area
 // without claiming the next city over.

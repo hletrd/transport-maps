@@ -488,3 +488,30 @@ def test_clearing_the_route_hands_the_headline_back():
     body = APP[APP.index("function clearRoute()"):]
     body = body[:body.index("\n}") + 2]
     assert "clearTime()" in body and "IDLE_PROMPT" in body
+
+
+def test_the_page_and_the_pipeline_use_the_same_earth_radius() -> None:
+    """One mean radius, taken from the Python side rather than from the page.
+
+    `web/app.js`'s haversineKm had a bare 6371 against the pipeline's 6371.0088.
+    Cycle 8's task T5.3 records this as fixed; `git log -S'6371.0088' --
+    web/app.js` showed no commit had ever touched it, which is how a ticked task
+    can be an undone one. The expectation below therefore comes from
+    `src/transport_maps/graph/`, never from `app.js`.
+
+    Mutation performed and reverted: restore the bare 6371 in app.js -> red.
+    """
+    src = config.ROOT / "src" / "transport_maps" / "graph"
+    radii = set()
+    for py in ("ground.py", "rail.py"):
+        text = (src / py).read_text(encoding="utf-8")
+        radii |= {m.group(1) for m in
+                  re.finditer(r"(\d{4}\.\d+|\d{4})\s*\*\s*2\s*\*\s*np\.arcsin", text)}
+    assert len(radii) == 1, f"the pipeline itself uses more than one radius: {radii}"
+    want = radii.pop()
+
+    got = re.findall(r"(\d{4}(?:\.\d+)?)\s*\*\s*2\s*\*\s*Math\.asin", APP)
+    assert got, "web/app.js no longer has a haversine of this shape"
+    assert set(got) == {want}, (
+        f"the page computes distances with radius {set(got)} and the pipeline "
+        f"with {want}; they must agree")

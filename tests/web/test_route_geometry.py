@@ -20,6 +20,7 @@ from __future__ import annotations
 import itertools
 import json
 import math
+import re
 import shutil
 import subprocess
 
@@ -157,3 +158,46 @@ def test_two_points_in_the_same_place_still_give_a_drawable_line(run):
     for p in pts:
         assert all(isinstance(v, (int, float)) and math.isfinite(v) for v in p), (
             f"a zero-length leg produced {p}; NaN removes the whole line")
+
+
+# --- the hover ring, which had the same defect the flight arc was fixed for --
+
+def test_the_hover_ring_on_the_antimeridian_is_one_hexagon_not_a_band(run):
+    """highlight() draws the H3 cell under the pointer as a polygon. A cell
+    straddling the antimeridian has vertices at about +179 and about -179, and a
+    polygon whose longitudes jump 358 degrees is rendered the long way round --
+    a band right across the globe under the pointer instead of one hexagon.
+
+    unwrap() is the fix the flight arc already uses; highlight() did not call it.
+    Checked two ways: the real unwrap must close the seam, and highlight() must
+    be the thing that calls it.
+
+    Mutation performed and reverted: drop the unwrap() from highlight() -> red on
+    the second assertion, which is the one about the call site.
+    """
+    # A res-6-sized hexagon sitting on the seam, in the [lon, lat] order
+    # highlight() hands to unwrap after its own [lat, lon] -> [lon, lat] swap.
+    ring = [[179.6, 10.0], [179.9, 10.2], [-179.8, 10.1],
+            [-179.8, 9.8], [179.9, 9.6], [179.6, 9.8]]
+    spread = max(p[0] for p in ring) - min(p[0] for p in ring)
+    assert spread > 180, "the fixture does not actually straddle the seam"
+
+    out = run("unwrap", ring)
+    assert len(out) == len(ring)
+    got = max(p[0] for p in out) - min(p[0] for p in out)
+    assert got < 1.0, (
+        f"unwrap left the ring {got:.1f} degrees wide; a hexagon is under one "
+        "degree across at this size and the seam is still open")
+    for before, after in zip(ring, out):
+        turns = (after[0] - before[0]) / 360
+        assert abs(turns - round(turns)) < 1e-9, "a vertex moved by part of a turn"
+        assert after[1] == before[1], "unwrap moved a latitude"
+
+    # ...and highlight() is what calls it. Comments stripped first: the standing
+    # rule is that an assertion over source text a comment can satisfy is
+    # vacuous, and this one is explained by a comment naming unwrap.
+    body = re.sub(r"//[^\n]*", "", _function("highlight"))
+    assert "unwrap(" in body, (
+        "highlight() builds its ring without unwrap(), so a cell on the "
+        "antimeridian paints a 360-degree band across the globe")
+    assert "cellToBoundary" in body
