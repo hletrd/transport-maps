@@ -878,6 +878,17 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          road class, not a road. And the build that is being served may lag
          the code: <code>index.json</code> records what was actually
          computed.</p>
+      <p><b>Where the number is read.</b> The outlined hexagon under the pointer
+         is the cell the time is read from: resolution 6, about 6.5 km across
+         and 36 km². Where the road network is dense the bands are painted one
+         level finer, at 2.4 km, so in those places the colour under the
+         pointer distinguishes ground the reading averages over. The
+         breakdown beneath the number — the arrival airport, the mode of the
+         last leg — comes from a wider grid still, about 45 km across, and can
+         name a different airport from the one the time was computed through.
+         Until the finer array has loaded, or if your browser is set to save
+         data, the number itself comes from that wider grid and the line under
+         it says so.</p>
       <p class="src" id="credits"></p>
       <p class="src">The map is drawn by <a href="./vendor/licences/"
          target="_blank" rel="noopener">four open-source libraries</a> —

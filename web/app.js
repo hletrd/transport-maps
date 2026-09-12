@@ -71,6 +71,18 @@ const HOVER_RES = meta.hoverRes ?? 4;
 // the size of anything the map was computed from. (Where the surface was
 // refined, the outline is still the res-6 parent: finding C3, cycle 3.)
 const SOLVE_RES = meta.solveRes ?? 6;
+// The reading tier. When index.json advertises it, the number printed under
+// the pointer comes from a res-6 array -- the grid the base band is painted
+// from and the grid the hover ring already outlines -- instead of from the
+// res-4 array above. Absent (a build made before the tier existed, or a
+// connection that never delivered it), every reading falls back to res 4 and
+// the page says which it used, so it is never silently one or the other.
+const READING_RES = meta.readingRes ?? null;
+const READING_PARENT_RES = meta.readingParentRes ?? 3;
+// Published rather than recomputed: 342 instead of 343 finds the right block
+// and then reads the wrong slot inside it, which stays in range and is wrong
+// almost everywhere.
+const READING_SLOTS = meta.readingSlots ?? 343;
 const EDGES = meta.bandEdgesMin;
 // Channel order of .modes.bin, from the emitter when index.json carries it.
 const MODE_NAMES = meta.modeChannels ?? ["rail", "ferry", "highway", "major road", "minor road", "track"];
@@ -1167,6 +1179,9 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // this switch is still the latest one.
   origin.times = null; origin.failed = null; origin.air = null;
   origin.modes = null; origin.routes = null; origin.rail = null;
+  // 10 MB per origin. Dropped on the switch rather than kept per city, so the
+  // page holds one reading array at a time however many cities are visited.
+  origin.reading = null;
   const current = () => gen === originGen;
   const settle = () => {
     if (!current()) return;
@@ -1210,6 +1225,40 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   };
   const get = (url) => fetch(url, { signal: sig });
 
+  // The reading tier: one whole fetch, off the critical path, abortable on an
+  // origin switch. Deliberately not range requests -- the deploy gzips
+  // `location ~* \.bin$`, nginx cannot serve a byte range out of a gzipped
+  // response, and a browser cannot opt out of Accept-Encoding, so a ranged
+  // .bin comes back 200 with the WHOLE body and slicing it would read block 0
+  // for every point on Earth with no error anywhere.
+  const loadReading = () => {
+    if (!READING_RES || !meta.readingUrlSuffix) return;
+    // An explicit request not to spend the visitor's bytes on something the
+    // page can already do without. The res-4 reading stands, and the line
+    // under the number says so.
+    if (navigator.connection && navigator.connection.saveData) return;
+    loadReadingParents().then((cells) => {
+      if (!cells || !current()) return null;
+      return get(`./origins/${o.slug}${meta.readingUrlSuffix}`)
+        .then((r) => (r.ok ? r.arrayBuffer() : null))
+        .then((b) => {
+          if (!b || !current()) return;
+          // Same refusal the other five arrays get.
+          origin.reading = checkedReading(b, cells.length,
+                                          `${o.slug}${meta.readingUrlSuffix}`);
+          // The number under the pointer and every row of the city list were
+          // read off the coarse grid; both are redone once, in place. Not
+          // settle(): that would re-announce "travel times are ready" to a
+          // screen reader for data that was already there.
+          if (lastPointer) rereadPointer();
+          render($("q").value);
+          renderDeparture();
+        });
+    }).catch((err) => {
+      if (current() && !sig.aborted) console.warn("finer readings unavailable:", err.message);
+    });
+  };
+
   // Station naming exists only in builds whose index.json says so; asking an
   // older build for it was two 404s per origin switch.
   if (meta.railDetail) Promise.all([
@@ -1233,7 +1282,16 @@ function paintOrigin(o, { keepZoom = false } = {}) {
       if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${o.slug}.bin`);
       return r.arrayBuffer();
     })
-    .then((b) => { if (!current()) return; origin.times = checked(b, 2, `${o.slug}.bin`); settle(); })
+    .then((b) => {
+      if (!current()) return;
+      origin.times = checked(b, 2, `${o.slug}.bin`);
+      settle();
+      // Only now: the res-4 array is what makes the page usable, and the
+      // reading array is 10 MB against its 181 KB. Starting them together
+      // would put the big one in front of the small one on a mobile link for
+      // a reading the small one can already answer to within a band.
+      loadReading();
+    })
     .catch((err) => {
       if (!current() || sig.aborted) return;
       console.error("hover data unavailable:", err);
@@ -1333,6 +1391,86 @@ function paintOrigin(o, { keepZoom = false } = {}) {
 const fmtCoord = (lat, lon) =>
   `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? "N" : "S"} ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? "E" : "W"}`;
 
+// ---- the reading tier ----
+// Shared by every origin (the block set does not vary with the departure
+// city), so it is fetched once and only when the first origin's reading array
+// is fetched -- never on the boot path, where it would be 117 KB in front of
+// the first paint for a number the res-4 array can already answer.
+let readingParents = null;
+let readingParentsWanted = null;
+
+function loadReadingParents() {
+  if (readingParentsWanted) return readingParentsWanted;
+  const url = "./" + (meta.readingParentsUrl || "reading_parents.bin");
+  readingParentsWanted = loadCells(url).then((cells) => {
+    readingParents = checkedParents(cells, meta.readingParentCount, url);
+    return readingParents;
+  }).catch((err) => {
+    // Not fatal: the res-4 array still answers every reading. Clearing the
+    // promise lets the next origin switch try again rather than leaving the
+    // page on the coarse grid for the rest of the session.
+    console.warn("finer readings unavailable:", err.message);
+    readingParentsWanted = null;
+    return null;
+  });
+  return readingParentsWanted;
+}
+
+// The two refusals the reading tier needs, as plain functions of their
+// arguments so they can be RUN in a test rather than grepped for. The first
+// version of this guard was `assert "meta.readingParentCount" in APP`, which
+// stayed green when the comparison itself was replaced by `false`, because
+// the name survived in the error message.
+function checkedParents(cells, expected, url) {
+  if (expected != null && expected !== cells.length)
+    throw new Error(`index.json expects ${expected} reading blocks but ${url} has `
+      + `${cells.length}: the two files come from different builds`);
+  return cells;
+}
+
+// An array from another build is the right length for ITS directory and the
+// wrong length for this one. Reading it anyway would print plausible times
+// from the wrong places rather than fail, which is the failure mode this
+// format has instead of a crash.
+function checkedReading(b, blocks, name) {
+  const want = blocks * READING_SLOTS * 2;
+  if (b.byteLength !== want)
+    throw new Error(`${name} is ${b.byteLength} bytes, expected ${want} `
+      + `(${blocks} blocks x ${READING_SLOTS} slots): the files come from different builds`);
+  return new Uint16Array(b);
+}
+
+// The slot of a cell inside its res-3 block: the h3 digits BELOW the parent
+// resolution, read as a base-7 number. h3 packs fifteen 3-bit digits under the
+// resolution nibble, digit r at bits (45-3r)..(47-3r).
+//
+// Deliberately NOT h3.cellToChildPos. The two res-3 pentagons that hold land
+// have 286 children rather than 343, and for 285 of those 286 the two
+// orderings disagree; one of the two contains Dalian, a departure city. For a
+// hexagon parent they agree on all 343, so a test that used only hexagons
+// would not tell them apart. src/transport_maps/emit/hover.py computes the
+// same base-7 number, and tests/web/test_reading_slot.py runs both.
+function readingSlot(id) {
+  let slot = 0;
+  for (let r = READING_PARENT_RES + 1; r <= READING_RES; r++)
+    slot = slot * 7 + Number((id >> BigInt(45 - 3 * r)) & 7n);
+  return slot;
+}
+
+// Position of a point's reading in the block array, or -1 when the block is
+// not one that holds land.
+function readingIndex(lat, lon) {
+  const cell = h3.latLngToCell(lat, lon, READING_RES);
+  const parent = BigInt("0x" + h3.cellToParent(cell, READING_PARENT_RES));
+  let lo = 0, hi = readingParents.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1, v = readingParents[mid];
+    if (v === parent) return mid * READING_SLOTS + readingSlot(BigInt("0x" + cell));
+    if (v < parent) lo = mid + 1; else hi = mid - 1;
+  }
+  return -1;
+}
+
 function cellIndex(lat, lon) {
   const id = BigInt("0x" + h3.latLngToCell(lat, lon, HOVER_RES));
   let lo = 0, hi = hoverCells.length - 1;
@@ -1347,9 +1485,23 @@ function cellIndex(lat, lon) {
 // null: not land (known from hover_cells.bin alone, so the sea never reads
 // "loading"); undefined: land whose times have not arrived, or failed.
 function lookup(lat, lon) {
+  // Whether the point is LAND is still decided by the res-4 cell list, which
+  // is the only file that ships an explicit land set: a res-3 block holds
+  // land but 18.3% of its slots do not, and those carry the same sentinel a
+  // genuinely unreachable cell does. Asking the reading tier "is this sea?"
+  // would answer "no route" for every one of them.
   const i = cellIndex(lat, lon);
   if (i < 0) return null;
+  if (origin.reading && readingParents) {
+    const j = readingIndex(lat, lon);
+    if (j >= 0) return origin.reading[j];
+  }
   return origin.times ? origin.times[i] : undefined;
+}
+
+// Which grid the last reading came from, for the line that says so.
+function readingGrid() {
+  return origin.reading && readingParents ? READING_RES : HOVER_RES;
 }
 
 // Walk the shortest-path tree back from where the journey landed. The chain is
@@ -1644,7 +1796,14 @@ function showReading(lat, lng, point) {
         : `Loading the times from ${esc(active?.name ?? "the departure city")}…`)
     : t === null ? "Open water."
     : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}`
-      + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`;
+      + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`
+      // The ring is drawn at SOLVE_RES. When the reading tier has not landed
+      // the NUMBER comes from a cell about seven times wider than that ring,
+      // which is a real discrepancy between what is outlined and what is
+      // printed -- so it is named rather than left for the visitor to assume
+      // the two agree. Nothing is added once they do agree.
+      + (READING_RES && readingGrid() !== READING_RES
+          ? " · read from a wider cell than the outline" : "");
   return t;
 }
 // One live region for the whole page, written only when a reading is

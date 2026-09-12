@@ -71,8 +71,12 @@ def test_every_index_json_key_the_page_reads_is_written(tmp_path):
     import json
 
     out = tmp_path / "index.json"
+    # Every optional argument is passed, so the payload this compares against
+    # is the FULL one. Leaving reading_parent_count out would have let the
+    # page read a key write_index can emit and the test never see it.
     index.write_index([{"slug": "s", "name": "S", "lat": 0.0, "lon": 0.0}], out,
-                      hover_cell_count=1, graph={"rail": True, "ferry": True}, identity=index.build_identity())
+                      hover_cell_count=1, reading_parent_count=1,
+                      graph={"rail": True, "ferry": True}, identity=index.build_identity())
     written = set(json.loads(out.read_text()))
     read = set(re.findall(r"meta\.(\w+)", APP))
     assert read <= written, f"app.js reads {sorted(read - written)} which write_index never writes"
