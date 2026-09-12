@@ -894,7 +894,8 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          cost of leaving the terminal and re-entering it — which is the
          disembark and check-in times for that airport&rsquo;s size, so about
          55 minutes at a small airport and an hour and forty at a large one;
-         rail and ferry legs carry no wait. That cap is a consequence of the
+         rail legs carry no wait. A ferry does: half the interval between
+         sailings. That cap is a consequence of the
          graph, not a claim about airports: a connection can always be routed
          out through the terminal and back in, so no wait can cost more than
          that, and where the real wait is longer the figure is an
@@ -924,7 +925,14 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          winds alone, which a distance-only model cannot represent. Treat
          anything over 10,000 km as approximate.</p>
       <p>Flight frequency is a gravity model fitted to two anchor routes, not
-         a timetable. Rail and ferry legs carry no waiting time at all.
+         a timetable. Rail legs carry no waiting time at all. A ferry is
+         charged half the interval between sailings, taken from the route&rsquo;s
+         own OpenStreetMap timetable where it has one and otherwise from a
+         headway fitted to eight published crossings — a wide prior, about a
+         factor of two out at one sigma against those crossings and a factor
+         of 3.6 against 326 other timetables in the data, over-stating the
+         wait on busy short-sea routes and under-stating it on remote ones.
+         Distance alone cannot tell the two apart.
          Ground speeds describe a road class, not a road. Four of the six
          classes are fitted to 2,998 sampled driving journeys; roadless
          terrain and local roads keep published-figure defaults, because the

@@ -21,8 +21,11 @@ a geometric ladder from under 30 minutes to over 72 hours; the band edges are
 service is not waited for. An onward flight connection is charged the minimum
 connection time or the expected wait for the next service, whichever is
 longer, capped at the cost of leaving and re-entering the terminal (55 minutes at a
-small airport, 1 h 40 at a large one). Rail and ferry legs carry no wait: they are
-charged running time plus boarding or terminal time.
+small airport, 1 h 40 at a large one). A ferry leg IS charged an expected wait --
+half the interval between sailings, from the route's own OpenStreetMap
+timetable where it carries one and otherwise from a headway fitted to eight
+published crossings -- on top of the sailing and the terminal time. Rail legs
+carry no wait: they are charged running time plus boarding.
 
 ## How it is computed
 
@@ -35,7 +38,8 @@ road-density rasters, halved inside cities. Flights connect airport pairs taken
 from Wikipedia's "Airlines and destinations" tables, resolved to IATA codes
 through Wikidata property P238, with block time modelled from great-circle
 distance. Rail runs stop to stop along OpenStreetMap route relations; ferries
-along OpenStreetMap ferry ways. The per-cell result is dissolved into bands
+along OpenStreetMap ferry ways, charging the sailing, the terminal time and
+the expected wait for the next departure. The per-cell result is dissolved into bands
 and shipped as PMTiles at four levels of detail, plus per-origin binary arrays
 of time, arrival airport, surface mode and rail station on a resolution-4 hover
 grid. The arrays are little-endian uint16, one value per hover cell: `.bin`
@@ -43,6 +47,20 @@ grid. The arrays are little-endian uint16, one value per hover cell: `.bin`
 station, 181 KB) and `.modes.bin` (1.09 MB, six channels per cell).
 `hover_cells.bin` (726 KB) gives their ordering: the sorted resolution-4 cell
 ids as little-endian uint64.
+
+A second, finer reading tier ships alongside: `{slug}.r6.bin` (9.55 MB), the
+time array at resolution 6 -- the grid the bands are painted from, so the
+number printed under the pointer is the value of the cell the map outlines
+rather than an average over a cell about 45 km across. It is laid out as
+fixed-width blocks of 343 slots keyed by the resolution-3 parent, so the slot
+within a block is arithmetic and no per-origin cell list is needed;
+`reading_parents.bin` (117 KB) ships that parent ordering once for the whole
+site. The tier is fetched lazily, after the first paint and never on the boot
+path, and it is skipped entirely when the browser reports Save-Data. A build
+whose index.json carries no `readingRes` has no such files, and the page falls
+back to the resolution-4 array and says so under the number. In refined areas
+the paint is still finer than the reading: where the solver split a cell the
+map draws its seven resolution-7 children and the reading averages over them.
 
 ## Known limits
 
@@ -59,7 +77,14 @@ ids as little-endian uint64.
   10,000 km+ as approximate.
 - Flight frequency is a gravity model hand-fitted to two anchor routes, not
   published timetables.
-- Rail and ferry legs carry no waiting time.
+- Rail legs carry no waiting time.
+- The ferry headway prior is fitted to eight published crossings and is wide:
+  a factor of about 2 at one sigma against those anchors, and against 326
+  independent OpenStreetMap `interval` tags a factor of 3.6, with the bias
+  changing sign at about 150 km. Distance alone cannot tell a remote lifeline
+  route from a busy short-sea one. Where a crossing carries an `interval` tag
+  the tag is used and the prior is not consulted. The error is documented
+  rather than corrected; calibration.toml tabulates it.
 - Every departure reaches at least 90 % of non-Antarctic land (a build gate);
   land with no modelled route is drawn in the grey the legend names.
 - The build that is live may lag the code: `solveRes`, `origins` and
