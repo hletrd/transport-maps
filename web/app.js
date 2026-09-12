@@ -1313,6 +1313,16 @@ function paintOrigin(o, { keepZoom = false } = {}) {
       renderPins();
       renderLegs();
       renderDeparture();
+      // ...and the 553-row city list, which settle() rebuilds only when
+      // origin.times arrives -- so on the failure path it never rebuilt at
+      // all. It kept the PREVIOUS city's times under the new city's caption,
+      // marked the new departure as a destination with a travel time to the
+      // city you are departing from, and left the old departure showing
+      // "departing". Every other per-origin surface was fixed in cycle 6 and
+      // this one was missed. Clearing the stamp first, or render() would
+      // rebuild from the stale array it is still holding.
+      listTimesFor = null;
+      render($("q").value);
     });
   // The leg breakdown is a progressive extra: an origin built before these
   // files existed still shows times, just without the itinerary.
@@ -1783,7 +1793,14 @@ function showReading(lat, lng, point) {
   lastPointer = { lat, lng, point };
   const t = lookup(lat, lng);
   const [big, unit] = fmtTime(t);
-  if (t == null) clearTime();
+  // === null, not == null. Loose equality caught `undefined` -- land whose
+  // times have not arrived or have FAILED -- as well as `null` (open water),
+  // so clearTime() ran with no argument and replaced "Travel times
+  // unavailable." with the idle prompt on the first pointer move onto land.
+  // The failure notice survived exactly one mouse move. Three lines below,
+  // the same function already distinguishes the two correctly for #where.
+  if (t === null) clearTime();
+  else if (t === undefined) clearTime(origin.failed ? "Travel times unavailable." : undefined);
   else $("time").innerHTML = `${esc(big)}<small>${esc(unit)}</small>`;
   const band = bandRangeOf(t);
   markBand(t);
@@ -2740,13 +2757,36 @@ $("oceans").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-ocean]");
   if (b) pickOcean(b.dataset.ocean);
 });
-$("ramps").addEventListener("keydown", (e) => {
-  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-  const keys = Object.keys(RAMPS), i = keys.indexOf(rampName);
-  e.preventDefault();
-  pickRamp(keys[(i + (e.key === "ArrowDown" ? 1 : keys.length - 1)) % keys.length]);
-  $("ramps").querySelector(`button[data-ramp="${rampName}"]`)?.focus();
-});
+// One roving-tabindex handler for both radio groups. The ocean picker had a
+// click listener and nothing else, so five of its six colours could not be
+// reached at all: only the checked radio is a tab stop (the radiogroup
+// pattern), and with no arrow handling Tab left the group entirely. That is
+// WCAG 2.1.1 at Level A, and it applied to a control whose whole purpose is
+// choosing between six things.
+//
+// All four arrows, plus Home and End, because a radiogroup's orientation is
+// not something a visitor can see: the ramp picker answered ArrowDown and
+// ArrowUp only, so half the obvious keys did nothing there too.
+function rovingRadios(host, keysOf, currentOf, pick, attr) {
+  host.addEventListener("keydown", (e) => {
+    const keys = keysOf();
+    if (!keys.length) return;
+    const i = keys.indexOf(currentOf());
+    let next;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") next = keys[(i + 1) % keys.length];
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = keys[(i + keys.length - 1) % keys.length];
+    else if (e.key === "Home") next = keys[0];
+    else if (e.key === "End") next = keys[keys.length - 1];
+    else return;
+    e.preventDefault();
+    pick(next);
+    // After pick() the group is rebuilt, so the element to focus is looked up
+    // again rather than held across the repaint.
+    host.querySelector(`button[data-${attr}="${next}"]`)?.focus();
+  });
+}
+rovingRadios($("ramps"), () => Object.keys(RAMPS), () => rampName, pickRamp, "ramp");
+rovingRadios($("oceans"), () => Object.keys(OCEANS), () => oceanName, pickOcean, "ocean");
 
 applyLockNorth();
 
@@ -2782,7 +2822,17 @@ function layoutForSize() {
     if (!smallEntered) { for (const d of rail.querySelectorAll("details")) d.open = false; smallEntered = true; }
   } else if (reading.parentElement === rail) {
     document.body.insertBefore(reading, document.getElementById("tip"));
-    if (card) document.body.insertBefore(card, reading);
+    // BACK INTO .topleft, not into <body>. The card has no position of its
+    // own -- it is a flex child of the fixed column that also holds the
+    // masthead -- so appending it to <body> dropped it to the document origin
+    // as a static block, 269 x 96 px of it directly under the masthead, with
+    // the h1 winning elementFromPoint over the departure city's own button.
+    // Reachable by any tablet rotated portrait to landscape, and by any
+    // window dragged across 860 px; two of the four viewports CLAUDE.md's
+    // deploy rule names sit on opposite sides of that breakpoint, so a
+    // verification pass that RESIZES rather than reloads walks straight in.
+    const topleft = document.querySelector(".topleft");
+    if (card && topleft) topleft.append(card);
     rail.classList.remove("folded");
     $("departure").open = true;
   }

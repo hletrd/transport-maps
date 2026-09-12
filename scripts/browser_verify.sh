@@ -278,6 +278,29 @@ H=$(agent-browser eval '(()=>{const t=document.getElementById("sheet-toggle");if
 echo "  desktop after a phone width: $H"
 echo "$H" | grep -qE '"display":"(none|absent)"' || { echo "  !! the bottom-sheet handle survived the return to desktop"; fail=1; }
 
+# ...and the FULL check here too, not only the handle probe. Coming back UP
+# through the breakpoint is a different code path from loading wide: the
+# layout switch moves .depart-card and .reading out of the rail, and it put
+# the card into <body> as a static block at (0,0) under the masthead --
+# 25,912 px of overlap, with the h1 winning elementFromPoint over the
+# departure city's button. The loop above never returns to a wide viewport,
+# so every gate passed for as long as the defect existed. Two of the four
+# viewports CLAUDE.md's deploy rule names sit on opposite sides of 860 px.
+R=$(agent-browser eval "$CHECK" 2>&1 | tail -1 | tr -d '\\')
+echo "  desktop after a phone width, full check: $R"
+echo "$R" | grep -q '"cardOverlap":false' || { echo "  !! the departure card overlaps the masthead or the reading after returning to desktop"; fail=1; }
+echo "$R" | grep -q '"overlap":false' || { echo "  !! chrome overlaps after returning to desktop"; fail=1; }
+echo "$R" | grep -q '"hScroll":false' || { echo "  !! the page scrolls horizontally after returning to desktop"; fail=1; }
+echo "$R" | grep -q '"time":true' || { echo "  !! the reading is off screen after returning to desktop"; fail=1; }
+echo "$R" | grep -q '"legend":true' || { echo "  !! the legend is off screen after returning to desktop"; fail=1; }
+
+# The card's PARENT, which the box check alone cannot see: a card correctly
+# positioned by accident is still one stylesheet change from (0,0).
+PAR=$(agent-browser eval '(()=>{const c=document.querySelector(".depart-card");
+  return JSON.stringify({parent:c?c.parentElement.className||c.parentElement.tagName:"absent"})})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  departure card parent after returning to desktop: $PAR"
+echo "$PAR" | grep -q '"parent":"topleft"' || { echo "  !! the departure card did not return to the .topleft column"; fail=1; }
+
 # Phones: a TAP must leave the answer and the whole legend on screen. Opening
 # the Route panel used to scroll the rail (measured scrollTop 297 at 390x844),
 # taking #time, #tints and #scale with it -- against CLAUDE.md's standing rule

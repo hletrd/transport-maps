@@ -64,3 +64,94 @@ def test_the_failure_path_stops_saying_it_is_still_reading():
     assert m, "the origin-failure catch block has moved; re-derive this test"
     assert re.search(r"clearTime\(", m.group(0)), (
         "the failure path leaves #time claiming it is still reading")
+
+
+# --- cycle 7 -----------------------------------------------------------------
+def test_the_failure_notice_is_not_cleared_by_a_pointer_move_onto_land():
+    """`showReading` must separate `null` (open water) from `undefined` (times
+    missing or failed).
+
+    `if (t == null) clearTime()` caught both, so the first pointer move onto
+    land after a failed origin fetch replaced "Travel times unavailable." with
+    the idle prompt inviting the visitor to point at a globe that has no
+    numbers. The headline then disagreed with #where, #status and the
+    departure card, all three of which were correct.
+
+    Mutation performed and reverted: `t === null` -> `t == null`, and delete
+    the `else if (t === undefined)` branch -> red on both.
+    """
+    body = CODE[CODE.index("function showReading("):]
+    body = body[:body.index("\n}")]
+    assert "t === null" in body, "showReading uses loose equality for open water again"
+    assert re.search(r"t\s*==\s*null", body) is None, (
+        "showReading compares the reading against null loosely; undefined takes that branch too")
+    assert "t === undefined" in body and "Travel times unavailable" in body, (
+        "showReading no longer keeps the failure notice standing for a land cell "
+        "whose times are missing")
+
+
+def test_the_city_list_is_rebuilt_when_an_origin_fetch_fails():
+    """The failure path must clear `listTimesFor` and re-render.
+
+    `settle()` rebuilds the 553-row list only when `origin.times` arrives, so
+    on the failure path it never rebuilt: the list kept the PREVIOUS city's
+    times under the new city's caption, showed the new departure as a
+    destination with a travel time to the city you are departing from, and
+    left the old departure marked "departing".
+
+    Mutation performed and reverted: delete `listTimesFor = null` from the
+    catch block -> red.
+    """
+    catch = CODE[CODE.index('console.error("hover data unavailable:"'):]
+    catch = catch[:catch.index("\n    });")]
+    assert "listTimesFor = null" in catch, (
+        "the origin-failure path does not reset the city list's stamp, so the list "
+        "keeps the previous city's times")
+    assert re.search(r"render\(\$\(\"q\"\)\.value\)", catch), (
+        "the origin-failure path resets the stamp but never re-renders the list")
+
+
+def test_the_departure_card_returns_to_its_column_not_to_the_body():
+    """Crossing the small/wide breakpoint UPWARD must put `.depart-card` back
+    into `.topleft`.
+
+    `.depart-card` has no `position` of its own: it is a flex child of the
+    fixed column that also holds the masthead. `document.body.insertBefore`
+    dropped it to the document origin as a static block, 269 x 96 px of it
+    under the masthead, with the h1 winning `elementFromPoint` over the
+    departure city's own button. Any tablet rotated portrait to landscape
+    reaches it, and two of the four viewports CLAUDE.md's deploy rule names
+    sit on opposite sides of the breakpoint.
+
+    Mutation performed and reverted: `topleft.append(card)` ->
+    `document.body.insertBefore(card, reading)` -> red.
+    """
+    body = CODE[CODE.index("function layoutForSize("):]
+    body = body[:body.index("\n}")]
+    # The small-screen branch legitimately does rail.insertBefore(card, ...);
+    # it is only <body> that has no column for the card to sit in.
+    assert re.search(r"body\.insertBefore\(\s*card", body) is None, (
+        "layoutForSize still moves the departure card into <body>, where it has no "
+        "position of its own and falls to (0,0) under the masthead")
+    assert "topleft" in body and re.search(r"topleft\.append\(card\)", body), (
+        "layoutForSize does not return the departure card to the .topleft column")
+
+
+def test_both_colour_pickers_are_keyboard_operable():
+    """The ocean picker had a click listener and nothing else.
+
+    Only the checked radio is a tab stop, so with no arrow handling five of
+    the six ocean colours could not be reached by keyboard at all -- WCAG
+    2.1.1, Level A. The ramp picker answered ArrowDown and ArrowUp only.
+
+    Mutation performed and reverted: drop the `rovingRadios($("oceans"), ...)`
+    call -> red; remove ArrowLeft/ArrowRight from the handler -> red.
+    """
+    assert re.search(r'rovingRadios\(\$\("ramps"\)', CODE), "the ramp picker lost its arrow keys"
+    assert re.search(r'rovingRadios\(\$\("oceans"\)', CODE), (
+        "the ocean picker has no arrow-key handler, so five of its six colours are "
+        "unreachable by keyboard")
+    handler = CODE[CODE.index("function rovingRadios("):]
+    handler = handler[:handler.index("\n}")]
+    for key in ("ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"):
+        assert key in handler, f"the radio groups do not answer {key}"
