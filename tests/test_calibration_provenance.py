@@ -128,15 +128,28 @@ def test_no_document_claims_the_whole_road_model_is_fitted():
     """
     from transport_maps import config
 
+    # The `continue` used to be `if "2,998" not in text: continue`, which made
+    # the guard disarmable by the very edit it exists to catch: reprint the
+    # sample count as "2998" or "about 3,000" and the file stops being checked.
+    # README.md was already silently exempt for exactly that reason. Every file
+    # in the list is now checked for a road-model claim by ANY spelling, and a
+    # file that names none is reported rather than skipped.
+    unchecked = []
     for rel in _ROAD_CLAIM_FILES:
         text = (config.ROOT / rel).read_text(encoding="utf-8")
-        if "2,998" not in text:
-            continue
         flat = " ".join(text.split())
+        claims = re.search(
+            r"(road[- ]speed model|road class|driving journeys|per-road-class)", flat, re.I)
+        if not claims:
+            unchecked.append(rel)
+            continue
         assert "published-figure default" in flat, (
             f"{rel} cites the 2,998 sampled journeys without saying that two of the six "
             "road classes keep published-figure defaults, which graph/ground.py records "
             "and CLAUDE.md's calibration rule requires")
+    assert not unchecked, (
+        "these files are listed as making a road-model claim and no longer make "
+        f"one in any spelling this guard recognises, so they are unchecked: {unchecked}")
 
 
 def test_every_speed_in_the_mode_tooltips_says_which_it_is():

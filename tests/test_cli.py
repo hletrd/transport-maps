@@ -216,8 +216,16 @@ def test_the_build_reports_whether_rail_and_ferries_are_included(monkeypatch, tm
 
     cli._build_all()
     out = capsys.readouterr().out
-    assert "rail:" in out and "EXCLUDED" in out
-    assert "ferries:" in out
+    # Per LINE, not over the whole output: `"EXCLUDED" in out` was satisfied by
+    # the rail line alone, so the ferry report -- the suite's only assertion
+    # about it -- was unguarded. Printing "ferries:  included" after a
+    # FileNotFoundError left this green.
+    lines = {ln.split(":", 1)[0].strip(): ln for ln in out.splitlines() if ":" in ln}
+    for mode in ("rail", "ferries"):
+        assert mode in lines, f"the build report says nothing about {mode}: {out}"
+        assert "EXCLUDED" in lines[mode], (
+            f"{mode} raised FileNotFoundError and the build reported "
+            f"{lines[mode].strip()!r}")
 
 
 def test_a_gate_failure_in_a_forked_worker_aborts_the_run(monkeypatch, tmp_path):

@@ -61,9 +61,47 @@ def test_airports_json_column_order_matches_the_reads():
     """
     fields = airports_json.FIELDS
     assert fields == ("iata", "name", "country", "lat", "lon", "size"), fields
-    # ...and each position is actually read at that index in the page.
+
+    # ...and each position is actually read at that index in the page, IN A
+    # STATEMENT THAT IS ABOUT AIRPORTS.
+    #
+    # `f"a[{i}]" in APP` was satisfied by things that have nothing to do with
+    # this table: greatCircle(a, b) indexes its own [lon, lat] pairs as a[0] and
+    # a[1], and the gazetteer rows are read the same way elsewhere. Transposing
+    # the airports lat/lon (a[3] <-> a[4]) left it green, and so did deleting
+    # both reads outright -- so the guard against a column-order change could
+    # not see a column-order change. Both mutations were run.
+    #
+    # The fix is to scope the search to the lines that reach the airports array,
+    # and to pin the coordinate pair by ORDER rather than by presence, since a
+    # transposition keeps both indices.
+    src = APP.splitlines()
+    hits = [i for i, ln in enumerate(src)
+            if re.search(r"\bairports\.(find|filter|map|some)\b", ln)
+            or "SIZE_RANK[" in ln or "dataset.airport" in ln]
+    assert hits, "nothing in app.js reads the airports array any more"
+    # The row is usually bound on one line and read over the next few, so the
+    # window is the binding plus three lines -- narrow enough to exclude
+    # greatCircle and the gazetteer, wide enough to hold the reads.
+    window = sorted({j for i in hits for j in range(i, min(i + 4, len(src)))})
+    near = "\n".join(src[j] for j in window)
     for i, name in enumerate(("code", "name", "country", "lat", "lon", "size")):
-        assert f"a[{i}]" in APP or f"x[{i}]" in APP, f"nothing reads column {i} ({name})"
+        assert re.search(rf"\ba\[{i}\]|\bx\[{i}\]", near), (
+            f"no statement that reaches the airports array reads column {i} "
+            f"({name}); a column-order change would go unnoticed")
+
+    # lat before lon, in the emitter's order. app.js hands MapLibre [lon, lat]
+    # and commitDestination (lat, lon), so BOTH orders appear -- the pairing is
+    # what must hold, not the order of first appearance.
+    pairs = re.findall(r"\[\s*a\[(\d)\]\s*,\s*a\[(\d)\]\s*\]", APP)
+    assert ("4", "3") in pairs, (
+        "no [a[4], a[3]] pair: the page no longer hands MapLibre "
+        "[lon, lat] from an airports row, or the columns were transposed")
+    call = re.search(r"commitDestination\(\s*a\[(\d)\]\s*,\s*a\[(\d)\]", APP)
+    assert call and call.groups() == ("3", "4"), (
+        "commitDestination takes (lat, lon) and is not being given "
+        f"(a[3], a[4]): {call.groups() if call else None}")
+
     assert "SIZE_RANK[" in APP, "the size column is emitted and never used"
 
 

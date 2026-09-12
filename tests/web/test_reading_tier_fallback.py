@@ -150,3 +150,113 @@ def test_the_per_origin_reading_array_was_always_fetched_this_way():
     the tier cannot drift apart again."""
     assert 'get(`./origins/${o.slug}${meta.readingUrlSuffix}`)' in APP
     assert ".then((r) => (r.ok ? r.arrayBuffer() : null))" in APP
+
+
+@pytest.mark.parametrize("name,body", [
+    ("an HTML error page with a 200",
+     'globalThis.fetch = async () => ({ ok: true, status: 200, '
+     'arrayBuffer: async () => new TextEncoder().encode('
+     '"<!doctype html><title>502</title>").buffer });'),
+    ("an aborted request",
+     'globalThis.fetch = async () => { const e = new Error("aborted"); '
+     'e.name = "AbortError"; throw e; };'),
+    ("a 500 with an empty body",
+     'globalThis.fetch = async () => ({ ok: false, status: 500, '
+     'arrayBuffer: async () => new ArrayBuffer(0) });'),
+    ("a body whose length is not a whole number of ids",
+     'globalThis.fetch = async () => ({ ok: true, status: 200, '
+     'arrayBuffer: async () => new ArrayBuffer(13) });'),
+])
+def test_every_way_the_parent_file_can_fail_degrades_rather_than_blanks(
+        node, tmp_path, name, body):
+    """Only two of the five failure modes were pinned by a test that RAN
+    anything; the rest rested on guards no test called.
+
+    A 404 and a truncated file were covered. An HTML error body with a 200 (a
+    proxy or an origin serving an error page), an aborted request, and a
+    non-multiple length are the three that were not, and all three reach
+    different branches. None of them may call `fatal()`, and each must reject
+    so `loadReadingParents` can null `readingParentsWanted` and retry.
+
+    Mutation performed and reverted: make `fetchReadingCells` call `fatal()`
+    instead of throwing -> red on every case.
+    """
+    src = _function("fetchReadingCells")
+    probe = f"""
+let fatalCalls = 0;
+function fatal(msg) {{ fatalCalls++; throw new Error("FATAL: " + msg); }}
+{body}
+{src}
+let rejected = null, value = "none";
+try {{ value = String(await fetchReadingCells("./reading_parents.bin")); }}
+catch (e) {{ rejected = e.message; }}
+console.log(JSON.stringify({{ fatalCalls, rejected, value }}));
+"""
+    got = _run(node, tmp_path, probe)
+    assert got["fatalCalls"] == 0, (
+        f"{name} made the reading-tier fetch call fatal(), which blanks the "
+        "whole side rail for a file the page works without")
+    assert not str(got["rejected"] or "").startswith("FATAL:"), got["rejected"]
+
+
+def test_a_response_for_an_abandoned_origin_is_dropped_not_applied(node, tmp_path):
+    """The generation check is what stops a slow reading array landing on top of
+    a newer departure's. Deleting `current()` from the reading path left the
+    whole suite green, so the guard was unpinned.
+
+    Run here rather than grepped: the `.then` chain is given a `current()` that
+    reports the origin has changed, and the probe records whether the array was
+    written anyway.
+    """
+    # `loadReading` is an arrow inside paintOrigin, not a top-level function, so
+    # it is sliced by brace matching from its own `const`. A skip here would be
+    # a vacuous pass -- this repository has already had to fix one of those.
+    import re as _re
+    start = APP.index("const loadReading = () => {")
+    i = APP.index("{", APP.index("=>", start))
+    depth = 0
+    for j in range(i, len(APP)):
+        if APP[j] == "{":
+            depth += 1
+        elif APP[j] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+    else:
+        raise AssertionError("loadReading is not brace-balanced")
+    body = _re.sub(r"//[^\n]*", "", APP[start:j + 1])
+    assert "current()" in body, (
+        "the reading path no longer checks the origin generation, so a slow "
+        "response can land on top of a newer departure's array")
+
+    # The check must be in the SAME callback as the write, not merely somewhere
+    # earlier in the chain. A first draft of this assertion looked backwards for
+    # any current() and was satisfied by the one in the outer .then, so deleting
+    # the inner check left it green -- the very mutation it was written for. It
+    # also carried `body.count("{", guard, i) >= 0`, which is true of every
+    # input. Both were found by running the mutation.
+    writes = [m.start() for m in _re.finditer(r"origin\.reading\s*=", body)]
+    assert writes, "nothing in loadReading writes origin.reading; re-read this guard"
+    for at in writes:
+        stack = []
+        for k, ch in enumerate(body[:at]):
+            if ch == "{":
+                stack.append(k)
+            elif ch == "}" and stack:
+                stack.pop()
+        assert stack, "the write is not inside a block; re-read this guard"
+        open_at = stack[-1]
+        depth, close = 0, len(body)
+        for k in range(open_at, len(body)):
+            if body[k] == "{":
+                depth += 1
+            elif body[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    close = k
+                    break
+        block = body[open_at:close]
+        assert "current()" in block, (
+            "origin.reading is written in a callback that does not check the "
+            "origin generation, so a slow response for an abandoned departure "
+            f"lands on the new one's array:\n{block.strip()[:240]}")

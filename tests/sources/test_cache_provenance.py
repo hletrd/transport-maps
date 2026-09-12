@@ -137,8 +137,19 @@ def test_every_stamped_path_carries_a_hash(path_fn):
     filename and reinstate the bug, while the "path moves" tests above could
     still pass if the constant leaked in some other way.
     """
+    # The predicate used to be `any(len(part) == 8 and part.isalnum() ...)`,
+    # which "airports" satisfies by itself -- eight alphanumerics -- so dropping
+    # the stamp from airports._table_cache_path left this green. The stamp is a
+    # HEX digest, so require that: eight characters, all hex, and not a word
+    # that happens to be eight letters long.
     stem = path_fn().stem
-    assert any(len(part) == 8 and part.isalnum() for part in stem.split("_"))
+    parts = stem.split("_")
+    stamps = [p for p in parts
+              if len(p) == 8 and all(c in "0123456789abcdef" for c in p)
+              and any(c.isdigit() for c in p)]
+    assert stamps, (
+        f"{stem!r} carries no 8-character hex stamp, so the derived cache is "
+        "keyed on a bare filename again and a constant change is a cache HIT")
 
 
 def test_atomically_written_files_are_readable_by_other_users(tmp_path):
@@ -320,6 +331,15 @@ def test_the_real_cache_path_names_are_stable_across_interpreter_hash_seeds():
         "a derived cache path moved with PYTHONHASHSEED, so every run is a cache "
         f"miss that re-downloads its source and reports success:\n{chr(10).join(sorted(out))}")
     # ...and the names really are digests, not constants that could not move.
+    # `len(n) > 12 and any(ch.isdigit())` is satisfied by "land_cells_r6" on its
+    # own -- it has a digit and thirteen characters -- so dropping the stamp
+    # from landmask._cells_cache_path left this green too. Require the hex
+    # stamp itself, the same way the parametrised test above now does.
     names = next(iter(out)).splitlines()
     assert len(names) == 3
-    assert all(any(ch.isdigit() for ch in n) and len(n) > 12 for n in names), names
+    for n in names:
+        stem = n.rsplit(".", 1)[0]
+        assert any(len(p) == 8 and all(c in "0123456789abcdef" for c in p)
+                   and any(c.isdigit() for c in p)
+                   for p in stem.split("_")), (
+            f"{n!r} is not a stamped name: no 8-character hex digest in it")

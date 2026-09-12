@@ -350,8 +350,38 @@ def test_every_constant_write_index_derives_is_in_the_refusal_set():
         "a constant index.json publishes is not covered by the drift refusal: "
         f"{governed - set(cli._CURRENT_INDEX_CONSTANTS)}")
     # ...and each really does read today's config, not a frozen copy.
+    #
+    # `assert current() is not None` could not show that: a lambda returning a
+    # hard-coded 4 is not None either, and freezing "hoverRes" that way left
+    # both guards in this file green. Monkeypatch the config attribute the
+    # lambda names and require the lambda's answer to MOVE with it -- which is
+    # the only thing "reads today's config" can mean.
+    import transport_maps.config as cfg
+    names = {"bandEdgesMin": "BAND_EDGES_MIN", "solveRes": "SOLVE_RES",
+             "hoverRes": "HOVER_RES", "fineRes": "FINE_RES",
+             "unreachable": "UNREACHABLE", "readingRes": "READING_RES",
+             "readingParentRes": "READING_PARENT_RES",
+             "readingSlots": "READING_SLOTS"}
+    checked = 0
     for key, current in cli._CURRENT_INDEX_CONSTANTS.items():
-        assert current() is not None, key
+        before = current()
+        assert before is not None, key
+        attr = names.get(key)
+        if attr is None or not isinstance(getattr(cfg, attr, None), int):
+            continue                       # not a plain int; covered by `governed`
+        original = getattr(cfg, attr)
+        try:
+            setattr(cfg, attr, original + 1)
+            assert current() != before, (
+                f"_CURRENT_INDEX_CONSTANTS[{key!r}] does not read config.{attr}; "
+                "a frozen lambda makes the drift refusal blind to exactly the "
+                "constant it is named for")
+            checked += 1
+        finally:
+            setattr(cfg, attr, original)
+    assert checked >= 4, (
+        f"only {checked} constants were actually exercised against config; "
+        "the mapping above has gone stale")
 
 
 def test_the_inputs_hash_covers_the_unreachable_sentinel(monkeypatch):
