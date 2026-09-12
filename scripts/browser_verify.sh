@@ -167,18 +167,41 @@ echo "  zoom 3: $Z"
 echo "$Z" | grep -qE '"bands":[1-9]' && echo "$Z" | grep -qE '"water":[1-9]' || { echo "  !! nothing painted at zoom 3"; fail=1; }
 echo "$Z" | grep -qE '"borders":[1-9]' || { echo "  !! the borders layer rendered nothing"; fail=1; }
 agent-browser screenshot "$SHOTS/verify_zoom3.png" >/dev/null 2>&1
-# A permalink selects its departure AND restores the destination. ?from=
-# carried the departure and nothing else, so the interesting half of a reading
-# could not be shared: the link reopened the city, not the journey.
-agent-browser open "${URL}?from=tokyo&to=62.00243,99.78787" >/dev/null 2>&1; sleep 12
-P=$(agent-browser eval '(()=>JSON.stringify({from:document.getElementById("origin-name").textContent,
+# A permalink selects its departure AND restores the destination -- and now
+# the colours, the camera and the settings too, so a pasted link shows what
+# the sharer was looking at rather than the reader's own defaults.
+#
+# The address is PARSED here, not pattern-matched. This check used to assert
+# the literal prefix `?from=tokyo&to=`, which is a claim about parameter ORDER
+# that nothing guarantees and that nothing about the page's behaviour depends
+# on: the moment a third parameter was written between the two, a page whose
+# address carried the destination correctly failed a check about whether the
+# address carried the destination. Same lesson as the RAMPS count above --
+# parse the thing, do not grep it.
+agent-browser open "${URL}?from=tokyo&to=62.00243,99.78787&scheme=ember&sea=teal&north=1&at=62.00243,99.78787,4.20" >/dev/null 2>&1; sleep 12
+P=$(agent-browser eval '(()=>{const q=new URLSearchParams(location.search);
+  const o={};for(const [k,v] of q) o[k]=v;
+  return JSON.stringify({from:document.getElementById("origin-name").textContent,
   time:document.getElementById("time").innerText.replace(/\n/g," "),
-  pinned:!!document.querySelector("#legs .leg.total"),search:location.search}))()' 2>&1 | tail -1 | tr -d '\')
+  pinned:!!document.querySelector("#legs .leg.total"),
+  params:o,
+  ramp:[...document.querySelectorAll("#ramps button")].filter(b=>b.getAttribute("aria-current")==="true").map(b=>b.dataset.ramp).join(""),
+  ocean:[...document.querySelectorAll("#oceans button")].filter(b=>b.getAttribute("aria-current")==="true").map(b=>b.dataset.ocean).join(""),
+  north:document.getElementById("lock-north").checked})})()' 2>&1 | tail -1 | tr -d '\')
 echo "  permalink: $P"
 echo "$P" | grep -q '"from":"Tokyo"' || { echo "  !! ?from=tokyo did not select Tokyo"; fail=1; }
 echo "$P" | grep -q '"pinned":true' || { echo "  !! ?to= did not restore the destination"; fail=1; }
 echo "$P" | grep -qE '"time":"[0-9]' || { echo "  !! ?to= restored no reading"; fail=1; }
-echo "$P" | grep -q '"search":"?from=tokyo&to=' || { echo "  !! the address bar dropped the destination"; fail=1; }
+echo "$P" | grep -q '"to":"62.00243,99.78787"' || { echo "  !! the address bar dropped the destination"; fail=1; }
+echo "$P" | grep -q '"from":"tokyo"' || { echo "  !! the address bar dropped the departure"; fail=1; }
+# The rest of the state a pasted link is meant to carry. Each is checked at
+# BOTH ends: the page applied it, and the address still says so.
+echo "$P" | grep -q '"ramp":"ember"' || { echo "  !! ?scheme= did not apply the colour scheme"; fail=1; }
+echo "$P" | grep -q '"ocean":"teal"' || { echo "  !! ?sea= did not apply the ocean colour"; fail=1; }
+echo "$P" | grep -q '"north":true' || { echo "  !! ?north= did not apply"; fail=1; }
+echo "$P" | grep -q '"scheme":"ember"' || { echo "  !! the address bar dropped the colour scheme"; fail=1; }
+echo "$P" | grep -q '"sea":"teal"' || { echo "  !! the address bar dropped the ocean colour"; fail=1; }
+echo "$P" | grep -qE '"at":"[-0-9]' || { echo "  !! the address bar dropped the camera"; fail=1; }
 # ...and a slug that does not exist must SAY so, not be silently swallowed and
 # then written out of the address bar as though the link had worked.
 agent-browser open "${URL}?from=atlantis" >/dev/null 2>&1
