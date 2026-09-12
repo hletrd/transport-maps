@@ -287,6 +287,38 @@ const COARSE = window.matchMedia("(pointer: coarse)").matches;
 // rather than beside layoutForSize() 2,260 lines down: openRoutePanel consults
 // it, and U25 shipped a blank page from a const read before its declaration.
 const SMALL = window.matchMedia("(max-width: 860px)");
+// The legend's two overlays: the "you are here" mark and the on-screen-range
+// bracket. Their bodies, and the comments explaining the re-append dance they
+// do, are ~1,600 lines below beside markBand() and markSpan(). The BINDINGS
+// live up here because `resize` and `fonts.ready` are wired to refreshScale()
+// at :499-500, which is ABOVE the top-level `await` for the globe's load --
+// and refreshScale reaches markSpan on every path (its only early exit is
+// hideDetail(), which calls markSpan(null) itself). A resize while the module
+// is suspended at that await therefore read `bandSpan` in its temporal dead
+// zone: "ReferenceError: Cannot access 'bandSpan' before initialization",
+// thrown from an uncaught listener, caught by boot.js, and rendered as
+// body.fatal -- the whole side rail deleted on a page that was about to work.
+// An Android URL bar collapsing during load is enough to fire it. This is the
+// third time a binding read before its declaration has blanked or gutted this
+// page (see SMALL above, and bandMark's own comment below); the rule that
+// follows is that a module-level binding any module-scope listener can reach
+// is declared HERE, and tests/web/test_boot_behaviour.py enforces it.
+let bandMark = null;
+let bandSpan = null;
+// The same hazard, found by the guard rather than by a crash: every one of
+// these is read by a function refreshScale() reaches, and every one was
+// declared below the await. Only bandSpan actually threw, because
+// onScreenBandRange() returns null on its first statement while the arrays are
+// missing and the `||` in refreshScale then short-circuits past
+// WIDE_VIEW_BANDS. That is not a design -- it is one `if` away from six more
+// ReferenceErrors, so they are declared here with the rest of the state. Their
+// comments stay beside the code that uses them.
+const SCALE_SAMPLE = 9;
+const MIN_SCALE_SAMPLES = 6;
+const SCALE_TRIM = 0.05;
+const WIDE_VIEW_BANDS = Math.ceil(0.6 * N_BANDS);
+const DETAIL_TICKS = 6;
+let readingParents = null;
 const IDLE_PROMPT = COARSE
   ? "Tap the map to read a travel time. Tap a city name to depart from it."
   : $("where").textContent;
@@ -1558,7 +1590,7 @@ const fmtCoord = (lat, lon) =>
 // city), so it is fetched once and only when the first origin's reading array
 // is fetched -- never on the boot path, where it would be 117 KB in front of
 // the first paint for a number the res-4 array can already answer.
-let readingParents = null;
+//: readingParents is declared in the state block at the top of the file.
 let readingParentsWanted = null;
 
 //: The reading tier's own fetch. NOT loadCells(): that routes through
@@ -1924,7 +1956,8 @@ function bandIndexOf(min) {
 // pointer turns thirty-seven anonymous colours into a reading you can place.
 // (Eleven is the number of ANCHORS a scheme defines; expandRamp interpolates
 // them to the 37 bands the strip actually shows.)
-let bandMark = null;
+// bandMark itself is declared in the state block at the top of the file, for
+// the reason recorded there.
 // paintLegend() replaces the strip's children, which detaches this marker.
 // It does NOT need to null it: `isConnected` below is false afterwards and the
 // same node is re-appended. An earlier version had paintLegend reset the
@@ -1975,10 +2008,10 @@ function bandRangeOf(min) {
 // on moveend and the answer only has to be the range a reader can see. Sea,
 // unreachable land and points off the globe all return -1 from bandIndexOf and
 // are skipped.
-const SCALE_SAMPLE = 9;
+//: SCALE_SAMPLE is declared in the state block at the top of the file.
 // Below this many land readings the sample says nothing -- an ocean view, or
 // an origin whose arrays have not landed -- and the world scale stands.
-const MIN_SCALE_SAMPLES = 6;
+//: MIN_SCALE_SAMPLES is declared in the state block at the top of the file.
 // The share of the sample trimmed from each end before the range is taken.
 // Measured: at zoom 9.5 over Seoul, 81 sampled points run from band 0 in the
 // city to band 22 -- twelve hours -- on a single roadless cell in the hills
@@ -1988,14 +2021,14 @@ const MIN_SCALE_SAMPLES = 6;
 // trimmed range describes where the view actually is; the strip above still
 // covers every band, including the outlier, so nothing is hidden from a
 // reader who points at it.
-const SCALE_TRIM = 0.05;
+//: SCALE_TRIM is declared in the state block at the top of the file.
 // The share of the ladder that counts as "most of it". Above this the detail
 // row would duplicate the strip, so the world ticks stand unchanged and the
 // row stays hidden. 60% of thirty-seven bands is twenty-three boundaries.
-const WIDE_VIEW_BANDS = Math.ceil(0.6 * N_BANDS);
+//: WIDE_VIEW_BANDS is declared in the state block at the top of the file.
 // Ticks the detail row aims for. prune() still drops any that would overprint
 // a neighbour once measured, and it keeps the ceiling through any collision.
-const DETAIL_TICKS = 6;
+//: DETAIL_TICKS is declared in the state block at the top of the file.
 
 //: The lowest and highest band with a reading on screen, or null when the
 //: sample is too thin to say. Exported shape: {lo, hi, n}.
@@ -2030,8 +2063,8 @@ function onScreenBandRange() {
 // The bracket on the main strip. A div, not a span: browser_verify.sh counts
 // `.tints span` against the band count, and the band swatches are the spans.
 // Same re-append dance as bandMark for the same reason -- paintLegend()
-// replaces the strip's children and detaches it.
-let bandSpan = null;
+// replaces the strip's children and detaches it. bandSpan is declared in the
+// state block at the top of the file, for the reason recorded there.
 function markSpan(range) {
   const strip = $("tints");
   if (!strip) return;
