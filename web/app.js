@@ -1407,10 +1407,33 @@ const fmtCoord = (lat, lon) =>
 let readingParents = null;
 let readingParentsWanted = null;
 
+//: The reading tier's own fetch. NOT loadCells(): that routes through
+//: fetchOk, and fetchOk calls the page's global fatal() on any non-2xx --
+//: which adds body.fatal (index.html turns that into display:none over the
+//: whole side rail), blanks #time and overwrites #where with "HTTP 404",
+//: and THEN throws. The throw lands in the "not fatal" catch below and is
+//: logged as a warning, but the DOM damage is already done and nothing undoes
+//: it: a missing reading_parents.bin blanked the entire legend, readout and
+//: city list. Reproduced in a browser against a dist with the file removed.
+//:
+//: It was dormant only because index.json carries no `readingRes` yet, so
+//: READING_RES is null and loadReading() returns before ever calling this.
+//: The next full build advertises readingRes and arms it -- and "a blank globe
+//: with nothing in the console" is the failure CLAUDE.md records this project
+//: as having shipped twice. The per-origin .r6.bin fetch beside it was always
+//: written this way; this is the same shape.
+async function fetchReadingCells(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const b = await r.arrayBuffer();
+  if (!b.byteLength || b.byteLength % 8) throw new Error(`${b.byteLength} bytes, not whole 8-byte cells`);
+  return new BigUint64Array(b);
+}
+
 function loadReadingParents() {
   if (readingParentsWanted) return readingParentsWanted;
   const url = "./" + (meta.readingParentsUrl || "reading_parents.bin");
-  readingParentsWanted = loadCells(url).then((cells) => {
+  readingParentsWanted = fetchReadingCells(url).then((cells) => {
     readingParents = checkedParents(cells, meta.readingParentCount, url);
     return readingParents;
   }).catch((err) => {
