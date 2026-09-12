@@ -159,10 +159,14 @@ Two of these are worth the owner's eye even while deferred:
 
 ## Not this cycle's, by instruction
 
-`USER-2`, the coastline precision question, is the owner's visual judgement and
-**stays open**. The finer grid and the zoom-12 coastline have shipped; whether
-that settles it is not a measurement. Three reviewers were told to leave it and
-did.
+`USER-2`, the coastline precision question, was the owner's visual judgement
+and stayed open through this cycle. The finer grid and the zoom-12 coastline
+had shipped; whether that settled it was not a measurement.
+
+**Closed in cycle 7: the owner looked at the live site and said the coastline
+is now fine.** It is not reopened and no further work was done on it. Recorded
+here, at the row that carried it, rather than only in the cycle that closed it
+— the ledger is read backwards more often than forwards.
 
 ## Progress
 
@@ -245,7 +249,8 @@ premise would have produced a worse page and a green test.
   by design. It clears on the orchestrator's next rebuild.
 - **`AA40`**, 478,986 bytes per cold load from serving an 867 MB static
   coastline `no-cache`, is a one-line server change nobody has approved.
-- `USER-2`, the coastline, is the owner's judgement and stays open.
+- `USER-2`, the coastline, was the owner's judgement and stayed open here.
+  **Closed in cycle 7 — the owner looked and said it is fine.**
 
 ## The deploy — refused once, correctly, then clean
 
