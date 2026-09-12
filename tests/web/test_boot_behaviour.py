@@ -1,9 +1,15 @@
 """Run web/boot.js and check what it DOES, not what it contains.
 
 `tests/web/test_app_constants.py` pins boot.js with three `substring in BOOT`
-checks. That is the vacuity CLAUDE.md warns about: changing `cities > 0` to
-`cities >= 0` -- one character -- leaves the watchdog permanently inert and
-every one of those assertions still green.
+checks. That is the vacuity CLAUDE.md warns about: making the watchdog's
+`dataset.appReady === "1"` check unconditional -- one edit -- leaves it
+permanently inert and every one of those assertions still green.
+
+(This docstring used to describe a `cities > 0` condition. boot.js has not had
+one since the watchdog moved to the appReady flag; the `cities` option below is
+now only fixture furniture for the DOM shim. Recorded as AA37, corrected here
+when the file was next touched for a real reason, which is what that row's exit
+criterion said.)
 
 boot.js is a 62-line classic-script IIFE with no imports and no awaits, so it
 runs unchanged under a small DOM shim in Node. Each test below drives the real
@@ -205,8 +211,12 @@ def test_the_watchdog_fires_when_nothing_drew(harness: Path) -> None:
 
 
 def test_the_watchdog_stays_quiet_when_the_page_worked(harness: Path) -> None:
-    """The other half of the same mutation: `cities >= 0` would make this fail
-    too, which is what makes the pair non-vacuous in both directions.
+    """The other half of the same mutation.
+
+    Making the watchdog's appReady check unconditional reddens its sibling
+    above; removing the check entirely reddens this one, because a page that
+    DID finish starting would then be called dead. That is what makes the pair
+    non-vacuous in both directions -- one mutation each, not one shared.
     """
     seen = run_boot(harness, {"kind": "settle"}, ready=True, cities=553)
     assert not seen["fatal"], "a page that finished starting was called dead"

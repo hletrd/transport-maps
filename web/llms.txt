@@ -117,8 +117,10 @@ is computed in the browser from files on this site.
 
 ## Links
 
-- Chart: https://worldmap.atik.kr/
-- Machine-readable index: https://worldmap.atik.kr/index.json
+- [Chart](https://worldmap.atik.kr/): the map itself
+- [Machine-readable index](https://worldmap.atik.kr/index.json): origins, band
+  edges, resolutions, mode descriptions and source attribution for the build
+  that is actually being served
 
 ## Disclaimer
 

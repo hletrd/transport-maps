@@ -3,8 +3,11 @@
 strictly from the first anchor to the last, and adjacent anchors must be at
 least MIN_DELTA_E apart (OKLab distance x100), or two bands read as one.
 Each scheme's "no scheduled route" grey must be at least MIN_GREY_DELTA_E
-from every one of the 37 painted bands (one shared grey sat 0.9 from a Mono
-band), and its sea must lie between space and its darkest band.
+from every one of the painted bands (one shared grey sat 0.9 from a Mono
+band), and its sea must lie between space and its darkest band. The band count
+comes from BAND_EDGES_MIN, which is the emitter's, and is deliberately NOT
+written here: the literal this docstring used to carry is the exact thing the
+module below exists to stop anyone hard-coding.
 
     uv run python scripts/check_ramps.py
 """

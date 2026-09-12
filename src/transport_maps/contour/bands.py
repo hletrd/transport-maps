@@ -88,23 +88,6 @@ def _split_at_antimeridian(cell: str) -> list:
     return [part for part in (left, right) if not part.is_empty]
 
 
-def _polygonal(geom):
-    """Keep only the areal parts of a geometry.
-
-    `make_valid` on a self-touching ring returns a GeometryCollection: the
-    polygons plus the zero-width spurs it had to cut out as bare LineStrings.
-    Passing that on emits a GeoJSON GeometryCollection for a band -- a shape
-    with dangling lines in it -- so the non-areal debris is dropped here.
-    """
-    if geom.geom_type in ("Polygon", "MultiPolygon"):
-        return geom
-    parts = [g for g in shapely.get_parts(geom)
-             if g.geom_type in ("Polygon", "MultiPolygon") and not g.is_empty]
-    if not parts:
-        return shapely.Polygon()
-    return shapely.make_valid(shapely.union_all(parts))
-
-
 def _dissolve(cells: list[str]):
     """Dissolve one band's cells, handling the antimeridian.
 
