@@ -1840,7 +1840,18 @@ function renderLegsInto() {
   const box = $("legs");
   if (!pinB) { box.hidden = true; return; }
 
-  const total = lookup(pinB.lat, pinB.lon);
+  // A breakdown must come off ONE grid. Every row here is read at the res-4
+  // cell index -- legsTo() through origin.air and origin.routes, surface()
+  // through origin.modes -- while lookup() returns the res-6 reading whenever
+  // that tier is present. Those are two different cells, up to 17 km apart.
+  // Taking the total from lookup() and the legs from the res-4 arrays made
+  // `total > landed.min` (below) false often enough to delete the onward leg
+  // from the itinerary outright, and left the rows not summing to the "Door to
+  // door" line they are presented as decomposing. Dormant while the reading
+  // tier is, and armed the moment a build advertises readingRes.
+  const ci = cellIndex(pinB.lat, pinB.lon);
+  const reading = lookup(pinB.lat, pinB.lon);
+  const total = ci >= 0 && origin.times ? origin.times[ci] : reading;
   const chain = legsTo(pinB.lat, pinB.lon);
   if (total == null || total >= MAX_MINUTES || chain == null) { box.hidden = true; return; }
 
@@ -1926,6 +1937,19 @@ function renderLegsInto() {
     ? "On the globe, the solid arc is the flight and the dashed lines are the journeys to and from the airports."
     : "On the globe, the dashed line joins your departure to your destination over the ground.";
   frag.append(key);
+  // ...and when the headline reading came off the finer grid, say so rather
+  // than letting the two numbers disagree in silence. The reading is the
+  // better figure -- it is measured nearer the point you asked about -- but
+  // the itinerary can only be decomposed on the grid the legs are recorded at.
+  if (reading != null && reading < MAX_MINUTES && reading !== total) {
+    const note = document.createElement("p");
+    note.className = "linekey";
+    note.textContent =
+      `The reading above, ${fmtDur(reading)}, is measured on the finer grid; `
+      + "this breakdown is on the coarser one the legs are recorded at, so the "
+      + "two differ slightly. Both are door to door.";
+    frag.append(note);
+  }
   box.replaceChildren(frag);
   box.hidden = false;
 }
