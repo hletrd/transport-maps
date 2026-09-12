@@ -115,8 +115,25 @@ def test_no_gate_in_the_browser_stage_passes_on_empty_output():
         assert "2>/dev/null" not in line, (
             "the console capture discards stderr, so a failed agent-browser "
             f"call greps to 0 and the gate passes without reading it: {line.strip()}")
-    assert "could not be read" in code, (
-        "nothing in browser_verify.sh fails when the console comes back empty")
+    # Emptiness cannot be the discriminator, and neither can the exit status:
+    # `agent-browser console` with no session exits 0 and prints nothing, which
+    # is byte-identical to a clean console. Measured against the live site after
+    # a first version of this fix failed a page whose console was simply clean.
+    # So the gate must prove the session answers BEFORE trusting a silent read.
+    assert "the page under test is not answering" in code, (
+        "browser_verify.sh reads the console without first proving the PAGE is "
+        "answering, so an unread console is indistinguishable from a clean one")
+    # Tied to the page, not to the tool: agent-browser eval happily returns a
+    # literal, and even location.href, on a session sitting at about:blank.
+    assert "location.href" in code and "#map canvas" in code, (
+        "the liveness probe does not read anything that only the page under "
+        "test can answer")
+    probe = code.index("the page under test is not answering")
+    read = code.index("agent-browser console")
+    assert probe < read, (
+        "the liveness probe runs after the console read, which proves nothing "
+        "about the read")
+    assert "is not answering" in code and "fail=1" in code
 
     # NOT `'no origin label' in code`: that string is the probe's own return
     # value and appears in the eval it sends to the browser, so the assertion

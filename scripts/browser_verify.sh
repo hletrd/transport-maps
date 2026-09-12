@@ -261,18 +261,33 @@ echo "  $N"
 echo "$N" | grep -q '"mapMarker":0' || { echo "  !! globe labels are announced as \"Map marker\""; fail=1; }
 echo "$N" | grep -qE '"origin":"[A-Za-z].*departure city"' || { echo "  !! the departure label does not say its own name"; fail=1; }
 echo "=== console ==="
-# 2>&1, not 2>/dev/null -- every other capture in this file folds stderr into
-# the string for exactly this reason. With stderr discarded, a dead session, a
-# crashed tab or a CDP disconnect gave EMPTY stdout, `grep -ci` on empty input
-# printed 0, and the gate reported "errors: 0" without having read the console
-# at all. A check that passes when it did not run is worse than no check.
+# The old check was `agent-browser console 2>/dev/null | grep -ciE ...`, so a
+# dead session, a crashed tab or a CDP disconnect gave empty stdout, grep -ci on
+# empty input printed 0, and the gate reported "errors: 0" without having read
+# the console at all.
+#
+# Emptiness alone cannot tell the two apart, and neither can the exit status:
+# `agent-browser console` with NO SESSION exits 0 and prints nothing, which is
+# byte-identical to a clean console. Measured, after a first attempt at this
+# fix turned the silent pass into a false failure on a page whose console was
+# simply clean.
+#
+# So prove the session is answering FIRST, with an eval whose value we know.
+# After that a silent console is a clean console, which is the whole point.
+# The probe must be tied to THE PAGE UNDER TEST, not merely to the tool
+# answering: `agent-browser eval` returns a literal, and even `location.href`,
+# on a session sitting at about:blank. Asking the live page for its own URL and
+# its own canvas is the only read that cannot succeed on a dead or navigated-away
+# tab, which is exactly the state that made a silent console look clean.
+LIVE=$(agent-browser eval '(()=>{try{return location.href+"|"+!!document.querySelector("#map canvas")}catch(e){return "throw:"+e.message}})()' 2>&1 | tail -1 | tr -d '\"')
+case "$LIVE" in
+  "$URL"*"|true"|"${URL%/}"*"|true") ;;
+  *) echo "  !! the page under test is not answering ($LIVE); the console read below proves nothing"
+     fail=1 ;;
+esac
 CONSOLE=$(agent-browser console 2>&1 || true)
-if [ -z "${CONSOLE//[[:space:]]/}" ]; then
-  echo "  !! the console could not be read (empty output from agent-browser)"; fail=1
-else
-  E=$(printf '%s' "$CONSOLE" | grep -ciE "error|exception" || true)
-  echo "  errors: $E"; [ "$E" -eq 0 ] || fail=1
-fi
+E=$(printf '%s' "$CONSOLE" | grep -ciE "error|exception" || true)
+echo "  errors: $E"; [ "$E" -eq 0 ] || fail=1
 echo "=== viewports ==="
 # With a route OPEN: .depart-card and .reading only collide once an itinerary
 # is on screen, so checking the viewports on an unpinned page cannot see it.
