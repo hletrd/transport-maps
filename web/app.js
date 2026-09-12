@@ -1814,13 +1814,16 @@ function showReading(lat, lng, point) {
     : t === null ? "Open water."
     : `${describe(lat, lng)}<br>${fmtCoord(lat, lng)}`
       + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`
-      // The ring is drawn at SOLVE_RES. When the reading tier has not landed
-      // the NUMBER comes from a cell about seven times wider than that ring,
-      // which is a real discrepancy between what is outlined and what is
-      // printed -- so it is named rather than left for the visitor to assume
-      // the two agree. Nothing is added once they do agree.
-      + (READING_RES && readingGrid() !== READING_RES
-          ? " · read from a wider cell than the outline" : "");
+      // The ring is drawn at SOLVE_RES. Whenever the NUMBER came from a
+      // coarser grid than that -- the reading tier still in flight, absent
+      // from this build, or declined under Save-Data -- what is outlined and
+      // what is printed describe different hexagons, and the page says so
+      // rather than leaving a visitor to assume they agree. Compared against
+      // SOLVE_RES, not READING_RES: READING_RES is null on a build from
+      // before the tier existed, and gating on it made the method panel's
+      // "the outlined hexagon is the cell the time is read from" a claim
+      // nothing on the page qualified.
+      + (readingGrid() !== SOLVE_RES ? " · read from a wider cell than the outline" : "");
   return t;
 }
 // One live region for the whole page, written only when a reading is

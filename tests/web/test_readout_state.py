@@ -155,3 +155,31 @@ def test_both_colour_pickers_are_keyboard_operable():
     handler = handler[:handler.index("\n}")]
     for key in ("ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"):
         assert key in handler, f"the radio groups do not answer {key}"
+
+
+def test_the_page_says_when_the_number_came_from_a_coarser_cell_than_the_ring():
+    """The method panel states "the outlined hexagon under the pointer is the
+    cell the time is read from". That is only true once the reading tier has
+    landed, so the reading line must qualify it in every other case -- the
+    tier still in flight, absent from this build, or declined under
+    Save-Data.
+
+    The comparison is against SOLVE_RES, which the ring is drawn at and which
+    every index.json carries, NOT against READING_RES, which is null on a
+    build made before the tier existed. Gated on READING_RES the qualifier
+    never appeared against the live data and the method panel's sentence
+    stood unqualified.
+
+    Mutation performed and reverted: compare against READING_RES -> red.
+    """
+    body = CODE[CODE.index("function showReading("):]
+    body = body[:body.index("\n}")]
+    assert "readingGrid() !== SOLVE_RES" in body, (
+        "the reading line does not compare the grid it read against the grid the ring "
+        "is drawn at, so it cannot say when the two differ")
+    assert "wider cell than the outline" in body
+    html = (config.ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    flat = " ".join(html.split())
+    assert "the cell the time is read from" in flat, (
+        "the method panel no longer says where the number is read; this guard exists to "
+        "keep that sentence and its qualifier in step")
