@@ -1225,7 +1225,18 @@ function syncPermalink() {
     put("to", pinB ? `${pinB.lat.toFixed(5)},${pinB.lon.toFixed(5)}` : null);
     // Only for a pin whose label is a NAME. A coordinate pin's label is
     // already `to`, spelled differently, and repeating it doubles the URL.
-    put("label", pinB && pinB.label && pinB.label !== fmtCoord(pinB.lat, pinB.lon)
+    //
+    // ...and never a REVERSE-GEOCODED one. `geocoded` marks a label that came
+    // back from Nominatim, which for a click in a city is a street address.
+    // The address bar is what the analytics tag records as the page location,
+    // so putting it there sent the street a visitor clicked on to Google --
+    // while the privacy text disclosed the coordinate and said nothing about
+    // the address. A gazetteer label ("near Xanthi", "Seoul") is a place name
+    // and is already covered by what the page says; a house number is not.
+    // A recipient still gets the point, to about a metre, and names it from
+    // their own gazetteer.
+    put("label", pinB && pinB.label && !pinB.geocoded
+      && pinB.label !== fmtCoord(pinB.lat, pinB.lon)
       ? pinB.label.slice(0, LABEL_MAX) : null);
     put("scheme", rampName === RAMP_DEFAULT ? null : rampName);
     put("sea", oceanName === OCEAN_DEFAULT ? null : oceanName);

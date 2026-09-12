@@ -94,7 +94,14 @@
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-  gtag('config', 'G-2NYW09JSK2');
+  // page_location without ?label=. app.js no longer writes a reverse-geocoded
+  // label into the address bar, but a link written by an older client, or by
+  // hand, can still carry one -- and a Nominatim label for a click in a city
+  // is a street address. The page location is the one field that would carry
+  // it to Google, so it is stripped here rather than trusted not to appear.
+  var loc = location.href;
+  try { var u = new URL(loc); u.searchParams.delete('label'); loc = u.href; } catch (e) {}
+  gtag('config', 'G-2NYW09JSK2', { page_location: loc });
 </script>
 <style>
 :root{
@@ -998,9 +1005,11 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
       <p><b>The link in the address bar.</b> Choosing a destination writes it
          into the address bar, to about a metre, so the journey can be shared
          or reloaded. That address is part of what the analytics tag below
-         records as the page location. Reverse geocoding is deliberately
-         coarser: a clicked point is rounded to about 110 m before it is sent
-         to Nominatim.</p>
+         records as the page location. Two things are deliberately kept out of
+         it: a street address returned by reverse geocoding is never written
+         there, so it is never reported as the page location — only a place
+         name from this site&rsquo;s own gazetteer is — and a clicked point is
+         rounded to about 110 m before it is sent to Nominatim.</p>
       <p><b>Google Analytics.</b> Page views are counted by Google Analytics,
          which sets cookies and identifiers in your browser and sends Google
          your approximate location (derived from your IP address), your

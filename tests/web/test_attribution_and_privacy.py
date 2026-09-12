@@ -340,3 +340,52 @@ def test_the_route_panel_puts_the_answer_above_the_instructions():
     body = body[:body.index("</details>")]
     assert body.index('id="pins"') < body.index('id="route-hint"'), (
         "eighty words of instructions still outrank the answer")
+
+
+def test_a_reverse_geocoded_address_never_reaches_the_address_bar() -> None:
+    """`?label=` is part of the page location the analytics tag reports.
+
+    A label from this site's own gazetteer is a place name ("near Xanthi"), and
+    the privacy text has always covered that. A label from Nominatim's reverse
+    geocoder, for a click inside a city, is a street address -- and it was
+    written into the address bar exactly the same way, so it reached Google as
+    `page_location` while the privacy text disclosed only the coordinate.
+
+    Two guards, because there are two paths: app.js must not write one, and the
+    gtag bootstrap must strip one that arrives in the incoming URL (an older
+    client's link, or a hand-written one).
+
+    Mutations performed and reverted: drop `!pinB.geocoded` from syncPermalink
+    -> red; drop the searchParams.delete('label') from the bootstrap -> red.
+    """
+    sync = APP[APP.index("function syncPermalink()"):]
+    sync = sync[:sync.index("\n}\n")]
+    sync = re.sub(r"//[^\n]*", "", sync)          # comments cannot satisfy this
+    put = re.search(r'put\("label",(.*?)\);', sync, flags=re.S)
+    assert put, "syncPermalink no longer serialises a label"
+    assert "geocoded" in put.group(1), (
+        "syncPermalink writes a reverse-geocoded label into the address bar, "
+        "which is what the analytics tag reports as the page location")
+
+    boot = re.search(r"<script>(?![^<]*ld\+json)(.*?)</script>", HTML, flags=re.S)
+    assert boot and "gtag(" in boot.group(1), "the gtag bootstrap moved"
+    src = boot.group(1)
+    assert "page_location" in src, (
+        "gtag reports location.href verbatim, so a label in the incoming URL "
+        "goes to Google unchanged")
+    assert re.search(r"delete\(\s*['\"]label['\"]\s*\)", src), (
+        "the gtag bootstrap sets page_location without removing ?label= from it")
+
+
+def test_the_privacy_text_says_the_address_is_kept_out() -> None:
+    """A fix nobody is told about is half a fix: the section that describes the
+    address bar must say what is deliberately absent from it."""
+    start = HTML.index('<h3 id="privacy">')
+    # To the next <h3>, or to the end of the document if it is the last.
+    nxt = HTML.find("<h3", start + 1)
+    section = HTML[start: nxt if nxt != -1 else len(HTML)]
+    assert "reverse geocoding" in section.lower() or "reverse-geocod" in section.lower()
+    assert "gazetteer" in section.lower(), (
+        "the privacy section does not distinguish a gazetteer place name, which "
+        "does go into the address bar, from a geocoded street address, which "
+        "does not")
