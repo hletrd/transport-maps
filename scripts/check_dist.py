@@ -330,14 +330,27 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
                     bad.append(f"{s}.json offsets lacks airports/stations "
                                f"(the route panel silently disappears): {sorted(off)}")
                 else:
-                    # The ONLY per-origin fingerprint of the build that made
-                    # this file. Every fixed-width array is n_cells long
-                    # whatever the solve resolution, because the res-4 parent
-                    # count depends on the land mask -- so all 349 shipped
-                    # arrays are the same size and a stale res-5 array passes
-                    # every length check above. offsets.airports does move:
-                    # about 635k at res 5 against 13.7M at res 6.
-                    n_nodes.setdefault(off["airports"], []).append(s)
+                    # The per-origin fingerprint of the build that made this
+                    # file. Every fixed-width array is n_cells long whatever the
+                    # solve resolution, because the res-4 parent count depends
+                    # on the land mask -- so all 349 shipped arrays are the same
+                    # size and a stale res-5 array passes every length check
+                    # above.
+                    #
+                    # BOTH offsets, not just the first. offsets.airports is
+                    # idx.n_cells, so it moves only with the solve resolution
+                    # (about 635k at res 5 against 13.7M at res 6). The gap
+                    # between the two offsets is the AIRPORT COUNT, which moves
+                    # whenever the airport set changes -- an added snap rule, a
+                    # new source extract, a different filter. Keying on
+                    # offsets.airports alone, this gate called a dist/ holding
+                    # 3,990 airports in some origins and 3,996 in others
+                    # consistent, while parsing offsets.stations two lines above
+                    # and discarding it. CLAUDE.md: "Never deploy a partial
+                    # dist/. The per-origin arrays and hover_cells.bin must come
+                    # from the same build; mixing them renders a blank globe
+                    # with no error."
+                    n_nodes.setdefault((off["airports"], off["stations"]), []).append(s)
             except (OSError, ValueError):
                 bad.append(f"{s}.json is not valid JSON (truncated write?)")
         tiles = base.with_name(s + ".pmtiles")
@@ -356,8 +369,9 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
     # means two builds are mixed in dist/ -- the failure the deploy rule calls
     # out as having twice produced a blank live site.
     if len(n_nodes) > 1:
-        groups = ", ".join(f"{k:,} in {len(v)} origin(s) e.g. {v[0]}"
-                           for k, v in sorted(n_nodes.items(), key=lambda kv: -len(kv[1]))[:3])
+        groups = ", ".join(
+            f"{a:,} cells / {(t - a) // 2:,} airports in {len(v)} origin(s) e.g. {v[0]}"
+            for (a, t), v in sorted(n_nodes.items(), key=lambda kv: -len(kv[1]))[:3])
         bad.append(f"origins disagree on the node universe ({groups}): dist/ mixes two builds")
 
     for extra in REQUIRED_EXTRAS:

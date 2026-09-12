@@ -254,14 +254,42 @@ def test_origins_from_two_builds_are_refused(check_dist, tmp_path):
     """Every fixed-width array is n_cells long whatever the solve resolution,
     because the res-4 parent count depends on the land mask -- so all 349
     shipped arrays are the same size and a stale res-5 array passes every
-    length check. offsets.airports is the only per-origin fingerprint that
-    does move: about 635k at res 5 against 13.7M at res 6.
+    length check. offsets.airports is a per-origin fingerprint that does move:
+    about 635k at res 5 against 13.7M at res 6.
     """
     d = _good_dist(tmp_path, slugs=("seoul", "tokyo"))
     (d / "origins" / "tokyo.json").write_text(json.dumps(
         {"offsets": {"airports": 635_000, "stations": 640_000}, "nodes": []}))
     problems = check_dist.check_dist(d, [{"slug": "seoul"}, {"slug": "tokyo"}])
     assert any("mixes two builds" in m for m in problems), problems
+
+
+def test_origins_that_disagree_on_the_airport_count_alone_are_refused(
+        check_dist, tmp_path):
+    """offsets.airports is idx.n_cells, so it moves only with the SOLVE
+    resolution. Two builds at the same resolution whose airport sets differ --
+    an added snap rule, a re-crawled source, a changed filter -- share it
+    exactly, and this gate called them consistent while parsing offsets.stations
+    two lines above and throwing it away.
+
+    Measured on the real dist/ at the time this was written: 3,990 airports in
+    some origins and 3,996 in others, and the gate passed.
+
+    Mutation performed and reverted: key n_nodes on off["airports"] alone ->
+    green, i.e. the mixed build ships.
+    """
+    d = _good_dist(tmp_path, slugs=("seoul", "tokyo"))
+    # Same cell count, six more airports: (stations - airports) / 2 is 100 here
+    # and 106 there.
+    (d / "origins" / "tokyo.json").write_text(json.dumps(
+        {"offsets": {"airports": 1000, "stations": 1212}, "nodes": []}))
+    problems = check_dist.check_dist(d, [{"slug": "seoul"}, {"slug": "tokyo"}])
+    assert any("mixes two builds" in m for m in problems), (
+        "two builds sharing a cell count but not an airport set passed the gate "
+        f"that exists to stop exactly that: {problems}")
+    said = [m for m in problems if "mixes two builds" in m][0]
+    assert "100 airports" in said and "106 airports" in said, (
+        f"the message does not name the two airport counts: {said}")
 
 # --- U24: a build-host path in a PMTiles metadata blob ---------------------
 #
