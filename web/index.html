@@ -661,7 +661,6 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 <div class="topleft">
 <header class="mast">
   <h1>Isochronic Passage Chart</h1>
-  <p>Hours to reach any point on Earth, door to door, by air, rail, road and ferry. After Galton, 1881.</p>
 </header>
 
 <!-- Between the masthead and the reading there were 306 x 413 px of empty
@@ -684,7 +683,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
        The space now carries an invitation at a readable size, and reserves
        the number's height so nothing jumps when the first reading lands. -->
   <p class="v" id="time"><span class="waiting">Loading the map…</span></p>
-  <p class="at" id="where">Move the pointer over the map to read a travel time. Click a city name to depart from it, or click anywhere for the route.</p>
+  <p class="at" id="where">Point anywhere for a travel time. Click to set a destination.</p>
   <!-- #where used to BE the live region, and showReading rewrites it on every
        pointer frame: a MutationObserver recorded one mutation per pointer
        step, so a screen reader was asked to announce ~60 times a second while
@@ -776,7 +775,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
            with that said only in a title attribute, invisible on touch, on a
            list headed "Departure". CLAUDE.md: say so wherever a figure is
            presented. -->
-      <p class="listcap" id="listcap">Each time is how long it takes to reach that city, door to door. Choosing one departs from it instead.</p>
+      <p class="listcap" id="listcap">Time to reach each city. Click one to depart from it.</p>
       <ul class="results" id="results" role="listbox" aria-label="Departure cities, airports and addresses"></ul>
     </div>
   </details>
