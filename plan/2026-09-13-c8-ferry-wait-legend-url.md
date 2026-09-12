@@ -379,6 +379,23 @@ wait of about 26 days between sailings. The model was 90% under; it is now 8%
 over. Where the extracts carry the `duration` tag (OSM gives this crossing
 `144:00`) the figure is 878 h against a published 770 h.
 
+**Four remote destinations, in full.** On each of these the ferry leg is the
+only scheduled link, so the change in the edge IS the change in door-to-door
+time.
+
+| destination | before | after | published | change | remaining error |
+|---|---:|---:|---:|---:|---|
+| Tristan da Cunha, from Cape Town | 80 h 18 | 830 h 11 | 770 h 00 | +749 h 53 | 60 h 11 over |
+| Greenland, Arctic Umiaq Line | 11 h 08 | 48 h 09 | 97 h 28 | +37 h 01 | 49 h 19 under |
+| Seyðisfjörður, Norröna | 15 h 01 | 73 h 44 | 102 h 09 | +58 h 43 | 28 h 25 under |
+| Yakutat, Alaska Marine Highway | 15 h 09 | 74 h 44 | 102 h 19 | +59 h 35 | 27 h 35 under |
+
+Three of the four move from a wrong band to the right one. All three of the
+remaining errors in the 370-520 km group are UNDER-estimates, which is the
+documented direction for the prior in that band and the safer of the two: the
+edge stays selectable and the figure is conservative rather than the route
+silently disappearing from the graph.
+
 **Greenland, read with critic C4 in mind.** The Arctic Umiaq Line goes from
 11 h 08 to 48 h 09 against a true 97 h 28 — a real improvement that is still
 49 hours short, because the prior under-predicts Arctic headways. And the
