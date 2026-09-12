@@ -35,18 +35,6 @@ class RailCalibration:
     alighting_min: float
 
 
-@dataclass(frozen=True)
-class FerryCalibration:
-    speed_kmh: float
-    terminal_min: float
-
-
-def load_ferry_calibration(path=None) -> FerryCalibration:
-    path = path or (config.ROOT / "calibration.toml")
-    with open(path, "rb") as fh:
-        return FerryCalibration(**tomllib.load(fh)["ferry"])
-
-
 def load_rail_calibration(path=None) -> RailCalibration:
     path = path or (config.ROOT / "calibration.toml")
     with open(path, "rb") as fh:
@@ -58,6 +46,12 @@ def station_key(lat: float, lon: float) -> str:
     return h3.latlng_to_cell(lat, lon, STATION_RES)
 
 
+# A second haversine, separate from `ground.haversine_km`, whose signature
+# takes four scalar/array arguments rather than two (n,2) pair arrays. Same
+# formula, same radius. Collapsing the two touches the rail build path's
+# numerics and is deferred (plan DEF8-10); `ground.haversine_km`'s docstring
+# claiming "rail and ferry use it" has been corrected in the meantime, because
+# this module imports nothing from `ground` at all.
 def _haversine_km(lat1, lon1, lat2, lon2):
     r1, r2 = np.radians(lat1), np.radians(lat2)
     dlat, dlon = r2 - r1, np.radians(lon2) - np.radians(lon1)

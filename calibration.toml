@@ -142,12 +142,153 @@ detour_factor = 1.2
 boarding_min = 15.0
 alighting_min = 5.0
 
-# Ferries. Published-figure defaults: a typical vehicle ferry cruises about
-# 19 knots (35 km/h), and terminal time covers arriving ahead of the sailing,
-# loading and unloading. Charged once per crossing.
+# Ferries. A MIXTURE, and each figure below says which it is.
+#
+# What this table replaced, and why. It used to hold two numbers -- a 35 km/h
+# published cruise speed and a 30-minute terminal time -- and that was the
+# whole ferry model: `60*km/35 + 30`. There was no frequency and no expected
+# wait anywhere in the repository, so the Staten Island Ferry and the
+# twice-yearly Cape Town-Tristan da Cunha sailing were charged the same
+# half hour of waiting. Against eight published headways the error ran from
+# +7 minutes to -689 hours, median about -47 hours; on a band ladder whose
+# ratio is 1.1526 that is six to fifteen bands of visibly wrong colour, worst
+# in exactly the polar and remote places a travel-time map is most asked about.
+#
+# ---- sailing time: FITTED, against 3,203 OSM `duration` tags ----
+#
+# sailing_min = berth_min + 60 * km / speed_kmh
+#
+# Fitted by iteratively reweighted least squares over every `route=ferry` way
+# in the seven Geofabrik extracts that carries a parseable `duration` and whose
+# endpoints are 1-4,000 km apart: 3,203 observations. Reproduce with
+# `graph/ferry.trusted_duration_min` over `sources/osm.ferry_links()`.
+#
+# Residuals: median predicted/observed 1.00, log-sd 0.469 (x1.60 at one sigma),
+# 86.0% within a factor of two. By distance bucket, median predicted/observed,
+# against the same column for the OLD 35 km/h model:
+#
+#        km       n   observed   fitted   old 35 km/h
+#      1-10    1456     20 min     1.07          0.34
+#     10-50     958     60 min     0.92          0.60
+#    50-150     413    200 min     0.93          0.72
+#   150-400     253    570 min     0.93          0.75
+#  400-1000     101   1200 min     1.07          0.88
+# 1000-4000      22   2280 min     1.03          0.85
+#
+# The old model was three times too fast on a short crossing and about 15%
+# too fast on a long one. A `detour_factor` like `[rail]`'s was tried first and
+# rejected: fitted per bucket it ran from 2.90 at 1-10 km to 1.18 above
+# 1,000 km, because the short-range excess is a per-crossing overhead
+# (manoeuvring out of the harbour and berthing at the far side), not
+# tortuosity. Giving that overhead its own term is what flattens the residual.
+#
+# `duration` is PREFERRED over this model wherever a way carries a parseable
+# one, so the fit only prices the crossings that have no timetable. Coverage
+# rises with distance -- 7.4% under 1 km to 66.7% above 1,000 km -- so the
+# measured value is available most often where the model would be least sure.
+#
+# ---- expected wait: FITTED, against eight published headways ----
+#
+# interval_h = interval_base_h * max(km, KNEE_KM) ** interval_decay
+# sailings_per_week = max(MIN_SAILINGS_PER_WEEK,
+#                         (10080 / interval_min) * service_fraction)
+# expected_wait_min = (10080 / sailings_per_week) / 2
+#
+# The two bounds are NOT in this file: KNEE_KM = 8 km and
+# MIN_SAILINGS_PER_WEEK = 0.1 live in graph/ferry.py, with the derivation of
+# each. Said explicitly because the [frequency] table above documents an
+# unbounded equation that is not the one the model applies, and this table is
+# not going to repeat that.
+#
+# The anchors, all published operator headways:
+#
+#   Staten Island Ferry                8 km      0.4 h
+#   Dover-Calais                      42 km      1.5 h
+#   Helsinki-Tallinn                  82 km      3 h
+#   Naples-Palermo                   315 km     24 h
+#   Arctic Umiaq Line                372 km    168 h
+#   Torshavn-Seydisfjordur (Norrona) 508 km    168 h
+#   Alaska Marine Highway,
+#     Whittier-Yakutat               513 km    168 h
+#   Cape Town-Tristan da Cunha     2,793 km  ~1,251 h
+#
+# Fit quality on the anchors: R-squared 0.942 in log space, log-residual sd
+# 0.679, i.e. a factor of 1.97 at one sigma. Per anchor, predicted/published:
+# 0.52, 1.70, 2.34, 2.25, 0.41, 0.66, 0.67, 1.17.
+#
+# ---- the honest part: an independent holdout, and it is not flattering ----
+#
+# 326 of the ferry ways carry a parseable `interval` tag, which is an
+# independent sample the fit never saw. Against those the prior is much worse
+# than against its own anchors: median predicted/observed 0.383, log-sd 1.267
+# (x3.55 at one sigma), only 23.3% within a factor of two and 56.1% within
+# four. And the bias has a SIGN that flips with distance:
+#
+#        km      n   median observed   predicted/observed   wait error
+#      1-10    191            1.0 h                 0.21       -0.4 h
+#     10-50     83            1.5 h                 0.54       -0.3 h
+#    50-150     24           14.0 h                 0.58       -3.9 h
+#   150-400     19           15.5 h                 2.21       +7.3 h
+#  400-1000      8          126.0 h                 1.68      +10.9 h
+# 1000-4000      1          168.0 h                 2.35     +113.7 h
+#
+# Below about 150 km the prior claims more frequent service than reality; above
+# it, less. That is not noise, it is the model's real limitation: DISTANCE
+# ALONE CANNOT TELL A REMOTE LIFELINE ROUTE FROM A BUSY SHORT-SEA ONE. The
+# anchors in the 150-500 km band are deliberately remote (Greenland, the
+# Faroes, the Alaska panhandle) while OSM's tagged crossings in that band are
+# mostly Mediterranean and East Asian and run several times a day. Fed the
+# 170 km Dalian-Yantai crossing -- out of a departure city, with roughly
+# hourly sailings -- the prior invents about 10 hours of waiting.
+#
+# This error is left DOCUMENTED rather than corrected, which is the CLAUDE.md
+# rule: "prefer a documented, reproducible error over a hidden one." Refitting
+# to the 326 observed intervals would swap one bias for another -- 191 of them
+# are sub-10 km river ferries and exactly ONE is over 1,000 km, so the remote
+# long-range regime the map was most wrong about would be fitted on a single
+# point. The anchors cover that regime; the holdout does not.
+#
+# Two things bound the damage. Where a way carries an `interval`, that value is
+# used and the prior is not consulted at all. And the error's magnitude follows
+# the wait: at short range a factor of five is minutes, which no band boundary
+# notices, while the hours-scale errors sit at 150 km and beyond where the
+# previous model was wrong by days.
+#
+# One asymmetry to keep in mind when reading the table above: UNDER-charging is
+# loud (a route appears faster than it is, and someone notices) while
+# OVER-charging is SILENT -- Dijkstra simply stops selecting the edge, the
+# ferry channel empties, and no gate in this repository looks at that. The
+# +7 to +11 hour rows are therefore the ones to watch.
+#
+# ---- seasonality: published-figure defaults, not fitted ----
+#
+# `service_fraction` is the share of the YEAR a crossing runs, from the
+# `seasonal` and `opening_hours` tags, parsed in sources/osm.py: three months
+# per named season, five months for a bare `seasonal=yes`, and an explicit
+# month range taken literally. 240 crossings get a fraction below 1.0. The map
+# carries no date, so "leave now" can only be answered as a year average.
+# Restriction within the DAY or the WEEK is not modelled at all -- 879 ways
+# carry a day-conditional `opening_hours` and evaluating that expression needs
+# a parser this repository does not have. `24/7` is honoured as the one value
+# that positively says service is continuous. Both tags are absent above
+# 400 km, so none of this touches the long crossings.
 [ferry]
-speed_kmh = 35.0
+# FITTED (see above). The published cruise figure this replaced was 35 km/h,
+# about 19 knots; the fit says 29.1 km/h once the per-crossing overhead is
+# charged separately, and the pair together track observation far better than
+# either alone.
+speed_kmh = 29.1
+# FITTED (see above). Casting off, harbour manoeuvring and berthing: the part
+# of a scheduled sailing that does not scale with distance.
+berth_min = 11.2
+# Published-figure default, not fitted. Vehicle and foot loading either side of
+# the scheduled sailing -- NOT the wait for it, which is now charged separately
+# and was what this number was quietly standing in for.
 terminal_min = 30.0
+# FITTED to the eight published headways above. Hours, for a crossing of 1 km;
+# only meaningful together with the exponent and the 8 km knee.
+interval_base_h = 0.008915
+interval_decay = 1.5137
 
 # Crossing a land border. Charged on the ground edge between two cells whose
 # countries sit in different immigration zones, the same test the air model

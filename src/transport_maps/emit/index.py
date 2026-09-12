@@ -71,7 +71,12 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
         "name": "GeoNames",
         "licence": "CC BY 4.0",
         "url": "https://www.geonames.org/",
-        "usedFor": "departure cities and the place names under the cursor",
+        # "(cities15000)" names the dataset, which is what a CC BY 4.0 credit
+        # is for: GeoNames publishes several extracts under the same licence and
+        # a reader cannot reproduce the input without knowing which. README.md
+        # and web/llms.txt have always said it; this block, which README.md
+        # calls the canonical one, dropped it.
+        "usedFor": "departure cities and the place names under the cursor (cities15000)",
     },
     {
         "name": "HydroLAKES",
@@ -150,11 +155,11 @@ def mode_detail() -> dict[str, str]:
     so the tooltips cannot drift from the model (they hard-coded 200/75/35/30
     before, which were equal to calibration.toml only by luck).
     """
-    from transport_maps.graph import ground, rail
+    from transport_maps.graph import ferry, ground, rail
     from transport_maps.sources import urban
 
     kmh = ground.SPEED_BY_ROAD_CLASS_KMH
-    rc, fc = rail.load_rail_calibration(), rail.load_ferry_calibration()
+    rc, fc = rail.load_rail_calibration(), ferry.load_ferry_calibration()
     halved = (f"halved inside cities (within {urban.URBAN_RADIUS_KM:.0f} km of a city "
               f"over {urban.URBAN_POP_MIN:,.0f} people)")
     return {
@@ -162,8 +167,21 @@ def mode_detail() -> dict[str, str]:
                 f"high-speed lines at {rc.highspeed_kmh:.0f} km/h, conventional at "
                 f"{rc.conventional_kmh:.0f} km/h along the track, plus {rc.boarding_min:.0f} min "
                 "to board.",
-        "ferry": f"Scheduled ferry routes from OpenStreetMap, at {fc.speed_kmh:.0f} km/h plus "
-                 f"{fc.terminal_min:.0f} min at the terminals.",
+        # Every figure comes from the ferry calibration the graph itself uses,
+        # and the sentence says where the wait comes from: this used to claim
+        # only a speed and a terminal time, which was the whole model -- a
+        # weekly Arctic sailing was charged the same half hour as a commuter
+        # shuttle. NOT "fitted" alone and not "default" alone: the sailing
+        # speed is a published figure, the tortuosity and the headway prior are
+        # fitted, and a reader is owed both halves.
+        "ferry": "Scheduled ferry routes from OpenStreetMap. Sailing time from the route's "
+                 "own timetable where OSM carries one, otherwise "
+                 f"{fc.berth_min:.0f} min to leave and enter harbour plus "
+                 f"{fc.speed_kmh:.0f} km/h, both fitted to 3,203 of those timetables. "
+                 f"Plus {fc.terminal_min:.0f} min loading at the terminals, a "
+                 "published-figure default, and the expected wait for the next sailing "
+                 "-- from the timetabled interval where OSM gives one, otherwise from a "
+                 "headway fitted to eight published crossings.",
         "highway": f"Motorways and expressways, fitted at {kmh[1]:.0f} km/h free-flow, {halved}.",
         # sorted(): the table is ordered by road class, not by speed, so
         # classes 2 and 3 (57 and 50 km/h) printed "fitted at 57-50 km/h" --
