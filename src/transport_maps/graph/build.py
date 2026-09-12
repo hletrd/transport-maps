@@ -7,9 +7,9 @@ import numpy as np
 import polars as pl
 import scipy.sparse as sp
 
-from transport_maps.graph import air, ground, rail, refine, transfers
+from transport_maps.graph import air, ferry, ground, rail, refine, transfers
 from transport_maps.graph.nodes import NodeIndex
-from transport_maps.sources import airports, osm, routes
+from transport_maps.sources import airports, routes
 
 logger = logging.getLogger(__name__)
 
@@ -275,27 +275,65 @@ def _rail_edges(idx: NodeIndex, routes, cal) -> tuple[np.ndarray, np.ndarray, np
     return rows, cols, data
 
 
-def _ferry_edges(idx: NodeIndex, links, cal) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+# The share of parsed crossings that may vanish into the drop reasons below
+# before the build refuses. Measured today: 30,629 links parsed, 4,643 edges
+# emitted -- but 50.8% of those are under MIN_FERRY_KM (river crossings inside
+# one cell) and another large share duplicate a ground edge, both of which are
+# correct refusals. The bound is on the ONE reason that is a data defect rather
+# than a modelling decision: an endpoint whose cell is not in the land mask.
+# 1,872 in-window links (12.4%) are lost that way today, which is why the
+# bound is not tighter; a land-mask regression that pushed it much past this
+# would silently delete the ferry network one island at a time.
+MAX_OFF_MASK_FERRY_FRACTION = 0.20
+# ...and a fraction over a handful of links says nothing at all. Below this
+# many in-window crossings the bound is not applied: a unit test with two
+# fixtures, or a single regional extract, would otherwise trip a gate that
+# exists to catch a global land-mask regression. The real build sees 15,080
+# in-window crossings, so the bound is live where it matters.
+MIN_FERRY_LINKS_TO_BOUND = 200
+
+
+def _ferry_edges(idx: NodeIndex, links, cal,
+                 dropped_out: dict[str, int] | None = None
+                 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Ferry crossings as direct cell-to-cell edges, both ways.
 
     Ferries get no node of their own: unlike rail you almost never chain two,
     so there is no through-journey whose terminal time would be double-charged,
     and a node per crossing would add tens of thousands of nodes to no end.
+    The wait, the sailing and the terminal time therefore all land on this one
+    edge -- see `graph/ferry.crossing_min`.
+
+    Every drop is COUNTED. Seven filters stand between a parsed link and an
+    edge and only one of them used to be logged, so 1,872 crossings (12.4% of
+    those in the plausible length window) disappeared because an endpoint's
+    cell was absent from the land mask -- Sanya-Yongshu at 1,034 km,
+    Donghae-Vladivostok at 570 km -- with nothing in the build log and no gate
+    able to see it. `_air_edges` has counted its rejects since commit fcb4d2a;
+    this is the same pattern one function further down.
     """
     country, zone, crossing, is_closed = _border_rules(idx)
     a_cells, b_cells, minutes = [], [], []
+    dropped = dropped_out if dropped_out is not None else {}
     cut = 0
+    in_window = 0
     for row in links.iter_rows(named=True):
         km = float(ground.haversine_km(
             np.array([[row["from_lat"], row["from_lon"]]]),
             np.array([[row["to_lat"], row["to_lon"]]]))[0])
-        if not (osm.MIN_FERRY_KM <= km <= osm.MAX_FERRY_KM):
+        if not ferry.plausible_crossing(km):
+            dropped["outside length window"] = dropped.get("outside length window", 0) + 1
             continue
+        in_window += 1
         u = idx.try_cell_index(idx.cell_at(row["from_lat"], row["from_lon"]))
         v = idx.try_cell_index(idx.cell_at(row["to_lat"], row["to_lon"]))
         # Same cell means the crossing is shorter than the grid can see; a
         # self-loop would be a zero-cost edge Dijkstra could sit on.
-        if u is None or v is None or u == v:
+        if u is None or v is None:
+            dropped["endpoint off the land mask"] = dropped.get("endpoint off the land mask", 0) + 1
+            continue
+        if u == v:
+            dropped["both endpoints in one cell"] = dropped.get("both endpoints in one cell", 0) + 1
             continue
         # Cells the ground network already joins are skipped. A crossing
         # between neighbours is a river ferry a few kilometres long, which you
@@ -306,18 +344,37 @@ def _ferry_edges(idx: NodeIndex, links, cal) -> tuple[np.ndarray, np.ndarray, np
         # and the unsplit base cell beyond its ring are adjacent too, which a
         # same-resolution grid_disk test can never see.
         if refine.ground_adjacent(idx.cells[u], idx.cells[v]):
+            dropped["duplicates a ground edge"] = dropped.get("duplicates a ground edge", 0) + 1
             continue
         # A sailing into a sealed country is no more open than a road.
         if is_closed(country[u], country[v]):
             cut += 1
+            dropped["closed border"] = dropped.get("closed border", 0) + 1
             continue
         extra = crossing if (zone[u] and zone[v] and zone[u] != zone[v]) else 0.0
         a_cells.append(u)
         b_cells.append(v)
-        minutes.append(60.0 * km / cal.speed_kmh + cal.terminal_min + extra)
+        minutes.append(ferry.crossing_min(
+            km, cal,
+            duration_min=row.get("duration_min"),
+            interval_min=row.get("interval_min"),
+            service_fraction=row.get("service_fraction") if row.get("service_fraction") is not None else 1.0,
+            extra=extra))
 
     if cut:
         logger.info("%d ferry crossing(s) cut at closed borders", cut)
+    if dropped:
+        logger.info("ferry links dropped: %s",
+                    ", ".join(f"{k} {v:,}" for k, v in sorted(dropped.items())))
+    off_mask = dropped.get("endpoint off the land mask", 0)
+    if in_window >= MIN_FERRY_LINKS_TO_BOUND and off_mask > MAX_OFF_MASK_FERRY_FRACTION * in_window:
+        raise RuntimeError(
+            f"{off_mask:,} of {in_window:,} ferry crossings in the plausible length "
+            f"window ({off_mask / in_window:.1%}) have an endpoint whose cell is not in "
+            f"the land mask, above the {MAX_OFF_MASK_FERRY_FRACTION:.0%} bound. Every one "
+            "of them is an island or a port the map can no longer sail to, and the "
+            "previous code dropped them silently."
+        )
     if not a_cells:
         empty_i = np.array([], dtype=np.int64)
         return empty_i, empty_i, np.array([], dtype=np.float64)
@@ -365,7 +422,7 @@ def build_graph(
     if idx.has_rail:
         parts.append(_rail_edges(idx, rail_routes, rail.load_rail_calibration()))
     if ferry_links is not None and len(ferry_links):
-        parts.append(_ferry_edges(idx, ferry_links, rail.load_ferry_calibration()))
+        parts.append(_ferry_edges(idx, ferry_links, ferry.load_ferry_calibration()))
     rows = np.concatenate([p[0] for p in parts])
     cols = np.concatenate([p[1] for p in parts])
     data = np.concatenate([p[2] for p in parts])

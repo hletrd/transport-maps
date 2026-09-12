@@ -6,24 +6,39 @@ import polars as pl
 import pytest
 
 from transport_maps import config
-from transport_maps.graph import build, rail
+from transport_maps.graph import build, ferry, ground
 from transport_maps.graph.nodes import NodeIndex
 from transport_maps.sources.osm import FERRY_SCHEMA
 
-CAL = rail.FerryCalibration(speed_kmh=35.0, terminal_min=30.0)
+# The shipped calibration, not a copy of its numbers: these tests are about the
+# model's SHAPE, and pinning the constants here would let calibration.toml and
+# the graph drift apart with every test still green.
+CAL = ferry.load_ferry_calibration()
 
 # Helsinki and Tallinn: a real 80 km crossing, and comfortably distinct cells.
 HEL = (60.15, 24.95)
 TLL = (59.44, 24.75)
 
 
+#: The fixture crossing's own great-circle length, measured rather than
+#: remembered: the edge weight is a function of it and a hardcoded 80.0 was
+#: half a minute out.
+_KM_HEL_TLL = float(ground.haversine_km(np.array([list(HEL)]), np.array([list(TLL)]))[0])
+
+
 def _links(rows):
     return pl.DataFrame(rows, schema=FERRY_SCHEMA)
 
 
-def _link(way_id, a, b, name="ferry"):
+def _link(way_id, a, b, name="ferry", **tags):
+    """A parsed ferry way. `tags` carries duration_min / interval_min /
+    service_fraction, all None by default -- which is what OSM gives for most
+    crossings and is the case the fitted prior exists to answer."""
     return {"way_id": way_id, "from_lat": a[0], "from_lon": a[1],
-            "to_lat": b[0], "to_lon": b[1], "name": name}
+            "to_lat": b[0], "to_lon": b[1], "name": name,
+            "duration_min": tags.get("duration_min"),
+            "interval_min": tags.get("interval_min"),
+            "service_fraction": tags.get("service_fraction")}
 
 
 def _index(points):
@@ -37,16 +52,45 @@ def test_a_crossing_becomes_a_two_way_edge_with_a_plausible_time():
     r, c, d = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
     assert len(r) == 2, "a crossing must be traversable both ways"
     assert set(zip(r, c)) == {(0, 1), (1, 0)}
-    # ~80 km at 35 km/h plus 30 min terminal: the real sailing is about 2 h.
-    assert 100 <= d[0] <= 200
     assert d[0] == pytest.approx(d[1])
+    # The edge is sail + terminal + expected wait, and the bound is derived
+    # from the model rather than from a remembered number, so it moves with a
+    # recalibration instead of going red on one.
+    #
+    # The old assertion here was `100 <= d[0] <= 200`, which admitted anything
+    # from 27 to 69 km/h with anywhere between zero and double the terminal
+    # time -- wide enough that deleting the terminal term entirely left it
+    # green (proven by mutation in the cycle-8 review).
+    km = _KM_HEL_TLL
+    sail = CAL.berth_min + 60.0 * km / CAL.speed_kmh
+    wait = ferry.expected_wait_min(ferry.sailings_per_week(km, CAL))
+    assert d[0] == pytest.approx(sail + wait + CAL.terminal_min, rel=0.02)
+    # ...and each of the three components is actually in there. A crossing this
+    # long cannot cost less than the time afloat plus the boarding.
+    assert d[0] > sail + CAL.terminal_min, "the expected wait is not charged"
+    assert d[0] > wait + CAL.terminal_min, "the sailing time is not charged"
+    assert d[0] > sail + wait, "the terminal time is not charged"
 
 
 def test_a_crossing_inside_one_cell_is_dropped():
-    """A self-loop is a zero-length edge Dijkstra could sit on forever."""
-    near = (60.15, 24.95), (60.151, 24.951)
-    idx = _index([near[0]])
-    r, _, _ = build._ferry_edges(idx, _links([_link(1, *near)]), CAL)
+    """A self-loop is a positive-weight edge Dijkstra could sit on.
+
+    The two points must be at least MIN_FERRY_KM apart or the LENGTH filter
+    rejects the link one branch earlier and this test never reaches the guard
+    it is named after. The old fixture used points 124 m apart -- 0.124 km
+    against a 1.0 km floor -- so deleting `u == v` left it green.
+
+    `build_graph`'s own `(data <= 0).any()` check cannot catch this either: a
+    3 km self-loop has a perfectly positive weight.
+    """
+    a = (60.15, 24.95)
+    b = (60.175, 24.95)                       # ~2.8 km north: past the 1 km floor
+    km = ground.haversine_km(np.array([list(a)]), np.array([list(b)]))[0]
+    assert km >= 1.0, "fixture: the length filter would reject this before the guard"
+    assert h3.latlng_to_cell(*a, config.SOLVE_RES) == h3.latlng_to_cell(*b, config.SOLVE_RES), \
+        "fixture: both points must land in ONE cell for this to be a self-loop"
+    idx = _index([a])
+    r, _, _ = build._ferry_edges(idx, _links([_link(1, a, b)]), CAL)
     assert len(r) == 0
 
 
@@ -116,6 +160,88 @@ def test_a_ferry_into_a_sealed_country_is_dropped():
     assert len(r) == 0, "a ferry crossed the sealed inter-Korean border"
 
 
+def test_the_off_mask_drops_are_counted_and_reported():
+    """1,872 in-window crossings (12.4%) are lost this way on the real extracts
+    -- Sanya-Yongshu at 1,034 km, Donghae-Vladivostok at 570 km -- and the
+    previous code dropped them with a bare `continue`: no count, no log, no
+    bound, and no gate able to see an island going missing."""
+    idx = _index([HEL])                       # Tallinn's cell is absent
+    dropped = {}
+    build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL, dropped)
+    assert dropped.get("endpoint off the land mask") == 1, dropped
+
+
+def test_too_many_off_mask_drops_refuse_the_build():
+    """A land-mask regression must be loud. Above the bound the build stops.
+
+    The bound needs MIN_FERRY_LINKS_TO_BOUND crossings before it applies, for
+    the same reason `_air_edges` bounds a FRACTION and not a count: two missing
+    fixtures in a unit test are not a regression, and 12.4% of 15,080 real
+    crossings are already lost this way."""
+    idx = _index([HEL])
+    n = build.MIN_FERRY_LINKS_TO_BOUND
+    links = _links([_link(i, HEL, TLL) for i in range(n)])
+    with pytest.raises(RuntimeError, match="not in the land mask"):
+        build._ferry_edges(idx, links, CAL)
+
+
+def test_a_few_off_mask_drops_do_not_refuse_the_build():
+    idx = _index([HEL])
+    links = _links([_link(i, HEL, TLL) for i in range(build.MIN_FERRY_LINKS_TO_BOUND - 1)])
+    r, _, _ = build._ferry_edges(idx, links, CAL)      # must not raise
+    assert len(r) == 0
+
+
+def test_a_rare_crossing_costs_far_more_than_a_frequent_one_of_the_same_length():
+    """The whole point of the cycle. Two crossings between the same pair of
+    cells, identical in every way but their timetable: the one that sails once
+    a week must cost days more than the one that sails hourly.
+
+    Before this model both cost `60*km/speed + 30` exactly, so this test could
+    not have been written -- the two numbers were equal."""
+    idx = _index([HEL, TLL])
+    hourly = _links([_link(1, HEL, TLL, interval_min=60.0)])
+    weekly = _links([_link(1, HEL, TLL, interval_min=7 * 24 * 60.0)])
+    _, _, d_hourly = build._ferry_edges(idx, hourly, CAL)
+    _, _, d_weekly = build._ferry_edges(idx, weekly, CAL)
+    # Half of a weekly headway is 84 h; half of an hourly one is 30 min.
+    assert d_weekly.min() - d_hourly.min() == pytest.approx(0.5 * (7 * 24 * 60 - 60), rel=0.01)
+
+
+def test_a_tagged_interval_beats_the_prior():
+    idx = _index([HEL, TLL])
+    _, _, tagged = build._ferry_edges(
+        idx, _links([_link(1, HEL, TLL, interval_min=120.0)]), CAL)
+    _, _, modelled = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
+    assert tagged.min() != pytest.approx(modelled.min()), \
+        "the OSM interval tag was parsed and then ignored"
+    assert tagged.min() == pytest.approx(
+        ferry.sailing_min(_KM_HEL_TLL, CAL) + CAL.terminal_min + 60, rel=0.03)
+
+
+def test_a_tagged_duration_beats_the_speed_model():
+    idx = _index([HEL, TLL])
+    _, _, tagged = build._ferry_edges(
+        idx, _links([_link(1, HEL, TLL, duration_min=125.0)]), CAL)
+    _, _, modelled = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
+    # The real Helsinki-Tallinn sailing is about 2 h; the model says ~3 h.
+    assert tagged.min() < modelled.min()
+    assert tagged.min() - modelled.min() == pytest.approx(
+        125.0 - ferry.sailing_min(_KM_HEL_TLL, CAL), rel=0.01)
+
+
+def test_seasonal_service_is_charged_a_longer_wait():
+    """A summer-only ferry met in February is genuinely not there. The map has
+    no date, so the frequency is scaled to a year average."""
+    idx = _index([HEL, TLL])
+    _, _, year = build._ferry_edges(
+        idx, _links([_link(1, HEL, TLL, interval_min=120.0)]), CAL)
+    _, _, summer = build._ferry_edges(
+        idx, _links([_link(1, HEL, TLL, interval_min=120.0, service_fraction=0.25)]), CAL)
+    # A quarter of the year is a quarter of the sailings, so four times the wait.
+    assert summer.min() - year.min() == pytest.approx(0.5 * (480 - 120), rel=0.01)
+
+
 def test_a_ferry_between_immigration_zones_pays_the_crossing():
     """Helsinki-Tallinn is Schengen-internal: no charge. Singapore-Batam is not."""
     sg, batam = (1.27, 103.85), (1.13, 104.05)
@@ -126,8 +252,8 @@ def test_a_ferry_between_immigration_zones_pays_the_crossing():
     # Both are ~20-80 km; the Singapore one carries the crossing on top.
     from transport_maps.graph import ground
     assert d_sg.min() > ground._land_border_min(), "SG->ID ferry paid no crossing"
-    km_eu = 80.0
-    assert d_eu.min() < 60.0 * km_eu / CAL.speed_kmh + CAL.terminal_min + 5, \
+    from transport_maps.graph import ground as _g
+    assert d_eu.min() < ferry.crossing_min(_KM_HEL_TLL, CAL) + _g._land_border_min(), \
         "a Schengen-internal ferry was charged a crossing"
 
 
