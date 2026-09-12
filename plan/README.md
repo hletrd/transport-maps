@@ -42,6 +42,7 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
 | `2026-09-10-c4-page-deploy-and-licence.md` | Cycle 4: the page a visitor reads, the three defects that would break the deploy, and two licence obligations (U1…U28) | cycle 4: open |
 | `2026-09-11-c6-page-defects-privacy-and-licence.md` | Cycle 6: the page a visitor uses, two false statements the site makes about itself, and the gates that cannot see a broken page (C6-1…C6-21) | cycle 6: **all 21 done** |
+| `2026-09-12-c7-resolution-6-readings.md` | Cycle 7: readings at resolution 6 on the grid the bands are painted from, and the eight high-severity defects the review turned up (C7-1…C7-18) | cycle 7: **all 18 done** |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
 | `archive/2026-09-10-c3-*.md` | Cycle 3 (T1…T31): 28 done; T24, T26 and T28 carried into the cycle-4 plan as U28, U10 and U11 | archived (cycle 4) |
@@ -103,6 +104,34 @@ start, so the exit criterion now says *started* after the fix); the c4 claim
 that `check_ramps.py:169` was the only writer bypassing `_io.atomic_write`
 (`calibrate/ground.py:127` and `scripts/adsb_extract.py:188` also do); and
 V21's recorded mutation count (1 red test, not 2).
+
+Cycle-7 gate state at `552baac`: `uv run ruff check .` all checks passed,
+exit 0; `uv run pytest -q` recorded in the plan's progress section. Note the
+correction to the line above: cycle 6's recorded **495** was taken before that
+cycle's own last test landed; two independent reviewers measured **538 passed,
+4 deselected** at `c823e31`, and the figure had drifted in the ledger rather
+than in the suite.
+
+Cycle 7's reviewers raised **121 findings, 58 after dedupe** — the taper broke
+(269, 112, 137, 78, 70, 47, 58), because the reviewers were pointed at a
+*design* as well as at the code and 14 of the 58 are about a format that did
+not yet exist. Eighteen are scheduled in the c7 plan; every other cluster has a
+row in `deferred.md` under `# Cycle 7`. Cycle-7 IDs carry the cycle number
+(`CR7-n`, `UX7-n`, `TR7-n` ...); the merged clusters are `AB1`…`AB58` and the
+task IDs are `C7-1`…`C7-18`.
+
+Cycle 7 closed `AA6` (the owner chose readings at resolution 6) and archived
+`USER-2` as resolved by the owner. It also **did not implement the transport
+half of the design it was given**, and the plan carries the account of why:
+three independently fatal, separately measured reasons, two of them taken off
+the live host. The block layout was implemented exactly as specified.
+
+Three of cycle 7's own new guards were vacuous when first written, in a shape
+cycle 6's rule does not cover: **an assertion whose expected value came from
+the function under test**, and **assertions satisfied by a link's visible text
+rather than its href**. The rule that follows is in the c7 plan: derive the
+expectation from the specification or from a second implementation, never from
+the code being tested.
 
 Cycle-4 IDs carry the cycle number (`CR4-n`, `PR4-n`, `UX4-n` ...). Cycle 3's
 designer used a bare `A1…A8`, which collided with the build plan's `A1…A17`,

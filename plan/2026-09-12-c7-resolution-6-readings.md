@@ -229,4 +229,118 @@ defect". Everything else is deferred.
 
 ## Progress
 
-*(filled in as the work lands)*
+**All eighteen tasks done**, across seven signed commits
+(`69052bb`…`552baac`). Every guard added was shown red under the mutation
+named beside it; **28 mutations were run in total and 28 went red**, after
+three of them were first found to be vacuous and the guard rewritten.
+
+| ID | Done | Commit | Mutation run, and what it did |
+|---|---|---|---|
+| C7-1 | yes | `5c08df1` | `READING_SLOTS = 342` → 4 tests red |
+| C7-2 | yes | `5c08df1` | `cell_to_child_pos` for the slot → **green at first**; see below. After the guard was rewritten: 2 tests red. Also: zero padding → red; uncleared low-digit mask → red; reversed directory → red; removed 45-day ceiling → red |
+| C7-3 | yes | `5c08df1` | `readingParentCount` dropped → `check_dist` refuses |
+| C7-4 | yes | `5c08df1` | covered by C7-3 and C7-5 |
+| C7-5 | yes | `5c08df1` | `.r6.bin` truncated by one block → `check_dist` refuses |
+| C7-6 | yes | `5c08df1` | log line, no guard |
+| C7-7 | yes | `8a702c2` | reversed digit order in the page → 3 cross-language tests red |
+| C7-8 | yes | `8a702c2` | covered by C7-7 and C7-10 |
+| C7-9 | yes | `8a702c2` | visual; the browser gate covers the layout |
+| C7-10 | yes | `8a702c2` | `checkedParents` never refuses → red; `checkedReading` never refuses → red; stride hard-coded → red |
+| C7-11 | yes | `40239d5` | card returned to `<body>` → red |
+| C7-12 | yes | `40239d5` | the gate itself; C7-11's mutation is its proof |
+| C7-13 | yes | `40239d5` | ocean handler removed → red; ArrowLeft/ArrowRight dropped → red |
+| C7-14 | yes | `b1902e8` | index deleted → red; each of three hrefs replaced by `#` → red; `index.html` added to the rsync excludes → red |
+| C7-15 | yes | `40239d5` | `t === null` → `t == null` → red; the `undefined` branch deleted → red |
+| C7-16 | yes | `40239d5` | `listTimesFor = null` dropped from the catch → red |
+| C7-17 | yes | `afefdab` | each of six stamp terms dropped in turn → red |
+| C7-18 | yes | `552baac` | wholly-fitted claim restored → red; track tooltip stripped of provenance → red; `min`/`max` removed so the range prints backwards → red |
+
+### Three guards were vacuous when first written
+
+The rule this repository already had — assume a new test is vacuous until
+shown otherwise — earned its place three more times this cycle, and in a
+**new shape**: not the cycle-6 pattern of a comment satisfying an assertion
+about code, but **an assertion whose expected value came from the same
+function it was testing**, and **assertions satisfied by a link's visible text
+rather than its href**.
+
+1. `test_every_child_of_a_land_pentagon_gets_a_distinct_slot` asserted only
+   that the 286 slots were distinct and in range. `h3.cell_to_child_pos`
+   satisfies both, so replacing the emitter's slot function with it wholesale
+   left **all fourteen tests green** — while the two orderings disagree for
+   285 of those 286 cells, in a block containing Dalian. Closed by deriving
+   the expected slot **longhand from the h3 bit layout**, sharing no code with
+   the function under test, and by asserting that the pentagon still separates
+   the two rules (so the guard cannot quietly stop proving anything if h3
+   renumbers).
+2. `assert "meta.readingParentCount" in APP` stayed green when the comparison
+   itself was replaced by `false`, because the name survived in the error
+   message beside it. Closed by extracting `checkedParents` and
+   `checkedReading` into plain functions of their arguments and **running
+   them under node** with buffers of the wrong length.
+3. `assert name in page` for each licence link stayed green when the href was
+   replaced by `#`, because the file name is also the link's visible text.
+   Closed by asserting `href="./{name}"`.
+
+**The rule that follows, for the next cycle:** an assertion whose expected
+value is produced by the code under test proves only that the code is
+self-consistent. Derive the expectation from the specification — the bit
+layout, the mathematics, the upstream library — or from a second
+implementation in another language.
+
+### What was measured
+
+Every figure below is measured on this machine against the real 4,091,715-cell
+land universe, except the one row that says modelled.
+
+| | |
+|---|---|
+| res-6 land cells | 4,091,715 |
+| res-3 parents holding land | 14,598 |
+| `(parent, slot)` keys, digit form | **4,091,715 of 4,091,715 — a bijection** |
+| `_to_res` vs `h3.cell_to_parent` | identical over 60,206 cells, including all 206 land cells under both pentagons |
+| block array per origin | **10,014,228 B** exactly |
+| padding | 915,399 slots, **18.3 %**, written as the sentinel |
+| block directory, once for the site | **116,784 B raw, 17,789 B gzipped** |
+| layout build | **0.4 s once per build**, inherited copy-on-write by the fork pool |
+| emit | **0.02 s per origin** (≈ 11 s over 553) |
+| round trip, page's own path | **0 mismatches** over 20,206 sampled cells |
+| per view, once the origin is loaded | **0 bytes, 0 requests** |
+| added requests per origin switch | **1** (517 for the ranged design) |
+| added requests on the critical path | **0** |
+| peak client memory added | 10.0 MB, one `Uint16Array`, evicted on switch |
+| decode | **0** — a typed-array view, no parse |
+| on the wire per origin | **~3.5–5.2 MB, modelled** — `C7-6` makes the rebuild log the truth |
+
+The emit figure is worth recording against the review's estimate: `PR7-4`
+priced a per-origin loop written on the res-4 template at ~9 s and 0.86 GB
+transient, ≈ 83 CPU-minutes over 553 origins. Building the layout once and
+scattering with numpy costs **0.4 s + 0.02 s × 553 ≈ 11 s**.
+
+### What the gates said
+
+Run at `552baac`, each alone, exit status read from `$?` and never chained or
+piped — the cycle-6 lesson.
+
+- `uv run ruff check .` → `All checks passed!`, exit 0.
+- `uv run pytest -q` → recorded in the cycle report.
+
+### What is NOT fixed, and is not being presented as fixed
+
+- **In refined areas the paint is still finer than the reading.** A res-6 cell
+  has seven res-7 children; where `graph/refine.py` split a cell the map
+  paints sub-cells the reading averages over. Outside those areas — most of
+  the world — the reading is now on exactly the grid the band comes from.
+- **The breakdown under the number is still res-4.** The arrival airport, the
+  mode of the last leg and the rail station are addressed by the tier-A
+  ordinal, and re-emitting all four at res 6 costs 90.1 MB per origin. So the
+  page can name an airport the res-6 time was not computed through.
+- Both are now stated on the page under "What this does not know", which is
+  the first time any document has said what the readout is sampled on
+  (`AB15`).
+- **The tier only takes effect when the orchestrator rebuilds.** Until then
+  `index.json` advertises no `readingRes`, the page falls back to tier A
+  exactly as today, and `check_dist` and `reindex` treat an absent
+  `reading_parents.bin` as an absent tier. That backward compatibility is not
+  incidental — it is what let this cycle deploy the page against the current
+  res-4 arrays.
