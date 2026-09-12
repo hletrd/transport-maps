@@ -1171,8 +1171,14 @@ function renderDepartureInto() {
   // a cell counts as unreached when no scheduled service reaches it at ALL,
   // which is a property of that cell's isolation, not of where you started.
   // Eight origins on six continents printed the same 1.851 %.
+  // "door to door" is not decoration here: CLAUDE.md makes the composition a
+  // standing rule wherever a figure is presented, and this card presents three
+  // travel-time figures. It carried no such statement, so a reader could take
+  // "within 12 hours" for flying time.
   $("depart-note").textContent =
-    `Share of charted land outside Antarctica. ${pct(unreached)} is reachable from nowhere.`;
+    "Share of charted land outside Antarctica reachable in that time, door to "
+    + `door — ground access, check-in and border control included. ${pct(unreached)} `
+    + "is reachable from nowhere.";
 }
 
 // ?from= carried the departure and nothing else, so the interesting half of a

@@ -8,6 +8,8 @@ both res-3 pentagons by name -- the case where h3's `cell_to_child_pos` and
 digit order genuinely differ.
 """
 
+import inspect
+import re
 from typing import ClassVar
 
 import h3
@@ -278,3 +280,48 @@ def test_the_refusal_would_have_caught_the_collision_it_exists_for():
     assert len(kids) == 7
     assert len({hover.reading_slot(k) for k in kids}) == 1
     assert hover.reading_slot(kids[0]) == hover.reading_slot(SEOUL)
+
+
+def test_nothing_the_site_ships_claims_the_reading_averages_its_sub_cells():
+    """`reading_layout` takes the CENTRE child, and three documents said average.
+
+    `emit/hover.py` resolves a split base cell to
+    `h3.cell_to_center_child(...)` -- one value, not a mean of seven. The page,
+    `llms.txt` and `config.py` all described it as an average, which is a
+    different number and a different claim: an average over a 2.4 km cell that
+    straddles a motorway and a hillside is a figure the map paints nowhere.
+
+    The expectation comes from the SOURCE OF THE VALUE, not from the prose:
+    whichever h3 call `reading_layout` uses decides what the documents may say.
+
+    Mutation performed and reverted: restore "the reading averages over them" to
+    `web/llms.txt` -> red, naming the file and the line.
+    """
+    layout_src = inspect.getsource(hover.reading_layout)
+    assert "cell_to_center_child" in layout_src, (
+        "reading_layout no longer resolves a split cell to its centre child; "
+        "re-read this guard before changing the documents back")
+    assert "mean(" not in layout_src and "average" not in layout_src.lower(), (
+        "reading_layout now averages; the documents below may say so again")
+
+    shipped = {
+        "web/index.html": None, "web/llms.txt": None,
+        "src/transport_maps/config.py": None,
+    }
+    bad = []
+    for rel in shipped:
+        text = (config.ROOT / rel).read_text(encoding="utf-8")
+        for n, line in enumerate(text.splitlines(), 1):
+            low = line.lower()
+            if "averag" not in low:
+                continue
+            # "not an average", "rather than an average" are the corrections.
+            if re.search(r"(not|rather than|never)\s+an?\s+averag", low):
+                continue
+            if "h3 v4 averages" in low:          # cell-size figures, not readings
+                continue
+            if "reading" in low or "sub-cell" in low or "children" in low:
+                bad.append(f"{rel}:{n}: {line.strip()}")
+    assert not bad, (
+        "the reading is the centre child's value, and these lines say it is an "
+        "average over the seven:\n  " + "\n  ".join(bad))

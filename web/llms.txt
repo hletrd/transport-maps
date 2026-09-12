@@ -4,8 +4,10 @@
 > its departure cities (the list is `origins` in index.json) to every land area
 > on Earth, combining scheduled air routes, rail from OpenStreetMap route
 > relations, ferry crossings, and a road-speed model whose four middle road
-> classes are fitted to 2,998 real driving journeys, the roadless and local
-> classes keeping published-figure defaults, with check-in, border-control and
+> classes are fitted to 2,998 real driving journeys sampled from the Google
+> Routes API (calibration only; nothing from it reaches the site, and no
+> commercial flight data is used anywhere), the roadless and local classes
+> keeping published-figure defaults, with check-in, border-control and
 > transfer penalties.
 > Air times are fitted to 107,366 ADS-B flight legs. Named after Francis
 > Galton's "Isochronic Passage Chart for Travellers" (1881), the first
@@ -60,7 +62,10 @@ path, and it is skipped entirely when the browser reports Save-Data. A build
 whose index.json carries no `readingRes` has no such files, and the page falls
 back to the resolution-4 array and says so under the number. In refined areas
 the paint is still finer than the reading: where the solver split a cell the
-map draws its seven resolution-7 children and the reading averages over them.
+map draws its seven resolution-7 children, and the reading is the value of the
+CENTRE child -- not an average over the seven. That is the same "what a pointer
+at this spot means" rule the resolution-4 tier uses, so the two tiers cannot
+disagree about which child speaks for a cell.
 
 ## Known limits
 

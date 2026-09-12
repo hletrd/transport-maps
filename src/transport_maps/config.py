@@ -30,8 +30,12 @@ HOVER_RES = 4
 # (measured, plan/deferred.md AA6).
 #
 # Where graph/refine.py split a cell the band is painted at FINE_RES, which is
-# still finer than this: the reading then averages over seven sub-cells. The
-# page says so rather than claiming an agreement that does not hold.
+# still finer than this: the reading is then the value of the cell's CENTRE
+# sub-cell, which is what emit/hover.py::reading_layout computes
+# (h3.cell_to_center_child). It is NOT an average over the seven -- three
+# places used to say it was. The centre child is the same rule tier A uses, so
+# the two tiers cannot disagree about which child speaks for a cell. The page
+# says so rather than claiming an agreement that does not hold.
 READING_RES = SOLVE_RES
 # The readings ship as fixed-width blocks keyed by their res-3 parent, so the
 # slot within a block is arithmetic and NO per-origin cell-id list is needed:

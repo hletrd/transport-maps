@@ -171,9 +171,18 @@ def mode_detail() -> dict[str, str]:
         # and the sentence says where the wait comes from: this used to claim
         # only a speed and a terminal time, which was the whole model -- a
         # weekly Arctic sailing was charged the same half hour as a commuter
-        # shuttle. NOT "fitted" alone and not "default" alone: the sailing
-        # speed is a published figure, the tortuosity and the headway prior are
-        # fitted, and a reader is owed both halves.
+        # shuttle. NOT "fitted" alone and not "default" alone, and the split is
+        # the one calibration.toml records: speed_kmh (29.1) and berth_min
+        # (11.2) are FITTED to 3,203 OSM timetables, the headway prior is
+        # FITTED to eight published crossings, and terminal_min (30) is the
+        # published-figure default. A reader is owed both halves.
+        #
+        # This comment used to say the sailing speed was a published figure and
+        # credit a "tortuosity" term. Both were wrong: calibration.toml:276-280
+        # marks speed_kmh FITTED, and there is no tortuosity term -- a detour
+        # factor was tried during cycle 8 and rejected in favour of the affine
+        # berth_min. The string below has always been right; only the comment
+        # explaining it was not.
         "ferry": "Scheduled ferry routes from OpenStreetMap. Sailing time from the route's "
                  "own timetable where OSM carries one, otherwise "
                  f"{fc.berth_min:.0f} min to leave and enter harbour plus "
