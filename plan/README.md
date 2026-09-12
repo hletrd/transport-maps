@@ -35,24 +35,32 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 
 | Plan | Scope | Status |
 |---|---|---|
-| `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
-| `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
-| `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); open tasks carried to cycle 5 |
-| `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
-| `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; 37 tasks open across the five, carried to cycle 5 |
-| `2026-09-10-c4-page-deploy-and-licence.md` | Cycle 4: the page a visitor reads, the three defects that would break the deploy, and two licence obligations (U1…U28) | cycle 4: open |
-| `2026-09-11-c6-page-defects-privacy-and-licence.md` | Cycle 6: the page a visitor uses, two false statements the site makes about itself, and the gates that cannot see a broken page (C6-1…C6-21) | cycle 6: **all 21 done** |
-| `2026-09-12-c7-resolution-6-readings.md` | Cycle 7: readings at resolution 6 on the grid the bands are painted from, and the eight high-severity defects the review turned up (C7-1…C7-18) | cycle 7: **all 18 done** |
-| `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened items | living |
+| `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | cycle 2 done; tasks still open, carried forward |
+| `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | cycle 2 done; tasks still open, carried forward |
+| `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); open tasks carried forward |
+| `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; tasks still open, carried forward |
+| `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; tasks still open, carried forward |
+| `2026-09-13-c9-page-failure-paths.md` | Cycle 9: the page's failure paths, its accessibility, and the gates that cannot see either (C9-1…C9-31) | cycle 9: current |
+| `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened and closed items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
-| `archive/2026-09-10-c3-*.md` | Cycle 3 (T1…T31): 28 done; T24, T26 and T28 carried into the cycle-4 plan as U28, U10 and U11 | archived (cycle 4) |
-| `archive/2026-09-10-c5-*.md` | Cycle 5 (V1…V29): every task done or recorded, each with the mutation that proved it; the 553-origin deploy and its browser verification are in its progress section | archived (cycle 6) |
+| `archive/2026-09-10-c3-page-detail-and-defects.md` | Cycle 3 (T1…T31): 28 done; T24, T26 and T28 carried into the cycle-4 plan as U28, U10 and U11 | archived (cycle 4) |
+| `archive/2026-09-10-c4-page-deploy-and-licence.md` | Cycle 4 (U1…U28): all done | archived |
+| `archive/2026-09-10-c5-page-defects-and-ui.md` | Cycle 5 (V1…V29): every task done or recorded, each with the mutation that proved it | archived (cycle 6) |
+| `archive/2026-09-11-c6-page-defects-privacy-and-licence.md` | Cycle 6 (C6-1…C6-21): all 21 done | archived |
+| `archive/2026-09-12-c7-resolution-6-readings.md` | Cycle 7 (C7-1…C7-18): all 18 done | archived (cycle 9) |
+| `archive/2026-09-13-c8-ferry-wait-legend-url.md` | Cycle 8 (T1.1…T5.5, 38 tasks): 36 done. T5.3 was ticked and half-done (fixed in cycle 9); T2.7 was ticked and not done (carried as M8-14 in `deferred.md`). Both corrections are in the file. | archived (cycle 9) |
 
-The five cycle-2 plans do not move to `archive/` yet: 37 tasks across them are
+The five cycle-2 plans do not move to `archive/` yet: tasks across them are
 still open, and the archive convention below applies only when every task is
 done or has been carried forward under its ID. `W1` in the gates plan stays open
 by design -- it is a recorded warning with an exit criterion, not an unfinished
 fix.
+
+Cycles 7 and 8 moved to `archive/` in cycle 9, which is also when their two
+mis-ticked tasks were found. **The lesson is in the archive convention itself:
+a plan is archived on the state of the TREE, not on the state of its own
+checkboxes.** Cycle 9 verified ten of cycle 8's ticks against the code by grep
+before archiving it, and two did not hold.
 
 End-of-cycle-3 gate state at `43b99f5`: `uv run ruff check .` all checks passed,
 exit 0; `uv run pytest -q` 390 passed, 4 deselected, 5 warnings (all W1), exit 0.
@@ -148,6 +156,56 @@ Cycle-4 IDs carry the cycle number (`CR4-n`, `PR4-n`, `UX4-n` ...). Cycle 3's
 designer used a bare `A1…A8`, which collided with the build plan's `A1…A17`,
 and six of those findings reached no table at all -- the one gap in the audit
 this file records. The prefix makes the collision impossible.
+
+## Cycle 9
+
+Twelve reviewer lanes, **109 raw findings, 71 after dedupe** (`AC1`…`AC71` in
+`.context/reviews/_aggregate.md`). The taper across cycles: 269, 112, 137, 78,
+70, 47, 58, ~50, 71. The count rose because three lanes ran measurements earlier
+cycles had only reasoned about, and because cycle 8 shipped 38 tasks whose new
+code had not yet been read by anyone.
+
+Gate state at `7a1465b`, the cycle's starting HEAD: `uv run ruff check .` all
+checks passed, exit 0; `uv run pytest -q` **700 passed, 4 deselected, 5
+warnings** in 22 min 37 s, exit 0. The 495 figure carried in this file through
+three revisions was stale; 700 is measured.
+
+Thirty-one tasks are scheduled as `C9-1`…`C9-31` in
+`2026-09-13-c9-page-failure-paths.md`; every other cluster has a row in
+`deferred.md` under the cycle-9 headings or in that plan's own deferred table
+(`DEF9-1`…`DEF9-30`), each with citation, unchanged severity and confidence, a
+concrete reason and an exit criterion.
+
+The cycle's most valuable result is a negative one, and it is the thing the run
+brief asked to be checked first: **the tier-B reading fallback holds.** Seven
+lanes verified it independently, one by driving the real fetch through a node
+harness across seven failure modes. It does not call `fatal()`, it returns null,
+nothing propagates uncaught, and the next origin switch retries.
+
+What the cycle found instead was one reproducible crash on the live page (a
+`resize` during the globe's load read a `let` in its temporal dead zone, and
+`boot.js` turned that into `body.fatal` over the whole side rail), three
+measured accessibility defects, a mixed-build gate blind to the mixed build in
+`dist/` right now, and nine test guards that stayed green under mutation.
+
+**Two of cycle 9's own new guards were vacuous when first written**, and both
+were caught by running the mutation rather than by rereading — the same lesson
+cycles 6 and 7 recorded, in a new shape each time. The shape here, named by the
+test-engineer lane and now the **fourth** on the list: *the assertion's scope is
+derived from its subject*, so breaking the code removes the assertion rather
+than failing it. Three variants were seen: an incidental pattern match
+elsewhere in the file, a filter keyed on a literal taken from the subject, and
+an "actual" set built by filtering the expected one.
+
+The four rules that now stand, one per cycle:
+1. (cycle 6) An assertion over source text must strip comments first.
+2. (cycle 7) Derive the expectation from the specification or from a second
+   implementation, never from the code being tested.
+3. (cycle 8) Read a gate's own exit status; never chain it behind `&&` or pipe
+   it into `tail`.
+4. (cycle 9) Scope an assertion to its subject explicitly. If deleting the code
+   could delete the assertion's reach rather than fail it, the assertion is
+   vacuous.
 
 Conventions
 - Each task carries the merged finding ID(s) so the provenance can be traced to

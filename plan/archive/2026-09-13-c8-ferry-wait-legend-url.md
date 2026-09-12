@@ -189,7 +189,15 @@ targets are kept unchanged.
 - [x] **T2.6** Fix the address-search overflow (M8-13): `.results .coord{flex:none}` clips
       secondary address text with no ellipsis. This is the concrete form the Korean-name
       truncation concern takes; the Hangul fallback itself renders correctly.
-- [x] **T2.7** Fix the 1.8 px clip of the legend's trailing build-date line at 844×390 (M8-14).
+- [~] **T2.7** Fix the 1.8 px clip of the legend's trailing build-date line at 844×390 (M8-14).
+      **CORRECTION (cycle 9, DOC9-4): this was ticked and is not done.** The
+      progress section of this same file records the line overshooting by
+      **19 px** after the cycle's commits (improved from 36 px, but not fixed),
+      and carries it forward as M8-14 — so the file both ticks the task and
+      says it was not completed. The tick is downgraded to `[~]` (partial), and
+      M8-14 is a real open item, not a closed one. Its exit criterion is
+      unchanged: the landscape rail's margins are re-tuned in a cycle whose
+      deploy is not page-only for the legend.
 - [x] **T2.8** Correct two stale comments: `app.js:1757` says "eleven bands" where the artefact
       has 37 (the eleven are the scheme's anchors), and the `render()` benchmark comment was
       measured against 157 origins when there are now 553.
@@ -287,6 +295,13 @@ the console" failure CLAUDE.md records as having shipped twice.
       use it" when `rail.py` has no `ground` import at all, and align `web/app.js`'s radius
       literal `6371` with Python's `6371.0088`. Deleting `rail._haversine_km` touches the rail
       build path and is deferred (DEF8-10).
+      **CORRECTION (cycle 9, VER9-1): the second half was never done.** The
+      docstring was fixed; `web/app.js` still carried a bare `6371`, and
+      `git log -S'6371.0088' -- web/app.js` showed no commit had ever touched
+      it. A ticked task that was not done is worse than an open one, because
+      nothing looks for it again. Fixed in cycle 9 (`4c8fd03`) with a guard
+      that takes its expectation from `graph/ground.py` and `graph/rail.py`
+      rather than from `app.js`.
 - [x] **T5.4** L8-5: guard `scripts/ground_check.py:51-54` against an infinite Dijkstra
       distance and against `np.median([])`.
 - [x] **T5.5** L8-8: restore "(cities15000)" to the GeoNames attribution in `emit/index.py`,
@@ -344,8 +359,20 @@ H8-2, the blanked page rail — is scheduled as USER-4 and fixed this cycle.
 
 ## Progress
 
-All 38 tasks across USER-1..USER-5 are done. 33 mutations were performed and
-every one went red; the list is below. `uv run ruff check .` is clean.
+All 38 tasks across USER-1..USER-5 are done, **with two corrections recorded
+below: T5.3 was ticked and half-done, and T2.7 was ticked and not done.** 36 of
+the 38, then. 33 mutations were performed and
+every one went red; the list is below.
+
+**CORRECTIONS (cycle 9).** The list below actually holds **37** mutations, not
+33 (VER9-7; the page section claims 13 and lists 17) — an undercount in the
+prose, not a missing mutation. And two ticked rows prescribe designs that were
+rejected during implementation in favour of better ones, without the rows being
+amended (VER9-6): **T1.2** names `graph/transfers.py` as the home for
+`expected_wait_min`, which shipped as a new `graph/headway.py` whose docstring
+says why; **T1.5** names a `detour_factor`, which shipped as the affine
+`berth_min`. Both changes are improvements and both are documented where they
+landed; only the plan rows were left describing the discarded design. `uv run ruff check .` is clean.
 
 ### What the ferry model actually does now, measured
 
@@ -370,6 +397,18 @@ terminal time, as `calibration.toml` said in as many words.
 Mean absolute band error falls from **6.5 bands to 1.75**. Three anchors now
 land on exactly the right band (Staten Island, Tórshavn, Whittier–Yakutat) and
 none is more than four bands out, against a worst case of fourteen before.
+
+**CORRECTION (cycle 9, VER9-2). That headline is carried by the ceiling.** The
+verifier reproduced all 40 figures and all 24 band indices exactly, and
+`6.5000 → 1.7500` is exact — but four of the eight anchors saturate band 36,
+the top of the ladder, both before and after, so the improvement on them is
+an artefact of the ceiling rather than a measurement. On the four the ladder
+can resolve, the mean absolute error goes **3.5 → 2.5**, and **Helsinki–Tallinn
+gets worse, 2 bands out to 4**. "Three anchors land on exactly the right band"
+is also wrong by one: it is four (Tórshavn and Whittier–Yakutat both land on 36
+with the truth on 36, as does Cape Town–Tristan). The model is still a large
+improvement; the headline overstates by how much, and the honest figure is the
+one on the resolvable four.
 
 **Door to door on a remote destination.** Tristan da Cunha has exactly one
 scheduled link, the Cape Town sailing, so the change in door-to-door time is
@@ -467,8 +506,15 @@ must stay inside the uint16 sentinel.
 
 | crossing | km | modelled | old model | note |
 |---|---:|---:|---:|---|
-| Réunion–Kerguelen (Marion Dufresne, 4 sailings/yr) | 3,398 | 39.9 days | 1.7 days | **clamped by the floor** |
-| Falklands–South Georgia (no schedule) | 1,451 | 13.4 days | 4.0 days | prior, not clamped |
+| Réunion–Kerguelen (Marion Dufresne, 4 sailings/yr) | 3,398 | 39.9 days | 4.1 days | **clamped by the floor** |
+| Falklands–South Georgia (no schedule) | 1,451 | 13.4 days | 1.7 days | prior, not clamped |
+
+**CORRECTION (cycle 9, VER9-3): the "old model" column above was transposed.**
+It read 1.7 days against 3,398 km and 4.0 against 1,451 km, but the old cost is
+`terminal + 60·km/speed` and is therefore monotone in distance — the longer
+crossing cannot have been the cheaper one. The true figures are 4.1 days and
+1.7 days, shown above. The modelled column and every conclusion drawn from it
+are unaffected.
 
 **Kerguelen is the one case where the floor is known to bind, and it is
 recorded rather than hidden.** Four sailings a year is 0.0769 per week, below

@@ -21,6 +21,12 @@ run — "more details, higher quality and design and ease of usage and UI. Do no
 overwork" — and the orchestrator's constraints (bounded scope per cycle; no
 rebuilds; no writes under `dist/`/`data/`).
 
+## Cycle 9: one ticked task that was not done
+
+| ID | Finding | File:line | Sev | Conf | Reason | Exit criterion |
+|---|---|---|---|---|---|---|
+| M8-14 | The legend's trailing build-date line overshoots the landscape rail at 844×390 by **19 px**. Cycle 8's plan ticks T2.7 as fixing this and its own progress section records the 19 px and carries the item forward — the file both closes and re-opens it. Improved from 36 px, not closed. | `web/index.html`, the `@media (max-width:860px) and (orientation:landscape)` block | LOW | High | Closing the last 19 px means re-tuning that block's margins, and cycle 9 already changed the same block (the folded sheet now keeps `#time`). Two margin changes in one cycle to a layout whose only verification is a browser pass would make neither attributable. The rail scrolls and every guarantee CLAUDE.md names — strip, ticks, keys, caption, credit — measures visible at all four viewports. | A page cycle that has not otherwise touched the landscape rail; measure the overshoot before and after |
+
 ## Cycle 9: six rows whose exit criterion had already fired
 
 The cycle-9 document-specialist audited every deferred row against HEAD rather
