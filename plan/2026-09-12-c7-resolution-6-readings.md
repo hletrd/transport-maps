@@ -197,6 +197,17 @@ it is res-4. `C7-9` says so on the page.
   sentinel scheme, an escape path for cells whose parent is unreachable, and
   two ways to be silently wrong, to save bytes the owner has explicitly said
   are not the constraint. Recorded here so a later cycle does not re-derive it.
+- **Making `readingGrid()` report the grid the last read actually used**,
+  rather than inferring it from the presence of the array. As written,
+  `readingGrid()` returns `READING_RES` whenever the array and the directory
+  are both loaded, so a point whose res-3 parent were somehow missing from the
+  directory would fall back to tier A and the page would not say so. That
+  cannot happen while the two tiers are consistent — the res-4 parents of the
+  reading grid are exactly `hover_cells.bin`'s set, proven in
+  `test_the_two_tiers_describe_the_same_universe`, and `check_dist` refuses a
+  directory whose count or resolution disagrees. Rejected as three lines of
+  new mutable state guarding an impossibility, and recorded here so a later
+  cycle does not puzzle over the inference.
 - **`.bin.gz` precompressed with client-side `DecompressionStream`** — the
   `architect`'s recommendation, and better on the wire. Rejected because
   `.bin.gz` matches neither `location ~* \.bin$` nor any other rule and falls
