@@ -174,21 +174,45 @@ class ReadingLayout:
         return self.n_slots * 2
 
 
+def _base_ids(idx) -> np.ndarray:
+    """The uniform res-`READING_RES` grid, refused rather than guessed at.
+
+    `cli.py` falls back to `idx.cells` when `base_cells` is absent, which is
+    right for the render grid and WRONG here: `idx.cells` is the mixed
+    resolution solver grid, and the digits this format reads are the same for
+    a res-7 cell and its res-6 parent -- so seven siblings would land in one
+    slot, six of their values would be lost, and every file would still be
+    exactly the right length. There is no safe fallback, so there is none.
+    """
+    base = getattr(idx, "base_cells", None)
+    if not base:
+        raise ValueError(
+            "the index carries no base_cells, and the reading tier is indexed on the "
+            f"uniform resolution-{config.READING_RES} grid: falling back to idx.cells "
+            "would put a split cell's seven children in one slot and silently keep "
+            "whichever of them was written last")
+    ids = np.array([h3.str_to_int(c) for c in base], dtype=np.uint64)
+    wrong = int((((ids >> _RES_SHIFT) & _RES_MASK).astype(int) != config.READING_RES).sum())
+    if wrong:
+        raise ValueError(
+            f"{wrong} of {len(ids)} base cells are not at resolution "
+            f"{config.READING_RES}; their block slots would collide with their parents'")
+    return ids
+
+
 def reading_parents(idx) -> list[str]:
     """Sorted res-3 parents of the base grid: the shared block ordering.
 
-    Derived from `idx.base_cells`, the uniform res-`READING_RES` grid, so the
-    parent set covers exactly the cells tier B has values for. The res-4
-    parents of that same set are exactly `hover_cells(idx)`, which is what
-    lets the page hold both tiers without either covering ground the other
-    does not.
+    The res-4 parents of that same set are exactly `hover_cells(idx)`, which
+    is what lets the page hold both tiers without either covering ground the
+    other does not.
     """
-    ids = np.array([h3.str_to_int(c) for c in idx.base_cells], dtype=np.uint64)
-    return [h3.int_to_str(int(v)) for v in np.unique(_to_res(ids, config.READING_PARENT_RES))]
+    parents = np.unique(_to_res(_base_ids(idx), config.READING_PARENT_RES))
+    return [h3.int_to_str(int(v)) for v in parents]
 
 
 def reading_layout(idx) -> ReadingLayout:
-    ids = np.array([h3.str_to_int(c) for c in idx.base_cells], dtype=np.uint64)
+    ids = _base_ids(idx)
     parent_ids = np.unique(_to_res(ids, config.READING_PARENT_RES))
     block = np.searchsorted(parent_ids, _to_res(ids, config.READING_PARENT_RES))
     slot = _slots(ids, config.READING_PARENT_RES, config.READING_RES)

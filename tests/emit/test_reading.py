@@ -228,3 +228,53 @@ def test_the_stride_is_the_child_count_of_a_hexagon():
     assert config.READING_SLOTS == 7 ** (config.READING_RES - config.READING_PARENT_RES)
     parent = h3.cell_to_parent(TOKYO, config.READING_PARENT_RES)
     assert len(h3.cell_to_children(parent, config.READING_RES)) == config.READING_SLOTS
+
+
+# --- the refusal that has no safe fallback -----------------------------------
+def test_an_index_with_no_base_grid_is_refused():
+    """There is no safe fallback to `idx.cells`.
+
+    The digits this format reads are the same for a res-7 cell and its res-6
+    parent, so seven split siblings would land in one slot, six values would
+    be lost, and the file would still be exactly the right length -- the
+    failure mode this format has instead of a crash. `cli.py` DOES fall back
+    to `idx.cells` for the render grid, which is why the refusal has to be
+    explicit here rather than left to the caller's habits.
+
+    Mutation performed and reverted: replace the raise with
+    `base = base or idx.cells` -> red.
+    """
+
+    class NoBase:
+        cells: ClassVar[list[str]] = [SEOUL]
+        base_cells: ClassVar[list[str]] = []
+
+    with pytest.raises(ValueError, match="base_cells"):
+        hover.reading_layout(NoBase())
+    with pytest.raises(ValueError, match="base_cells"):
+        hover.reading_parents(NoBase())
+
+
+def test_a_base_grid_at_the_wrong_resolution_is_refused():
+    """A res-7 cell's slot digits are its res-6 parent's, so a grid one level
+    too fine collides seven-to-one and passes every length check."""
+    finer = h3.cell_to_children(SEOUL, config.READING_RES + 1)
+
+    class Finer:
+        cells: ClassVar[list[str]] = list(finer)
+        base_cells: ClassVar[list[str]] = list(finer)
+
+    with pytest.raises(ValueError, match=f"resolution {config.READING_RES}"):
+        hover.reading_layout(Finer())
+
+
+def test_the_refusal_would_have_caught_the_collision_it_exists_for():
+    """Shows the harm concretely: seven res-7 siblings share one slot.
+
+    Not a test of the code -- a test of the PREMISE, so the refusal above
+    cannot later be relaxed on the belief that the fallback was harmless.
+    """
+    kids = h3.cell_to_children(SEOUL, config.READING_RES + 1)
+    assert len(kids) == 7
+    assert len({hover.reading_slot(k) for k in kids}) == 1
+    assert hover.reading_slot(kids[0]) == hover.reading_slot(SEOUL)

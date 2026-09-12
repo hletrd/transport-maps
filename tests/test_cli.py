@@ -5,11 +5,12 @@ import subprocess
 import sys
 from typing import ClassVar
 
+import h3
 import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
 
-from transport_maps import cli
+from transport_maps import cli, config
 from transport_maps.cli import _slug
 from transport_maps.sources import roads
 
@@ -41,6 +42,19 @@ def _stub_pipeline(monkeypatch, written, coverages):
         n_cells = 1
         cells: ClassVar[list[str]] = ["dummy"]
         airports: ClassVar[list[str]] = []  # check_airport_connectivity runs for real below
+        # The reading tier is indexed on the uniform res-READING_RES grid and
+        # refuses to guess one, because the digits it reads are identical for
+        # a res-7 cell and its res-6 parent -- so a fallback to `cells` would
+        # put seven siblings in one slot at exactly the right file length.
+        # One REAL cell, not "dummy": the emitter parses these as h3 ids and
+        # checks their resolution, which is the point of the refusal.
+        base_cells: ClassVar[list[str]] = [
+            h3.latlng_to_cell(37.5665, 126.9780, config.READING_RES)]
+        base_index: ClassVar[np.ndarray] = np.zeros(1, dtype=np.int64)
+        fine: ClassVar[np.ndarray] = np.zeros(1, dtype=bool)
+
+        def try_cell_index(self, cell):
+            return None
 
     monkeypatch.setattr(cli.nodes, "build_index", lambda **kw: FakeIdx())
     # The staging sweep touches a directory shared with every build on the
