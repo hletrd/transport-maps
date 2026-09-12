@@ -487,11 +487,45 @@ Run at `552baac`, each alone, exit status read from `$?` and never chained or
 piped — the cycle-6 lesson.
 
 - `uv run ruff check .` → `All checks passed!`, exit **0**.
-- `uv run pytest -q` → recorded in the cycle report. An earlier run at
-  `6ea3a46` gave **588 passed, 4 deselected, 5 warnings, exit 0** in 17 min
-  20 s; the final run was taken at frozen `c563975` because two later commits
-  changed `cli.py` and `web/app.js` and a gate run that predates the code it
-  is supposed to gate is not a gate.
+- `uv run pytest -q` → **591 passed, 0 failed, 0 skipped, 4 deselected,
+  5 warnings** (all W1) in 1075.34 s, exit **0**. Up from cycle 6's 538, which
+  is the 53 guards this cycle added.
+
+An earlier run at `6ea3a46` gave **588 passed, exit 0** in 17 min 20 s; the
+final run was taken at frozen `c563975` because two later commits changed
+`cli.py` and `web/app.js`, and a gate run that predates the code it is supposed
+to gate is not a gate.
+
+## The deploy
+
+`bash scripts/deploy_verify.sh && bash scripts/browser_verify.sh`, run once
+after every commit was pushed and both gates were green. **Exit 0.**
+
+The deploy ships the page with the reading tier **dormant**, which was the
+thing that had to be verified rather than assumed. Confirmed against the live
+site afterwards:
+
+| | |
+|---|---|
+| `index.json` `readingRes` | **absent** — the tier is off, `hoverRes` 4, `solveRes` 6 |
+| `reading_parents.bin` | **404** — no build has produced one |
+| live `app.js`, `index.html`, `boot.js`, `llms.txt` | **byte-identical** to `HEAD:web/…` |
+| live `vendor/licences/index.html` | byte-identical to HEAD |
+| `vendor/licences/` | **200**, from a live **403** |
+| all six licence texts | 200 |
+| console errors on the live page | **0** |
+| 1280x800, 820x1180, 390x844, 844x390 | no horizontal scroll, no chrome overlap, no card overlap, reading and legend and ticks on screen at each |
+| `departure card parent after returning to desktop` | **`topleft`** — `C7-12`'s new assertion, passing on the live site |
+| city list | 553 rows, 552 durations, 1 marked departing, 0 clipped |
+| phone tap, folded sheet, tap from folded | reading and legend on screen throughout |
+
+The two ranged `.pmtiles` probes returned 206 as always, which is the contrast
+worth keeping in view: `.pmtiles` ranges because the conf sets `gzip off` for
+it, and `.bin` does not. That is the whole reason this cycle fetches the
+reading array whole.
+
+Cleanup: agent-browser processes left 0, the user's Google Chrome untouched
+(19 processes, none of them ours).
 
 **Two stale gate runs were discarded this cycle for exactly that reason.**
 The habit worth keeping: freeze the tree, then run the gate — not the other
