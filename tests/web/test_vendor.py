@@ -137,6 +137,58 @@ def test_the_page_points_a_visitor_at_them():
         assert word in flat, f"the notices paragraph does not name {word}"
 
 
+def test_the_directory_the_page_links_actually_serves_something():
+    """The link above was satisfied by a URL that returned 403.
+
+    nginx serves this directory with `index index.html` and no autoindex, and
+    for as long as the link existed there was no index.html in it -- so the
+    page's only route to the notices was a 403 while the five .txt files
+    beside it returned 200. BSD-3-Clause section 2 and Apache-2.0 section 4
+    were unmet in practice, and the test above passed throughout, because a
+    link to a 403 contains exactly the same href string as a link that works.
+
+    This is the static half; scripts/deploy_verify.sh probes the live URL,
+    which is the half that can see a server-side regression.
+
+    Mutation performed and reverted: delete vendor/licences/index.html -> red;
+    remove any one licence link from it -> red.
+    """
+    index = LICENCES / "index.html"
+    assert index.exists(), (
+        "vendor/licences/ has no index.html, so the link in the page is a 403")
+    page = index.read_text(encoding="utf-8")
+    for name in ("maplibre-gl.LICENSE.txt", "pmtiles.LICENSE.txt", "h3-js.LICENSE.txt",
+                 "h3-js.NOTICE.txt", "fflate.LICENSE.txt"):
+        assert (LICENCES / name).exists(), f"{name} is missing from vendor/licences/"
+        # The HREF, not the name anywhere on the page: the first version of
+        # this assertion was `name in page`, which stayed green when the href
+        # was replaced by "#", because the file name survived as the link's
+        # own visible text.
+        assert f'href="./{name}"' in page, (
+            f"vendor/licences/index.html does not LINK {name} (it may only name it)")
+    # The font's text lives one directory up and is linked from here, since
+    # nothing else on the site links it at all.
+    assert 'href="../OFL.txt"' in page, "the licence index does not link the font's OFL text"
+    assert (WEB / "vendor" / "OFL.txt").exists()
+
+
+def test_the_licence_index_is_not_excluded_from_the_deploy():
+    """README.md is excluded from both rsyncs, which is why the directory's
+    previous index -- a README -- 404ed. An index.html must not be.
+
+    Mutation performed and reverted: add `index.html` to
+    deploy/rsync-excludes.txt -> red.
+    """
+    excludes = [ln.strip() for ln in
+                (config.ROOT / "deploy" / "rsync-excludes.txt").read_text().splitlines()
+                if ln.strip() and not ln.startswith("#")]
+    assert "index.html" not in excludes, (
+        "the deploy excludes index.html, so vendor/licences/ would 403 again")
+    assert "README.md" in excludes, (
+        "this test's premise has changed: README.md is no longer excluded, so the "
+        "directory could be indexed by its README after all")
+
+
 def test_the_held_out_error_is_called_what_it_is():
     """`calibrate/fit.py` takes `.mean()`. Both public surfaces said median.
 

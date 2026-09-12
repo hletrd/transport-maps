@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Third-party notices — Isochronic Passage Chart</title>
+<meta name="robots" content="noindex">
+<!-- This directory used to have no index, and nginx serves it with
+     `autoindex off`: the page's own link to the notices returned 403 while
+     the .txt files beside it returned 200. BSD-3-Clause section 2 and
+     Apache-2.0 section 4 require the notices to accompany the redistribution,
+     and a notice with no reachable path to it does not. The page linked here
+     is deliberately self-contained: no script, no shared stylesheet, nothing
+     that could make a licence notice depend on the rest of the site working. -->
+<link rel="stylesheet" href="../fonts.css">
+<style>
+:root{
+  --bg:#0a0b0d; --surface:#131519; --line:#282c33;
+  --text:#e9e7e4; --text-2:#a4a9b2; --r:2px;
+  --font:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:dark;
+}
+body{
+  margin:0;padding:40px 20px 64px;background:var(--bg);color:var(--text);
+  font-family:var(--font);font-size:14px;line-height:1.6;
+}
+main{max-width:70ch;margin:0 auto}
+h1{font-size:21px;font-weight:600;margin:0 0 4px}
+h2{font-size:15px;font-weight:600;margin:32px 0 8px}
+p{color:var(--text-2);margin:0 0 12px}
+a{color:var(--text);text-decoration:underline;text-underline-offset:2px}
+a:focus-visible{outline:2px solid var(--text);outline-offset:2px;border-radius:var(--r)}
+.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;margin:12px 0 4px;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--text)}
+td{color:var(--text-2)}
+td a{white-space:nowrap}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--text)}
+.back{display:inline-block;margin-top:28px}
+</style>
+</head>
+<body>
+<main>
+<h1>Third-party notices</h1>
+<p>Every file under <code>vendor/</code> is redistributed to each visitor of
+   this site, so each carries its upstream licence's notice requirement with
+   it. The texts below are the upstream ones, fetched from each project's own
+   repository at the version pinned here. They are reproduced verbatim, not
+   paraphrased or summarised: BSD-3-Clause, Apache-2.0 and MIT each require
+   that on redistribution.</p>
+
+<h2>Libraries</h2>
+<div class="wrap">
+<table>
+<thead><tr><th>Vendored file</th><th>Project</th><th>Version</th><th>Licence</th><th>Text</th></tr></thead>
+<tbody>
+<tr><td><code>maplibre-gl.js</code>, <code>maplibre-gl.css</code></td><td>MapLibre GL JS</td><td>5.24.0</td><td>BSD-3-Clause</td>
+    <td><a href="./maplibre-gl.LICENSE.txt">maplibre-gl.LICENSE.txt</a></td></tr>
+<tr><td><code>pmtiles.js</code></td><td>PMTiles</td><td>4.5.0</td><td>BSD-3-Clause</td>
+    <td><a href="./pmtiles.LICENSE.txt">pmtiles.LICENSE.txt</a></td></tr>
+<tr><td><code>h3.js</code></td><td>h3-js</td><td>4.2.1</td><td>Apache-2.0</td>
+    <td><a href="./h3-js.LICENSE.txt">h3-js.LICENSE.txt</a>,
+        <a href="./h3-js.NOTICE.txt">h3-js.NOTICE.txt</a></td></tr>
+<tr><td><code>fflate.js</code></td><td>fflate</td><td>0.8.3</td><td>MIT</td>
+    <td><a href="./fflate.LICENSE.txt">fflate.LICENSE.txt</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>Apache-2.0 section 4(d) requires the NOTICE file's attribution text to be
+   carried with any derivative distribution, which is why
+   <a href="./h3-js.NOTICE.txt">h3-js.NOTICE.txt</a> is served alongside the
+   licence rather than folded into it.</p>
+
+<h2>Typeface</h2>
+<div class="wrap">
+<table>
+<thead><tr><th>Vendored file</th><th>Project</th><th>Licence</th><th>Text</th></tr></thead>
+<tbody>
+<tr><td><code>ibm-plex-sans-latin-*.woff2</code>, <code>fonts.css</code></td><td>IBM Plex Sans</td><td>SIL Open Font License 1.1</td>
+    <td><a href="../OFL.txt">OFL.txt</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>The font's licence text stays one directory up, at
+   <a href="../OFL.txt">vendor/OFL.txt</a>, where the repository has pinned its
+   hash since cycle 2.</p>
+
+<h2>Data</h2>
+<p>The travel times, coastlines and place names come from nine open data
+   sources, each credited with its licence in
+   <a href="../../index.json">index.json</a> and under
+   <a href="../../#sources">Sources and method</a> on the map itself.</p>
+
+<a class="back" href="../../">Back to the map</a>
+</main>
+</body>
+</html>

@@ -158,6 +158,20 @@ for f in index.json app.js index.html places.json airports.json borders.json \
          "origins/$LIVE_SLUG.air.bin" "origins/$LIVE_SLUG.modes.bin" "origins/$LIVE_SLUG.bin"; do
   probe "$f" "$f" 200
 done
+# The page says the libraries' "copyright notices and licence texts are served
+# with them" and links this directory. It returned 403 for as long as the link
+# existed: nginx has `index index.html` and no autoindex, and the directory had
+# no index.html. The five .txt files served 200 with nothing linking to them,
+# so BSD-3-Clause section 2 and Apache-2.0 section 4 were unmet in practice
+# while every gate passed -- tests/web/test_vendor.py asserted only that the
+# href STRING appeared in the HTML, which is exactly what a link to a 403 does.
+# Probing the URL the page actually offers is the only check that can see it.
+probe "vendor/licences/ (the page's only link to the notices)" "vendor/licences/" 200
+for f in vendor/licences/maplibre-gl.LICENSE.txt vendor/licences/pmtiles.LICENSE.txt \
+         vendor/licences/h3-js.LICENSE.txt vendor/licences/h3-js.NOTICE.txt \
+         vendor/licences/fflate.LICENSE.txt vendor/OFL.txt; do
+  probe "$f" "$f" 200
+done
 probe "$LIVE_SLUG.pmtiles range" "origins/$LIVE_SLUG.pmtiles" 206 -r 0-99
 probe "water.pmtiles range" "water.pmtiles" 206 -r 0-99
 [ "$live_fail" -eq 0 ] || { echo "!! live checks failed"; exit 1; }
