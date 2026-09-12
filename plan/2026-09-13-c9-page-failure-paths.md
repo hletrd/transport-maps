@@ -417,6 +417,42 @@ prior under-states the wait below 150 km and over-states it above, which is the
 opposite of what the page said. The departure card says its figures are door to
 door. Google Routes is named where the 2,998 driving journeys are cited.
 
+### The deploy, and what was verified in a browser
+
+`bash scripts/deploy_verify.sh --page-only`, run twice. The first run shipped
+the page and then **failed its own console gate** — a false positive from this
+cycle's own fix, which treated an empty read as an unread one. That is recorded
+in `6817204` along with the measurement that settles it: `agent-browser console`
+with no session exits 0 and prints nothing, byte-identical to a clean console,
+and a bare `eval` answers on a session sitting at `about:blank`. The gate now
+proves the page under test is answering (its own URL plus `#map canvas`) before
+trusting a silent read, and a blank tab returns `about:blank|false` and fails.
+
+Second run: **ALL CHECKS PASSED**, console errors 0, all four viewports clean,
+no horizontal scroll at any of them, 553 cities, 39 swatches, 12 schemes, the
+folded sheet keeping its legend, keys, caption and scale, and 0 agent-browser
+processes left (the user's 19 Google Chrome processes untouched, never targeted).
+
+Then each of this cycle's page changes was checked against the live site
+directly, because a passing generic gate is not evidence about a specific fix:
+
+| Change | Viewport | Measured live |
+|---|---|---|
+| The folded sheet keeps the travel time (C9-6) | 844×390 | `folded:true`, `#time` = "5h 39 min" at 22 px, `onScreen:true`, `elementFromPoint` over its centre returns `#time` itself (not the sheet), legend still on screen |
+| ...and in portrait | 390×844 | `folded:true`, time on screen at y 721, unoccluded, legend on screen, no horizontal scroll |
+| The detail row keeps its labels (C9-8) | 1280×800, zoom 7.5 | **six** ticks — 1 h, 1 h 50, 2 h 50, 5 h, 7 h 45, 11 h 55 — over 17 bands. It has shipped with one for as long as it has existed |
+| The band mark's denominator (C9-7) | 1280×800 | strip holds 39 children (37 swatches + both overlays) and the mark sits at 12.1622% = 100 × 4.5 / 37. The old code divided by 38 and put it at 11.842%, a third of a band short |
+| The focus ring (C9-4) | 1280×800 | read from the CSSOM of the served stylesheet: `.mapbtn:focus-visible` and `#q:focus-visible` both `outline-offset: -2px` |
+| The small layout at tablet width | 820×1180 | canvas present, time and legend on screen, no horizontal scroll, 553 cities |
+
+**Not verified in a browser, and said plainly: C9-5.** The loading message is
+occluded only *during* the load, and there is no way to sample that from outside
+the page after it has finished. What is verified is the ordering it depends on:
+`layoutForSize()` is called at character 37,464, the map is created at 32,371,
+and the `await` is at 37,481 — so the layout is decided after the map exists and
+before the page suspends. `tests/web/test_small_layout_and_focus.py` pins that
+ordering and goes red when the call moves back.
+
 ### A note for whoever runs the next FULL deploy
 
 `scripts/check_dist.py` will now refuse today's `dist/`, correctly: the gate
