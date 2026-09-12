@@ -62,9 +62,24 @@ Three independent, measured reasons. Each alone is disqualifying.
 
 **AB1 — nginx cannot byte-range a gzipped response, and `.bin` is gzipped.**
 `deploy/worldmap.atik.kr.conf:65-71` sets `gzip on` for `location ~* \.bin$`.
-Two reviewers measured the live host with only `Accept-Encoding` varying and
-got the same answer: `gzip` returns **HTTP 200 with the whole file**;
-`identity` returns 206. Browsers always send `gzip` and **cannot be made not
+Two reviewers measured this on the live host and the cycle lead then measured
+it again first-hand rather than taking it on their word, because the whole
+design decision rests on it. `GET /origins/seoul.bin`, `Range: bytes=0-99`,
+only `Accept-Encoding` varying:
+
+| `Accept-Encoding` | status | bytes delivered for a 100-byte range |
+|---|---|---|
+| `gzip` — what every browser sends | **200** | **130,808** |
+| `identity` | 206 | 100 |
+| `br` | 206 | 100 |
+| header absent — what `curl -r` alone sends, and what `deploy_verify.sh:161-162` probes | 206 | 100 |
+| `gzip` against `water.pmtiles`, which the conf sets `gzip off` for | 206 | 100 |
+
+The last two rows are the important ones. `.pmtiles` ranges correctly *because*
+the conf turns gzip off for it, which is the proof that gzip is the cause
+rather than something about the server; and the existing range probe sends no
+`Accept-Encoding` at all, so it tests a path no browser takes and would have
+reported the ranged `.bin` as healthy. Browsers always send `gzip` and **cannot be made not
 to** — `Accept-Encoding` is a forbidden header name in Fetch, so `fetch()`
 cannot override it. A range-fetched `.bin` would return the entire array and
 the page would read slot 0 for every point on Earth: a globe of plausible
