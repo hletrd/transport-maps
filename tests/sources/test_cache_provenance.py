@@ -192,8 +192,14 @@ STAMPED = [
     (urban, "URBAN_RADIUS_KM", 20.0, lambda: urban._mask_cache_path(["a", "b"])),
     (urban, "PLACES_URL", "https://example.invalid/places.zip", lambda: urban._mask_cache_path(["a", "b"])),
     (osm, "ANTIMERIDIAN_EPS_DEG", 1e-3, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
-    (osm, "MIN_FERRY_KM", 2.0, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
-    (osm, "MAX_FERRY_KM", 3000.0, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
+    # MIN_FERRY_KM / MAX_FERRY_KM used to be stamped here. They never governed
+    # the parquet's content -- nothing in sources/osm.py filters by length; the
+    # bound is applied in graph/ferry.plausible_crossing at graph-build time --
+    # and they now live there. What DOES govern the content is the parser
+    # version and the two seasonality constants the tag parse applies.
+    (osm, "FERRY_PARSER_VERSION", 999, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
+    (osm, "SEASON_MONTHS", 4, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
+    (osm, "UNSPECIFIED_SEASON_MONTHS", 6, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
     (osm, "MIN_STOPS", 3, lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
     (routes, "PARSER_VERSION", 999, routes._network_cache_path),
     (routes, "_SANITY_PAIRS", (("AAA", "BBB"),), routes._network_cache_path),
