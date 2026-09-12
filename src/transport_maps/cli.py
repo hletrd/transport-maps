@@ -9,6 +9,7 @@ import os
 os.environ.setdefault("POLARS_MAX_THREADS", "1")
 
 import argparse
+import gzip
 import json
 import logging
 import multiprocessing
@@ -230,6 +231,8 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     out = config.DIST / "origins"
     tiles.write_pmtiles(fc, out / f"{slug}.pmtiles", workers=shared.get("workers"))
     hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
+    hover.write_reading(idx, minutes[: idx.n_cells], out / f"{slug}.r6.bin",
+                        layout=shared["reading"])
     routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
     itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
     modes.write_modes(idx, minutes, predecessors, out / f"{slug}.modes.bin",
@@ -245,6 +248,19 @@ def _solve_one_forked(origin: dict) -> str:
     """Pool entry point. Reads the graph the fork inherited."""
     idx, csr, speeds, shared = globals()["_CTX"]
     return _solve_one(origin, idx, csr, speeds, shared)
+
+
+def _log_reading_cost(path: Path) -> None:
+    """What one origin's reading array costs raw and on the wire."""
+    if not path.exists():
+        return
+    raw = path.stat().st_size
+    # Level 1 is what nginx serves: gzip_comp_level is not set in the site
+    # config, and its default is 1. Reporting level 6 here would understate
+    # the bytes a visitor actually receives.
+    wire = len(gzip.compress(path.read_bytes(), 1))
+    print(f"reading tier: {path.name} {raw:,} B raw, {wire:,} B gzipped "
+          f"(ratio {wire / raw:.3f}) -- one fetch per origin switch", flush=True)
 
 
 def _load_ferries():
@@ -323,7 +339,13 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
               "grid": grid.universe(getattr(idx, "base_cells", None) or idx.cells),
               "native": grid.native_edges(idx),
               # Plain dicts: a forked worker must never touch a polars frame.
-              "rail_tables": rail_detail.lookup_tables(rail_routes)}
+              "rail_tables": rail_detail.lookup_tables(rail_routes),
+              # Where every base cell's minutes go in the reading tier's block
+              # array. It depends only on the grid, so it is built ONCE here
+              # and inherited copy-on-write by the pool: per origin it would be
+              # 4,091,715 cells of index arithmetic x 553, for an answer that
+              # cannot change between origins.
+              "reading": hover.reading_layout(idx)}
 
     origins = index.load_origins()
     if only:
@@ -342,6 +364,10 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
     # below has actually succeeded -- writing it first would leave it naming
     # origins whose per-origin files an aborted run never produced.
     index.write_hover_cells(idx, config.DIST / "hover_cells.bin")
+    # Same reasoning: the block ordering depends only on the graph, and it is
+    # ONE file for all 553 origins rather than one per origin, because the set
+    # of res-3 parents holding land does not vary with the departure city.
+    index.write_reading_parents(idx, config.DIST / "reading_parents.bin")
 
     print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}")
 
@@ -374,11 +400,20 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
     # partial run. A --limit smoke test that rewrote index.json would leave
     # dist/ advertising the handful of origins it happened to build, which is
     # indistinguishable from a real build until the site drops to one city.
+    # The number this format costs on the wire, measured rather than modelled.
+    # The raw size is a constant (readingParentCount x readingSlots x 2); the
+    # gzipped size is not knowable until a real time field exists, and nginx
+    # serves these gzipped -- deploy/worldmap.atik.kr.conf gzips
+    # `location ~* \.bin$` at the default level 1. Measured on the first origin
+    # built, so the plan's estimate is replaced by a fact in the build log.
+    _log_reading_cost(config.DIST / "origins" / f"{origins[0]['slug']}.r6.bin")
+
     if partial:
         print("partial build (--limit / --only): index.json left untouched")
         return
     index.write_index(origins, config.DIST / "index.json",
                       hover_cell_count=len(hover.hover_cells(idx)),
+                      reading_parent_count=len(shared["reading"].parents),
                       graph={"rail": bool(getattr(idx, "has_rail", False)),
                              "ferry": ferry_links is not None and len(ferry_links) > 0},
                       identity=identity, modes_detail=modes_detail)
@@ -405,6 +440,14 @@ _CURRENT_INDEX_CONSTANTS = {
     # code's value has moved, the page would test the arrays against a
     # threshold they were not written with.
     "unreachable": lambda: config.UNREACHABLE,
+    # The reading tier's three format constants. readingRes is to
+    # reading_parents.bin what hoverRes is to hover_cells.bin, and
+    # readingSlots is worse than either if it moves: the page would still
+    # find the right block and then read the wrong slot inside it, so every
+    # land cell would report a plausible time from somewhere else nearby.
+    "readingRes": lambda: config.READING_RES,
+    "readingParentRes": lambda: config.READING_PARENT_RES,
+    "readingSlots": lambda: config.READING_SLOTS,
 }
 
 
@@ -468,6 +511,25 @@ def _reindex(dist: Path | None = None) -> None:
         # origin whose array is short is the blank-globe failure this command
         # exists to prevent, so a short array excludes it rather than warning.
         widths = {".bin": 2, ".air.bin": 2, ".modes.bin": 2 * len(modes.CHANNELS)}
+
+        # The reading array is keyed on reading_parents.bin, not on
+        # hover_cells.bin, so it is checked against its own directory. A dist/
+        # built before the tier existed has neither the directory nor the
+        # arrays and must still be indexable, so an ABSENT directory means the
+        # tier is absent and no origin is excluded for lacking it. A directory
+        # that IS present makes {slug}.r6.bin required at its own width -- half
+        # a build is the blank-globe failure this command exists to prevent.
+        parents_path = dist / "reading_parents.bin"
+        reading_bytes = 0
+        n_parents = None
+        if parents_path.exists():
+            psize = parents_path.stat().st_size
+            if psize == 0 or psize % 8:
+                raise SystemExit(f"{parents_path} is {psize} bytes, not a whole "
+                                 "number of uint64 cell ids")
+            n_parents = psize // 8
+            reading_bytes = n_parents * config.READING_SLOTS * 2
+
         present, skipped, rail_seen = [], [], False
         for origin in index.load_origins():
             slug = origin["slug"]
@@ -479,6 +541,13 @@ def _reindex(dist: Path | None = None) -> None:
                     for suf, w in widths.items()
                     if (base / f"{slug}{suf}").exists()
                     and (base / f"{slug}{suf}").stat().st_size != n_cells * w]
+            if reading_bytes:
+                r6 = base / f"{slug}.r6.bin"
+                if not r6.exists():
+                    why.append(f"{slug}.r6.bin missing")
+                elif r6.stat().st_size != reading_bytes:
+                    why.append(f"{slug}.r6.bin is {r6.stat().st_size} bytes, "
+                               f"expected {reading_bytes}")
             if why:
                 skipped.append((slug, why[0]))
                 continue
@@ -536,6 +605,7 @@ def _reindex(dist: Path | None = None) -> None:
         graph = dict(previous.get("graph") or {})
         graph["rail"] = rail_seen
         index.write_index(present, index_path, hover_cell_count=n_cells,
+                          reading_parent_count=n_parents,
                           graph=graph, identity=identity, rail_detail=rail_seen,
                           modes_detail=modes_detail)
         print(f"index.json rewritten: {len(present)} origins, {n_cells:,} hover cells, "

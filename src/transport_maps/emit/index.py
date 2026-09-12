@@ -130,6 +130,19 @@ def write_hover_cells(idx, out: Path) -> None:
     _io.write_bytes(out, ids.tobytes())
 
 
+def write_reading_parents(idx, out: Path) -> None:
+    """The res-3 block ordering for the reading tier, once for the whole site.
+
+    Unlike hover_cells.bin this file is not per-resolution bookkeeping the page
+    could derive: it IS derivable (the res-3 parents of hover_cells.bin are the
+    same set, because parenthood is transitive), but shipping it means only
+    ONE side computes the ordering. The page binary-searches it exactly as it
+    already does hover_cells.bin, and the slot within a block is arithmetic, so
+    no per-origin cell-id list exists anywhere.
+    """
+    hover.write_reading_parents(idx, out)
+
+
 def mode_detail() -> dict[str, str]:
     """One sentence per surface mode, with the calibrated speeds it uses.
 
@@ -204,6 +217,10 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
         _git_head(), _sha256(config.ROOT / "calibration.toml"),
         _sha256(config.DATA / "origins.toml"),
         config.SOLVE_RES, config.FINE_RES, config.HOVER_RES, config.BAND_EDGES_MIN,
+        # The reading tier's grid and block stride. Without these a res-5
+        # reading build and a res-6 one share an inputsHash and a buildId, the
+        # same defect config.UNREACHABLE was added below to close.
+        config.READING_RES, config.READING_PARENT_RES, config.READING_SLOTS,
         # The sentinel every uint16 array is written with, and which index.json
         # advertises. Two builds differing only in it produced identical
         # inputsHash and identical buildId, so the field that exists to tell
@@ -218,7 +235,8 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
 def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None = None,
                 graph: dict | None = None, identity: dict | None = None,
                 modes_detail: dict[str, str] | None = None,
-                rail_detail: bool = True) -> None:
+                rail_detail: bool = True,
+                reading_parent_count: int | None = None) -> None:
     """index.json: what the page needs to read every other artifact.
 
     `hover_cell_count` is checked by the page against the length of
@@ -260,6 +278,21 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
         # so an older build is not two 404s per origin switch.
         "railDetail": bool(rail_detail),
         "hoverCellsUrl": "hover_cells.bin",
+        # --- the reading tier ------------------------------------------------
+        # The resolution of the number the page PRINTS, which is the base band
+        # resolution, not hoverRes. The page refuses to use a reading array
+        # whose resolution is not the one it computes its cells at, because a
+        # mismatch would binary-search the right directory for the wrong cells
+        # and read a plausible time from the wrong place on Earth.
+        "readingRes": config.READING_RES,
+        "readingParentRes": config.READING_PARENT_RES,
+        # Fixed block stride. Published rather than recomputed on the page so
+        # the two sides cannot disagree about a constant that silently
+        # reindexes the whole array: 342 instead of 343 would shift every
+        # block after the first and stay in range.
+        "readingSlots": config.READING_SLOTS,
+        "readingParentsUrl": "reading_parents.bin",
+        "readingUrlSuffix": ".r6.bin",
         "attribution": [dict(entry) for entry in ATTRIBUTION],
         "origins": [
             # `country` only when origins.toml carries it: four origin names in
@@ -272,6 +305,8 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
     }
     if hover_cell_count is not None:
         payload["hoverCellCount"] = int(hover_cell_count)
+    if reading_parent_count is not None:
+        payload["readingParentCount"] = int(reading_parent_count)
     if graph is not None:
         payload["graph"] = dict(graph)
     if identity is not None:

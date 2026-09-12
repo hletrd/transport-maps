@@ -20,6 +20,9 @@ import struct
 import sys
 from pathlib import Path
 
+import numpy as np
+
+from transport_maps.config import READING_SLOTS
 from transport_maps.emit.modes import CHANNELS
 
 REQUIRED_EXTRAS = ("places.json", "airports.json", "borders.json", "water.pmtiles")
@@ -204,6 +207,45 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
     elif idx["hoverCellCount"] != n_cells:
         bad.append(f"index.json hoverCellCount {idx['hoverCellCount']} != hover_cells.bin {n_cells}")
 
+    # The reading tier's directory. Absent means a dist/ built before the tier
+    # existed, which is publishable -- the page falls back to the res-4 array.
+    # Present means every listed origin must have its block array at exactly
+    # the directory's width: half a build is the blank-globe failure this
+    # script exists to prevent, and a block array that is short by one block
+    # shifts every reading after it without changing any file's parseability.
+    parents_path = dist / "reading_parents.bin"
+    reading_bytes = 0
+    if parents_path.exists():
+        psize = parents_path.stat().st_size
+        if psize == 0 or psize % 8:
+            bad.append(f"reading_parents.bin is {psize} bytes, not a whole number of uint64 ids")
+        else:
+            n_parents = psize // 8
+            reading_bytes = n_parents * READING_SLOTS * 2
+            declared = idx.get("readingParentCount")
+            if declared is None:
+                bad.append("reading_parents.bin ships but index.json has no readingParentCount: "
+                           "the page cannot refuse a reading array from a different build. "
+                           "Run `uv run transport-maps reindex`.")
+            elif declared != n_parents:
+                bad.append(f"index.json readingParentCount {declared} != "
+                           f"reading_parents.bin {n_parents}")
+            if idx.get("readingSlots") not in (None, READING_SLOTS):
+                bad.append(f"index.json readingSlots {idx.get('readingSlots')} != "
+                           f"{READING_SLOTS}: the page would read the right block "
+                           "at the wrong slot, which is in range and wrong everywhere")
+            # A directory whose ids are not at readingParentRes would be
+            # binary-searched successfully for cells it does not contain, so
+            # every land reading would miss and report open water.
+            want_res = idx.get("readingParentRes")
+            if want_res is not None and n_parents:
+                head = np.fromfile(parents_path, dtype="<u8", count=min(4096, n_parents))
+                res_of = ((head >> np.uint64(52)) & np.uint64(0xF)).astype(int)
+                wrong = int((res_of != want_res).sum())
+                if wrong:
+                    bad.append(f"reading_parents.bin: {wrong} of the first {len(head)} ids "
+                               f"are not at resolution {want_res}")
+
     widths = {".bin": 2, ".air.bin": 2, ".modes.bin": 2 * n_channels}
     n_nodes: dict[int, list[str]] = {}
     rail_advertised = bool(idx.get("railDetail"))
@@ -216,6 +258,13 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
                 bad.append(f"{s}{suffix} missing")
             elif p.stat().st_size != n_cells * width:
                 bad.append(f"{s}{suffix} has {p.stat().st_size // width} entries, expected {n_cells}")
+        if reading_bytes:
+            r6 = base.with_name(s + ".r6.bin")
+            if not r6.exists():
+                bad.append(f"{s}.r6.bin missing although reading_parents.bin ships")
+            elif r6.stat().st_size != reading_bytes:
+                bad.append(f"{s}.r6.bin is {r6.stat().st_size} bytes, expected {reading_bytes} "
+                           f"({reading_bytes // (READING_SLOTS * 2)} blocks x {READING_SLOTS} slots)")
         rail_bin, rail_json = base.with_name(s + ".rail.bin"), base.with_name(s + ".rail.json")
         if rail_bin.exists() != rail_json.exists():
             bad.append(f"{s}: .rail.bin and .rail.json must ship together")
