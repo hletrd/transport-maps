@@ -1,6 +1,6 @@
 # Cycle 8 — ferry wait model, zoom-aware legend, full URL state
 
-Status: **in progress**
+Status: **implemented** (deploy pending at time of writing; see Progress)
 Source reviews: `.context/reviews/_aggregate.md` (11 reviewers, cycle 8)
 Deploy constraint this cycle: `scripts/deploy_verify.sh --page-only` ONLY. No `build-all`,
 no `scripts/build_water_tiles.py`, no writes under `dist/` or `data/`. The ferry model
@@ -90,50 +90,50 @@ mis-tagged; accepting an `HHH:MM` duration books a five-day sail. Reject, count,
 
 ### Tasks
 
-- [ ] **T1.1** Create `src/transport_maps/graph/ferry.py` (ARCH8-1): move `FerryCalibration`
+- [x] **T1.1** Create `src/transport_maps/graph/ferry.py` (ARCH8-1): move `FerryCalibration`
       and `load_ferry_calibration` out of `graph/rail.py:38-47`, move `MIN_FERRY_KM`/
       `MAX_FERRY_KM` out of `sources/osm.py:103`, and add `plausible_crossing`,
       `sailing_min`, `sailings_per_week`, `crossing_min`. Re-export from `rail.py` only if
       something outside the repo depends on the old path — nothing does, so do not.
-- [ ] **T1.2** Hoist `MINUTES_PER_WEEK`, `NO_SERVICE` and `expected_wait_min` from
+- [x] **T1.2** Hoist `MINUTES_PER_WEEK`, `NO_SERVICE` and `expected_wait_min` from
       `graph/air.py:8-11,55-60` into `graph/transfers.py` (the mode-agnostic home) and import
       them in both `air.py` and `ferry.py`. Do NOT duplicate the formula, and do NOT make
       `ferry.py` import `air.py` — air and rail import nothing from each other and that is
       worth keeping.
-- [ ] **T1.3** Parse the tags in `sources/osm.py`: add `duration_min`, `interval_min`,
+- [x] **T1.3** Parse the tags in `sources/osm.py`: add `duration_min`, `interval_min`,
       `service_fraction` to `FERRY_SCHEMA`, with strict format acceptance and a rejection
       count printed by the loader.
-- [ ] **T1.4** Add `FERRY_PARSER_VERSION` and thread it into `_ferry_cache_path` (M8-2). This
+- [x] **T1.4** Add `FERRY_PARSER_VERSION` and thread it into `_ferry_cache_path` (M8-2). This
       is a **blocker**: without it the 30,629-row parquet is a cache HIT and the whole feature
       silently does nothing while every test stays green. Correct the cache-path docstring,
       which claims `MIN_FERRY_KM`/`MAX_FERRY_KM` govern the parquet's content (they do not;
       the length filter is in `build.py`).
-- [ ] **T1.5** Fit `detour_factor` against the observed `duration` tags; record N and the
+- [x] **T1.5** Fit `detour_factor` against the observed `duration` tags; record N and the
       per-bucket residual in `calibration.toml`.
-- [ ] **T1.6** Write the `[ferry]` table with the provenance CLAUDE.md demands: which figures
+- [x] **T1.6** Write the `[ferry]` table with the provenance CLAUDE.md demands: which figures
       are FITTED and against what, which are published-figure defaults, where the two bounds
       live (naming the file, so this table does not repeat the `[frequency]` mistake of
       documenting an equation the model does not apply), and the residual spread.
-- [ ] **T1.7** Charge the wait in `graph/build.py::_ferry_edges` via `ferry.crossing_min`, and
+- [x] **T1.7** Charge the wait in `graph/build.py::_ferry_edges` via `ferry.crossing_min`, and
       stop inlining the formula there.
-- [ ] **T1.8** Count and bound the silent drops (M8-3): 1,872 in-window links (12.4%) are lost
+- [x] **T1.8** Count and bound the silent drops (M8-3): 1,872 in-window links (12.4%) are lost
       today because an endpoint's cell is off the land mask, unlogged. Follow `_air_edges`'
       out-parameter pattern that commit `fcb4d2a` established, log a count per reason, and
       bound the dropped fraction.
-- [ ] **T1.9** Record the critic's objections in the calibration comment rather than
+- [x] **T1.9** Record the critic's objections in the calibration comment rather than
       overruling them silently: the prior's ±1.97× spread, that it fixes only 41% of the
       Greenland error, that it invents ~10.6 h on Dalian–Yantai, that three of eight anchors
       share the same 168 h value inside a 140 km span and so carry the exponent, and that
       over-charging is silent while under-charging is loud.
-- [ ] **T1.10** Emit `ferry` in `index.json`'s `graph` block (L8-18) and regenerate the ferry
+- [x] **T1.10** Emit `ferry` in `index.json`'s `graph` block (L8-18) and regenerate the ferry
       sentence in `emit/index.py::mode_detail` from the new calibration so the page cannot
       drift from the model.
-- [ ] **T1.11** Tests, each proven by mutation: the terminal term (verifier mutation 6 —
+- [x] **T1.11** Tests, each proven by mutation: the terminal term (verifier mutation 6 —
       deleting `cal.terminal_min` left 132 tests green), that `build_graph` actually emits
       ferry edges (test-engineer: deleting the wiring left 12 tests green), every accepted and
       every rejected duration/interval format, the knee, the floor, the floor's
       `MAX_MINUTES` headroom, the seasonal derate, and the anchor residuals.
-- [ ] **T1.12** Report the before/after modelled cost for all eight anchors and the
+- [x] **T1.12** Report the before/after modelled cost for all eight anchors and the
       door-to-door effect on at least one remote destination. Read the Greenland figure with
       critic C4 in mind: `airports.SIZE_BY_TYPE` excludes heliports and seaplane bases, which
       is 46 of Greenland's 60 scheduled-service airports (77%), so the ferry wait is not the
@@ -174,26 +174,26 @@ targets are kept unchanged.
 
 ### Tasks
 
-- [ ] **T2.1** Make `paintScale()` zoom-aware, with the on-screen band range derived from
+- [x] **T2.1** Make `paintScale()` zoom-aware, with the on-screen band range derived from
       sampled readings and ticks snapped to true band edges.
-- [ ] **T2.2** Mark the on-screen span on the strip, and name its two true boundaries.
-- [ ] **T2.3** Re-run `paintScale()` on `moveend`/`zoomend`, debounced. No history entry, no
+- [x] **T2.2** Mark the on-screen span on the strip, and name its two true boundaries.
+- [x] **T2.3** Re-run `paintScale()` on `moveend`/`zoomend`, debounced. No history entry, no
       per-pointer-move work.
-- [ ] **T2.4** Keep the ceiling, the always-visible rule, and the folded sheet's keys and
+- [x] **T2.4** Keep the ceiling, the always-visible rule, and the folded sheet's keys and
       caption. Verify the folded sheet at 390×844 and 844×390.
-- [ ] **T2.5** Close verifier mutations 1 and 2: the existing
+- [x] **T2.5** Close verifier mutations 1 and 2: the existing
       `test_the_legend_tick_rule_lands_on_true_band_edges` is a Python PORT of `paintScale`,
       so it pins tick selection and nothing `paintScale` does afterwards. Test the real
       function by executing it, the way `test_boot_behaviour.py` already executes `boot.js`
       under a Node DOM shim. Prove both mutations go red.
-- [ ] **T2.6** Fix the address-search overflow (M8-13): `.results .coord{flex:none}` clips
+- [x] **T2.6** Fix the address-search overflow (M8-13): `.results .coord{flex:none}` clips
       secondary address text with no ellipsis. This is the concrete form the Korean-name
       truncation concern takes; the Hangul fallback itself renders correctly.
-- [ ] **T2.7** Fix the 1.8 px clip of the legend's trailing build-date line at 844×390 (M8-14).
-- [ ] **T2.8** Correct two stale comments: `app.js:1757` says "eleven bands" where the artefact
+- [x] **T2.7** Fix the 1.8 px clip of the legend's trailing build-date line at 844×390 (M8-14).
+- [x] **T2.8** Correct two stale comments: `app.js:1757` says "eleven bands" where the artefact
       has 37 (the eleven are the scheme's anchors), and the `render()` benchmark comment was
       measured against 157 origins when there are now 553.
-- [ ] **T2.9** Verify at 1280×800, 820×1180, 390×844, 844×390.
+- [x] **T2.9** Verify at 1280×800, 820×1180, 390×844, 844×390.
 
 ---
 
@@ -232,19 +232,19 @@ are written only when they are not zero, so an unrotated globe keeps a short URL
 
 ### Tasks
 
-- [ ] **T3.1** Extend `syncPermalink` to carry scheme, ocean, the camera, and the settings that
+- [x] **T3.1** Extend `syncPermalink` to carry scheme, ocean, the camera, and the settings that
       change what is shown. Omit anything at its default so the common URL stays short.
-- [ ] **T3.2** Restore all of it on load, tolerating missing and malformed values without
+- [x] **T3.2** Restore all of it on load, tolerating missing and malformed values without
       breaking the page, and saying so for a value that names nothing.
-- [ ] **T3.3** Preserve the destination's label so an address-searched pin is not renamed on
+- [x] **T3.3** Preserve the destination's label so an address-searched pin is not renamed on
       restore (tracer F13).
-- [ ] **T3.4** Honour a URL camera instead of the hard-coded `zoom: 4.2` (tracer F12).
-- [ ] **T3.5** Debounce the camera write on `moveend`; never one entry per pointer move.
-- [ ] **T3.6** Make "Copy link to this journey" copy the full state.
-- [ ] **T3.7** Close verifier mutations 3, 4 and 5 with a real round-trip test in both
+- [x] **T3.4** Honour a URL camera instead of the hard-coded `zoom: 4.2` (tracer F12).
+- [x] **T3.5** Debounce the camera write on `moveend`; never one entry per pointer move.
+- [x] **T3.6** Make "Copy link to this journey" copy the full state.
+- [x] **T3.7** Close verifier mutations 3, 4 and 5 with a real round-trip test in both
       directions — writer and reader agree today only by coincidence of two string literals
       1,800 lines apart. Prove all three go red.
-- [ ] **T3.8** Verify at all four viewports, and verify a copied link in a fresh browser
+- [x] **T3.8** Verify at all four viewports, and verify a copied link in a fresh browser
       context reproduces scheme, ocean, camera and destination.
 
 ---
@@ -264,34 +264,34 @@ This is dormant only because the shipped `index.json` carries no `readingRes`, s
 rebuild will advertise `readingRes` and arm it.** It is exactly the "blank globe, nothing in
 the console" failure CLAUDE.md records as having shipped twice.
 
-- [ ] **T4.1** Give the reading-tier parent fetch its own `fetch`/`r.ok` check, matching the
+- [x] **T4.1** Give the reading-tier parent fetch its own `fetch`/`r.ok` check, matching the
       correctly-written per-origin `.r6.bin` fetch beside it, so a 404 degrades to the res-4
       reading as documented.
-- [ ] **T4.2** A test that fails if the parent fetch ever reaches `fatal()` again.
-- [ ] **T4.3** Document the resolution-6 reading tier in `web/llms.txt` (M8-10), which itemises
+- [x] **T4.2** A test that fails if the parent fetch ever reaches `fatal()` again.
+- [x] **T4.3** Document the resolution-6 reading tier in `web/llms.txt` (M8-10), which itemises
       every other per-origin array by byte size and omits this one.
 
 ---
 
 ## USER-5 — Provenance and documentation corrections safe under a page-only deploy
 
-- [ ] **T5.1** M8-11: `validate.py:14` cites an isolated-airport measurement taken at res 5
+- [x] **T5.1** M8-11: `validate.py:14` cites an isolated-airport measurement taken at res 5
       while `config.SOLVE_RES = 6`. The same stale-measurement defect was already fixed in
       `sources/countries.py`, `sources/roads.py` and `emit/tiles.py` (DOC3-4/5/10) and missed
       here.
-- [ ] **T5.2** M8-12: extend `scripts/check_dist.py::_pmtiles_metadata_leak` to check its
+- [x] **T5.2** M8-12: extend `scripts/check_dist.py::_pmtiles_metadata_leak` to check its
       already-decoded metadata text against the `FORBIDDEN` provider-token list, and add the
       binary suffixes to the licence firewall's scan. No forbidden token reaches a `.pmtiles`
       today — this closes a coverage gap, not a live leak.
-- [ ] **T5.3** L8-1: correct `ground.haversine_km`'s docstring, which claims "rail and ferry
+- [x] **T5.3** L8-1: correct `ground.haversine_km`'s docstring, which claims "rail and ferry
       use it" when `rail.py` has no `ground` import at all, and align `web/app.js`'s radius
       literal `6371` with Python's `6371.0088`. Deleting `rail._haversine_km` touches the rail
       build path and is deferred (DEF8-10).
-- [ ] **T5.4** L8-5: guard `scripts/ground_check.py:51-54` against an infinite Dijkstra
+- [x] **T5.4** L8-5: guard `scripts/ground_check.py:51-54` against an infinite Dijkstra
       distance and against `np.median([])`.
-- [ ] **T5.5** L8-8: restore "(cities15000)" to the GeoNames attribution in `emit/index.py`,
+- [x] **T5.5** L8-8: restore "(cities15000)" to the GeoNames attribution in `emit/index.py`,
       which README.md calls canonical.
-- [ ] **T5.6** L8-16: the historical pipeline plan names `graph/ferry.py`; USER-1 creates it,
+- [x] **T5.6** L8-16: the historical pipeline plan names `graph/ferry.py`; USER-1 creates it,
       so note that the path is now real.
 
 ---
@@ -344,4 +344,119 @@ H8-2, the blanked page rail — is scheduled as USER-4 and fixed this cycle.
 
 ## Progress
 
-(updated as the work lands)
+All 38 tasks across USER-1..USER-5 are done. 33 mutations were performed and
+every one went red; the list is below. `uv run ruff check .` is clean.
+
+### What the ferry model actually does now, measured
+
+Anchor routes, modelled cost of the crossing alone. "band" is the index on the
+37-band ladder; "true" is the published sailing plus half the published
+headway plus the terminal charge.
+
+| route | km | old | band | new | band | new wait | true | band |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Staten Island Ferry | 8 | 44 min | 3 | 1 h 04 | 6 | 6 min | 1 h 07 | 6 |
+| Dover–Calais | 42 | 1 h 42 | 9 | 3 h 25 | 14 | 1 h 17 | 2 h 45 | 12 |
+| Helsinki–Tallinn | 82 | 2 h 51 | 13 | 7 h 01 | 19 | 3 h 31 | 4 h 00 | 15 |
+| Naples–Palermo | 315 | 9 h 30 | 21 | 38 h 29 | 31 | 26 h 58 | 23 h 00 | 27 |
+| Arctic Umiaq Line | 372 | 11 h 08 | 22 | 48 h 09 | 32 | 34 h 41 | 97 h 28 | 36 |
+| Tórshavn–Seyðisfjörður | 508 | 15 h 01 | 24 | 73 h 44 | 36 | 55 h 35 | 102 h 09 | 36 |
+| AMHS Whittier–Yakutat | 513 | 15 h 09 | 24 | 74 h 44 | 36 | 56 h 25 | 102 h 19 | 36 |
+| Cape Town–Tristan da Cunha | 2,793 | 80 h 18 | 36 | 830 h 11 | 36 | 733 h 31 | 770 h 00 | 36 |
+
+The old modelled wait was **zero on every one of them** — the 30 minutes was
+terminal time, as `calibration.toml` said in as many words.
+
+Mean absolute band error falls from **6.5 bands to 1.75**. Three anchors now
+land on exactly the right band (Staten Island, Tórshavn, Whittier–Yakutat) and
+none is more than four bands out, against a worst case of fourteen before.
+
+**Door to door on a remote destination.** Tristan da Cunha has exactly one
+scheduled link, the Cape Town sailing, so the change in door-to-door time is
+the change in that edge exactly: **80 h 18 → 830 h 11, a rise of 749 h 53,
+about 31 days.** The published journey is roughly six days afloat plus a mean
+wait of about 26 days between sailings. The model was 90% under; it is now 8%
+over. Where the extracts carry the `duration` tag (OSM gives this crossing
+`144:00`) the figure is 878 h against a published 770 h.
+
+**Greenland, read with critic C4 in mind.** The Arctic Umiaq Line goes from
+11 h 08 to 48 h 09 against a true 97 h 28 — a real improvement that is still
+49 hours short, because the prior under-predicts Arctic headways. And the
+ferry is not the only thing wrong there: `airports.SIZE_BY_TYPE` excludes
+heliports and seaplane bases, which is 46 of Greenland's 60 scheduled-service
+airports. That is DEF8-16 and it must land in a later cycle, after this one is
+verified in a rebuild, so the two effects can be read apart.
+
+### The honest part
+
+`calibration.toml` carries an independent holdout the fit never saw: against
+326 parseable OSM `interval` tags the prior is ×3.55 at one sigma with only
+23.3% within a factor of two, and the bias **changes sign at about 150 km**
+(0.21× at 1–10 km, 2.21× at 150–400 km). The cause is stated rather than
+patched over: distance alone cannot tell a remote lifeline route from a busy
+short-sea one, and the anchors in that band are deliberately remote while
+OSM's tagged crossings there are mostly Mediterranean and East Asian. Left
+documented rather than corrected, per CLAUDE.md — refitting to the holdout
+would fit the remote regime on a single observation above 1,000 km.
+
+The sailing-time fit is much stronger and is a real improvement on the
+published 35 km/h: median predicted/observed 1.00, between 0.92 and 1.07 in
+every distance bucket, against 0.34 to 0.88 for the old model. 3,203
+observations.
+
+### Two defects found in this cycle's own work, by opening the page
+
+1. **The zoom detail was inert at the zoom it was written for.** At zoom 9.5
+   over Seoul the on-screen range sampled as bands 0–22, because one roadless
+   cell forty kilometres out reads twelve hours, and 23 bands is exactly the
+   width that trips the wide-view guard. Fixed by trimming 5% from each end;
+   the same view now gives bands 0–10 and six ticks. Found only by opening the
+   page, which is why that rule exists.
+2. **The detail row cost the phone sheet one pixel.** At 390×844 it pushed the
+   build-date line past the rail's own box. The spacing gives way on small
+   screens; after, −6 px on the phone.
+
+### Mutations performed, all red
+
+Ferry model (17): terminal time dropped · expected wait dropped · knee removed
+· frequency floor removed · half-headway becomes full · duration speed check
+removed · tagged duration ignored · tagged interval ignored · bare-minutes
+format dropped · ISO-8601 format dropped · seasonality ignored · service
+fraction not applied · self-loop guard removed · off-mask drops uncounted ·
+ferry parser version unstamped · berth_min zeroed · interval_decay moved.
+
+Reading tier (3): parent fetch back through loadCells · helper calls fatal on
+a bad response · helper drops the whole-cell check.
+
+Page (13): legend tick position off by a band · legend tick label doubled ·
+`?to=` reader renamed · `?from=` reader renamed · `?to=` bounds deleted ·
+detail tick off its boundary · detail leading tick dropped · leading tick not
+left-anchored · detail swatches take the wrong colours · bracket spans the
+whole strip · ceiling dropped from the world scale · copy-link no longer
+flushes · camera written on every frame · scheme dropped from the address ·
+camera latitude bound deleted · label bound removed · detail row added to the
+folded sheet.
+
+**The six the cycle-8 review proved vacuous are among them and all now bite.**
+
+### Riders, recorded because they did not get their own commit
+
+- The GeoNames "(cities15000)" fix (T5.5) rode in the ferry-model commit with
+  the rest of `emit/index.py`.
+- The address-row overflow fix (T2.6) and pickRamp's `syncPermalink` call rode
+  in the legend commit; the amended message names both.
+
+### Still open, and why
+
+- **The landscape phone's build-date line overshoots its rail by 19 px.**
+  Pre-existing and IMPROVED by this cycle: the same measurement on the page as
+  it stood before these commits is 36 px. The rail scrolls, and every
+  guarantee CLAUDE.md names — strip, ticks, keys, caption, credit — measured
+  visible at all four viewports. Recorded rather than fixed, because closing
+  19 px means re-tuning the landscape rail's own margins late in a cycle whose
+  deploy is page-only. Carried as M8-14.
+- **`dist/water.pmtiles` metadata contains a build-host path.** Confirmed
+  first-hand this cycle by the new gate, which is why the licence firewall
+  deliberately does not borrow check_dist's path check. Only a rebuild can
+  replace the archive. DEF8-15.
+- Everything else is in the deferred table above, unchanged.

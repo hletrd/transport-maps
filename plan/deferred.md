@@ -477,3 +477,46 @@ site and said it is now fine. Not reopened, not worked on.
 | AB56 | UX: eight Low findings (i18n, long names, perceived performance) | Low / Medium (UX7-11…UX7-18) | `web/app.js` | Below the scope bar | The next cycle's UI pass |
 | AB57 | `plan/README.md:75` records 495 tests; the suite is 538 passed, 4 deselected | Low / High (VER7, CRIT7) | `plan/README.md:75` | **Not deferred — corrected this cycle** in `plan/README.md`'s cycle-7 section. Row kept so the two agents that raised it can trace it | — (closed) |
 | AB58 | `python3 -m http.server` answers no Range requests, so a local `dist/` preview fails every `.pmtiles` fetch in a way that looks exactly like a site defect | Low / High (UX7 harness note) | review harness | Not a repository defect: it is a fact about the review harness that cost a reviewer time this cycle and would cost the next one the same. Recorded so it is not rediscovered | — (recorded for future reviewers; no code change) |
+
+## Cycle 8 (2026-09-13)
+
+Seventeen findings deferred from `plan/2026-09-13-c8-ferry-wait-legend-url.md`;
+that file holds the full table with citation, severity, confidence, reason and
+exit criterion for each. Summarised here so the standing list stays complete:
+
+- **DEF8-1** (HIGH) four of five derived caches key on the source URL, not the
+  bytes — `sources/airports.py`, `landmask.py`, `roads.py`, `routes.py`.
+- **DEF8-2** (HIGH) the per-route air frequency model never prices the route it
+  describes; the wait is medianed per airport and capped. Overlaps tracked B1.
+- **DEF8-3** (MEDIUM) 4,819 `route=ferry` relations sit unread and beat the
+  ways on every field. Exit: USER-1 verified in a rebuild.
+- **DEF8-4/5** (MEDIUM) `check_bands_cover`'s fixed seed; two gates raising
+  `ValueError` rather than `GateFailure`; `check_airport_connectivity` vacuous
+  on empty input.
+- **DEF8-6** (MEDIUM) ground edges cross straits while `_ferry_edges` deletes
+  the ferry for the same pair. Severity reduced by measurement: the drops are
+  median 3.9 km, max 12.7 km.
+- **DEF8-7** (MEDIUM) `_crosses_antimeridian` misclassifies pole-containing
+  cells, which `landmask` always seeds.
+- **DEF8-8** (MEDIUM) build-path performance: a 13.75 M-entry dict rebuilt 3-4x
+  per origin (~6-7 CPU-hours/build), a per-origin Antarctica mask (~33 min),
+  `_land_border_min` re-parsing the TOML per call, stdlib `json.dump` for
+  ~650 MB/origin.
+- **DEF8-9** (MEDIUM) `dist/` is a mixed build; the pending 553-origin rebuild
+  is the exit criterion.
+- **DEF8-10..14** (LOW) the duplicate haversine in `rail.py`; the antimeridian
+  blind spot in `urban.py` and `calibrate_ground.py`; five latent guards;
+  `adsb_extract.py`'s unsanitised tag_name; build-invocation ergonomics.
+- **DEF8-15** (MEDIUM, confidence Low) cycle-7 security items not re-verified,
+  plus one now CONFIRMED first-hand: `dist/water.pmtiles` metadata contains a
+  build-host path. The `deploy/` nginx snippet is unapproved, and only a
+  rebuild can replace the archive.
+- **DEF8-16** (HIGH) `airports.SIZE_BY_TYPE` excludes heliports and seaplane
+  bases — 192 of 4,334 scheduled-service rows, 46 of Greenland's 60. Must land
+  AFTER the ferry work is verified so the two effects can be read apart.
+- **DEF8-17** (LOW) `MIN_FLIGHTS_PER_WEEK` can never bind, yet two files
+  document it as live. Belongs with B2.
+
+Still carried from earlier cycles and re-confirmed at this HEAD: **AA13**
+(`emit/{borders,places,airports_json}.py` have no production caller while
+`check_dist.REQUIRED_EXTRAS` demands their output).
