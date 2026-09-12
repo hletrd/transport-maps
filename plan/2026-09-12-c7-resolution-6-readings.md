@@ -255,10 +255,11 @@ defect". Everything else is deferred.
 
 ## Progress
 
-**All eighteen tasks done**, across fourteen signed commits
-(`69052bb`…`c563975`). Every guard added was shown red under the mutation
-named beside it; **35 mutations were run in total and 35 went red**, after
-three of them were first found to be vacuous and the guard rewritten.
+**All eighteen tasks done.** The code landed in **nine** signed commits,
+`5c08df1`…`c563975`; the cycle's other commits are this ledger. Every guard
+added was shown red under the mutation named beside it; **35 mutations were
+run in total and 35 went red**, after three of them were first found to be
+vacuous and the guard rewritten. The suite went from 538 to **591**.
 
 Two defects in this cycle's own work were found after the code was committed,
 both by measurement rather than by reading: the full suite found ten
