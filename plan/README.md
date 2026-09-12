@@ -120,8 +120,19 @@ row in `deferred.md` under `# Cycle 7`. Cycle-7 IDs carry the cycle number
 (`CR7-n`, `UX7-n`, `TR7-n` ...); the merged clusters are `AB1`…`AB58` and the
 task IDs are `C7-1`…`C7-18`.
 
+The cycle-7 ledger was audited mechanically rather than by eye, the way
+cycle 3 audited its own: all **58** merged clusters `AB1`…`AB58` are accounted
+for, with **no gaps in the numbering and none unaccounted for** — 21 named in
+the c7 plan, 46 carrying a full row in `deferred.md`, and several in both by
+design (a cluster the plan handles still gets a deferred row saying where it
+went, so it can be traced from either end). Every deferred row was checked to
+carry all five required fields: the finding, its unchanged severity and
+confidence, the citation, the reason, and the exit criterion. None was thin.
+
 Cycle 7 closed `AA6` (the owner chose readings at resolution 6) and archived
-`USER-2` as resolved by the owner. It also **did not implement the transport
+`USER-2` as resolved by the owner — the latter at the two cycle-6 rows that
+carried it as well as in the cycle-7 files, because the ledger is read
+backwards more often than forwards. It also **did not implement the transport
 half of the design it was given**, and the plan carries the account of why:
 three independently fatal, separately measured reasons, two of them taken off
 the live host. The block layout was implemented exactly as specified.
