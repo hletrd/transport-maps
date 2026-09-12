@@ -1,6 +1,6 @@
 # Cycle 8 — ferry wait model, zoom-aware legend, full URL state
 
-Status: **implemented** (deploy pending at time of writing; see Progress)
+Status: **implemented and deployed** (page-only; see Progress)
 Source reviews: `.context/reviews/_aggregate.md` (11 reviewers, cycle 8)
 Deploy constraint this cycle: `scripts/deploy_verify.sh --page-only` ONLY. No `build-all`,
 no `scripts/build_water_tiles.py`, no writes under `dist/` or `data/`. The ferry model
@@ -462,6 +462,47 @@ folded sheet.
   the rest of `emit/index.py`.
 - The address-row overflow fix (T2.6) and pickRamp's `syncPermalink` call rode
   in the legend commit; the amended message names both.
+
+### The deploy
+
+`uv run ruff check .` clean. `uv run pytest`: **696 passed, 4 deselected** in
+16:58, exit 0 (`network` and `real_multi_band` are deselected by default).
+`bash scripts/deploy_verify.sh --page-only` ran once. The page-asset gate
+passed 209 tests, every live probe returned 200 and both Range probes 206.
+
+Step 4 then failed ONE check, and the page was right: the address bar read
+`?from=tokyo&at=62.00243,99.78787,4.20&to=62.00243,99.78787` -- the destination
+plainly present -- while `browser_verify.sh` reported "the address bar dropped
+the destination". It was matching the literal prefix `"search":"?from=tokyo&to=`,
+a claim about parameter ORDER that nothing guarantees, so writing a third
+parameter between the two failed a check about whether the destination was
+carried at all.
+
+The gate was fixed at the root rather than worked around: it now parses the
+query string, the way the RAMPS count above it already parses its input. While
+being touched it also covers the rest of the state a pasted link carries, at
+both ends -- that the page applied it and that the address still says so --
+which the old check could not have seen.
+
+Re-run against the live site afterwards: **ALL CHECKS PASSED**, console errors
+0, all four viewports clean, the folded sheet keeping its legend, keys, caption
+and scale. The permalink line reads
+`{"from":"tokyo","scheme":"ember","sea":"teal","north":"1","at":"62.00243,99.78787,4.20","to":"62.00243,99.78787"}`
+with the scheme, ocean and lock-north all applied.
+
+The zoom legend verified live at all four viewports: world ticks unchanged at
+1 h, 5 h, 24 h 30 and 72 h+, and zoomed to Seoul the detail row shows six ticks
+(30 min, 40 min, 55 min, 1 h 10, 1 h 35, 2 h 05) over 11 bands with the bracket
+at 0% width 29.7%. Hidden on the landscape phone as designed. Keys, caption and
+credit visible at every viewport.
+
+**Verified against the CURRENT data**, which is what the brief asked: 553
+origins, solveRes 6, `index.json` carrying no `readingRes`, so the reading tier
+is dormant. Confirmed by measurement rather than assumption --
+`performance.getEntriesByType("resource")` shows zero fetches matching
+`reading_parents` or `.r6.bin`, and the readout says "read from a wider cell
+than the outline", which is the resolution-4 fallback saying so in as many
+words.
 
 ### Still open, and why
 
