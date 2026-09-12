@@ -95,6 +95,26 @@ const dump = (el) => el.children.map((c) => ({
   min: c.dataset.min, cls: [...c._classes].sort(), bg: c.style.background }));
 """
 
+#: The same DOM, plus the one thing prune() actually needs: a rect that behaves
+#: the way a browser's does. Inside a `hidden` subtree every value is 0 -- which
+#: is the whole bug -- and otherwise the tick's box is derived from the `left`
+#: percentage it was just given. STRIP is wide enough that six ticks do not
+#: really collide, so any tick lost is a tick lost to the measurement, not to
+#: genuine overprinting.
+_DOM_MEASURED = _DOM.replace(
+    "function prune(){ /* measured in a browser; nothing to measure here */ }",
+    """
+const STRIP = 2000, LABEL = 40;   // wide enough that no tick genuinely
+                                  // overprints, so a lost tick is a lost
+                                  // MEASUREMENT and nothing else
+El.prototype.getBoundingClientRect = function () {
+  if ($("detail").hidden) return { left: 0, right: 0, width: 0 };
+  const pct = parseFloat(this.style.left || "0");
+  const left = (STRIP * pct) / 100 - LABEL / 2;
+  return { left, right: left + LABEL, width: LABEL };
+};
+""")
+
 
 # ---- the legend ------------------------------------------------------------
 
@@ -229,6 +249,127 @@ console.log(JSON.stringify({{ runs }}));
         b = run["bracket"]
         assert float(b["left"].rstrip("%")) == pytest.approx(100 * lo / N_BANDS)
         assert float(b["width"].rstrip("%")) == pytest.approx(100 * m / N_BANDS)
+
+
+def test_the_band_mark_and_the_bracket_agree_on_where_a_band_is(node, tmp_path):
+    """Both overlays live on the same 37-swatch strip, so both must divide by 37.
+
+    markSpan has always divided by N_BANDS. markBand divided by the strip's
+    child count minus its OWN overlay, which is right only while it is the only
+    overlay appended. With the zoom detail row up, markSpan's bracket is a child
+    too, the denominator became 38, and the "you are here" mark sat about one
+    band short of the reading it points at -- visibly, on the live site.
+
+    Checked two ways, because the failure is a disagreement: the mark must land
+    at its band's own centre on the 37-band ladder, AND it must fall inside the
+    bracket whenever the band it marks is inside the bracketed range. The second
+    does not depend on the first's arithmetic.
+
+    Mutation performed and reverted: restore `strip.children.length - (bandMark
+    && bandMark.isConnected ? 1 : 0)` -> red on both assertions, with the mark
+    2.7% (about one band) left of where it belongs.
+    """
+    probe = f"""
+{_DOM}
+const EDGES = {json.dumps(EDGES)};
+const N_BANDS = EDGES.length + 1;
+const MAX_MINUTES = 65534;
+{_function("bandIndexOf")}
+let bandMark = null;
+let bandSpan = null;
+{_function("markBand")}
+{_function("markSpan")}
+// The real strip: one span per band, exactly as paintLegend builds it.
+$("tints").replaceChildren(...Array.from({{ length: N_BANDS }},
+  () => document.createElement("span")));
+const runs = [];
+for (const range of [null, {{ lo: 4, hi: 9 }}, {{ lo: 0, hi: 36 }}, {{ lo: 25, hi: 30 }}]) {{
+  markSpan(range);                       // the bracket is a child of the strip too
+  for (const min of {json.dumps([1, 30, 61, 240, 1000, 5000, 20000])}) {{
+    markBand(min);
+    runs.push({{ range, min, band: bandIndexOf(min),
+                 left: bandMark.style.left,
+                 span: bandSpan && !bandSpan.hidden
+                   ? {{ left: bandSpan.style.left, width: bandSpan.style.width }} : null,
+                 children: $("tints").children.length }});
+  }}
+}}
+console.log(JSON.stringify({{ runs }}));
+"""
+    seen_with_bracket = 0
+    for run in _run(node, tmp_path, probe)["runs"]:
+        b = run["band"]
+        assert b >= 0, f"{run['min']} min is inside the ladder but read as no band"
+        at = float(run["left"].rstrip("%"))
+        want = 100 * (b + 0.5) / N_BANDS
+        assert at == pytest.approx(want), (
+            f"band {b} of {N_BANDS} is marked at {at}%, not at its own centre "
+            f"{want}% (the strip had {run['children']} children)")
+        if run["span"] is None:
+            continue
+        seen_with_bracket += 1
+        lo = float(run["span"]["left"].rstrip("%"))
+        hi = lo + float(run["span"]["width"].rstrip("%"))
+        inside = lo <= at <= hi
+        assert inside == (run["range"]["lo"] <= b <= run["range"]["hi"]), (
+            f"band {b} is {'inside' if run['range']['lo'] <= b <= run['range']['hi'] else 'outside'} "
+            f"the bracketed range {run['range']['lo']}..{run['range']['hi']}, but its mark at "
+            f"{at}% is {'inside' if inside else 'outside'} the bracket {lo}%..{hi}%")
+    assert seen_with_bracket >= 3, "the bracket was never on the strip; the test proves nothing"
+
+
+def test_the_detail_rows_ticks_survive_being_measured(node, tmp_path):
+    """prune() measures with getBoundingClientRect, so the row must be visible.
+
+    A browser returns an all-zero DOMRect for every element inside a `hidden`
+    subtree. paintDetail used to call prune(scale) while `#detail` was still
+    hidden and only unhide it afterwards, so every tick measured 0-wide at x=0,
+    every pair collided (`0 >= 0 + 8` is false), and prune deleted all but one.
+    The zoom detail row has shipped with a single label on it.
+
+    The shim the rest of this file uses stubs prune() out, which is exactly why
+    it could not see this. Here the REAL prune() is run, against a rect that
+    behaves the way a browser's does: zero inside a hidden subtree, and derived
+    from the tick's own `left` percentage otherwise.
+
+    Mutation performed and reverted: move `$("detail").hidden = false` back
+    below `prune(scale)` -> red, with one tick left of six.
+    """
+    probe = f"""
+{_DOM_MEASURED}
+const EDGES = {json.dumps(EDGES)};
+const N_BANDS = EDGES.length + 1;
+const BANDS = Array.from({{ length: N_BANDS }}, (_, i) => "#" + String(i).padStart(6, "0"));
+{re.search(r"const DETAIL_TICKS = \d+;", APP).group(0)}
+let bandSpan = null;
+{_function("fmtTick")}
+{_function("tickEl")}
+{_function("markSpan")}
+{_function("prune")}
+{_function("paintDetail")}
+const runs = [];
+for (const [lo, hi] of {json.dumps([(4, 9), (10, 20), (0, 5), (25, 36)])}) {{
+  $("detail").hidden = true;                 // the state paintDetail is called in
+  $("detail-scale").replaceChildren();
+  paintDetail({{ lo, hi }});
+  runs.push({{ lo, hi, ticks: dump($("detail-scale")).length }});
+}}
+console.log(JSON.stringify({{ runs }}));
+"""
+    ticks_wanted = int(re.search(r"const DETAIL_TICKS = (\d+);", APP).group(1))
+    for run in _run(node, tmp_path, probe)["runs"]:
+        lo, hi = run["lo"], run["hi"]
+        # How many ticks paintDetail BUILDS, ported from its selection (the
+        # neighbouring test pins that the port matches). The assertion here is
+        # about prune(), so the count it is compared against must come from
+        # somewhere other than prune().
+        m = hi - lo + 1
+        steps = min(ticks_wanted, m)
+        picked = {round((t * (m - 1)) / max(1, steps - 1)) for t in range(steps)}
+        want = sum(1 for k in picked if lo + k <= len(EDGES) - 1) + (1 if lo > 0 else 0)
+        assert run["ticks"] == want, (
+            f"bands {lo}..{hi}: {run['ticks']} of {want} ticks survived prune(); "
+            "the row was measured while it was still hidden")
 
 
 def test_the_detail_row_is_an_addition_and_never_replaces_the_legend():

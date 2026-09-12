@@ -1969,8 +1969,14 @@ function markBand(min) {
   const strip = $("tints");
   if (!strip) return;
   const b = bandIndexOf(min);
-  const n = strip.children.length - (bandMark && bandMark.isConnected ? 1 : 0);
-  if (b < 0 || n <= 0) { if (bandMark) bandMark.hidden = true; return; }
+  // N_BANDS, not the strip's child count. The strip holds the 37 swatches AND
+  // whichever of the two overlays is currently appended, and this subtracted
+  // only its own. With the zoom detail row showing, markSpan's bracket is a
+  // child too, so the denominator was 38 and the mark sat about one band short
+  // of the reading it points at -- on the live site, whenever the row is up.
+  // markSpan has always divided by N_BANDS; the two now agree.
+  const n = N_BANDS;
+  if (b < 0) { if (bandMark) bandMark.hidden = true; return; }
   if (!bandMark) { bandMark = document.createElement("div"); bandMark.className = "mark"; }
   if (!bandMark.isConnected) strip.append(bandMark);
   bandMark.hidden = false;
@@ -2110,6 +2116,13 @@ function paintDetail(range) {
     if (lo + k <= EDGES.length - 1) els.push(tickEl(lo + k, (k + 1) / m));
   }
   scale.replaceChildren(...els);
+  // Unhide BEFORE pruning. prune() drops a tick that would overprint its
+  // neighbour, and it decides that with getBoundingClientRect(). A browser
+  // returns an all-zero rect for every element in a `hidden` subtree, so
+  // measuring the row while #detail was still hidden made every tick collide
+  // with the one before it (0 >= 0 + 8 is false) and deleted all but one. The
+  // row has shipped with a single label on it for as long as it has existed.
+  $("detail").hidden = false;
   prune(scale);
 
   // What the row is, in words, with both ends named at their true values.
@@ -2119,7 +2132,6 @@ function paintDetail(range) {
   // cannot claim the whole scale is in view. The strip above still covers it.
   $("detail-cap").textContent =
     `Most of this view: ${from} to ${to}, door to door. The bracket above marks it on the full scale.`;
-  $("detail").hidden = false;
   markSpan(range);
 }
 
