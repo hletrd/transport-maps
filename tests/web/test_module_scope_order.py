@@ -44,6 +44,8 @@ _AWAIT = re.compile(r"^await\s", re.M)
 #: `foo.addEventListener(...)`, `map.on(...)`, `document.fonts.ready.then(...)`.
 _LISTEN = re.compile(
     r"^(?:[\w.$?]+\.)?(?:addEventListener|on|then)\(", re.M)
+#: A bare call at column 0, e.g. `layoutForSize();`.
+_CALL = re.compile(r"^([A-Za-z_$][\w$]*)\(", re.M)
 
 
 def _strip(src: str) -> str:
@@ -134,7 +136,10 @@ def test_no_module_scope_listener_reaches_a_binding_declared_below_it() -> None:
     funcs = _bodies(src)
     assert "markSpan" in funcs and "refreshScale" in funcs
 
-    # Seed: every handler registered at module scope above the await.
+    # Seed: every handler registered at module scope above the await, AND every
+    # module-scope function CALLED above it. Both reach a binding declared below
+    # the await -- the listener when the module suspends there, the direct call
+    # before it is ever reached.
     seeds: dict[str, int] = {}
     for m in _LISTEN.finditer(src):
         line = _line_of(src, m.start())
@@ -145,7 +150,11 @@ def test_no_module_scope_listener_reaches_a_binding_declared_below_it() -> None:
         for name in _NAME.findall(call):
             if name in funcs:
                 seeds.setdefault(name, line)
-    assert seeds, "no module-scope listener found above the await"
+    for m in _CALL.finditer(src):
+        line = _line_of(src, m.start())
+        if line < await_line and m.group(1) in funcs:
+            seeds.setdefault(m.group(1), line)
+    assert seeds, "no module-scope listener or call found above the await"
 
     # Transitive closure over module-scope function calls.
     reach: dict[str, int] = dict(seeds)

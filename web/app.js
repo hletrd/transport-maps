@@ -319,6 +319,12 @@ const SCALE_TRIM = 0.05;
 const WIDE_VIEW_BANDS = Math.ceil(0.6 * N_BANDS);
 const DETAIL_TICKS = 6;
 let readingParents = null;
+// Read by fitReading() and layoutForSize(), which are now CALLED above the
+// globe's load await so the small layout is in place while "Loading the map..."
+// is on screen. Same reason as the block above: a binding a module-scope caller
+// reaches must be declared before it.
+const MIN_LEGS_PX = 96;
+let smallEntered = false;
 const IDLE_PROMPT = COARSE
   ? "Tap the map to read a travel time. Tap a city name to depart from it."
   : $("where").textContent;
@@ -672,6 +678,14 @@ function clearTileTrouble() {
 // ...and a load that never fires at all. `await map.on("load")` had no timeout,
 // so a WebGL context lost during setup left this promise pending for ever with
 // nothing on screen and nothing in the console.
+// Before the await, not after it. layoutForSize() is what moves .reading into
+// the rail and turns the rail into a bottom sheet on a phone; until it has run,
+// the small layout is not in place. Running it after `await map.on("load")`
+// meant that for the whole load -- measured at 372 ms to 4,031 ms on a portrait
+// phone -- the sheet sat on top of "Loading the map...", and elementFromPoint
+// over the message returned the sheet. The one sentence that explains a blank
+// globe was covered by the panel, for exactly as long as the globe was blank.
+layoutForSize();
 await Promise.race([
   new Promise((r) => map.on("load", r)),
   new Promise((_, reject) => setTimeout(
@@ -2461,7 +2475,7 @@ function revealReading() {
 // "Share of charted land ... door to door" note -- the line the modelling rule
 // requires. The itinerary is the elastic part and already scrolls, so it is
 // what gets bounded; the legend above it never moves.
-const MIN_LEGS_PX = 96;
+//: MIN_LEGS_PX is declared in the state block at the top of the file.
 function fitReading() {
   const reading = document.querySelector(".reading");
   const legs = $("legs");
@@ -3230,7 +3244,7 @@ applyLockNorth();
 // closed, so the globe gets the screen. Re-evaluated on rotation; the panels
 // are closed only on the first entry into the small layout, not on every
 // rotation of a phone (which used to fold the route being read).
-let smallEntered = false;
+//: smallEntered is declared in the state block at the top of the file.
 function layoutForSize() {
   const reading = document.querySelector(".reading");
   const card = document.querySelector(".depart-card");
@@ -3274,7 +3288,6 @@ function layoutForSize() {
   }
   fitReading();
 }
-layoutForSize();
 SMALL.addEventListener("change", layoutForSize);
 // There is no pointer on a phone.
 $("where").textContent = IDLE_PROMPT;

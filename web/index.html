@@ -398,7 +398,8 @@ body.crowded .depart-card{display:none}
   color:var(--text);font-family:inherit;font-weight:400;font-size:13px;line-height:1.5;padding:6px 8px;
 }
 #q:focus{border-color:var(--line-2)}
-#q:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* Same reason as .mapbtn: the search box floats over the globe. */
+#q:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #q::placeholder{color:var(--text-3)}
 .here{margin:0 0 8px;font-size:11px;color:var(--text-3);line-height:1.45}
 .qrow{display:flex;gap:8px;align-items:center;margin-top:7px}
@@ -518,7 +519,14 @@ body.crowded .depart-card{display:none}
   display:grid;place-items:center;
 }
 .mapbtn:hover{border-color:var(--line-2);color:var(--text)}
-.mapbtn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* INSIDE the button, not 1px outside it. At +1px the ring lands on the
+   band colour behind the control rather than on the control's own
+   surface, and measured against real pixels on the default Muted scheme
+   it came to 1.00-1.08:1 -- WCAG 2.2 SC 1.4.11 and 2.4.11 want 3:1, so a
+   keyboard visitor could not see where focus was. -2px puts it on
+   --surface, which measures 7.11:1, and is what .results button already
+   does. */
+.mapbtn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .mapbtn[disabled]{opacity:.45;cursor:default}
 
 /* ---- compass ---- */
@@ -633,8 +641,19 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
      BEFORE unfolding, so the reveal produced no mutation and nothing was
      announced at all. It is .sr-only, so keeping it displayed costs no space. */
   .rail.folded .reading > #status{display:block}
-  .rail.folded .reading > :not(.legend):not(#status),
+  /* #time stays. Folding the sheet is how a visitor gives the globe the phone,
+     and it used to take the travel time with it: #time and #where are direct
+     children of .reading, so both went, and .tip is display:none at this width
+     because "the sheet readout carries the value". Folded, nothing carried it.
+     At 844x390 the number this entire site exists to show was on screen
+     nowhere -- while #status, the live region, was deliberately kept alive, so
+     a screen-reader user was told the time and a sighted user was not. */
+  .rail.folded .reading > :not(.legend):not(#status):not(#time),
   .rail.folded .legend > :not(.tints):not(.scale):not(.keys):not(.legend-cap):not(.legend-credit){display:none}
+  /* Compact, because the fold is a request for room. The legend still follows
+     it, and CLAUDE.md keeps the legend visible either way. */
+  .rail.folded .reading > #time{font-size:22px;min-height:0;margin:0 0 4px}
+  .rail.folded .reading > #time .idle{font-size:12px}
   .rail.folded .keys{margin-top:5px}
   .rail.folded .legend-cap{margin-top:4px}
   .rail.folded .legend-credit{margin-top:2px}
