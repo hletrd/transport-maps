@@ -40,7 +40,9 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); open tasks carried forward |
 | `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; tasks still open, carried forward |
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; tasks still open, carried forward |
-| `2026-09-13-c9-page-failure-paths.md` | Cycle 9: the page's failure paths, its accessibility, and the gates that cannot see either (C9-1…C9-31) | cycle 9: current |
+| `2026-09-13-c9-page-failure-paths.md` | Cycle 9: the page's failure paths, its accessibility, and the gates that cannot see either (C9-1…C9-31) | cycle 9 done; open tasks carried forward |
+| `2026-09-13-c10-four-live-defects.md` | Cycle 10: the four defects the owner and the deploy's own verification reported, plus the two they uncovered (C10-1…C10-14) | cycle 10: current |
+| `2026-09-13-c10-requested-features.md` | Cycle 10: four features the owner asked for, PLANNED and deliberately not built — draggable markers, an on-demand solver service, many more departure cities, an ETOPS option (F1…F4) | cycle 10: analysis only, nothing built |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened and closed items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
 | `archive/2026-09-10-c3-page-detail-and-defects.md` | Cycle 3 (T1…T31): 28 done; T24, T26 and T28 carried into the cycle-4 plan as U28, U10 and U11 | archived (cycle 4) |
