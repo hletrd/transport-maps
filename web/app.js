@@ -1005,21 +1005,42 @@ fetch("./places.json")
     // blocks, and markers render in the page's own typeface. The gazetteer is
     // ordered largest-first, so rank is the row index; more labels appear as
     // the zoom rises.
-    const labelPool = p.places.slice(0, 900).map((r, i) => {
-      // A label that names one of the departure cities is a button: clicking
-      // it departs from there. Matched by distance (15 km: the same city under
-      // a spelling that differs between the gazetteer and origins.toml, not the
-      // next town over -- "Incheon" used to be a button that departed from
-      // Seoul). Any other label swallows its click: it is not a destination.
-      // Not `origin`: that is the module-level record of the CURRENT
-      // departure's fetched arrays, and shadowing it here -- inside the one
-      // file whose state block exists to keep those names straight -- is how
-      // the next reader of this closure gets it wrong.
-      const cityHere = originNear(r[3], r[4], 15);
+    const rows = p.places.slice(0, 900);
+    // A label that names one of the departure cities is a button: clicking it
+    // departs from there. Matched by distance (15 km: the same city under a
+    // spelling that differs between the gazetteer and origins.toml, not the
+    // next town over -- "Incheon" used to be a button that departed from
+    // Seoul). Any other label swallows its click: it is not a destination.
+    //
+    // Two corrections to that, both from measuring the live page. First, EVERY
+    // row inside the radius became a button, so one city could claim several:
+    // 595 rows claimed 511 cities. "Ota" was a button that departed from Tokyo,
+    // "Queens" from New York, "Johor Bahru" from Singapore -- a different
+    // country. The nearest row to a city wins, and only that one; the other 84
+    // go back to being place names, which is what they are.
+    //
+    // Second, and this is the defect the owner reported: the button was drawn
+    // at the ROW's coordinate, not the city's, so its dot missed the city it
+    // departed from by up to 14.72 km. At zoom 8 over Tokyo that put a white
+    // dot reading "Ota" 56.6 px from the accent dot reading "Tokyo" -- two
+    // dots for one city, and the white one on the wrong place. A dotted label
+    // now carries the CITY's name at the CITY's coordinate, which is also what
+    // its accessible name has always said (WCAG 2.5.3, Label in Name: the
+    // visible text was "Ota" and the accessible name "Depart from Tokyo").
+    //
+    // Not `origin`: that is the module-level record of the CURRENT departure's
+    // fetched arrays, and shadowing it here -- inside the one file whose state
+    // block exists to keep those names straight -- is how the next reader of
+    // this closure gets it wrong.
+    const cityForRow = dottedCityRows(rows);
+
+    const labelPool = rows.map((r, i) => {
+      const cityHere = cityForRow.get(i) ?? null;
+      const { lat, lon, name } = labelPlacement(r, cityHere);
       const el = document.createElement(cityHere ? "button" : "div");
       el.className = cityHere ? "lbl origin" : "lbl";
       if (cityHere) {
-        setDottedLabel(el, r[0]);
+        setDottedLabel(el, name);
         el.type = "button";
         el.tabIndex = -1;                  // the city list is the keyboard path
         el.title = `Depart from ${cityHere.name}`;
@@ -1030,20 +1051,20 @@ fetch("./places.json")
           if (cityHere.slug !== active?.slug) paintOrigin(cityHere, { keepZoom: true });
         });
       } else {
-        el.textContent = r[0];
+        el.textContent = name;
         el.addEventListener("click", (ev) => ev.stopPropagation());
       }
       // A name with a dot is anchored by its dot; a bare place name keeps the
       // conventional treatment of hanging below its point.
       const m = new maplibregl.Marker(
         { element: el, anchor: cityHere ? "left" : "top" })
-        .setLngLat([r[4], r[3]]);
+        .setLngLat([lon, lat]);
       // A label that departs is a button and says so; every other label is
       // map furniture, not a control, and was being announced as a button
       // that does nothing.
       if (cityHere) el.dataset.label = `Depart from ${cityHere.name}`;
       nameMarker(el, cityHere ? el.dataset.label : null);
-      return { m, rank: i, on: false, lat: r[3], lon: r[4], slug: cityHere?.slug };
+      return { m, rank: i, on: false, lat, lon, slug: cityHere?.slug };
     });
     showLabels = () => {
       const z = map.getZoom();
@@ -2715,6 +2736,40 @@ function haversineKm(la1, lo1, la2, lo2) {
 }
 // Departure city within reach of a point, if any. 80 km covers a metro area
 // without claiming the next city over.
+//: Which gazetteer row carries the dotted departure button for each charted
+//: city: the NEAREST row within `maxKm`, and only that one.
+//:
+//: Every row inside the radius used to become a button, so one city could
+//: claim several -- measured on the live gazetteer, 595 rows claimed 511
+//: cities. "Ota" was a button that departed from Tokyo, "Queens" from New
+//: York, "Johor Bahru" from Singapore, which is a different country. Returns
+//: row index -> city, so the other 84 rows fall through to being place names.
+function dottedCityRows(rows, maxKm = 15) {
+  const best = new Map();
+  rows.forEach((r, i) => {
+    const c = originNear(r[3], r[4], maxKm);
+    if (!c) return;
+    const km = haversineKm(r[3], r[4], c.lat, c.lon);
+    const cur = best.get(c.slug);
+    if (!cur || km < cur.km) best.set(c.slug, { i, km, city: c });
+  });
+  const out = new Map();
+  for (const d of best.values()) out.set(d.i, d.city);
+  return out;
+}
+
+//: Where a label sits and what it reads. A DOTTED label is the charted city:
+//: its dot claims to mark that city, so it is placed on the city's own
+//: coordinate under the city's own name. It used to take both from the
+//: gazetteer row that matched it, which put the dot up to 14.72 km from the
+//: city it departs from -- 56.6 px at zoom 8 over Tokyo, beside a second,
+//: correctly placed dot for the same city. A plain label is the row.
+function labelPlacement(row, city) {
+  return city
+    ? { lat: city.lat, lon: city.lon, name: city.name }
+    : { lat: row[3], lon: row[4], name: row[0] };
+}
+
 function originNear(lat, lon, maxKm = 80) {
   let best = null, bestKm = maxKm;
   for (const o of meta.origins) {
