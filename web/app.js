@@ -1823,8 +1823,11 @@ function renderRoute() {
   if (!chain.length) {
     if (!same(from, to)) add(unwrap([from, to]), "ground");
   } else {
+    // A partial chain does not know how the journey reached its first airport,
+    // so there is no leading leg to draw. Drawing one anyway put a ground line
+    // from Seoul to Kuala Lumpur on the globe.
     const first = at(chain[0].code);
-    if (first && !same(from, first)) add(unwrap([from, first]), "ground");
+    if (first && !same(from, first) && !chain.partial) add(unwrap([from, first]), "ground");
     for (let k = 1; k < chain.length; k++) {
       if (chain[k].kind !== "arr") continue;      // a connection stays put
       const a = at(chain[k - 1].code), b = at(chain[k].code);
@@ -1836,21 +1839,29 @@ function renderRoute() {
   src.setData({ type: "FeatureCollection", features: feats });
 }
 
-function legsTo(lat, lon) {
-  if (!origin.air || !origin.routes) return null;
-  const i = cellIndex(lat, lon);
-  if (i < 0) return null;
-  const ordinal = origin.air[i];
-  if (ordinal === NO_AIRPORT) return [];        // overland the whole way
+//: The longest chain the page will walk or splice, counting every node.
+const MAX_CHAIN = 24;
 
-  const { airports: airOff, stations } = origin.routes.offsets;
-  const count = (stations - airOff) / 2;        // departures AND arrivals
-  let node = origin.routes.byId.get(airOff + count + ordinal);
-  const chain = [];
-  while (node && chain.length < 24) {
-    chain.push(node);
+//: Follow `prev` back from `node` while the file can answer, newest first.
+//: Stops at a predecessor the per-origin JSON does not carry -- which is every
+//: cell and every station, since routes_json.py emits airport nodes only.
+function walkPrev(node, budget) {
+  const out = [];
+  while (node && out.length < budget) {
+    out.push(node);
     node = node.prev == null ? null : origin.routes.byId.get(node.prev);
   }
+  return out;
+}
+
+//: The arrival-airport chain recorded for a hover cell, or null when the cell
+//: has no chain to walk. Shared by legsTo and by its own continuation.
+function chainAtCell(i, budget) {
+  const ordinal = origin.air[i];
+  if (ordinal === NO_AIRPORT) return [];        // overland the whole way
+  const { airports: airOff, stations } = origin.routes.offsets;
+  const count = (stations - airOff) / 2;        // departures AND arrivals
+  const chain = walkPrev(origin.routes.byId.get(airOff + count + ordinal), budget);
   // An empty chain HERE cannot mean "no flight" -- that case returned [] above,
   // on the NO_AIRPORT sentinel. It means the ordinal did not resolve, and
   // rendering it as [] made the page state positively "No flight on this
@@ -1858,6 +1869,71 @@ function legsTo(lat, lon) {
   // that flew. null is the honest answer: the route is unavailable.
   if (!chain.length) return null;
   return chain.reverse();
+}
+
+// Where the journey to a point went, as a list of airport nodes.
+//
+// The walk stops at the first predecessor the file cannot answer, and for a
+// journey that flew that is ALWAYS the leading `dep` node: its predecessor is
+// a solver CELL, and cells are not in the per-origin JSON. Most of the time
+// that is exactly right -- the departure city reaches its own airport over the
+// ground and there is nothing before it to show. But when the journey got to
+// that airport by FLYING to it first, the whole prefix was missing and the
+// page printed the truncated head as a ground leg: from Seoul, whose only land
+// border is sealed, `?to=-20.162,57.499` read "10 h 48 min -- To KUL, and
+// through the airport", and the globe drew a line over the ground to Malaysia.
+// Measured over seven origins and 32,354 flown journeys: 34.5% of them had a
+// prefix missing this way.
+//
+// The prefix is recoverable with no rebuild. `origin.air` already records, for
+// every hover cell, the arrival airport the journey reached that cell through
+// -- so asking it about the DEPARTURE AIRPORT'S OWN cell continues the walk one
+// hop further back. Splice the recovered chain in only when it actually lands
+// at the airport we are standing in, and no later than we board there; a
+// neighbouring airport's chain must never be presented as this one's. Where
+// that cannot be shown, the chain is returned `partial` and the caller says so
+// rather than asserting a surface journey it cannot substantiate. Measured on
+// the same sample: 96.2% resolve, 3.8% stay partial, and of those nearly all
+// land at a different airport from the one boarded (an airport-to-airport
+// transfer the res-4 array cannot confirm). Closing the last 3.8% needs the
+// pipeline to emit the cell predecessors, which needs a rebuild.
+function legsTo(lat, lon) {
+  if (!origin.air || !origin.routes) return null;
+  const i = cellIndex(lat, lon);
+  if (i < 0) return null;
+  let chain = chainAtCell(i, MAX_CHAIN);
+  if (chain == null || !chain.length) return chain;
+
+  const known = (id) => id != null && origin.routes.byId.has(id);
+  // Node IDENTITY, not node.id: byId hands back the same object for the same
+  // key, so this catches a loop without depending on a field the walk never
+  // otherwise reads. Thirteen journeys in a 32,354-journey sample loop here.
+  const seen = new Set(chain);
+  for (let hop = 0; hop < 6 && chain.length < MAX_CHAIN; hop++) {
+    const head = chain[0];
+    if (head.kind !== "dep" || head.prev == null || known(head.prev)) break;
+    const a = airports.find((x) => x[0] === head.code);
+    if (!a) return partial(chain);
+    const k = cellIndex(a[3], a[4]);               // airports.json: [iata, name, cc, lat, lon, size]
+    if (k < 0) return partial(chain);
+    const prior = chainAtCell(k, MAX_CHAIN - chain.length);
+    if (prior == null) return partial(chain);
+    if (!prior.length) break;      // that airport really was reached over the ground
+    const landed = prior[prior.length - 1];
+    if (landed.kind !== "arr" || landed.code !== head.code || landed.min > head.min
+        || prior.some((n) => seen.has(n))) return partial(chain);
+    for (const n of prior) seen.add(n);
+    chain = prior.concat(chain);
+  }
+  return chain;
+}
+
+//: Mark a chain whose leading legs could not be recovered. The array is
+//: returned as-is so every existing length/[] check still reads the same; only
+//: callers that ASSERT how the head was reached need to look at the flag.
+function partial(chain) {
+  chain.partial = true;
+  return chain;
 }
 
 function railVia(i) {
@@ -1876,22 +1952,40 @@ function renderLegsInto() {
   const box = $("legs");
   if (!pinB) { box.hidden = true; return; }
 
-  // A breakdown must come off ONE grid. Every row here is read at the res-4
-  // cell index -- legsTo() through origin.air and origin.routes, surface()
-  // through origin.modes -- while lookup() returns the res-6 reading whenever
-  // that tier is present. Those are two different cells, up to 17 km apart.
-  // Taking the total from lookup() and the legs from the res-4 arrays made
-  // `total > landed.min` (below) false often enough to delete the onward leg
-  // from the itinerary outright, and left the rows not summing to the "Door to
-  // door" line they are presented as decomposing. Dormant while the reading
-  // tier is, and armed the moment a build advertises readingRes.
+  // The headline above this panel and the "Door to door" line inside it must
+  // be the SAME number. The legs are read at the res-4 cell index -- legsTo()
+  // through origin.air and origin.routes, surface() through origin.modes --
+  // while lookup() returns the res-6 reading whenever that tier is present,
+  // and those are two different cells, up to 17 km apart. Cycle 9 made the
+  // total res-4 so the rows would sum; that left the page printing 16 h 23 min
+  // over a "Door to door" line reading 16 h 20 min, which is the one thing a
+  // reader cannot be asked to reconcile.
+  //
+  // Take the total from the reading instead, and let the ONWARD leg carry the
+  // difference -- which is where it belongs. Every other row is a node time
+  // out of the solver and does not depend on the grid at all; only the leg
+  // from the arrival airport to the pin does, and that is precisely the part
+  // the finer grid measures better. Measured over five origins and 11,741
+  // flown journeys: the onward leg's distribution is unchanged by the switch
+  // (median 302 min against 301, p99 5,214 against 5,225).
+  //
+  // The exception is a reading at or below the minute the journey landed, when
+  // the rows would exceed the total they are presented as decomposing. That is
+  // 0.009% of those journeys -- 1 in 11,741 -- and there the panel falls back
+  // to the res-4 figure and says the two grids disagree.
   const ci = cellIndex(pinB.lat, pinB.lon);
   const reading = lookup(pinB.lat, pinB.lon);
-  const total = ci >= 0 && origin.times ? origin.times[ci] : reading;
+  const coarse = ci >= 0 && origin.times ? origin.times[ci] : reading;
   const chain = legsTo(pinB.lat, pinB.lon);
-  if (total == null || total >= MAX_MINUTES || chain == null) { box.hidden = true; return; }
+  if (coarse == null || coarse >= MAX_MINUTES || chain == null) { box.hidden = true; return; }
+  const landedMin = chain.length ? chain[chain.length - 1].min : 0;
+  const usable = reading != null && reading < MAX_MINUTES && reading > landedMin;
+  const total = usable ? reading : coarse;
 
   const rows = [];
+  //: What the decomposition rows come to. Set by whichever branch builds them;
+  //: equal to `total` when the panel's own arithmetic closes.
+  let itemised = total;
   // A code like SHE or FNJ means nothing to most readers: hovering it names
   // the airport and its country. Modes explain how they were modelled.
   const ap = (code) => {
@@ -1906,25 +2000,40 @@ function renderLegsInto() {
   // "Surface transport, 5 h" says nothing useful. Rail, road and ferry differ
   // enormously in what they imply, and the surface leg is a large share of most
   // journeys, so name the three separately when the data is there.
+  //: Minutes the last surface() call itemised, so the note below can compare
+  //: the rows against the total instead of asserting they agree.
+  let surfaceMin = 0;
   const surface = () => {
+    surfaceMin = 0;
     if (!origin.modes) return [];
     const i = cellIndex(pinB.lat, pinB.lon);
     if (i < 0) return [];
     const n = MODE_NAMES.length;
-    return MODE_NAMES.map((name, k) => [name, origin.modes[i * n + k]])
+    const used = MODE_NAMES.map((name, k) => [name, origin.modes[i * n + k]])
       .filter(([, m]) => m >= 1)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, m]) => [fmtDur(m), `by <b>${mode(name)}</b>${name === "rail" ? esc(railVia(i)) : ""}`]);
+      .sort((a, b) => b[1] - a[1]);
+    surfaceMin = used.reduce((t, [, m]) => t + m, 0);
+    return used.map(([name, m]) =>
+      [fmtDur(m), `by <b>${mode(name)}</b>${name === "rail" ? esc(railVia(i)) : ""}`]);
   };
 
   if (chain.length === 0) {
     // No flight was involved: itemise the surface modes when the data is
-    // there, otherwise say only what is known.
+    // there, otherwise say only what is known. These rows come off the res-4
+    // mode array and the total off the reading, so they are the one case in
+    // the panel that is a breakdown on a different grid from its own total;
+    // the note at the foot says so when they differ.
     const parts = surface();
-    if (parts.length) rows.push(...parts);
+    if (parts.length) { rows.push(...parts); itemised = surfaceMin; }
     else rows.push([fmtDur(total), "No flight on this journey: surface travel"]);
   } else {
-    rows.push([fmtDur(chain[0].min), `To <b>${ap(chain[0].code)}</b>, and through the airport`]);
+    // Where the chain could not be walked back to the departure city, the time
+    // to its first airport is known but the way it was reached is not, and the
+    // page must not name it "and through the airport" -- that asserts a ground
+    // journey. From Seoul to Port Louis it asserted one to Kuala Lumpur.
+    rows.push(chain.partial
+      ? [fmtDur(chain[0].min), `Reaching <b>${ap(chain[0].code)}</b> — the legs before this one are not recorded in this build`]
+      : [fmtDur(chain[0].min), `To <b>${ap(chain[0].code)}</b>, and through the airport`]);
     for (let k = 1; k < chain.length; k++) {
       const a = chain[k - 1], b = chain[k];
       const t = fmtDur(b.min - a.min);
@@ -1932,6 +2041,7 @@ function renderLegsInto() {
       else rows.push([t, `Connect at <b>${ap(b.code)}</b>`]);
     }
     const landed = chain[chain.length - 1];
+    itemised = Math.max(total, landed.min);
     if (total > landed.min) {
       const parts = surface();
       if (parts.length) {
@@ -1969,23 +2079,36 @@ function renderLegsInto() {
     || chain.some((c) => c.kind === "arr");
   const key = document.createElement("p");
   key.className = "linekey";
-  key.textContent = flown
-    ? "On the globe, the solid arc is the flight and the dashed lines are the journeys to and from the airports."
-    : "On the globe, the dashed line joins your departure to your destination over the ground.";
+  key.textContent = !flown
+    ? "On the globe, the dashed line joins your departure to your destination over the ground."
+    : chain.partial
+      // renderRoute draws no leading leg for a partial chain, so the key must
+      // not promise one. Saying "the journeys to and from the airports" over a
+      // globe showing only the second of them is the same false claim in
+      // another place.
+      ? "On the globe, the solid arc is the flight and the dashed line is the journey on from the arrival airport. How the journey reached the first airport is not recorded, so it is not drawn."
+      : "On the globe, the solid arc is the flight and the dashed lines are the journeys to and from the airports.";
   frag.append(key);
-  // ...and when the headline reading came off the finer grid, say so rather
-  // than letting the two numbers disagree in silence. The reading is the
-  // better figure -- it is measured nearer the point you asked about -- but
-  // the itinerary can only be decomposed on the grid the legs are recorded at.
-  if (reading != null && reading < MAX_MINUTES && reading !== total) {
-    const note = document.createElement("p");
-    note.className = "linekey";
+  // Two things can still be out of step, and both are stated rather than left
+  // for a reader to spot. First: the panel's total is the reading, but where
+  // the reading is at or below the minute the journey landed it cannot head a
+  // decomposition, and the panel falls back to the res-4 figure -- so the
+  // headline and the total genuinely differ. Second: the surface itemisation
+  // comes off the res-4 mode array, so on an overland journey the rows can
+  // miss the total by the gap between the grids. Say whichever applies.
+  const note = document.createElement("p");
+  note.className = "linekey";
+  if (!usable && reading != null && reading < MAX_MINUTES && reading !== total)
     note.textContent =
       `The reading above, ${fmtDur(reading)}, is measured on the finer grid; `
-      + "this breakdown is on the coarser one the legs are recorded at, so the "
-      + "two differ slightly. Both are door to door.";
-    frag.append(note);
-  }
+      + "this breakdown is on the coarser one the legs are recorded at, and here "
+      + "the two disagree. Both are door to door.";
+  else if (itemised !== total)
+    note.textContent =
+      "The legs above are itemised on the coarser grid the journey is recorded "
+      + "at, so they do not sum exactly to the door-to-door total, which is "
+      + "measured on the finer one. Both are door to door.";
+  if (note.textContent) frag.append(note);
   box.replaceChildren(frag);
   box.hidden = false;
 }

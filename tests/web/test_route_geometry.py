@@ -201,3 +201,89 @@ def test_the_hover_ring_on_the_antimeridian_is_one_hexagon_not_a_band(run):
         "highlight() builds its ring without unwrap(), so a cell on the "
         "antimeridian paints a 360-degree band across the globe")
     assert "cellToBoundary" in body
+
+
+# --- the leading ground leg, which must not be drawn for a chain that cannot
+#     say how the journey reached its first airport -------------------------
+
+def _render_route_probe(partial: str) -> str:
+    """Run the real `renderRoute` and report the features it hands the map.
+
+    `legsTo` is stubbed because the property under test is a property OF the
+    chain -- whether the walk could be completed -- and staging it is the whole
+    point; `legsTo` itself is run for real in `tests/web/test_itinerary_grid.py`.
+    Everything else here, `renderRoute`/`unwrap`/`greatCircle`, is app.js.
+    """
+    return f"""
+const MAX_MINUTES = 65534;
+const feats = [];
+const map = {{ getSource: () => ({{ setData: (d) => feats.push(...d.features) }}) }};
+// Seoul, and a pin in Mauritius: the journey the defect was reported on.
+const active = {{ lat: 37.57, lon: 126.98, name: "Seoul" }};
+const pinB = {{ lat: -20.162, lon: 57.499, label: "Port Louis" }};
+const airports = [["KUL", "Kuala Lumpur", "MY", 2.746, 101.710],
+                  ["MRU", "Sir Seewoosagur Ramgoolam", "MU", -20.430, 57.683]];
+function lookup() {{ return 1121; }}
+function legsTo() {{
+  const chain = [{{ code: "KUL", kind: "dep", min: 648 }},
+                 {{ code: "MRU", kind: "arr", min: 1121 }}];
+  chain.partial = {partial};
+  return chain;
+}}
+{_function("unwrap")}
+{_function("greatCircle")}
+{_function("renderRoute")}
+renderRoute();
+console.log(JSON.stringify(feats.map((f) => [f.properties.kind,
+  f.geometry.coordinates[0], f.geometry.coordinates[f.geometry.coordinates.length - 1]])));
+"""
+
+
+@pytest.fixture(scope="module")
+def render_route(node: str, tmp_path_factory):
+    def call(partial: bool):
+        path = tmp_path_factory.mktemp("route") / "route.mjs"
+        path.write_text(_render_route_probe("true" if partial else "false"),
+                        encoding="utf-8")
+        done = subprocess.run([node, str(path)], capture_output=True, text=True,
+                              timeout=60)
+        assert done.returncode == 0, done.stderr
+        return json.loads(done.stdout.strip().splitlines()[-1])
+    return call
+
+
+def test_a_partial_chain_draws_no_leg_to_its_first_airport(render_route):
+    """From Seoul, whose only land border is sealed, the page drew a ground line
+    all the way to Kuala Lumpur: `legsTo` had lost the flights before KUL, and
+    `renderRoute` joined the departure city to `chain[0]` regardless.
+
+    A complete chain still draws that leg -- that is the common case and the
+    control for this test. A partial one must not: nothing in the data says the
+    journey went over the ground, and a line on a globe is an assertion.
+
+    Mutation performed and reverted: drop `&& !chain.partial` from the leading
+    `add(...)` in renderRoute -> red on the first assertion below.
+    """
+    partial = render_route(True)
+    kinds = [k for k, _, _ in partial]
+    assert kinds.count("ground") == 1, (
+        f"a partial chain drew {kinds.count('ground')} ground legs; only the "
+        f"one onward from MRU is substantiated: {partial}")
+    starts = [start for kind, start, _ in partial if kind == "ground"]
+    assert abs(starts[0][0] - 57.683) < 0.5, (
+        f"the one ground leg should leave MRU, not Seoul: {starts[0]}")
+
+    # The control: with the chain complete the leg to the first airport is
+    # drawn, so the assertion above is about `partial` and not about the
+    # feature count happening to be one.
+    whole = render_route(False)
+    assert [k for k, _, _ in whole].count("ground") == 2, (
+        f"a complete chain must still draw both ground legs: {whole}")
+    assert any(abs(start[0] - 126.98) < 0.5
+               for kind, start, _ in whole if kind == "ground"), (
+        f"the complete chain's first ground leg should leave Seoul: {whole}")
+
+    # Both draw the flight itself.
+    for name, got in (("partial", partial), ("complete", whole)):
+        assert [k for k, _, _ in got].count("air") == 1, (
+            f"the {name} chain lost the flight KUL -> MRU: {got}")
