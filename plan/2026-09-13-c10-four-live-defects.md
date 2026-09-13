@@ -316,6 +316,39 @@ app.js: 1 failed, 5 passed. Repaired in `d46ab4b`.
 A guard now asserts exactly one writer of `route-ground`'s dasharray and exactly
 one frame loop driving it.
 
+## C10-17 — the origin-label check blamed the page for a late gazetteer — **DONE**
+
+Reported as "clicking an origin label did not change the departure". The page
+was fine. Measured live: labels are ready 202 ms after load, and the bands
+source changes 114 ms after the click, because `paintOrigin` calls
+`map.addSource("bands", …)` synchronously — no fetch stands between the click
+and the url.
+
+What the check could not tell apart was "the click did nothing" from "there was
+nothing to click". It slept a fixed 6 s for labels that come from
+`places.json`, 1.8 MB, now sharing the connection with the 10 MB reading tier.
+With the gazetteer not yet landed there was no `.lbl.origin`, and BOTH failures
+fired — including one naming a defect the page did not have.
+
+Fixed by polling for the label (25 s), then polling for the source to change,
+and reporting which of the two happened. Two further corrections: the assertion
+is now "the url CHANGED from what it was", read before the click, rather than
+"it stopped saying seoul" — the same hardcoded-geography mistake the phone taps
+made with `[120, 40]`; and the "not an origin archive" failure is matched
+against the real url shape.
+
+Both failure paths were exercised on the live page, not reasoned about.
+Replacing every label with a clone to strip its handlers reported
+`unchanged:true`; making `querySelectorAll(".lbl.origin")` return nothing
+reported `noLabel:true, labels:0`.
+
+Explicitly NOT this cycle's regression: the guard that makes `paintOrigin`
+ignore a click on the current departure predates it (`bfa7e10`), and Seoul has
+exactly one gazetteer row within 15 km, 0.06 km away, so it never had the
+duplicate label that would have made the gate click its own departure.
+
+Commit `5cf7ad2`.
+
 ---
 
 ## Gates
