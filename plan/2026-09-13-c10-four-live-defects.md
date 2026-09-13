@@ -236,11 +236,24 @@ Commit `03e81f0`. Nine mutations red.
 
 ## Gates
 
-`uv run ruff check .` — All checks passed.
-`uv run pytest -q tests/web/ tests/emit/ tests/test_licence_firewall.py` — passed.
+`uv run ruff check .` — **All checks passed.**
+
+`uv run pytest` over the whole repository — **747 passed, 4 deselected, 0
+failed**, exit 0, 17 min 14 s. The 4 deselected are the `real_multi_band` tests,
+deselected by default.
+
 Page-asset gate on the deploy path — 251 passed.
-`scripts/deploy_verify.sh --page-only` — **ALL CHECKS PASSED**, console errors 0,
-four viewports clean.
+
+`scripts/deploy_verify.sh --page-only` — **ALL CHECKS PASSED**, run four times
+(three iterations plus the final wording change). Console errors 0; all four
+viewports clean at 1280×800, 820×1180, 390×844 and 844×390.
+
+The two checks that failed before this cycle now report:
+
+| check | before | after |
+|---|---|---|
+| a searched destination, headline vs total | `head 16h 23 min`, `total 16 h 20 min`, `agree:false` | `head 16h 23 min`, `total 16 h 23 min`, **`agree:true`** |
+| tap from folded at 390×844 | `reading "∞no scheduled route"`, `folded:true` | `picked:true`, `time "28min"`, **`folded:false`**, `announced:true`, `timeOnScreen:true`, `legendOnScreen:true` |
 
 GATE_FIXES this cycle: 1 (`tests/web/test_city_label_dots.py` tripped UP031;
 rewritten as an f-string, not suppressed).
