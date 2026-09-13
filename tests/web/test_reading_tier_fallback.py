@@ -260,3 +260,82 @@ def test_a_response_for_an_abandoned_origin_is_dropped_not_applied(node, tmp_pat
             "origin.reading is written in a callback that does not check the "
             "origin generation, so a slow response for an abandoned departure "
             f"lands on the new one's array:\n{block.strip()[:240]}")
+
+
+def _arrow(name: str) -> str:
+    """The body of a `const NAME = (...) => { ... }` binding, by brace matching.
+
+    `loadReading` and `settle` are arrow consts, not declarations, so
+    `_function` above cannot find them.
+    """
+    start = APP.index(f"const {name} = ")
+    i = APP.index("{", APP.index("=>", start))
+    depth = 0
+    for j in range(i, len(APP)):
+        if APP[j] == "{":
+            depth += 1
+        elif APP[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return APP[start:j + 1]
+    raise AssertionError(f"const {name} is not brace-balanced")
+
+
+# --- and when the tier ARRIVES, everything read through lookup() is redone ---
+
+def test_the_arrival_of_the_finer_tier_redoes_every_reading_it_changes():
+    """`loadReading`'s success branch is the second place the page re-reads
+    everything, and it drifted from `settle()`.
+
+    `renderLegs()` was missing from it. The headline moved to the finer array
+    there while the itinerary kept the total it had already rendered, so
+    `?from=seoul&to=-20.162,57.499` printed "19 h 48 min" over a "Door to door"
+    line reading "19 h 57 min" -- measured against the shipped arrays, exactly
+    the res-6 and res-4 values for that cell. The itinerary panel takes both
+    of its numbers from `lookup()`, so it is self-consistent whenever it runs;
+    this path simply never ran it again.
+
+    Pinned as a set rather than one call, so the next render added to
+    `settle()` cannot be forgotten here. Comments are stripped first: the
+    standing rule is that an assertion over source text a comment can satisfy
+    is vacuous, and this one is explained by a comment naming every call.
+
+    Mutations performed and reverted, each confirmed RED:
+      * delete `renderLegs();` from loadReading            -> 1 failed
+      * delete `refreshScale();` from loadReading          -> 1 failed
+      * `if (pinB || lastPointer)` -> `if (lastPointer)`   -> 1 failed
+    """
+    import re
+
+    body = re.sub(r"//[^\n]*", "", _arrow("loadReading"))
+    # Everything in settle() whose output is a function of lookup().
+    for call in ("rereadPointer()", "renderLegs()", "renderDeparture()",
+                 "refreshScale()", "render($(\"q\").value)"):
+        assert call in body, (
+            f"loadReading does not redo {call} when the finer array lands, so "
+            "what it produced off the coarse grid stands beside a headline "
+            "that has moved")
+    # rereadPointer prefers the PIN over the pointer, so the guard in front of
+    # it must not be narrower than that -- a pinned destination with no pointer
+    # would keep a coarse headline for the rest of the session.
+    assert re.search(r"if\s*\(\s*pinB\s*\|\|\s*lastPointer\s*\)\s*rereadPointer\(\)", body), (
+        "the re-read is guarded on the pointer alone; rereadPointer answers "
+        "for the pin first")
+
+
+def test_the_two_re_read_paths_have_not_drifted_apart():
+    """`settle()` and `loadReading` both re-read after new data lands. The
+    only render `settle()` may have that `loadReading` does not is the city
+    list rebuild's announcement, which is deliberately once-per-arrival.
+
+    Mutation performed and reverted: delete `renderLegs()` from `settle()`
+    -> red here and in test_state_writers.
+    """
+    import re
+
+    settle = re.sub(r"//[^\n]*", "", _arrow("settle"))
+    read = re.sub(r"//[^\n]*", "", _arrow("loadReading"))
+    for call in ("renderLegs()", "renderDeparture()", "refreshScale()"):
+        assert (call in settle) == (call in read), (
+            f"{call} runs in one re-read path and not the other: "
+            f"settle={call in settle}, loadReading={call in read}")

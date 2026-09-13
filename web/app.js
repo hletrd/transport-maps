@@ -1484,11 +1484,26 @@ function paintOrigin(o, { keepZoom = false } = {}) {
           // Same refusal the other five arrays get.
           origin.reading = checkedReading(b, cells.length,
                                           `${o.slug}${meta.readingUrlSuffix}`);
-          // The number under the pointer and every row of the city list were
-          // read off the coarse grid; both are redone once, in place. Not
-          // settle(): that would re-announce "travel times are ready" to a
-          // screen reader for data that was already there.
-          if (lastPointer) rereadPointer();
+          // Everything read through lookup() came off the coarse grid and is
+          // redone once, in place. Not settle(): that would re-announce
+          // "travel times are ready" to a screen reader for data that was
+          // already there.
+          //
+          // renderLegs() was missing, and it is the one that shows. The
+          // headline moved to the finer array here while the itinerary kept
+          // the total it had rendered with, so `?from=seoul&to=-20.162,57.499`
+          // printed 19 h 48 min over a "Door to door" line reading 19 h 57 --
+          // the res-6 and res-4 values for that cell exactly. This is the path
+          // the panel's own reconciliation could not cover: it takes both
+          // numbers from lookup(), so it is right whenever it runs, and it was
+          // not being run again.
+          //
+          // The guard is `pinB || lastPointer` because that is what
+          // rereadPointer itself prefers: a pinned destination owns the
+          // headline, and a pin with no pointer would otherwise keep a coarse
+          // reading forever.
+          if (pinB || lastPointer) rereadPointer();
+          renderLegs();
           render($("q").value);
           renderDeparture();
           // The zoom detail is sampled through lookup(), which now answers
