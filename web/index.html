@@ -304,15 +304,24 @@ body.crowded .depart-card{display:none}
 .zoomstrip{display:flex;height:9px;border-radius:1px;overflow:hidden;position:relative}
 .zoomstrip span{flex:1}
 .detail-cap{margin:6px 0 0;font-size:var(--t-cap);color:var(--text-3)}
-.legend-cap{margin:6px 0 0;font-size:var(--t-cap);color:var(--text-3)}
+/* The three lines that close the readout -- the door-to-door caption, the map
+   credit, the liability notice and the build date -- were four paragraphs at
+   margins 6, 3, 4 and 2, all the same size and all the same grey. Four
+   different gaps between four identical-looking blocks is not a rhythm; it is
+   four separate decisions nobody made together. One step away from the keys
+   above, one step between them, and the build date folded into the notice it
+   qualifies. Every statement is intact: CLAUDE.md requires the door-to-door
+   caption wherever a figure is presented, the OSMF Attribution Guideline
+   requires the credit without interaction, and the liability notice is the
+   owner's. */
+.legend-cap{margin:7px 0 0;font-size:var(--t-cap);color:var(--text-3);line-height:1.4}
 /* NOT .credit: that class is already taken by the pin and address lists. */
-.legend-credit{margin:3px 0 0;font-size:var(--t-cap);color:var(--text-3)}
+.legend-credit{margin:3px 0 0;font-size:var(--t-cap);color:var(--text-3);line-height:1.4}
 .legend-credit a{color:var(--text-2);text-decoration:underline;text-underline-offset:2px}
 .legend-credit a:hover{color:var(--text)}
 .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
   clip-path:inset(50%);white-space:nowrap;border:0}
-.reading .disclaimer{margin:4px 0 0;font-size:var(--t-cap);color:var(--text-3);line-height:1.4}
-.reading .built{margin:2px 0 0;font-size:var(--t-cap);color:var(--text-3)}
+.reading .disclaimer{margin:3px 0 0;font-size:var(--t-cap);color:var(--text-3);line-height:1.4}
 #key h3{margin:14px 0 4px;font-size:var(--t-lbl);font-weight:600;color:var(--text)}
 #key a,.inline-link{color:var(--text-2);text-decoration:underline;text-underline-offset:2px}
 #key a:hover{color:var(--text)}
@@ -827,8 +836,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
     <p class="legend-credit">Map data &copy; <a href="https://www.openstreetmap.org/copyright"
        target="_blank" rel="noopener">OpenStreetMap</a> contributors &middot;
        <a href="#privacy" id="privacy-link">Privacy</a></p>
-    <p class="disclaimer" id="disclaimer">For reference only: estimates from open data and a simplified model, with no warranty.</p>
-    <p class="built" id="built"></p>
+    <!-- The build date was a fourth one-sentence grey paragraph under three
+         others. It belongs with the notice above it: both say what the figures
+         ARE, neither is a caption for the strip, and both are hidden together
+         when the phone sheet folds -- so joining them changes nothing about
+         what is shown, only how many blocks it takes to show it. -->
+    <p class="disclaimer" id="disclaimer">For reference only: estimates from open data and a simplified model, with no warranty. <span id="built"></span></p>
   </div>
 
   <div class="legs" id="legs" hidden></div>
