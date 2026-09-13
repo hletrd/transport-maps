@@ -120,6 +120,24 @@
   --text-3:#8f96a0;
   --accent:#e48f35;
   --r:2px;                       /* one corner radius for every control */
+  /* Four steps, and every piece of small text is on one of them.
+     There were SIX -- 10, 10.5, 11, 11.5, 12 and 12.5 px -- across 37 rules,
+     all of them meaning "small grey text", against only three weights and
+     four colours. Six sizes for one job is not a scale anybody chose; it is
+     what half-pixel nudges leave behind, and it is the thing that reads as
+     generated rather than designed. Hierarchy is carried by weight, colour
+     and space, which is what the design policy asks for, so the sizes only
+     have to separate the four roles that genuinely differ:
+       --t-micro  credits, coordinates, the search hint
+       --t-cap    captions, legend ticks, map labels, panel prose
+       --t-ui     controls and secondary readouts
+       --t-lbl    panel headings, itinerary rows, the departure summary
+     Collapsed by folding the two least-used steps into their neighbour, so
+     every rule shrinks or holds except `#key .src`, which was alone at 10 px.
+     `.scale span` stays at --t-cap (11 px) so no legend tick changes how it
+     prunes, and `.leg` stays at --t-lbl (12.5 px) so the measured 76 px
+     `.leg .t` width stays valid. */
+  --t-micro:10.5px; --t-cap:11px; --t-ui:12px; --t-lbl:12.5px;
   --font:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
   color-scheme:dark;
 }
@@ -143,7 +161,7 @@ body{
 body.fatal .rail{display:none}
 summary{
   list-style:none;cursor:pointer;padding:10px 14px;
-  font-size:12.5px;color:var(--text-2);font-weight:500;
+  font-size:var(--t-lbl);color:var(--text-2);font-weight:500;
   white-space:nowrap;display:flex;align-items:center;gap:8px;
 }
 summary::-webkit-details-marker{display:none}
@@ -176,7 +194,7 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
 }
 .mast h1{margin:0;font-size:17px;font-weight:600;line-height:1.2}
-.mast p{margin:4px 0 0;font-size:11.5px;color:var(--text-2);line-height:1.45}
+.mast p{margin:4px 0 0;font-size:var(--t-cap);color:var(--text-2);line-height:1.45}
 
 /* ---- the departure city, between the masthead and the reading ---- */
 .depart-card{
@@ -185,15 +203,15 @@ details[open] > summary{border-bottom:1px solid var(--line)}
   background:color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
 }
-.depart-card h2{margin:0;font-size:12.5px;font-weight:400;color:var(--text-3)}
+.depart-card h2{margin:0;font-size:var(--t-lbl);font-weight:400;color:var(--text-3)}
 .depart-card h2 b{display:block;font-size:22px;font-weight:500;color:var(--text);line-height:1.2}
-.depart-card .sub{margin:2px 0 0;font-size:11.5px;color:var(--text-2)}
-.reach{margin:10px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}
+.depart-card .sub{margin:2px 0 0;font-size:var(--t-cap);color:var(--text-2)}
+.reach{margin:10px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:var(--t-ui)}
 .reach dt{color:var(--text-2)}
 /* A width, not tabular figures: the design policy rules those out, and the
    column only needs to line up, not to be monospaced. */
 .reach dd{margin:0;color:var(--text);font-weight:500;width:5.5ch}
-.depart-card .note{margin:8px 0 0;font-size:11px;color:var(--text-3);line-height:1.4}
+.depart-card .note{margin:8px 0 0;font-size:var(--t-cap);color:var(--text-3);line-height:1.4}
 /* Short windows have no room between the two blocks; the panel header still
    names the city there. */
 @media (max-height:700px){ body:not(.smallui) .depart-card{display:none} }
@@ -234,8 +252,8 @@ body.crowded .depart-card{display:none}
 .reading .v .idle{font-size:15px;font-weight:400;color:var(--text-2);
   display:block;padding-top:6px;line-height:1.4}
 .reading .v .waiting{font-size:13px;color:var(--text-3);font-weight:400}
-.reading .at{margin:4px 0 0;font-size:12px;color:var(--text-2);min-height:2.6em}
-.listcap{margin:8px 0 4px;font-size:11.5px;line-height:1.45;color:var(--text-3)}
+.reading .at{margin:4px 0 0;font-size:var(--t-ui);color:var(--text-2);min-height:2.6em}
+.listcap{margin:8px 0 4px;font-size:var(--t-cap);line-height:1.45;color:var(--text-3)}
 /* WCAG 2.2 SC 2.5.8 asks for 24x24 CSS px. The two Settings checkboxes
    measured 15x15 at the UA default, and the label beside each is a separate
    target of its own -- so both halves are sized here rather than only the box.
@@ -246,7 +264,7 @@ body.crowded .depart-card{display:none}
 .row label{display:flex;align-items:center;min-height:24px;cursor:pointer}
 /* Its own line, so the pointer readout cannot erase it. Warm rather than red:
    the times below are still correct, only the shading is missing. */
-.reading .trouble{margin:6px 0 0;padding:6px 8px;font-size:12px;line-height:1.4;
+.reading .trouble{margin:6px 0 0;padding:6px 8px;font-size:var(--t-ui);line-height:1.4;
   color:var(--text-2);background:rgba(224,168,74,.14);
   border-left:2px solid rgba(224,168,74,.7);border-radius:3px}
 .reading .at b{color:var(--text);font-weight:500}
@@ -263,7 +281,7 @@ body.crowded .depart-card{display:none}
 .tints span{flex:1}
 .scale{position:relative;height:15px;margin-top:5px}
 .scale span{
-  position:absolute;transform:translateX(-50%);font-size:11px;color:var(--text-3);
+  position:absolute;transform:translateX(-50%);font-size:var(--t-cap);color:var(--text-3);
   white-space:nowrap;
 }
 /* The last tick sits on the strip's end and would overhang it. */
@@ -285,22 +303,22 @@ body.crowded .depart-card{display:none}
    `.tints span` against the band count. */
 .zoomstrip{display:flex;height:9px;border-radius:1px;overflow:hidden;position:relative}
 .zoomstrip span{flex:1}
-.detail-cap{margin:6px 0 0;font-size:11px;color:var(--text-3)}
-.legend-cap{margin:6px 0 0;font-size:11px;color:var(--text-3)}
+.detail-cap{margin:6px 0 0;font-size:var(--t-cap);color:var(--text-3)}
+.legend-cap{margin:6px 0 0;font-size:var(--t-cap);color:var(--text-3)}
 /* NOT .credit: that class is already taken by the pin and address lists. */
-.legend-credit{margin:3px 0 0;font-size:11px;color:var(--text-3)}
+.legend-credit{margin:3px 0 0;font-size:var(--t-cap);color:var(--text-3)}
 .legend-credit a{color:var(--text-2);text-decoration:underline;text-underline-offset:2px}
 .legend-credit a:hover{color:var(--text)}
 .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
   clip-path:inset(50%);white-space:nowrap;border:0}
-.reading .disclaimer{margin:4px 0 0;font-size:11px;color:var(--text-3);line-height:1.4}
-.reading .built{margin:2px 0 0;font-size:11px;color:var(--text-3)}
-#key h3{margin:14px 0 4px;font-size:12.5px;font-weight:600;color:var(--text)}
+.reading .disclaimer{margin:4px 0 0;font-size:var(--t-cap);color:var(--text-3);line-height:1.4}
+.reading .built{margin:2px 0 0;font-size:var(--t-cap);color:var(--text-3)}
+#key h3{margin:14px 0 4px;font-size:var(--t-lbl);font-weight:600;color:var(--text)}
 #key a,.inline-link{color:var(--text-2);text-decoration:underline;text-underline-offset:2px}
 #key a:hover{color:var(--text)}
 /* The two tones the ramp does not cover: land no scheduled service reaches, and
    the sea. Without them a tenth of the land is a grey the legend never names. */
-.keys{display:flex;gap:14px;margin-top:7px;font-size:11px;color:var(--text-3)}
+.keys{display:flex;gap:14px;margin-top:7px;font-size:var(--t-cap);color:var(--text-3)}
 .key{display:inline-flex;align-items:center;gap:5px}
 /* The outline carries the affordance, not the fill: the fills are the map's
    real colours and must stay truthful, but "open water" measured 1.09-1.22:1
@@ -320,10 +338,10 @@ body.crowded .depart-card{display:none}
 .legs{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;
   max-height:34vh;overflow-y:auto;scrollbar-width:thin;
   scrollbar-color:var(--line-2) transparent}
-.legs h2{margin:0 0 7px;font-size:12px;font-weight:500;
+.legs h2{margin:0 0 7px;font-size:var(--t-ui);font-weight:500;
   color:var(--text-3)}
-.leg{display:flex;gap:9px;align-items:baseline;padding:3px 0;font-size:12.5px}
-.legs .linekey{margin:8px 0 0;font-size:11.5px;line-height:1.45;color:var(--text-3)}
+.leg{display:flex;gap:9px;align-items:baseline;padding:3px 0;font-size:var(--t-lbl)}
+.legs .linekey{margin:8px 0 0;font-size:var(--t-cap);line-height:1.45;color:var(--text-3)}
 /* 76px, not 58: measured in this page's own 12.5px Plex, "2 h 14 min" is
    59.6px, "14 h 39 min" 67.1px and "120 h 59 min" 74.6px, so at 58px eight
    of the nine rows of a real itinerary wrapped with "min" orphaned on the
@@ -375,7 +393,7 @@ body.crowded .depart-card{display:none}
 /* The ring is drawn INSIDE the row: the list is a scroll box whose edges meet
    the buttons', so an outset ring was clipped to a one-pixel underline. */
 .results button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.results .empty{font-size:11.5px;color:var(--text-3);padding:6px 0;line-height:1.45}
+.results .empty{font-size:var(--t-cap);color:var(--text-3);padding:6px 0;line-height:1.45}
 .results button:hover{color:var(--text)}
 .results button[aria-current="true"]{color:var(--accent);font-weight:500}
 /* `flex:none` meant a long secondary column could not shrink, and the row's
@@ -385,11 +403,11 @@ body.crowded .depart-card{display:none}
    break at, so an address row overflowed its own scroll box with no ellipsis
    and no scrollbar -- the text simply ran out of the panel. Both columns now
    shrink and both end in an ellipsis. */
-.results .coord{font-size:10.5px;color:var(--text-3);
+.results .coord{font-size:var(--t-micro);color:var(--text-3);
   flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .results button > span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* Only on the four names two cities share; sentence case, no letter-spacing. */
-.results .disambig{font-style:normal;color:var(--text-3);font-size:11px}
+.results .disambig{font-style:normal;color:var(--text-3);font-size:var(--t-cap)}
 /* The city rows used to end in a latitude and a longitude, which answers a
    question nobody arrives with. They end in the door-to-door time from the
    current departure instead -- the page's answer, in the list where a visitor
@@ -397,7 +415,7 @@ body.crowded .depart-card{display:none}
    policy rules those out, and the column only needs to line up. It is
    content, not metadata, so it carries a little more weight and colour than
    .coord did. */
-.results .rowtime{font-size:11px;color:var(--text-2);font-weight:500;
+.results .rowtime{font-size:var(--t-cap);color:var(--text-2);font-weight:500;
   flex:none;width:5.8em;text-align:right;white-space:nowrap}
 .results button[aria-current="true"] .rowtime{color:var(--text-3);font-weight:400}
 #q{
@@ -408,25 +426,25 @@ body.crowded .depart-card{display:none}
 /* Same reason as .mapbtn: the search box floats over the globe. */
 #q:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #q::placeholder{color:var(--text-3)}
-.here{margin:0 0 8px;font-size:11px;color:var(--text-3);line-height:1.45}
+.here{margin:0 0 8px;font-size:var(--t-cap);color:var(--text-3);line-height:1.45}
 .qrow{display:flex;gap:8px;align-items:center;margin-top:7px}
 .qrow .btn{flex:none;white-space:nowrap}       /* the hint yields, the button never wraps */
-.qhint{flex:1 1 auto;min-width:0;font-size:10.5px;color:var(--text-3);line-height:1.35}
+.qhint{flex:1 1 auto;min-width:0;font-size:var(--t-micro);color:var(--text-3);line-height:1.35}
 
 /* ---- settings ---- */
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;
-  font-size:12.5px;color:var(--text-2)}
+  font-size:var(--t-lbl);color:var(--text-2)}
 .row + .row{border-top:1px solid var(--line)}
 .row input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
 /* A color scheme cannot be judged from its name, so each option shows the
    actual ramp it will paint. */
 .rampwrap{padding:7px 0 2px;border-top:1px solid var(--line)}
 .ramps{display:flex;flex-direction:column;gap:5px}
-.rowlabel{font-size:12.5px;color:var(--text-2);padding-bottom:6px}
+.rowlabel{font-size:var(--t-lbl);color:var(--text-2);padding-bottom:6px}
 .ramps button{
   display:flex;align-items:center;gap:9px;width:100%;cursor:pointer;
   background:none;border:1px solid transparent;border-radius:var(--r);padding:5px 4px;  /* 24 px tall */
-  font-family:inherit;font-weight:400;font-size:12px;line-height:1.2;color:var(--text-3);text-align:left;
+  font-family:inherit;font-weight:400;font-size:var(--t-ui);line-height:1.2;color:var(--text-3);text-align:left;
 }
 .ramps button:hover{color:var(--text-2)}
 .ramps button[aria-current="true"]{border-color:var(--line-2);color:var(--text)}
@@ -438,7 +456,7 @@ body.crowded .depart-card{display:none}
 .oceans{display:flex;flex-wrap:wrap;gap:6px}
 .oceans button{
   background:none;border:1px solid var(--line);border-radius:var(--r);
-  color:var(--text-3);font:inherit;font-size:10.5px;line-height:1.2;
+  color:var(--text-3);font:inherit;font-size:var(--t-micro);line-height:1.2;
   padding:5px 6px 6px;cursor:pointer;display:flex;flex-direction:column;
   align-items:center;gap:4px;width:60px;
 }
@@ -453,12 +471,12 @@ body.crowded .depart-card{display:none}
   position:fixed;z-index:8;pointer-events:none;padding:5px 8px;border-radius:var(--r);
   background:color-mix(in srgb, var(--bg) 86%, transparent);
   border:1px solid var(--line);backdrop-filter:blur(6px);
-  font-size:12px;color:var(--text);white-space:nowrap;
+  font-size:var(--t-ui);color:var(--text);white-space:nowrap;
 }
 .tip b{font-weight:500}
 
 /* Place labels: DOM markers in the page's own typeface. */
-.lbl{font-family:var(--font);font-size:11px;line-height:1.3;color:var(--text-2);white-space:nowrap;pointer-events:none;
+.lbl{font-family:var(--font);font-size:var(--t-cap);line-height:1.3;color:var(--text-2);white-space:nowrap;pointer-events:none;
   text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 0 3px var(--bg),0 1px 2px var(--bg)}
 /* Every label swallows its click (it is not a destination); a label that
    names a departure city is a button, marked with a dot so it can be told
@@ -486,10 +504,10 @@ body.crowded .depart-card{display:none}
 .lbl.origin[aria-current="true"]:hover{text-decoration:none}
 .lbl.origin:focus-visible{text-decoration:underline;outline:2px solid var(--accent);outline-offset:0;border-radius:var(--r)}
 .pins .depart{margin-top:8px}
-.pins .credit{font-size:10.5px;color:var(--text-3);padding:2px 0 0}
+.pins .credit{font-size:var(--t-micro);color:var(--text-3);padding:2px 0 0}
 .results .addresses{list-style:none;margin:6px 0 0;padding:6px 0 0;border-top:1px solid var(--line)}
-.results .addresses .head{font-size:11px;color:var(--text-3);padding:2px 0 4px}
-.results .addresses .credit{font-size:10.5px;color:var(--text-3);padding:6px 0 0}
+.results .addresses .head{font-size:var(--t-cap);color:var(--text-3);padding:2px 0 4px}
+.results .addresses .credit{font-size:var(--t-micro);color:var(--text-3);padding:6px 0 0}
 /* An airport code or a travel mode in the route explains itself on hover.
    The explanation used to be an ::after on the row, inside .legs -- which is a
    scroll box, so it was clipped: measured at 390x844 on Seoul->JFK, hovering
@@ -500,19 +518,19 @@ body.crowded .depart-card{display:none}
    outside the box, which also gives it somewhere to go on a phone. */
 .ap,.mode{position:relative;cursor:help;border-bottom:1px dotted var(--text-3)}
 .legtip{position:fixed;z-index:9;min-width:150px;max-width:min(280px,calc(100vw - 16px));
-  white-space:normal;font-weight:400;font-size:11.5px;line-height:1.4;color:var(--text);
+  white-space:normal;font-weight:400;font-size:var(--t-cap);line-height:1.4;color:var(--text);
   background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:5px 8px;
   box-shadow:0 4px 14px rgba(0,0,0,.45);pointer-events:none}
 .ap:focus:not(:focus-visible),.mode:focus:not(:focus-visible){outline:none}
 .ap:focus-visible,.mode:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .tip i{font-style:normal;color:var(--text-3)}
 .row label{cursor:pointer}
-.hint{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5}
+.hint{margin:8px 0 0;font-size:var(--t-micro);color:var(--text-3);line-height:1.5}
 /* With a reading above it, the explanation is no longer the thing to read. */
 #pins:not(:empty) + #route-hint{margin-top:12px;border-top:1px solid var(--line);padding-top:9px}
 .btn{
   background:var(--surface-2);border:1px solid var(--line-ctl);border-radius:var(--r);color:var(--text-2);
-  font-family:inherit;font-weight:500;font-size:12px;line-height:1;padding:7px 10px;cursor:pointer;
+  font-family:inherit;font-weight:500;font-size:var(--t-ui);line-height:1;padding:7px 10px;cursor:pointer;
 }
 .btn:hover{color:var(--text);border-color:var(--line-2)}
 .btn:disabled{color:var(--text-3);cursor:progress}
@@ -549,19 +567,19 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 .compass .needle{transform-origin:12px 12px}
 
 /* ---- point to point ---- */
-.pins{margin:8px 0 0;font-size:12px;color:var(--text-2)}
+.pins{margin:8px 0 0;font-size:var(--t-ui);color:var(--text-2)}
 .pins div{display:flex;gap:8px;padding:3px 0;align-items:baseline}
-.pins .k{color:var(--text-3);width:38px;flex:none;font-size:12px}
+.pins .k{color:var(--text-3);width:38px;flex:none;font-size:var(--t-ui)}
 .pins .val{color:var(--text)}
 
-#key p{margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--text-2)}
+#key p{margin:8px 0 0;font-size:var(--t-cap);line-height:1.55;color:var(--text-2)}
 /* <code> is the one element the page hands to the user agent's own family,
    and for <code> that family is monospace: a terminal run in the middle of
    a sentence, which is the same tell the tabular-nums ban exists to stop.
    CLAUDE.md asks for the hierarchy to be carried by weight and colour, so
    the filename is marked as a literal that way instead of by a face. */
 #key code{font:inherit;font-weight:500;color:var(--text)}
-#key .src{margin-top:8px;font-size:10px;color:var(--text-3);line-height:1.55}
+#key .src{margin-top:8px;font-size:var(--t-micro);color:var(--text-3);line-height:1.55}
 #key .disclaimer-long{border-top:1px solid var(--line);padding-top:8px}
 #key .disclaimer-long b{color:var(--text-2);font-weight:500}
 
@@ -581,7 +599,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
     background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
     border-bottom:1px solid var(--line);flex:none;
   }
-  .rail > .depart-card h2{font-size:11.5px}
+  .rail > .depart-card h2{font-size:var(--t-cap)}
   .rail > .depart-card h2 b{font-size:17px}
   .rail > .depart-card .reach{grid-template-columns:auto 1fr auto 1fr;column-gap:8px}
   .rail > .depart-card .note{margin-top:6px}
@@ -627,7 +645,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
      itinerary have its length and let the rail do the scrolling. */
   .legs{max-height:none}
   .results{max-height:26vh}
-  .lbl{font-size:10px}
+  .lbl{font-size:var(--t-micro)}
   /* grab handle; the sheet folds to this strip plus the legend, which is
      always visible (a standing rule): the readout's number, the keys and
      the route fold away, the band strip and its ticks stay. */
@@ -666,7 +684,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   /* Compact, because the fold is a request for room. The legend still follows
      it, and CLAUDE.md keeps the legend visible either way. */
   .rail.folded .reading > #time{font-size:22px;min-height:0;margin:0 0 4px}
-  .rail.folded .reading > #time .idle{font-size:12px}
+  .rail.folded .reading > #time .idle{font-size:var(--t-ui)}
   .rail.folded .keys{margin-top:5px}
   .rail.folded .legend-cap{margin-top:4px}
   .rail.folded .legend-credit{margin-top:2px}
@@ -687,7 +705,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   .rail > .depart-card{padding:12px 18px 14px}
   .rail > .depart-card h2 b{font-size:19px}
   .rail > .panel > summary{padding:12px 18px}
-  .lbl{font-size:11px}
+  .lbl{font-size:var(--t-cap)}
 }
 
 /* phones on their side: too short for a bottom sheet; use a narrow right rail */
@@ -847,7 +865,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
        privacy statement was not in this region. -->
   <h2 id="rail-h" class="sr-only">Departure, route, settings, and sources and method</h2>
   <details class="panel" id="departure" open>
-    <summary>Departure<span id="origin-name" style="color:var(--text);font-weight:400;font-size:12.5px"></span></summary>
+    <summary>Departure<span id="origin-name" style="color:var(--text);font-weight:400;font-size:var(--t-lbl)"></span></summary>
     <div class="body">
       <div class="qrow" style="margin:0 0 8px">
         <button class="btn" id="locate" type="button">Start from the city nearest me</button>
