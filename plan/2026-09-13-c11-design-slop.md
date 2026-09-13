@@ -252,3 +252,66 @@ cost multiplier only and did not re-raise it, which is correct.
 | C11-8 typeface survivors | done |
 | C11-9 ARIA rail label and landmark comment | done |
 | C11-10 design-policy gate, mutation-verified | done |
+
+## Verification — measured on the deployed page, not asserted
+
+Gates, whole repo:
+
+| Gate | Before | After |
+|---|---|---|
+| `uv run ruff check .` | exit 0 | exit 0 |
+| `uv run pytest` | 761 passed, 4 deselected | **768 passed**, 4 deselected, exit 0 |
+| deploy `page_gate` | 267 passed | **274 passed** |
+
+The +7 is `tests/web/test_design_policy.py`. No gate was weakened, no threshold
+lowered and no test rewritten to accommodate a change. `GATE_FIXES` this cycle
+is 0: nothing was red.
+
+`scripts/deploy_verify.sh --page-only` ran to `ALL CHECKS PASSED`, ending in
+`browser_verify.sh` against the live URL: 553 cities, 39 swatches, 12 schemes,
+0 console errors, and clean passes at 1280x800, 820x1180, 390x844 and 844x390
+including the folded-sheet and rotate-across-860px paths.
+
+Then measured independently, live, with the viewport set through
+`agent-browser set viewport` (not the window size — the first attempt read
+1280x577 because browser chrome takes 223 px, which would have made every
+box metric below wrong):
+
+**C11-2, the rail overflow.** At a true 1280x800, with the default panel state:
+
+| | before (designer lane) | after |
+|---|---|---|
+| rail scrollHeight − clientHeight | 22 | **0** |
+| `#key` bottom | 802 | **780** |
+| rail bottom | 780 | 780 |
+
+The licence and privacy panel now ends exactly on the rail's bottom edge
+instead of 22 px past it. Same at 820x1180: overflow 0, `#key` bottom 1180,
+rail bottom 1180.
+
+**C11-3, the type scale.** Computed `font-size` of every element at or below
+12.5 px, at all four viewports:
+
+    before   10, 10.5, 11, 11.5, 12, 12.5     (six)
+    after    10.5, 11, 12, 12.5               (four)
+
+**C11-7, the detail row's last tick.** Zoomed in until `#detail` unhides:
+
+| viewport | strip right edge | last tick right edge | overhang |
+|---|---|---|---|
+| 390x844 | 376 | 376 | **0** (was 395, off a 390 px screen) |
+| 1280x800 | 304 | 304 | **0** (was 19 px past the strip) |
+
+The tick carries `class="last"` in both, and the 390x844 label reads
+"24 h 30" in full rather than truncating.
+
+**The bans, re-swept live after the changes.** Every element at all four
+viewports: zero `text-transform`, zero non-`normal` `letter-spacing`, zero
+`font-variant-numeric`. Body family resolves to `"IBM Plex Sans"`. No
+horizontal scroll at any viewport.
+
+**Nothing required was lost.** `#built` is populated ("Data built on September
+13, 2026"), `.legend-cap` and `.disclaimer` both render at both phone
+viewports, the map credit and privacy link are unchanged, and
+`?from=atlantis` still announces "No departure city called "atlantis"; showing
+Seoul." — the failure path the success path's removal had to leave intact.
