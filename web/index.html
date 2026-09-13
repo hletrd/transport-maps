@@ -540,7 +540,7 @@ body.crowded .depart-card{display:none}
 .compass{
   position:fixed;right:296px;bottom:20px;z-index:7;width:46px;height:46px;border-radius:50%;
   background:var(--surface);border:1px solid var(--line-ctl);cursor:pointer;padding:0;
-  display:grid;place-items:center;
+  display:grid;place-items:center;font:inherit;
 }
 .compass:hover{border-color:var(--line-2)}
 .compass:focus-visible,.btn:focus-visible,.ramps button:focus-visible,.oceans button:focus-visible,
@@ -555,6 +555,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 .pins .val{color:var(--text)}
 
 #key p{margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--text-2)}
+/* <code> is the one element the page hands to the user agent's own family,
+   and for <code> that family is monospace: a terminal run in the middle of
+   a sentence, which is the same tell the tabular-nums ban exists to stop.
+   CLAUDE.md asks for the hierarchy to be carried by weight and colour, so
+   the filename is marked as a literal that way instead of by a face. */
+#key code{font:inherit;font-weight:500;color:var(--text)}
 #key .src{margin-top:8px;font-size:10px;color:var(--text-3);line-height:1.55}
 #key .disclaimer-long{border-top:1px solid var(--line);padding-top:8px}
 #key .disclaimer-long b{color:var(--text-2);font-weight:500}
