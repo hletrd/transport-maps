@@ -3755,9 +3755,18 @@ const ignored = URL_REJECTED.length
   ? ` Ignored unusable link setting${URL_REJECTED.length > 1 ? "s" : ""}: `
     + `${[...new Set(URL_REJECTED)].join(", ")}.`
   : "";
-sayHere((badSlug
+// Nothing is said when nothing went wrong. "Showing <city>." was the FIFTH
+// place the departure was named -- the departure card, the Departure panel's
+// own summary, the reading line and the permalink all carry it already -- and
+// it was also, measured on the live page, exactly the 22 px that pushed the
+// licence and privacy panel out of the rail: scrollHeight 782 against
+// clientHeight 760, #key bottom 802 against rail bottom 780. Hiding this one
+// line took the overflow to 0 and put #key's bottom at exactly 780.
+// Every FAILURE still speaks, and still through sayHere: an unknown ?from=
+// slug names itself, and any unusable link setting is listed after it.
+sayHere(((badSlug
   ? `No departure city called "${badSlug}"; showing ${(requested ?? FALLBACK).name}.`
-  : `Showing ${(requested ?? FALLBACK).name}.`) + ignored);
+  : "") + ignored).trim());
 // The destination from the address, once the origin's arrays have landed --
 // the reading needs them, and the map needs somewhere to fly to.
 // The camera the link asked for wins over the destination auto-fit. Before,
