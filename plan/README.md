@@ -1,7 +1,9 @@
 # Plans
 
 Implementation plans derived from the multi-agent reviews in `.context/reviews/`
-(cycle 6: per-agent files plus `_aggregate.md` with merged clusters AA1…AA47 and
+(cycle 11: per-agent files plus `_aggregate.md`, with per-agent IDs `UX11-n`,
+`CR11-n`, `PR11-n`, `SEC11-n`, `CRIT11-n`, `TE11-n`, `ARCH11-n`, `DOC11-n`,
+`DBG11-n`, `VER11-n` and scheduled clusters `C11-n`; cycle 6: per-agent files plus `_aggregate.md` with merged clusters AA1…AA47 and
 per-agent IDs CR6-n, PR6-n, SEC6-n, CRIT6-n, VER6-n, TE6-n, TR6-n, ARCH6-n,
 DBG6-n, DOC6-n, UX6-n, FCR6-n; cycle 5: `cycle-5/` with clusters Z1…Z10 and the
 matching `-5` suffixes; cycle 4: per-agent files plus `_aggregate.md` with merged clusters Y1…Y30 and
@@ -35,6 +37,7 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 
 | Plan | Scope | Status |
 |---|---|---|
+| `2026-09-13-c11-design-slop.md` | The owner's design pass: "remove ai slops from overall designs". Prose, type scale, three false statements, and the gate that keeps the design policy enforced | cycle 11 done; all ten tasks landed |
 | `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | cycle 2 done; tasks still open, carried forward |
 | `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | cycle 2 done; tasks still open, carried forward |
 | `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); open tasks carried forward |
