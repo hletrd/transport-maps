@@ -234,6 +234,90 @@ Commit `03e81f0`. Nine mutations red.
 
 ---
 
+## C10-15 — the dashed ground legs flow toward the destination — **DONE**
+
+A fifth item from the owner, after the four defects: "transport 나타내는 점선이
+흐르는 애니메이션으로 나타나게 해줘". The dashed legs are the journeys to and
+from the airports; the solid arcs are the flights and stay solid, because a
+solid line has no dashes to move.
+
+**How.** MapLibre has no dash offset and `line-dasharray` is not data-driven, so
+the pattern itself is stepped. Two facts were read out of the vendored bundle
+rather than assumed:
+
+- `LineAtlas.getDash` keys its cache on `dasharray.join(",")`. A continuously
+  varying array would rebuild and re-upload a dash texture every frame and grow
+  that cache without bound, so the cycle is a FIXED set of twelve.
+- `getDashRanges` starts an odd-length array at `-last`, wrapping the final
+  element around to before the line's start. That is what makes the
+  three-element phase shift `[D-s, G, s]` exact.
+
+Every frame's array totals exactly one period, so the spacing does not breathe
+as the pattern moves, and `renderRoute` adds every leg departure-first, so a
+decreasing phase moves the dashes toward the destination.
+
+**Guards, all measured on the live page, not reasoned about.** The loop runs
+only while a drawn route actually contains a ground leg; it stops on a hidden
+tab; and under `prefers-reduced-motion` the dashes are static, not slower,
+resting on the layer's own `[2, 2.5]`.
+
+**Cost at 390x844, measured on the deployed build.**
+
+| state | map repaints/sec | dash writes/sec | frame p50 | frame p95 |
+|---|---|---|---|---|
+| no destination (loop off) | 0 | 0 | 16.7 ms | 16.7 ms |
+| journey drawn (loop on) | 60 | 16.6 | 16.7 ms | 16.8 ms |
+
+Isolated on one page with the route left drawn: stopping the loop through its
+own hidden-tab guard took the map from 60 repaints/sec to **0**, so the whole
+cost is the animation and none of it is the line.
+
+**The cost is 60 fps, not the 17/sec the design aimed at, and slowing it down
+does not help.** Measured at four cadences with the route drawn:
+
+| dash write every | writes/sec | repaints/sec |
+|---|---|---|
+| 60 ms | 16.5 | 59.0 |
+| 120 ms | 8.3 | 58.3 |
+| 200 ms | 5.0 | 57.3 |
+| 360 ms | 2.8 | 54.0 |
+
+One `line-dasharray` change puts MapLibre into a sustained repaint that outlasts
+the gap to the next one, so the map never settles between steps. It is not the
+fade duration: forcing `fadeDuration` to 0 left it at 59.3. No frames are
+dropped either way (p95 16.8 ms), so this is battery, not smoothness. Recorded
+in `deferred.md` as C10-16 with the one mitigation that would work.
+
+**Verified live after deploy:** 49 forward steps and 0 backward, 12 distinct
+patterns, 2 ground legs animated beside 3 solid air legs, and on clear the map
+returns to 0 repaints/sec with the dasharray back at `[2, 2.5]`.
+
+Commits `d46ab4b`, `c0e9876`. Test `tests/web/test_route_flow.py` (new, 14
+tests). Ten mutations red.
+
+## C10-15a — two animations shipped at once, and one ran backwards
+
+Not a defect this cycle introduced by design, but one it had to clean up. A
+concurrent agent committed `397ded7` while this work was in the tree, and BOTH
+implementations went live. Measured on the deployed page: 26.6 dasharray writes
+a second and **20** distinct patterns against the twelve one cycle defines.
+
+The duplicate was removed on its own merits, computed from its own `DASH_CYCLE`:
+its frames totalled 4.8126 to 7.0001 line widths, so the period swung 45% and
+the dashes stretched and compressed rather than flowed; and its leading gap
+decreased every step, so the flow ran toward the DEPARTURE, the opposite of what
+its own comment and commit message claimed.
+
+`397ded7` also deployed over a **red gate**: it added a `setRouteFlow()` call
+inside `renderRoute`, which `tests/web/test_route_geometry.py` extracts and runs
+standalone, and that file is part of `page_gate`. Checked out against its own
+app.js: 1 failed, 5 passed. Repaired in `d46ab4b`.
+
+A guard now asserts exactly one writer of `route-ground`'s dasharray and exactly
+one frame loop driving it.
+
+---
+
 ## Gates
 
 `uv run ruff check .` — **All checks passed.**
