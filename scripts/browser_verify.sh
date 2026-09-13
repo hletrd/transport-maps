@@ -242,7 +242,19 @@ agent-browser screenshot "$SHOTS/verify_zoom3.png" >/dev/null 2>&1
 # address carried the destination correctly failed a check about whether the
 # address carried the destination. Same lesson as the RAMPS count above --
 # parse the thing, do not grep it.
-agent-browser open "${URL}?from=tokyo&to=62.00243,99.78787&scheme=ember&sea=teal&north=1&at=62.00243,99.78787,4.20" >/dev/null 2>&1; sleep 12
+agent-browser open "${URL}?from=tokyo&to=62.00243,99.78787&scheme=ember&sea=teal&north=1&at=62.00243,99.78787,4.20" >/dev/null 2>&1; sleep 6
+# Poll for the page to have applied the link rather than sleeping a fixed time.
+# The fixed 12 s was chosen when an origin was a 181 KB array; it now also
+# fetches a ~10 MB resolution-6 reading tier, and the sleep silently became too
+# short -- every one of the eight assertions below failed against a live page
+# that was demonstrably correct a few seconds later. A gate that fails on
+# correct code teaches people to ignore it.
+for _ in $(seq 1 20); do
+  READY=$(agent-browser eval '(()=>{const n=document.getElementById("origin-name");
+    return !!(n && n.textContent && n.textContent.trim() && document.querySelector("#legs .leg.total"))})()' 2>&1 | tail -1 | tr -d '\\"')
+  [ "$READY" = "true" ] && break
+  sleep 1
+done
 P=$(agent-browser eval '(()=>{const q=new URLSearchParams(location.search);
   const o={};for(const [k,v] of q) o[k]=v;
   return JSON.stringify({from:document.getElementById("origin-name").textContent,
