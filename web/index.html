@@ -721,9 +721,11 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 </head>
 <body>
 <!-- The page had one heading and two landmarks, so there was nothing to
-     navigate it by. Four now: the masthead (banner), the globe (main), the
-     reading, and the panel rail -- each with an accessible name, and each
-     named by a heading in the outline under the h1. -->
+     navigate it by. Five now: the masthead (banner), the globe (main), the
+     departure card, the reading, and the panel rail. Each carries an
+     accessible name; all but the globe are named by a heading in the outline
+     under the h1, and the globe is named by aria-label because a heading over
+     the canvas would have nothing to label. -->
 <main aria-label="Globe">
   <div id="map" role="application" aria-roledescription="globe" aria-label="Interactive globe shaded by travel time from the selected departure city; drag to rotate, zoom with the buttons or the scroll wheel, click to set a destination. With the globe focused, the arrow keys turn it, plus and minus zoom, and Enter sets the destination at the centre of the view."></div>
 </main>
@@ -840,7 +842,10 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 </button>
 
 <aside class="rail" aria-labelledby="rail-h">
-  <h2 id="rail-h" class="sr-only">Departure, route and settings</h2>
+  <!-- All four panels. The name stopped at "settings", so a screen-reader
+       user was told the panel holding every data credit and the whole
+       privacy statement was not in this region. -->
+  <h2 id="rail-h" class="sr-only">Departure, route, settings, and sources and method</h2>
   <details class="panel" id="departure" open>
     <summary>Departure<span id="origin-name" style="color:var(--text);font-weight:400;font-size:12.5px"></span></summary>
     <div class="body">
@@ -872,12 +877,15 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
            destination, the time and the comparison belong. They are still
            here, below, and they step back once there is something to read. -->
       <div class="pins" id="pins"></div>
-      <p class="hint" id="route-hint">Click anywhere on the map to set a destination; the
-        journey from the departure city is itemised under the legend. To change the
-        departure, pick a city in the list above, click a city name marked with a dot on
-        the map, or click near a city and press “Depart from”. Only the
-        <span id="n-cities">…</span> departure cities have a computed surface, so a
-        departure snaps to the nearest of them.</p>
+      <!-- What is left is the one thing here a visitor cannot see for
+           themselves. The three sentences that stood above it described a
+           click, a list and a button that are all on screen and all labelled,
+           and the first of them repeated the readout's own idle prompt word
+           for word. A limit is worth stating; an inventory of the interface
+           is what gets written when someone doubts the interface. -->
+      <p class="hint" id="route-hint">Only the <span id="n-cities">…</span>
+        departure cities have a computed surface, so a departure snaps to the
+        nearest of them.</p>
       <div class="qrow" style="margin-top:10px">
         <button class="btn" id="clear-pins">Clear</button>
         <!-- The permalink carries the departure AND the destination, and until
@@ -911,9 +919,11 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
              ramp, and they do not need a strip to be told apart. -->
         <div id="oceans" class="oceans" role="radiogroup" aria-labelledby="oceans-label"></div>
       </div>
-      <p class="hint">Drag to rotate the globe; zoom with the + and &minus;
-        buttons, the scroll wheel, or a pinch. Locking to north disables
-        rotation so dragging only pans.</p>
+      <!-- Only the sentence that explains the control above it. The globe's
+           own drag-and-zoom instructions were here too, in Settings, where
+           nobody looking for them would be. -->
+      <p class="hint">Locking to north disables rotation, so dragging only
+        pans.</p>
     </div>
   </details>
 
