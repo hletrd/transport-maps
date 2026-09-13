@@ -22,8 +22,41 @@ APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 CODE = re.sub(r"^\s*//.*$", "", APP, flags=re.M)
 
 
+def _function(name: str) -> str:
+    """The verbatim source of a top-level function in CODE, by brace matching.
+
+    Slicing to a marker call (the old `body[:body.index("renderLegs()")]`)
+    stops at whichever call happens to come first, so adding an early-return
+    branch silently truncated the window an assertion was searching.
+    """
+    start = CODE.index(f"function {name}(")
+    # Past the parameter list: a destructured parameter opens a brace of its
+    # own, and matching from the first "{" balanced on that instead of on the
+    # body, returning a 47-character "function".
+    i, depth = CODE.index("(", start), 0
+    while True:
+        if CODE[i] == "(":
+            depth += 1
+        elif CODE[i] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    i = CODE.index("{", i)
+    depth = 0
+    for j in range(i, len(CODE)):
+        if CODE[j] == "{":
+            depth += 1
+        elif CODE[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return CODE[start:j + 1]
+    raise AssertionError(f"function {name} is not brace-balanced")
+
+
 def test_clearing_the_pin_also_drops_the_pointer_it_froze():
-    """Every site that clears `pinB` must clear `lastPointer` with it.
+    """Every site that clears `pinB` goes through `dropDestination`, and that
+    is where `lastPointer` is cleared with it.
 
     `lastPointer` is written only inside `showReading`, and the hover branch
     takes `lookup()` instead while a destination is pinned -- so it freezes at
@@ -33,20 +66,56 @@ def test_clearing_the_pin_also_drops_the_pointer_it_froze():
     handler clears the pin and switches origin in one synchronous click, so no
     mouse move can intervene, and on touch nothing overwrites it afterwards.
 
-    Mutation performed and reverted: drop `lastPointer = null` from either the
-    `clearRoute()` assignment or the "Depart from" handler -> red.
+    This used to scan a two-line window around every `pinB = null`, which broke
+    the moment a caller needed to KEEP a live pointer: `setDestination`'s
+    no-journey branch has just called `showReading` itself, so its pointer is
+    the point the visitor clicked, not a frozen pin, and nulling it would leave
+    "Reading the travel times from X..." standing after the next origin switch
+    (`rereadPointer` returns early on a null pointer with no pin). The rule is
+    now stated where it belongs: one teardown, and an explicit opt-out whose
+    only caller must be the one that refreshed the pointer.
+
+    Mutations performed and reverted:
+      * drop `if (!keepPointer) lastPointer = null;` from `dropDestination`
+          -> red
+      * `if (!keepPointer)` -> `if (false)`                 -> red
+      * `clearRoute` -> `dropDestination({ keepPointer: true })`
+          -> red
+      * the "Depart from" handler -> `dropDestination({ keepPointer: true })`
+          -> red
+      * inline `pinB = null` back into `clearRoute`         -> red
     """
     # `let pinB = null` is the declaration, not a clearing site.
     sites = [m for m in re.finditer(r"(?<!let )pinB\s*=\s*null", CODE)]
-    assert len(sites) >= 2, "the pin-clearing sites have moved; re-derive this test"
-    for m in sites:
-        # The whole statement: from the start of the line to the end of the
-        # next one, which is where a paired assignment can legitimately sit.
-        start = CODE.rfind("\n", 0, m.start()) + 1
-        end = CODE.find("\n", CODE.find("\n", m.end()) + 1)
-        window = CODE[start:end]
-        assert "lastPointer = null" in window, (
-            f"pinB is cleared without clearing lastPointer: {window.strip()!r}")
+    assert len(sites) == 1, (
+        f"{len(sites)} sites clear the pin; there must be exactly one, inside "
+        "dropDestination, or the rule below is not enforced anywhere")
+
+    body = _function("dropDestination")
+    assert sites[0].start() >= CODE.index(body[:40]), (
+        "the pin is cleared outside dropDestination")
+    assert "if (!keepPointer) lastPointer = null" in body, (
+        f"dropDestination does not clear lastPointer: {body!r}")
+
+    # ...and the opt-out is used by exactly one caller, the one that has just
+    # written lastPointer itself. Any other keepPointer:true is the original
+    # defect wearing the new API.
+    keeps = re.findall(r"dropDestination\(\{[^}]*keepPointer:\s*true[^}]*\}\)", CODE)
+    assert len(keeps) == 1, (
+        f"{len(keeps)} callers keep the pointer when dropping the pin; only "
+        "the one that just called showReading may")
+    owner = CODE[:CODE.index(keeps[0])]
+    fn = owner.rindex("function ")
+    assert CODE[fn:fn + 40].startswith("function setDestination"), (
+        f"keepPointer is used from {CODE[fn:fn + 40]!r}, which is not the "
+        "function that refreshes lastPointer")
+    assert "showReading(" in CODE[fn:CODE.index(keeps[0])], (
+        "the caller that keeps the pointer has not refreshed it")
+
+    # The other teardowns must NOT keep it: theirs is the frozen pointer the
+    # rule exists for.
+    assert re.search(r"function clearRoute\(\)\s*\{\s*dropDestination\(\);", CODE), (
+        "clearRoute no longer drops the frozen pointer")
 
 
 def test_the_failure_path_stops_saying_it_is_still_reading():
@@ -183,3 +252,102 @@ def test_the_page_says_when_the_number_came_from_a_coarser_cell_than_the_ring():
     assert "the cell the time is read from" in flat, (
         "the method panel no longer says where the number is read; this guard exists to "
         "keep that sentence and its qualifier in step")
+
+
+# --- and the same rule RUN, not asserted about ------------------------------
+#
+# A map click on a point with no journey overwrote the headline with "no
+# scheduled route" and returned, leaving the previous destination's pin,
+# itinerary and route line standing underneath it. `setDestination` and
+# `dropDestination` are run here with the page stubbed around them; the two
+# functions themselves are app.js.
+
+import json
+import shutil
+import subprocess
+
+import pytest
+
+
+@pytest.fixture(scope="module")
+def node() -> str:
+    exe = shutil.which("node")
+    if exe is None:
+        pytest.skip("node is not on PATH; the page functions cannot be run")
+    return exe
+
+
+def _probe(reading: str) -> str:
+    return f"""
+const MAX_MINUTES = 65534;
+let pinB = {{ lat: 40, lon: -73, label: "JFK" }};   // a destination already set
+let lastFrom = {{ lat: 40, lon: -73 }};
+let lastPointer = null;
+let namePlaces = false;
+const calls = [];
+function showReading(lat, lng) {{ lastPointer = {{ lat, lng }}; return {reading}; }}
+function renderPins() {{ calls.push("renderPins"); }}
+function renderLegs() {{ calls.push("renderLegs"); }}
+function syncPermalink() {{ calls.push("syncPermalink"); }}
+function openRoutePanel() {{ calls.push("openRoutePanel"); }}
+function unfoldSheet() {{ calls.push("unfoldSheet"); }}
+function announceReading() {{ calls.push("announceReading"); }}
+function revealReading() {{ calls.push("revealReading"); }}
+function reverseGeocode() {{ calls.push("reverseGeocode"); }}
+function nearestPlace() {{ return null; }}
+function placeLead() {{ return null; }}
+function fmtCoord(a, b) {{ return a + "," + b; }}
+{_function("dropDestination")}
+{_function("setDestination")}
+setDestination(10, 20, null);
+console.log(JSON.stringify({{ pinB, lastPointer, calls }}));
+"""
+
+
+def _run(node: str, tmp_path, body: str) -> dict:
+    script = tmp_path / "destination.mjs"
+    script.write_text(body, encoding="utf-8")
+    out = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.parametrize("reading, why", [
+    ("null", "open water"),
+    ("65535", "land with no scheduled route"),
+])
+def test_a_click_with_no_journey_takes_the_old_destination_with_it(
+        node, tmp_path, reading: str, why: str) -> None:
+    """showReading has already replaced the headline. Leaving the old pin in
+    place put "no scheduled route" above a full itinerary to JFK, with the arc
+    still drawn across the globe -- and because the hover branch takes
+    `lookup()` while `pinB` is set, the headline then never changed again.
+
+    Mutation performed and reverted: delete the
+    `if (pinB) dropDestination({ keepPointer: true });` line -> 2 failed.
+    """
+    got = _run(node, tmp_path, _probe(reading))
+    assert got["pinB"] is None, (
+        f"a click on {why} left the previous destination pinned: {got['pinB']}")
+    assert "renderLegs" in got["calls"], (
+        f"the itinerary for the dropped destination was never re-rendered: {got['calls']}")
+    assert "renderPins" in got["calls"] and "syncPermalink" in got["calls"]
+    # The point that was just clicked stays readable: rereadPointer() returns
+    # early on a null pointer with no pin, which would strand "Reading the
+    # travel times from X..." in the headline after the next origin switch.
+    assert got["lastPointer"] == {"lat": 10, "lng": 20}, (
+        f"the live pointer was cleared along with the pin: {got['lastPointer']}")
+    # ...and nothing that belongs to a real destination happened.
+    for forbidden in ("openRoutePanel", "unfoldSheet", "announceReading", "reverseGeocode"):
+        assert forbidden not in got["calls"], (
+            f"a point with no journey was treated as a destination: {forbidden}")
+
+
+def test_a_click_with_a_journey_still_sets_the_destination(node, tmp_path) -> None:
+    """The control. Without it the test above is satisfied by a
+    `setDestination` that does nothing at all."""
+    got = _run(node, tmp_path, _probe("300"))
+    assert got["pinB"] is not None and got["pinB"]["lat"] == 10
+    for expected in ("openRoutePanel", "unfoldSheet", "announceReading",
+                     "renderPins", "renderLegs", "revealReading", "syncPermalink"):
+        assert expected in got["calls"], f"{expected} was not called: {got['calls']}"

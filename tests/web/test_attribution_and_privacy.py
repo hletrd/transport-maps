@@ -28,6 +28,30 @@ from transport_maps import config
 HTML = (config.ROOT / "web" / "index.html").read_text(encoding="utf-8")
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
+
+def _function(name: str) -> str:
+    """The verbatim source of a top-level function, by brace matching."""
+    start = APP.index(f"function {name}(")
+    i, depth = APP.index("(", start), 0
+    while True:
+        if APP[i] == "(":
+            depth += 1
+        elif APP[i] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    i = APP.index("{", i)
+    depth = 0
+    for j in range(i, len(APP)):
+        if APP[j] == "{":
+            depth += 1
+        elif APP[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return APP[start:j + 1]
+    raise AssertionError(f"function {name} is not brace-balanced")
+
 OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright"
 GA_PARTNERS = "https://www.google.com/policies/privacy/partners/"
 
@@ -221,9 +245,16 @@ def test_the_announcement_follows_the_reveal():
     # the new Enter-key handler both call, so the ordering is enforced in one
     # place instead of two that could drift. Both entry points are asserted to
     # go through it, so widening the list back out cannot be forgotten.
-    for fn in ("commitDestination", "function setDestination"):
-        body = APP[APP.index(fn):]
-        body = body[:body.index("renderLegs()")]
+    # Bounded by brace matching, not by slicing to the first `renderLegs()`.
+    # That marker stopped at whichever call came first, so when
+    # setDestination grew an early-return branch that calls renderLegs() to
+    # tear down the previous destination, the window ended before
+    # unfoldSheet() and the search raised ValueError on a page whose ordering
+    # was still correct.
+    for fn in ("commitDestination", "setDestination"):
+        body = _function(fn)
+        assert "unfoldSheet()" in body and "announceReading(" in body, (
+            f"{fn} no longer both reveals and announces")
         assert body.index("unfoldSheet()") < body.index("announceReading("), (
             f"{fn} announces before it reveals")
     assert "setDestination(e.lngLat.lat, e.lngLat.lng, e.point)" in APP, (

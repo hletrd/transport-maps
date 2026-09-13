@@ -228,9 +228,8 @@ def test_the_haversine_the_matcher_uses_is_the_real_one(node, tmp_path) -> None:
     """`dottedCityRows` ranks by distance, so a broken distance silently picks
     the wrong row. Checked against a value derived here, not from app.js."""
     a, b = CITIES[0], CITIES[1]
-    got = _run(node, tmp_path,
-               "console.log(JSON.stringify(haversineKm(%r, %r, %r, %r)));"
-               % (a["lat"], a["lon"], b["lat"], b["lon"]))
+    got = _run(node, tmp_path, "console.log(JSON.stringify(haversineKm("
+               f'{a["lat"]}, {a["lon"]}, {b["lat"]}, {b["lon"]})));')
     r = 6371.0088
     p = math.pi / 180
     expected = 2 * r * math.asin(math.sqrt(

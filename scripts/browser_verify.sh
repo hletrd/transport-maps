@@ -26,6 +26,63 @@ TINTS=$((BANDS + 2))
 SCHEMES=$(python3 -c 'import re,sys; s=open(sys.argv[1],encoding="utf-8").read(); m=re.search(r"const RAMPS = \{(.*?)\n\};", s, re.S); print(len(re.findall(r"^\s{2}[a-z]+:\s*\{", m.group(1), re.M)) if m else 0)' "$ROOT/web/app.js")
 [ "${SCHEMES:-0}" -ge 6 ] || { echo "!! could not read the RAMPS table from web/app.js"; exit 1; }
 echo "expecting $CITIES cities, $BANDS bands ($TINTS swatches) from index.json; $SCHEMES schemes; screenshots in $SHOTS"
+
+# The departure city the phone checks tap near, from index.json rather than a
+# literal. Both tap checks below used a hardcoded [120, 40], which is in the
+# Bohai Sea: that point's res-4 cell is land and reads 580 min from Tokyo, but
+# its res-6 cell is not, so the reading tier holds the padding sentinel for it
+# (emit/hover.py) and the page prints "no scheduled route". setDestination
+# then returns before it opens the panel or unfolds the sheet, correctly --
+# an unreachable point is not a destination -- so one check reported a defect
+# on a page that was right, and the other went green because the scroll it
+# exists to detect could not happen.
+read -r OLON OLAT < <(printf '%s' "$IDX" | python3 -c 'import json, sys
+o = next(x for x in json.load(sys.stdin)["origins"] if x["slug"] == "tokyo")
+print(o["lon"], o["lat"])')
+[ -n "${OLAT:-}" ] || { echo "!! index.json has no tokyo origin for the phone checks to tap"; exit 1; }
+
+# One tap, at a point the page can actually read. The point is CHOSEN, not
+# assumed: near the departure city, the canvas must be topmost under it -- the
+# topmost element at the city's own coordinate is SPAN.dot, its label's own
+# dot, measured with real CDP input, and every label calls stopPropagation
+# because a label is not a destination -- and the page's own hover reading
+# there must already be a number. Dispatching straight at the canvas element,
+# as both checks used to, skips hit testing, so they could have passed where no
+# finger could reproduce them.
+#   tap_js <lon> <lat> <js-object-literal to merge into the result>
+# `on(sel)` is in scope for the caller's literal: is that element inside the
+# rail's visible box.
+tap_js() {
+  cat <<JS
+(()=>{const m=window.__map;
+  m.jumpTo({center:[$1,$2],zoom:7,bearing:0,pitch:0});
+  const wait=(ms)=>new Promise(r=>setTimeout(r,ms));
+  return (async()=>{
+   await wait(1200);
+   const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();
+   const p=m.project([$1,$2]);
+   const num=(s)=>/^[0-9]/.test(s.trim());
+   let pick=null;
+   for(const [dx,dy] of [[0,0],[0,-40],[40,0],[-40,0],[0,40],[80,-80],[-80,-80],[0,-120],[120,0]]){
+     const x=r.left+p.x+dx,y=r.top+p.y+dy;
+     if(x<r.left||y<r.top||x>r.right||y>r.bottom) continue;
+     if(document.elementFromPoint(x,y)!==c) continue;
+     c.dispatchEvent(new MouseEvent("mousemove",{clientX:x,clientY:y,bubbles:true}));
+     await wait(260);
+     if(num(document.getElementById("time").textContent)){ pick={x,y,dx,dy}; break; }
+   }
+   if(!pick) return JSON.stringify({picked:false});
+   const o={clientX:pick.x,clientY:pick.y,bubbles:true};
+   c.dispatchEvent(new MouseEvent("mousedown",o));
+   c.dispatchEvent(new MouseEvent("mouseup",o));
+   c.dispatchEvent(new MouseEvent("click",o));
+   await wait(1600);
+   const rl=document.querySelector(".rail"),v=rl.getBoundingClientRect();
+   const on=(s)=>{const b=document.querySelector(s).getBoundingClientRect();return b.top>=v.top-1&&b.bottom<=v.bottom+1};
+   return JSON.stringify(Object.assign({picked:true,at:[pick.dx,pick.dy]}, $3));
+  })();})()
+JS
+}
 # Only the browser processes THIS run starts are killed at the end: another
 # agent's session on the same machine must survive a verification pass.
 BEFORE=$(/bin/ps -ax -o pid=,command= | grep -E "\.agent-browser/" | grep -v grep | awk '{print $1}' | sort)
@@ -362,15 +419,17 @@ echo "$PAR" | grep -q '"parent":"topleft"' || { echo "  !! the departure card di
 # the Route panel used to scroll the rail (measured scrollTop 297 at 390x844),
 # taking #time, #tints and #scale with it -- against CLAUDE.md's standing rule
 # that the legend is always visible.
+#
+# This tapped a hardcoded [120, 40] too, and so it never scrolled anything:
+# that point has no journey, setDestination returns before openRoutePanel, and
+# the check went green because the thing it exists to detect could not happen.
+# tap_js below picks a point that actually reads.
 agent-browser set viewport 390 844 >/dev/null 2>&1; sleep 2
-agent-browser eval '(()=>{const m=window.__map,p=m.project([120,40]);const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();
-  const o={clientX:r.left+p.x,clientY:r.top+p.y,bubbles:true};
-  c.dispatchEvent(new MouseEvent("mousedown",o));c.dispatchEvent(new MouseEvent("mouseup",o));c.dispatchEvent(new MouseEvent("click",o));return 1})()' >/dev/null 2>&1; sleep 3
-S2=$(agent-browser eval '(()=>{const rl=document.querySelector(".rail"),v=rl.getBoundingClientRect();
-  const on=s=>{const b=document.querySelector(s).getBoundingClientRect();return b.top>=v.top-1&&b.bottom<=v.bottom+1};
-  return JSON.stringify({scrollTop:Math.round(rl.scrollTop),time:on("#time"),tints:on("#tints"),scale:on("#scale"),
-   reading:document.getElementById("time").innerText.trim()})})()' 2>&1 | tail -1 | tr -d '\\')
+S2=$(agent-browser eval "$(tap_js "$OLON" "$OLAT" '{scrollTop:Math.round(document.querySelector(".rail").scrollTop),
+   time:on("#time"),tints:on("#tints"),scale:on("#scale"),
+   reading:document.getElementById("time").innerText.trim()}')" 2>&1 | tail -1 | tr -d '\\')
 echo "  tap on a phone: $S2"
+echo "$S2" | grep -q '"picked":true' || { echo "  !! found no point near the departure city that reads a time, so the scroll check proves nothing"; fail=1; }
 echo "$S2" | grep -q '"time":true' && echo "$S2" | grep -q '"tints":true' && echo "$S2" | grep -q '"scale":true' \
   || { echo "  !! a tap scrolled the answer or the legend out of the sheet"; fail=1; }
 
@@ -398,64 +457,12 @@ echo "$FOLD" | grep -q '"keysOnScreen":true' || { echo "  !! the two legend keys
 echo "$FOLD" | grep -q '"capOnScreen":true' || { echo "  !! the door-to-door caption is hidden while the sheet is folded"; fail=1; }
 echo "$FOLD" | grep -q '"scaleOnScreen":true' || { echo "  !! the hour ticks are hidden while the sheet is folded"; fail=1; }
 # ...and a tap from the folded state must write the reading, unfold the sheet
-# and leave the number it just produced on screen.
-#
-# Two things went wrong with this check and both are fixed here.
-#
-# It used to tap a hardcoded [120, 40], which is in the Bohai Sea. That res-6
-# cell is not land, so the reading tier holds the padding sentinel for it and
-# the page printed "no scheduled route"; setDestination returns before
-# unfoldSheet() for a point with no journey -- correctly, an unreachable point
-# is not a destination -- so the gate reported both "a tap did not write the
-# reading" and a sheet that stayed folded, on a page behaving as designed. A
-# gate must not guess at geography.
-#
-# And it dispatched the click straight at the canvas element, which skips hit
-# testing. Measured with real CDP input at the departure city's own
-# coordinate: the topmost element there is SPAN.dot, the departure label's own
-# dot, and every label calls stopPropagation because a label is not a
-# destination. So the old shape could have passed while no finger could
-# reproduce it.
-#
-# The point is therefore CHOSEN rather than assumed: near the departure city,
-# topmost-under-the-pointer must be the canvas, and the page's own hover
-# reading there must already be a number. That is what makes the tap assertion
-# below about the click path and not about where the point happened to land.
-read -r OLON OLAT < <(printf '%s' "$IDX" | python3 -c 'import json, sys
-o = next(x for x in json.load(sys.stdin)["origins"] if x["slug"] == "tokyo")
-print(o["lon"], o["lat"])')
-[ -n "${OLAT:-}" ] || { echo "!! index.json has no tokyo origin to tap"; exit 1; }
-TAP=$(agent-browser eval '(()=>{const m=window.__map;
-  m.jumpTo({center:['"$OLON"','"$OLAT"'],zoom:7,bearing:0,pitch:0});
-  const wait=(ms)=>new Promise(r=>setTimeout(r,ms));
-  return (async()=>{
-   await wait(1200);
-   const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();
-   const p=m.project(['"$OLON"','"$OLAT"']);
-   const num=(s)=>/^[0-9]/.test(s.trim());
-   let pick=null;
-   for(const [dx,dy] of [[0,0],[0,-40],[40,0],[-40,0],[0,40],[80,-80],[-80,-80],[0,-120],[120,0]]){
-     const x=r.left+p.x+dx,y=r.top+p.y+dy;
-     if(x<r.left||y<r.top||x>r.right||y>r.bottom) continue;
-     if(document.elementFromPoint(x,y)!==c) continue;     // a label is on top here
-     c.dispatchEvent(new MouseEvent("mousemove",{clientX:x,clientY:y,bubbles:true}));
-     await wait(260);
-     if(num(document.getElementById("time").textContent)){ pick={x,y,dx,dy}; break; }
-   }
-   if(!pick) return JSON.stringify({picked:false});
-   const o={clientX:pick.x,clientY:pick.y,bubbles:true};
-   c.dispatchEvent(new MouseEvent("mousedown",o));
-   c.dispatchEvent(new MouseEvent("mouseup",o));
-   c.dispatchEvent(new MouseEvent("click",o));
-   await wait(1600);
-   const rl=document.querySelector(".rail"),v=rl.getBoundingClientRect();
-   const on=(s)=>{const b=document.querySelector(s).getBoundingClientRect();return b.top>=v.top-1&&b.bottom<=v.bottom+1};
-   return JSON.stringify({picked:true,at:[pick.dx,pick.dy],
-    folded:rl.classList.contains("folded"),
-    time:document.getElementById("time").textContent.trim(),
-    announced:/door to door/.test(document.getElementById("status").textContent),
-    timeOnScreen:on("#time"),legendOnScreen:on("#tints")});
-  })();})()' 2>&1 | tail -1 | tr -d '\\')
+# and leave the number it just produced on screen. See tap_js above for why the
+# point is chosen rather than hardcoded.
+TAP=$(agent-browser eval "$(tap_js "$OLON" "$OLAT" '{folded:document.querySelector(".rail").classList.contains("folded"),
+   time:document.getElementById("time").textContent.trim(),
+   announced:/door to door/.test(document.getElementById("status").textContent),
+   timeOnScreen:on("#time"),legendOnScreen:on("#tints")}')" 2>&1 | tail -1 | tr -d '\\')
 echo "  tap from folded: $TAP"
 # Reported first: without it, "no tappable point near the departure city" and
 # "the tap was ignored" are the same output.

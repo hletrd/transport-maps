@@ -2557,7 +2557,7 @@ function renderPins() {
       // re-read by settle() a few hundred ms later and printed as a current
       // reading for a place the pointer left long ago. Worst on touch, which
       // has no pointer to overwrite it afterwards.
-      pinB = null; lastPointer = null;
+      dropDestination();
       paintOrigin(near, { keepZoom: true });
     });
     box.append(b);
@@ -2680,7 +2680,21 @@ function setDestination(lat, lng, point) {
   const t = showReading(lat, lng, point);
   // Open water and unreached land are not destinations: no pin, no panel,
   // and no request to Nominatim for a point with nothing to say.
-  if (t === null || (t != null && t >= MAX_MINUTES)) return;
+  //
+  // The PREVIOUS destination has to go with it. showReading has already
+  // overwritten the headline with "no scheduled route", and returning here
+  // left the old pin, its itinerary and its route line standing underneath --
+  // so the page read "no scheduled route" above a full breakdown of a flight
+  // to JFK, with the arc still drawn across the globe. Found by a deploy gate
+  // that could not tap anywhere afterwards: once pinB survives, the hover
+  // branch takes lookup() instead of showReading and the headline never
+  // changes again. commitDestination, the search path, has always cleared it.
+  if (t === null || (t != null && t >= MAX_MINUTES)) {
+    // keepPointer: showReading above has just written lastPointer with the
+    // point that was clicked, so it is live, not frozen.
+    if (pinB) dropDestination({ keepPointer: true });
+    return;
+  }
   const p = nearestPlace(lat, lng);
   if (lastFrom && (lastFrom.lat !== lat || lastFrom.lon !== lng)) lastFrom = null;
   pinB = { lat, lon: lng, label: placeLead(p) ?? fmtCoord(lat, lng), geocoded: false };
@@ -2734,8 +2748,6 @@ function haversineKm(la1, lo1, la2, lo2) {
   // waiting to be found rather than a decision.
   return 6371.0088 * 2 * Math.asin(Math.sqrt(a));
 }
-// Departure city within reach of a point, if any. 80 km covers a metro area
-// without claiming the next city over.
 //: Which gazetteer row carries the dotted departure button for each charted
 //: city: the NEAREST row within `maxKm`, and only that one.
 //:
@@ -2770,6 +2782,8 @@ function labelPlacement(row, city) {
     : { lat: row[3], lon: row[4], name: row[0] };
 }
 
+// Departure city within reach of a point, if any. 80 km covers a metro area
+// without claiming the next city over.
 function originNear(lat, lon, maxKm = 80) {
   let best = null, bestKm = maxKm;
   for (const o of meta.origins) {
@@ -2779,15 +2793,33 @@ function originNear(lat, lon, maxKm = 80) {
   return best;
 }
 
-function clearRoute() {
-  // lastPointer has to go with the pin. While a destination is pinned the
-  // hover branch takes lookup() and never calls showReading, which is the only
-  // writer of lastPointer -- so it freezes at the pin and stops following the
-  // mouse. rereadPointer() then resurrects that dismissed location as a live
-  // headline reading the next time an origin's arrays land. See the "Depart
-  // from" handler for the reproduction that needs no mouse move at all.
-  pinB = null; lastFrom = null; lastPointer = null;
+//: Drop the destination, and everything drawn from it.
+//:
+//: `lastPointer` normally has to go with the pin. While a destination is
+//: pinned the hover branch takes lookup() and never calls showReading, which
+//: is the only writer of lastPointer -- so it freezes at the pin and stops
+//: following the mouse. rereadPointer() then resurrects that dismissed
+//: location as a live headline reading the next time an origin's arrays land.
+//: See the "Depart from" handler for the reproduction that needs no mouse
+//: move at all.
+//:
+//: `keepPointer` is for the ONE caller that has just called showReading
+//: itself, so lastPointer is the live pointer position rather than a frozen
+//: pin. Clearing it there would be its own bug: rereadPointer() returns early
+//: on a null pointer with no pin, leaving "Reading the travel times from X..."
+//: standing in 50 px after the next origin switch, with nothing on a phone to
+//: overwrite it.
+//:
+//: Every site that clears the pin goes through here, so the rule is stated
+//: once and tests/web/test_readout_state.py can hold it to one place.
+function dropDestination({ keepPointer = false } = {}) {
+  pinB = null; lastFrom = null;
+  if (!keepPointer) lastPointer = null;
   renderPins(); renderLegs(); syncPermalink();
+}
+
+function clearRoute() {
+  dropDestination();
   // The headline was the pin's; with the pin gone it would otherwise sit there
   // as a number for a destination that is no longer shown. Hand it back to the
   // pointer, which fills it again on the next move.
