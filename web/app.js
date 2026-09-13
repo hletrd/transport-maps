@@ -280,6 +280,13 @@ let lastPointer = null;         // {lat, lng, point} of the last reading, re-run
 // ever said so. Captured before the arrays are dropped, keyed to the pin it
 // was measured at, cleared when the pin moves.
 let lastFrom = null;
+//: The flowing-dash animation on the journey's ground legs. `flowRaf` is the
+//: pending frame (0 when nothing is scheduled), `flowStep` the dash frame
+//: currently painted (-1 = none yet), `flowWanted` whether a ground leg is on
+//: screen at all. Declared here and not beside the loop 500 lines down because
+//: a `visibilitychange` and a `prefers-reduced-motion` listener both write
+//: them, and this block is the file's rule for exactly that.
+let flowRaf = 0, flowStep = -1, flowWanted = false;
 let firstPaint = true;          // the opening view is jumped to, not flown to
 // The readout's resting copy; a phone has no pointer.
 const COARSE = window.matchMedia("(pointer: coarse)").matches;
@@ -769,6 +776,58 @@ map.addLayer({ id: "route-ground", type: "line", source: "route",
   paint: { "line-color": "#ffffff", "line-width": 1.4, "line-opacity": 0.75,
            "line-dasharray": [2, 2.5] } });
 
+// The dashes flow from the departure toward the destination, so the motion
+// carries direction rather than merely moving. MapLibre has no dash offset, so
+// the pattern itself is cycled: each step begins with a shorter leading gap,
+// which walks the dashes forward by one period over the cycle.
+const DASH_ON = 2, DASH_OFF = 2.5, DASH_STEPS = 8;
+const DASH_REST = [DASH_ON, DASH_OFF];
+const DASH_CYCLE = Array.from({ length: DASH_STEPS }, (_, i) => {
+  // A leading gap of `lead` shifts the whole pattern forward by (period - lead).
+  const lead = DASH_OFF * (1 - i / DASH_STEPS);
+  return lead < 0.01 ? DASH_REST : [0.0001, lead, DASH_ON, DASH_OFF];
+});
+// Runs ONLY while a route is drawn, never in a hidden tab, never under a
+// reduced-motion preference. An always-on animation-frame loop over a globe is
+// exactly the thing that quietly costs a phone its battery.
+const DASH_MS = 90;
+let dashFrame = null, dashStep = 0, dashLast = 0;
+// Asked of the map rather than tracked in a flag: renderRoute is extracted and
+// run standalone by tests/web/test_route_geometry.py, so it must not reference
+// anything outside itself. The source event below is the only trigger.
+function routeIsDrawn() {
+  if (!map.getLayer("route-ground")) return false;
+  try { return map.querySourceFeatures("route").some((f) => f.properties?.kind === "ground"); }
+  catch { return false; }
+}
+map.on("sourcedata", (e) => {
+  if (e.sourceId !== "route" || !e.isSourceLoaded) return;
+  if (routeIsDrawn()) startDashes(); else stopDashes();
+});
+function setDash(a) {
+  if (map.getLayer("route-ground")) map.setPaintProperty("route-ground", "line-dasharray", a);
+}
+function dashTick(now) {
+  dashFrame = requestAnimationFrame(dashTick);
+  if (now - dashLast < DASH_MS) return;
+  dashLast = now;
+  dashStep = (dashStep + 1) % DASH_CYCLE.length;
+  setDash(DASH_CYCLE[dashStep]);
+}
+function stopDashes() {
+  if (dashFrame !== null) { cancelAnimationFrame(dashFrame); dashFrame = null; }
+  setDash(DASH_REST);
+}
+function startDashes() {
+  if (dashFrame !== null) return;
+  if (REDUCED_MOTION.matches || document.hidden) return stopDashes();
+  dashLast = 0;
+  dashFrame = requestAnimationFrame(dashTick);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopDashes(); else if (routeIsDrawn()) startDashes();
+});
+
 // Your own position, once geolocation answers.
 map.addSource("me", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 map.addLayer({ id: "me-halo", type: "circle", source: "me",
@@ -807,7 +866,94 @@ fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
 
 // A flyTo arc becomes a cut when the visitor asked for less motion.
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
+REDUCED_MOTION.addEventListener("change", () => {
+  if (REDUCED_MOTION.matches) stopDashes(); else if (routeIsDrawn()) startDashes();
+});
 function moveTo(opts) { if (REDUCED_MOTION.matches) map.jumpTo(opts); else map.flyTo(opts); }
+
+// ---- the ground legs' dashes flow toward the destination ------------------
+//
+// The dashed legs are the journeys to and from the airports, and a still dash
+// says nothing about which way you are going. Stepping `line-dasharray` is the
+// only way to move a dash in MapLibre -- there is no GPU-side dash offset and
+// `line-dasharray` is not data-driven -- so this walks a FIXED set of patterns
+// and writes one of them when the step changes.
+//
+// Fixed, not continuous, for a reason read out of the vendored bundle rather
+// than assumed: `LineAtlas.getDash` keys its cache on `dasharray.join(",")`,
+// so a continuously varying array would build and upload a new dash texture
+// every frame and grow that cache without bound. Twelve entries are built once
+// and then reused for the life of the page.
+//
+// The pattern is the layer's own [2, 2.5], shifted. `getDashRanges` starts an
+// ODD-length array at `-last`, i.e. it wraps the final element around to
+// before the line's start and merges it with the first -- which is exactly
+// what a phase shift needs, and why the first branch below is three elements.
+const FLOW_DASH = 2, FLOW_GAP = 2.5, FLOW_PERIOD = FLOW_DASH + FLOW_GAP;
+//: Steps per period. Each one moves the pattern FLOW_PERIOD / FLOW_STEPS
+//: line-widths -- 0.53 px at this layer's 1.4 px width, so the motion reads as
+//: continuous while the map repaints 17 times a second instead of 60.
+const FLOW_STEPS = 12;
+const FLOW_MS = 720;            // one period; ~9 px/s on screen, a drift not a rush
+
+//: The layer's dash pattern with its start pulled back by `s` line-widths, so
+//: the dashes sit further along the line. Every leg is drawn departure-first
+//: (renderRoute adds [from, airport] and [airport, to] in that order), so a
+//: DECREASING `s` moves them toward the destination.
+function dashAtPhase(s) {
+  const r = (x) => Math.round(x * 1e4) / 1e4;     // stable cache keys
+  if (!(s > 0) || s >= FLOW_PERIOD) return [FLOW_DASH, FLOW_GAP];
+  if (s < FLOW_DASH) return [r(FLOW_DASH - s), FLOW_GAP, r(s)];
+  return [0, r(FLOW_PERIOD - s), FLOW_DASH, r(s - FLOW_DASH)];
+}
+
+//: Frame k of the cycle. k counts up with time and `s` counts down with k.
+const FLOW_FRAMES = Array.from({ length: FLOW_STEPS }, (_, k) =>
+  dashAtPhase((FLOW_STEPS - k) % FLOW_STEPS / FLOW_STEPS * FLOW_PERIOD));
+
+function setFlowStep(k) {
+  if (k === flowStep) return;   // no write, so no repaint: the loop costs a frame only when the dash moves
+  flowStep = k;
+  if (map.getLayer("route-ground"))
+    map.setPaintProperty("route-ground", "line-dasharray", FLOW_FRAMES[k]);
+}
+
+//: Run only while there is a ground leg on screen, the tab is visible, and the
+//: visitor has not asked for less motion. Reduced motion stops the dashes dead
+//: rather than slowing them, which is what the preference means.
+function flowShouldRun() {
+  return flowWanted && !document.hidden && !REDUCED_MOTION.matches;
+}
+
+function flowTick(now) {
+  flowRaf = 0;
+  if (!flowShouldRun()) return setFlowStep(0);
+  setFlowStep(Math.floor(now % FLOW_MS / FLOW_MS * FLOW_STEPS) % FLOW_STEPS);
+  flowRaf = requestAnimationFrame(flowTick);
+}
+
+//: The single place the loop is started, stopped or re-evaluated. Idempotent,
+//: because renderRoute calls it on every render of an unchanged route.
+function flowResume() {
+  if (flowShouldRun()) {
+    if (!flowRaf) flowRaf = requestAnimationFrame(flowTick);
+    return;
+  }
+  if (flowRaf) { cancelAnimationFrame(flowRaf); flowRaf = 0; }
+  setFlowStep(0);
+}
+
+//: renderRoute's one call. `on` is "this route has a dashed leg to animate".
+function setRouteFlow(on) { flowWanted = on; flowResume(); }
+
+// A backgrounded tab that keeps animating is the complaint this exists to
+// avoid. rAF is throttled when hidden in current browsers but not guaranteed
+// to stop, and the page should not depend on that.
+document.addEventListener("visibilitychange", flowResume);
+// The preference can change while the page is open. The other REDUCED_MOTION
+// call sites read `.matches` at the point of use and need no listener; a
+// running loop does.
+REDUCED_MOTION.addEventListener("change", flowResume);
 
 // The globe was framed for 1280x800 and clipped everywhere else. The opening
 // zoom was the literal 1.9 whatever the window, so at 390x844 the sphere spans
@@ -1840,7 +1986,13 @@ function greatCircle(a, b) {
 function renderRoute() {
   const src = map.getSource("route");
   if (!src) return;
-  const clear = () => src.setData({ type: "FeatureCollection", features: [] });
+  // The animation stops with the line it animates. Every early return below
+  // goes through here, so there is no path that clears the route and leaves a
+  // requestAnimationFrame loop repainting the globe for nothing.
+  const clear = () => {
+    setRouteFlow(false);
+    src.setData({ type: "FeatureCollection", features: [] });
+  };
   if (!pinB || !active) return clear();
   const total = lookup(pinB.lat, pinB.lon);
   const chain = legsTo(pinB.lat, pinB.lon);
@@ -1873,6 +2025,9 @@ function renderRoute() {
     if (last && !same(last, to)) add(unwrap([last, to]), "ground");
   }
   src.setData({ type: "FeatureCollection", features: feats });
+  // Only the dashed legs flow; the solid arc is a flight and has no dashes to
+  // move. A chain with no ground leg at either end therefore animates nothing.
+  setRouteFlow(feats.some((f) => f.properties.kind === "ground"));
 }
 
 //: The longest chain the page will walk or splice, counting every node.
