@@ -2067,8 +2067,15 @@ function renderLegsInto() {
     // to its first airport is known but the way it was reached is not, and the
     // page must not name it "and through the airport" -- that asserts a ground
     // journey. From Seoul to Port Louis it asserted one to Kuala Lumpur.
+    //
+    // "not recorded", without "in this build": the same row covers the second
+    // or so before airports.json lands, when legsTo cannot resolve an airport's
+    // coordinates and returns partial rather than guess. That window closes by
+    // itself -- the fetch calls renderLegs() when it settles -- but while it is
+    // open the legs are recorded and merely unreachable, so the narrower
+    // wording would have been false.
     rows.push(chain.partial
-      ? [fmtDur(chain[0].min), `Reaching <b>${ap(chain[0].code)}</b> — the legs before this one are not recorded in this build`]
+      ? [fmtDur(chain[0].min), `Reaching <b>${ap(chain[0].code)}</b> — the legs before this one are not recorded`]
       : [fmtDur(chain[0].min), `To <b>${ap(chain[0].code)}</b>, and through the airport`]);
     for (let k = 1; k < chain.length; k++) {
       const a = chain[k - 1], b = chain[k];
