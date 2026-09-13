@@ -28,11 +28,22 @@ from .._io import atomic_write
 
 URL = ("https://naturalearth.s3.amazonaws.com/10m_cultural/"
        "ne_10m_admin_0_boundary_lines_land.zip")
-SIMPLIFY_DEG = 0.01
-#: Decimal places kept per coordinate. 4 dp is about 11 m at the equator, two
-#: orders of magnitude finer than SIMPLIFY_DEG (about 1.1 km) and a third of a
-#: pixel at the page's maximum zoom, so it cannot move a drawn line.
-COORD_DP = 4
+#: Natural Earth's own vertices are about 2 km apart at the median, so
+#: simplifying at 0.01 deg (~1.1 km) threw away 60% of them and stretched the
+#: median drawn segment to 6.6 km -- a straight line 348 pixels long at the
+#: page's maximum zoom, beside a coastline drawn at ~10 m. At 0.0005 deg the
+#: median segment returns to Natural Earth's own 2.07 km and only the
+#: genuinely collinear points are dropped (77,295 vertices -> 70,681), which
+#: costs about 0.6 MB gzipped. 2 km is this source's floor, not a choice:
+#: finer borders need OpenStreetMap admin relations, which the rail-filtered
+#: extracts do not carry.
+SIMPLIFY_DEG = 0.0005
+#: Decimal places kept per coordinate. 6 dp is about 0.11 m at the equator, 500
+#: times finer than SIMPLIFY_DEG and far under a pixel at the page's maximum
+#: zoom, so it cannot move a drawn line. 4 dp was fine against the old 1.1 km
+#: tolerance; against 55 m it would be only 5x finer, and 5 dp is exactly 50x,
+#: which the guard rejects as too close to call.
+COORD_DP = 6
 
 
 def _round(obj):

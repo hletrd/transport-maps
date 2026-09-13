@@ -28,8 +28,15 @@ def test_rounding_reaches_every_coordinate_in_a_geojson_geometry():
             "coordinates": ((-124.75886592699995, 48.49401784300004), (1.5, 2.5))}
     multi = {"type": "MultiLineString",
              "coordinates": (((0.123456789, 1.987654321),), ((2.0, 3.0),))}
-    assert borders._round(line)["coordinates"] == [[-124.7589, 48.494], [1.5, 2.5]]
-    assert borders._round(multi)["coordinates"] == [[[0.1235, 1.9877]], [[2.0, 3.0]]]
+    # Expectations are derived from the inputs and COORD_DP, not written out at
+    # one precision: hardcoding them meant changing COORD_DP failed this test
+    # for the wrong reason, saying nothing about whether rounding reached every
+    # nested coordinate, which is what it exists to check.
+    dp = borders.COORD_DP
+    assert borders._round(line)["coordinates"] == [
+        [round(-124.75886592699995, dp), round(48.49401784300004, dp)], [1.5, 2.5]]
+    assert borders._round(multi)["coordinates"] == [
+        [[round(0.123456789, dp), round(1.987654321, dp)]], [[2.0, 3.0]]]
 
 
 def test_rounding_leaves_everything_that_is_not_a_number_alone():
