@@ -397,17 +397,82 @@ echo "$FOLD" | grep -q '"legendOnScreen":true' || { echo "  !! the legend is hid
 echo "$FOLD" | grep -q '"keysOnScreen":true' || { echo "  !! the two legend keys are hidden while the sheet is folded"; fail=1; }
 echo "$FOLD" | grep -q '"capOnScreen":true' || { echo "  !! the door-to-door caption is hidden while the sheet is folded"; fail=1; }
 echo "$FOLD" | grep -q '"scaleOnScreen":true' || { echo "  !! the hour ticks are hidden while the sheet is folded"; fail=1; }
-# ...and a tap from the folded state must both write the reading AND bring the
-# sheet back, so the number it just produced is on screen.
-TAP=$(agent-browser eval '(()=>{const m=window.__map,p=m.project([120,40]);
-  const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();const o={clientX:r.left+p.x,clientY:r.top+p.y,bubbles:true};
-  c.dispatchEvent(new MouseEvent("mousedown",o));c.dispatchEvent(new MouseEvent("mouseup",o));c.dispatchEvent(new MouseEvent("click",o));
-  return new Promise(res=>setTimeout(()=>{const rl=document.querySelector(".rail"),v=rl.getBoundingClientRect();
-   const on=s=>{const b=document.querySelector(s).getBoundingClientRect();return b.top>=v.top-1&&b.bottom<=v.bottom+1};
-   res(JSON.stringify({folded:rl.classList.contains("folded"),time:document.getElementById("time").textContent.trim(),
-    timeOnScreen:on("#time"),legendOnScreen:on("#tints")}))},1600))})()' 2>&1 | tail -1 | tr -d '\\')
+# ...and a tap from the folded state must write the reading, unfold the sheet
+# and leave the number it just produced on screen.
+#
+# Two things went wrong with this check and both are fixed here.
+#
+# It used to tap a hardcoded [120, 40], which is in the Bohai Sea. That res-6
+# cell is not land, so the reading tier holds the padding sentinel for it and
+# the page printed "no scheduled route"; setDestination returns before
+# unfoldSheet() for a point with no journey -- correctly, an unreachable point
+# is not a destination -- so the gate reported both "a tap did not write the
+# reading" and a sheet that stayed folded, on a page behaving as designed. A
+# gate must not guess at geography.
+#
+# And it dispatched the click straight at the canvas element, which skips hit
+# testing. Measured with real CDP input at the departure city's own
+# coordinate: the topmost element there is SPAN.dot, the departure label's own
+# dot, and every label calls stopPropagation because a label is not a
+# destination. So the old shape could have passed while no finger could
+# reproduce it.
+#
+# The point is therefore CHOSEN rather than assumed: near the departure city,
+# topmost-under-the-pointer must be the canvas, and the page's own hover
+# reading there must already be a number. That is what makes the tap assertion
+# below about the click path and not about where the point happened to land.
+read -r OLON OLAT < <(printf '%s' "$IDX" | python3 -c 'import json, sys
+o = next(x for x in json.load(sys.stdin)["origins"] if x["slug"] == "tokyo")
+print(o["lon"], o["lat"])')
+[ -n "${OLAT:-}" ] || { echo "!! index.json has no tokyo origin to tap"; exit 1; }
+TAP=$(agent-browser eval '(()=>{const m=window.__map;
+  m.jumpTo({center:['"$OLON"','"$OLAT"'],zoom:7,bearing:0,pitch:0});
+  const wait=(ms)=>new Promise(r=>setTimeout(r,ms));
+  return (async()=>{
+   await wait(1200);
+   const c=document.querySelector("#map canvas"),r=c.getBoundingClientRect();
+   const p=m.project(['"$OLON"','"$OLAT"']);
+   const num=(s)=>/^[0-9]/.test(s.trim());
+   let pick=null;
+   for(const [dx,dy] of [[0,0],[0,-40],[40,0],[-40,0],[0,40],[80,-80],[-80,-80],[0,-120],[120,0]]){
+     const x=r.left+p.x+dx,y=r.top+p.y+dy;
+     if(x<r.left||y<r.top||x>r.right||y>r.bottom) continue;
+     if(document.elementFromPoint(x,y)!==c) continue;     // a label is on top here
+     c.dispatchEvent(new MouseEvent("mousemove",{clientX:x,clientY:y,bubbles:true}));
+     await wait(260);
+     if(num(document.getElementById("time").textContent)){ pick={x,y,dx,dy}; break; }
+   }
+   if(!pick) return JSON.stringify({picked:false});
+   const o={clientX:pick.x,clientY:pick.y,bubbles:true};
+   c.dispatchEvent(new MouseEvent("mousedown",o));
+   c.dispatchEvent(new MouseEvent("mouseup",o));
+   c.dispatchEvent(new MouseEvent("click",o));
+   await wait(1600);
+   const rl=document.querySelector(".rail"),v=rl.getBoundingClientRect();
+   const on=(s)=>{const b=document.querySelector(s).getBoundingClientRect();return b.top>=v.top-1&&b.bottom<=v.bottom+1};
+   return JSON.stringify({picked:true,at:[pick.dx,pick.dy],
+    folded:rl.classList.contains("folded"),
+    time:document.getElementById("time").textContent.trim(),
+    announced:/door to door/.test(document.getElementById("status").textContent),
+    timeOnScreen:on("#time"),legendOnScreen:on("#tints")});
+  })();})()' 2>&1 | tail -1 | tr -d '\\')
 echo "  tap from folded: $TAP"
+# Reported first: without it, "no tappable point near the departure city" and
+# "the tap was ignored" are the same output.
+echo "$TAP" | grep -q '"picked":true' || { echo "  !! found no point near the departure city where the canvas is on top and reads a time"; fail=1; }
 echo "$TAP" | grep -qE '"time":"[0-9]' || { echo "  !! a tap did not write the reading"; fail=1; }
+# The comment above this block has always said the sheet must come back, and
+# nothing checked it. unfoldSheet() sits after an early return in
+# setDestination, so this is the assertion that notices when a tap stops
+# reaching it.
+echo "$TAP" | grep -q '"folded":false' || { echo "  !! a tap left the sheet folded, so the reading it wrote is behind it"; fail=1; }
+# A hover already writes #time, so "time is a number" alone does NOT prove the
+# CLICK did anything. The live region is written only on a committed reading.
+# Matched on "door to door" and not on "from": the IDLE status is "Travel times
+# from Tokyo are ready...", which contains "from", so that regex reported a
+# committed reading on a page that had committed nothing. Caught by rehearsing
+# this check against the sea point it used to tap.
+echo "$TAP" | grep -q '"announced":true' || { echo "  !! a tap wrote no reading to the live region, so the click committed nothing"; fail=1; }
 echo "$TAP" | grep -q '"timeOnScreen":true' || { echo "  !! the reading a tap produced is off screen"; fail=1; }
 echo "$TAP" | grep -q '"legendOnScreen":true' || { echo "  !! the legend went off screen after a tap"; fail=1; }
 # Last, deliberately: this fires two real map errors through the map's own
