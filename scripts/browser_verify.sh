@@ -209,20 +209,49 @@ A=$(agent-browser eval 'document.querySelectorAll(".results .addresses button[da
 echo "  address results: $A"
 [ "${A:-0}" -ge 1 ] || { echo "  !! address search returned nothing"; fail=1; }
 agent-browser eval '(()=>{const q=document.getElementById("q");q.value="";q.dispatchEvent(new Event("input",{bubbles:true}));return 1})()' >/dev/null 2>&1
-# click to depart: an origin-city label is a button that switches the tiles
-agent-browser eval 'window.__map.jumpTo({center:[135,35],zoom:4.6});1' >/dev/null 2>&1; sleep 6
-C=$(agent-browser eval '(()=>{const b=Array.from(document.querySelectorAll(".lbl.origin")).find(x=>x.getAttribute("aria-current")!=="true");if(!b)return "no origin label";const n=b.textContent;b.click();return n})()' 2>&1 | tail -1 | tr -d '\\"')
-sleep 5
-SRC=$(agent-browser eval 'window.__map.getSource("bands").url' 2>&1 | tail -1 | tr -d '\\"')
-echo "  clicked label: $C -> $SRC"
-# Both halves must be POSITIVE. The old check fired only when $SRC still named
-# seoul, so an empty $SRC -- eval failed, no source, the page never loaded --
-# read as a pass, and so did "no origin label" from the probe itself.
-case "$C" in
-  ""|*"no origin label"*|*rror*) echo "  !! no origin label was clickable ($C)"; fail=1 ;;
-esac
-echo "$SRC" | grep -q "origins/.*\.pmtiles" || { echo "  !! the bands source is not an origin archive ($SRC)"; fail=1; }
-echo "$SRC" | grep -q "origins/seoul.pmtiles" && { echo "  !! clicking an origin label did not change the departure"; fail=1; }
+# click to depart: an origin-city label is a button that switches the tiles.
+#
+# Polls for the label instead of sleeping 6 s for it. The labels come from
+# places.json, 1.8 MB, which now shares the connection with the 10 MB reading
+# tier -- the same reason the permalink check stopped sleeping 12 s. When the
+# gazetteer had not landed there was no `.lbl.origin` to click, and BOTH
+# failures fired: "no origin label was clickable" and, because the source was
+# still the first origin's, "clicking an origin label did not change the
+# departure". The second message named a defect the page did not have.
+#
+# The assertion is also no longer "the url stopped saying seoul". It is "the
+# url CHANGED from whatever it was", read before the click, so the check does
+# not depend on which origin index.json happens to list first -- the same
+# hardcoded-geography mistake the phone taps made with [120, 40].
+agent-browser eval 'window.__map.jumpTo({center:[135,35],zoom:4.6});1' >/dev/null 2>&1
+C=$(agent-browser eval '(()=>{const m=window.__map;
+  return new Promise((res)=>{
+   const t0=Date.now();
+   const poll=setInterval(()=>{
+    const all=[...document.querySelectorAll(".lbl.origin")];
+    const b=all.find((x)=>x.getAttribute("aria-current")!=="true");
+    if(b){ clearInterval(poll);
+      const before=m.getSource("bands").url, name=b.textContent.trim();
+      b.click();
+      const p2=setInterval(()=>{
+        const now=m.getSource("bands").url;
+        if(now!==before){ clearInterval(p2);
+          res(JSON.stringify({clicked:name,labels:all.length,from:before,to:now,
+            waitedMs:Date.now()-t0})); }
+      },100);
+      setTimeout(()=>{ clearInterval(p2);
+        res(JSON.stringify({clicked:name,labels:all.length,from:before,
+          to:m.getSource("bands").url,unchanged:true}));},8000);
+      return; }
+    if(Date.now()-t0>25000){ clearInterval(poll);
+      res(JSON.stringify({noLabel:true,labels:all.length,
+        to:m.getSource("bands").url})); }
+   },250);});})()' 2>&1 | tail -1 | tr -d '\\')
+echo "  clicked label: $C"
+# Three distinct failures, so the output names the one that happened.
+echo "$C" | grep -q '"noLabel":true' && { echo "  !! no origin label was clickable within 25 s (the gazetteer never arrived)"; fail=1; }
+echo "$C" | grep -q '"unchanged":true' && { echo "  !! clicking an origin label did not change the departure"; fail=1; }
+echo "$C" | grep -qE '"to":"pmtiles://\./origins/[a-z0-9-]+\.pmtiles"' || { echo "  !! the bands source is not an origin archive ($C)"; fail=1; }
 # low zoom: the coarse level must paint, the coast must be there, and the
 # borders layer must have rendered features (a 404 on borders.json or a failed
 # addLayer used to pass because the old check looked at the map canvas).
