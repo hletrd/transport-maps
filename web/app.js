@@ -486,7 +486,16 @@ function tickEl(i, at) {
   el.dataset.min = String(EDGES[i]);
   el.textContent = fmtTick(EDGES[i]) + (i === EDGES.length - 1 ? "+" : "");
   el.title = `${EDGES[i]} minutes from the departure city, door to door`;
-  if (i === EDGES.length - 1) el.classList.add("last");   // right-anchored, never overhangs
+  // Right-anchored whenever the tick SITS on the strip's right edge, which is
+  // a question about `at`, not about which boundary `i` happens to be. Keyed
+  // on `i === EDGES.length - 1` alone, this only ever fired for the whole
+  // ladder's final edge, so the zoom-detail row -- which ends on whatever
+  // boundary its range ends on -- got a centred label at 100% and overhung by
+  // half its own width. Measured on the live page: at 390x844 the detail row's
+  // "13 h 45" ran to x=395 on a 390 px screen and rendered as "13 h 4"; at
+  // 1280x800 it painted 19 px past the strip onto bare globe. `.first` was
+  // already handled this way, by position, in paintDetail.
+  if (at >= 1 || i === EDGES.length - 1) el.classList.add("last");
   return el;
 }
 
