@@ -311,3 +311,43 @@ def test_a_condition_changing_mid_flight_stops_and_rests(node, tmp_path, flip, w
     assert got["writes"][-1] == [2, 2.5], (
         f"the last dasharray written after {why} was {got['writes'][-1]}, not "
         "the resting [2, 2.5]")
+
+
+# ------------------------------------------ exactly one animator, please ----
+
+def test_only_one_thing_animates_the_dashes() -> None:
+    """Two dash loops fighting over one paint property is not hypothetical.
+
+    397ded7 landed a SECOND implementation beside this one -- `DASH_CYCLE` /
+    `startDashes` / `stopDashes`, driven from a `sourcedata` handler -- and both
+    shipped. Measured on the live page with a route drawn: 26.6 dasharray writes
+    a second and **20** distinct patterns, against the 12 this cycle defines.
+    The two interleaved, so the dashes jittered between two cadences and the map
+    repainted for both.
+
+    The duplicate was also wrong on its own terms, which is why this one
+    survived rather than the other: its frames totalled 4.8126 to 7.0001 line
+    widths, so the pattern's period swung by 45% and the dashes stretched and
+    compressed instead of flowing; and its leading gap DECREASED every step, so
+    its first dash started earlier each frame and the flow ran toward the
+    departure -- the opposite of what its own comment claimed.
+
+    Mutation performed and reverted: paste a second
+    `map.setPaintProperty("route-ground", "line-dasharray", …)` call into
+    app.js -> red.
+    """
+    import re
+
+    code = re.sub(r"//[^\n]*", "", APP)
+    writers = re.findall(
+        r"setPaintProperty\(\s*[\"']route-ground[\"']\s*,\s*[\"']line-dasharray[\"']", code)
+    assert len(writers) == 1, (
+        f"{len(writers)} places write route-ground's dasharray; they will "
+        "interleave and the dashes will jitter between their cadences")
+
+    # ...and one frame loop driving it.
+    loops = re.findall(r"requestAnimationFrame\(\s*(\w+)\s*\)", code)
+    dash_loops = [n for n in set(loops) if "flow" in n.lower() or "dash" in n.lower()]
+    assert dash_loops == ["flowTick"], (
+        f"the dash loop is driven by {dash_loops}; there should be exactly one, "
+        "flowTick")

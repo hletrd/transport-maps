@@ -776,57 +776,6 @@ map.addLayer({ id: "route-ground", type: "line", source: "route",
   paint: { "line-color": "#ffffff", "line-width": 1.4, "line-opacity": 0.75,
            "line-dasharray": [2, 2.5] } });
 
-// The dashes flow from the departure toward the destination, so the motion
-// carries direction rather than merely moving. MapLibre has no dash offset, so
-// the pattern itself is cycled: each step begins with a shorter leading gap,
-// which walks the dashes forward by one period over the cycle.
-const DASH_ON = 2, DASH_OFF = 2.5, DASH_STEPS = 8;
-const DASH_REST = [DASH_ON, DASH_OFF];
-const DASH_CYCLE = Array.from({ length: DASH_STEPS }, (_, i) => {
-  // A leading gap of `lead` shifts the whole pattern forward by (period - lead).
-  const lead = DASH_OFF * (1 - i / DASH_STEPS);
-  return lead < 0.01 ? DASH_REST : [0.0001, lead, DASH_ON, DASH_OFF];
-});
-// Runs ONLY while a route is drawn, never in a hidden tab, never under a
-// reduced-motion preference. An always-on animation-frame loop over a globe is
-// exactly the thing that quietly costs a phone its battery.
-const DASH_MS = 90;
-let dashFrame = null, dashStep = 0, dashLast = 0;
-// Asked of the map rather than tracked in a flag: renderRoute is extracted and
-// run standalone by tests/web/test_route_geometry.py, so it must not reference
-// anything outside itself. The source event below is the only trigger.
-function routeIsDrawn() {
-  if (!map.getLayer("route-ground")) return false;
-  try { return map.querySourceFeatures("route").some((f) => f.properties?.kind === "ground"); }
-  catch { return false; }
-}
-map.on("sourcedata", (e) => {
-  if (e.sourceId !== "route" || !e.isSourceLoaded) return;
-  if (routeIsDrawn()) startDashes(); else stopDashes();
-});
-function setDash(a) {
-  if (map.getLayer("route-ground")) map.setPaintProperty("route-ground", "line-dasharray", a);
-}
-function dashTick(now) {
-  dashFrame = requestAnimationFrame(dashTick);
-  if (now - dashLast < DASH_MS) return;
-  dashLast = now;
-  dashStep = (dashStep + 1) % DASH_CYCLE.length;
-  setDash(DASH_CYCLE[dashStep]);
-}
-function stopDashes() {
-  if (dashFrame !== null) { cancelAnimationFrame(dashFrame); dashFrame = null; }
-  setDash(DASH_REST);
-}
-function startDashes() {
-  if (dashFrame !== null) return;
-  if (REDUCED_MOTION.matches || document.hidden) return stopDashes();
-  dashLast = 0;
-  dashFrame = requestAnimationFrame(dashTick);
-}
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopDashes(); else if (routeIsDrawn()) startDashes();
-});
 
 // Your own position, once geolocation answers.
 map.addSource("me", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
@@ -866,9 +815,6 @@ fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
 
 // A flyTo arc becomes a cut when the visitor asked for less motion.
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
-REDUCED_MOTION.addEventListener("change", () => {
-  if (REDUCED_MOTION.matches) stopDashes(); else if (routeIsDrawn()) startDashes();
-});
 function moveTo(opts) { if (REDUCED_MOTION.matches) map.jumpTo(opts); else map.flyTo(opts); }
 
 // ---- the ground legs' dashes flow toward the destination ------------------
