@@ -332,8 +332,13 @@ let readingParents = null;
 // reaches must be declared before it.
 const MIN_LEGS_PX = 96;
 let smallEntered = false;
+// The line UNDER the number, and it must not repeat the line IN it. Both
+// used to open with the same two words, four pixels apart, and that pair was
+// the first thing a first-time visitor read. The big slot keeps the
+// invitation; this line carries what the idle line does not say -- what a
+// click does -- so the two sentences add up instead of restating each other.
 const IDLE_PROMPT = COARSE
-  ? "Tap the map to read a travel time. Tap a city name to depart from it."
+  ? "Tap to set a destination, or a city name to depart from it."
   : $("where").textContent;
 // What stands where the number goes before there is a number. It used to be an
 // em dash at 50px -- the largest element on the page at rest, and the first
