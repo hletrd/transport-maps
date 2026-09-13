@@ -12,7 +12,7 @@ other review finding is scheduled below or recorded in `deferred.md`.
 
 Build constraint honoured: no `build-all`, no `reindex`, no
 `scripts/build_water_tiles.py`, nothing written under `dist/` or `data/`. Deploy
-was `scripts/deploy_verify.sh --page-only`, three times.
+was `scripts/deploy_verify.sh --page-only`, four times.
 
 ---
 
