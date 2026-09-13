@@ -76,11 +76,17 @@ processes it started. **A deploy is not done until that has passed**
 
 - Run `uvx pip-audit` (not installed in the venv; run it ad hoc) and
   `uv run pytest tests/test_licence_firewall.py`.
-- The CSP has never been rehearsed against the page on a server (SEC-19).
-  That rehearsal is owed before the first install: serve `dist/` behind
-  `deploy/worldmap-security-headers.conf`, open the page and confirm the map,
-  the address search and the Google tag all load with no CSP report in the
-  console.
+- The CSP was rehearsed and is INSTALLED (2026-09-13). Rehearsal: `dist/` served
+  locally with the policy injected as a meta tag, page opened, map 7,845 water
+  features and 52 bands, 553 cities, address search reaching Nominatim and
+  returning results, zero CSP refusals, zero console errors. Install: the
+  snippet at `/etc/nginx/snippets/`, included at server level and inside all
+  five locations that set their own `add_header`, six now-duplicated
+  server-level headers removed, `nginx -t` passed, reload, and the live page
+  re-opened with the same result. All six headers verified present on `/`,
+  `app.js` and `origins/seoul.bin` -- the `.bin` and `.pmtiles` locations are
+  the ones that used to drop them. Backup at
+  `/etc/nginx/worldmap.atik.kr.bak.*` on the host.
 
 ## Caching is load-bearing, not an optimisation
 
