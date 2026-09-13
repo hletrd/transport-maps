@@ -224,6 +224,10 @@ const pinB = {{ lat: -20.162, lon: 57.499, label: "Port Louis" }};
 const airports = [["KUL", "Kuala Lumpur", "MY", 2.746, 101.710],
                   ["MRU", "Sir Seewoosagur Ramgoolam", "MU", -20.430, 57.683]];
 function lookup() {{ return 1121; }}
+// Recorded rather than ignored: whether the flowing-dash loop is asked to run
+// is part of what renderRoute decides, and the test below asserts it.
+let flowAsked = null;
+function setRouteFlow(on) {{ flowAsked = on; }}
 function legsTo() {{
   const chain = [{{ code: "KUL", kind: "dep", min: 648 }},
                  {{ code: "MRU", kind: "arr", min: 1121 }}];
@@ -234,8 +238,8 @@ function legsTo() {{
 {_function("greatCircle")}
 {_function("renderRoute")}
 renderRoute();
-console.log(JSON.stringify(feats.map((f) => [f.properties.kind,
-  f.geometry.coordinates[0], f.geometry.coordinates[f.geometry.coordinates.length - 1]])));
+console.log(JSON.stringify({{ flowAsked, feats: feats.map((f) => [f.properties.kind,
+  f.geometry.coordinates[0], f.geometry.coordinates[f.geometry.coordinates.length - 1]]) }}));
 """
 
 
@@ -252,6 +256,10 @@ def render_route(node: str, tmp_path_factory):
     return call
 
 
+def _feats(got: dict) -> list:
+    return got["feats"]
+
+
 def test_a_partial_chain_draws_no_leg_to_its_first_airport(render_route):
     """From Seoul, whose only land border is sealed, the page drew a ground line
     all the way to Kuala Lumpur: `legsTo` had lost the flights before KUL, and
@@ -264,7 +272,7 @@ def test_a_partial_chain_draws_no_leg_to_its_first_airport(render_route):
     Mutation performed and reverted: drop `&& !chain.partial` from the leading
     `add(...)` in renderRoute -> red on the first assertion below.
     """
-    partial = render_route(True)
+    partial = _feats(render_route(True))
     kinds = [k for k, _, _ in partial]
     assert kinds.count("ground") == 1, (
         f"a partial chain drew {kinds.count('ground')} ground legs; only the "
@@ -276,7 +284,7 @@ def test_a_partial_chain_draws_no_leg_to_its_first_airport(render_route):
     # The control: with the chain complete the leg to the first airport is
     # drawn, so the assertion above is about `partial` and not about the
     # feature count happening to be one.
-    whole = render_route(False)
+    whole = _feats(render_route(False))
     assert [k for k, _, _ in whole].count("ground") == 2, (
         f"a complete chain must still draw both ground legs: {whole}")
     assert any(abs(start[0] - 126.98) < 0.5
