@@ -605,3 +605,12 @@ with a cycle, as C10-7, C10-8, C10-9 and C10-12. They are not deferred.
 | ID | Finding | File:line | Sev | Conf | Reason | Exit criterion |
 |---|---|---|---|---|---|---|
 | C10-16 | The flowing-dash animation holds the map at 60 repaints a second for as long as a journey is on screen, against 0 when none is. Measured at 390x844 on the deployed build, and isolated: stopping the loop with the route still drawn takes it from 60 to 0. Slowing it does not help -- one dash write every 360 ms still measured 54 repaints/sec, because a single `line-dasharray` change puts MapLibre into a sustained repaint that outlasts the gap to the next one. Not the fade duration: forcing `fadeDuration` to 0 left it at 59.3. No frames are dropped (p95 16.8 ms), so the cost is battery, not smoothness. | `web/app.js`, the `FLOW_*` block and `flowTick` | MEDIUM | High | The owner asked for this animation and named mobile battery as the constraint; both are true at once, and the trade is theirs to make, not ours to make silently. Every guard the brief asked for is in place and measured -- off with nothing drawn, off in a hidden tab, static under reduced motion -- and there is no cheaper way to move a dash in MapLibre: it has no dash offset and `line-dasharray` is not data-driven. The one mitigation that would work is to run the flow for a few seconds after the route changes and then rest, since the direction is communicated in the first second or two; that visibly changes the feature the owner asked for, so it needs their say-so rather than a quiet edit. | The owner's decision on "flow for a few seconds, then rest"; or a MapLibre release that offers a dash offset, at which point the loop becomes a paint-property-free uniform update |
+
+> **C10-16 decided by the owner, 2026-09-13: keep flowing always.** Asked to
+> choose between a time-limited flow, desktop-only, dropping it, or leaving it
+> continuous, given the measurement that a drawn journey holds the map at 60
+> repaints a second against 0 with none, that slowing the writes does not help
+> (one every 360 ms still measured 54/s), and that the cost is battery rather
+> than smoothness with no frames dropped. They chose to keep it continuous.
+> This row stays for the record; it is not open work.
+
