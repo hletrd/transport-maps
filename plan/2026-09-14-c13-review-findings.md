@@ -61,28 +61,31 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
 
 ## Scheduled, not done — cycle 14, in this order
 
-- [ ] **C13-6 — the reading tier says "no scheduled route" where the coarse
-  tier says ten hours.** HIGH. TR13-1 and DBG13-1, the latter decoded from the
-  shipped binaries. `emit/hover.py:115-127` falls back to the fastest child
-  when a res-4 parent's centre cell is water; `emit/hover.py:226-232,249-250`
-  has no such fallback and leaves the `UNREACHABLE` fill. **553 of 553 shipped
-  origins** read 65535 at Kota Kinabalu's cell while the coarse tier reads 231
-  to 2,140 minutes; **281,328 of 4,446,252 res-6 cells (6.33 %)** are in that
-  state structurally; **13 of 34,135 labelled places** and **47 of 4,008
-  airports** are affected, including Bodø, Tarawa, Bora Bora and the Galápagos.
-  Once `rebuild20` lands, departing from Kota Kinabalu and pointing at Kota
-  Kinabalu will read "no scheduled route" from itself.
+- [x] **C13-6 — the reading tier said "no scheduled route" where the coarse
+  tier said ten hours.** `fe93bea`. HIGH; TR13-1 and DBG13-1, the latter decoded
+  from the shipped binaries. `emit/hover.py:write_reading` fills every slot of a
+  res-3 block with the sentinel and writes only the land slots;
+  `_representative_children` gives the res-4 tier a fastest-child fallback and
+  the res-6 tier has none. **553 of 553 shipped origins** read 65535 at Kota
+  Kinabalu's cell while the coarse tier reads 231 to 2,140 minutes;
+  **281,328 of 4,446,252 res-6 cells (6.33 %)** are in that state structurally;
+  **13 of 34,135 labelled places** and **47 of 4,008 airports** are affected,
+  Bodø, Tarawa, Bora Bora and the Galápagos among them.
 
-  **Not fixed this cycle, deliberately, and the reason is the build.** The fix
-  changes 6.33 % of every origin's reading array. `rebuild20` forked its
-  workers with `emit/hover.py` already imported, so an edit now would not reach
-  it — the next 39-hour build would be the first to carry it, and a wrong fix
-  would not be visible until that build finished. `plan/deferred.md:582`
-  (C10-6) deferred it on a premise that is now false ("the page has no res-6
-  land set"): `places.json` and `airports.json` are one, because a labelled
-  city is not sea. **Exit criterion: `rebuild20` completes, or is stopped.**
-  First task of cycle 14, with a unit test on a hand-built index before any
-  build runs.
+  **Fixed in the page, and the emitter-side fix is rejected rather than
+  deferred.** Giving the reading tier a fallback means filling padding slots,
+  and 6.33 % of those slots are genuinely open water inside a land-touching
+  res-3 parent — so it would paint door-to-door times over the ocean, which is
+  worse than the defect. `plan/deferred.md:582` (C10-6) deferred this because
+  "the page has no res-6 land set". It has none and needs none: it ships a
+  res-4 land set, and when the tier it trusts for land has a real answer for
+  the cell the pointer is in, printing that beats printing a sentinel. The
+  value is then read from a wider cell than the outline, which the page already
+  has a sentence for — `readingGrid()` now reports the tier actually read
+  rather than the presence of the array, so the disclosure fires. Seven tests,
+  five mutations red.
+
+  This also closes C10-6 in `deferred.md`, whose stated premise is now false.
 
 - [ ] **C13-7 — `route_network()` returns the legacy parquet on a bare
   `.exists()`.** HIGH. CR13-3, DBG13-6, and the running build's own log says
@@ -140,7 +143,7 @@ a build-lock exit criterion that fires within days.
 
 | group | IDs | sev | conf | reason | exit criterion |
 |---|---|---|---|---|---|
-| **Blocked by the running build** | C13-6 (TR13-1, DBG13-1), C13-7 (CR13-3, CR13-13, CR13-2, CR13-6), DBG13-7, ARCH13-5 | HIGH–MEDIUM | High | Each changes what a build produces or what a build reads. `rebuild20` forked with these modules imported, so an edit cannot reach it; a wrong fix would not surface until the next 39-hour run. Editing build inputs under a build is how this project lost rebuild19. | `rebuild20` completes or is stopped, and `dist/.build.lock` is gone |
+| **Blocked by the running build** | C13-7 (CR13-3, CR13-13, CR13-2, CR13-6), DBG13-7, ARCH13-5 | HIGH–MEDIUM | High | Each changes what a build produces or what a build reads. `rebuild20` forked with these modules imported, so an edit cannot reach it; a wrong fix would not surface until the next 39-hour run. Editing build inputs under a build is how this project lost rebuild19. C13-6 was in this group until it turned out to have a better fix in the page, which needs no build at all. | `rebuild20` completes or is stopped, and `dist/.build.lock` is gone |
 | **In the deploy path this cycle must run** | V13-27, V13-28, V13-29, V13-30, V13-32, SEC13-5, SEC13-6, SEC13-8, C13-6 (deploy_verify), FCR13-7 | HIGH–MEDIUM | High | The orchestrator's note is explicit: gates have failed four times on correct code, and changing a gate in the cycle that runs it makes the next failure unattributable. SEC13-2 was the exception and is fixed, because it is not a gate — it is a shell-injection primitive. | A cycle whose deploy is not `--page-only`, or any cycle that does not run `deploy_verify.sh` |
 | **Performance, all analytic** | PR13-1…PR13-18 except those in the solver document | HIGH–LOW | High | Every one is a measured cost in the build or the page, and every fix touches `graph/`, `emit/` or `sources/` — the modules the running build is executing. PR13-2, PR13-3, PR13-7 and PR13-18 are already scheduled as C13-F2.7 in the solver document, where they matter most. | `rebuild20` ends; then PR13-18 first (139.6 s, 45 % of every build's startup) |
 | **Documentation, 62 of 76** | DOC13-15…DOC13-76 | MEDIUM–LOW | High–Medium | Cycle 12 raised 23 documentation HIGHs and closed 7; this cycle raises 14 more. The backlog is real and it is prose, not behaviour. Taking 76 rows in the cycle that also lands a service design and four HIGH fixes would make none of them reviewable. The 14 HIGHs are scheduled as C13-10. | Any cycle whose brief is documentation, or the next time a figure in this group is quoted to the owner |
@@ -497,7 +500,7 @@ committed.
 
 ## Status
 
-Cycle 13: five tasks done, six scheduled, the rest deferred with exit criteria
+Cycle 13: six tasks done, five scheduled, the rest deferred with exit criteria
 above. No finding was dropped. The three lanes that agreed on a NON-finding are
 recorded in `.context/reviews/_aggregate.md` so the mixed-resolution grid is not
 re-reviewed from scratch next cycle: `tracer` traced base order against native
