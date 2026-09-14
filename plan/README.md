@@ -37,6 +37,8 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 
 | Plan | Scope | Status |
 |---|---|---|
+| `2026-09-14-c12-requested-features.md` | Cycle 12: the three tasks the owner named — a real test for `esc()`, draggable start and end markers, and the ETOPS decision (F1…F3) | cycle 12 done; all three landed |
+| `2026-09-14-c12-review-findings.md` | Cycle 12: everything else the eleven review lanes found, scheduled or deferred (C12-1…C12-11) | cycle 12: current |
 | `2026-09-13-c11-design-slop.md` | The owner's design pass: "remove ai slops from overall designs". Prose, type scale, three false statements, and the gate that keeps the design policy enforced | cycle 11 done; all ten tasks landed |
 | `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | cycle 2 done; tasks still open, carried forward |
 | `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | cycle 2 done; tasks still open, carried forward |
@@ -236,3 +238,26 @@ Conventions
   rewrite files under `dist/` or `data/` outside the sanctioned deploy script.
   Tasks that need a rebuild say so and wait for the orchestrator's rebuild;
   cache-key changes recompute their cache once on the next build and say so.
+
+## Cycle 12
+
+Eleven reviewer lanes (`code-reviewer`, `security-reviewer`, `perf-reviewer`,
+`test-engineer`, `critic`, `architect`, `designer`, `verifier`, `tracer`,
+`debugger`, `document-specialist`), no agent failures. Per-agent IDs `CR12-n`,
+`SEC12-n`, `PR12-n`, `TE12-n`, `CRIT12-n`, `ARCH12-n`, `UX12-n`, `VER12-n`,
+`TR12-n`, `DBG12-n`, `DOC12-n`; scheduled clusters `C12-n`.
+
+The cycle's finding was CRITICAL and time-critical: the running 39-hour rebuild
+would have died at origin 970 of 1,464 on one unvalidated coordinate, roughly
+26 hours in, with a traceback that did not name the slug. Two lanes reached it
+independently and it was confirmed a third time by execution. Escalated to the
+owner, because stopping a running build is destructive; the code fix that makes
+a restart safe landed without waiting.
+
+Two defects were found by building rather than by reviewing, and both are in
+`2026-09-14-c12-review-findings.md` under "Found while implementing": the JS
+function slicer every test in `tests/web/` uses returns a signature instead of
+a body when a parameter is destructured, and a temporal dead zone
+`ReferenceError` was written and caught before it shipped — the fourth of a
+class CLAUDE.md is written around, and the first that
+`test_module_scope_order.py` could not have seen.

@@ -207,3 +207,52 @@ Recorded so a later cycle does not re-open them:
   equal-length case in DBG12-6.
 - Zero bare `except:` in `src/`; all ten `httpx` call sites carry explicit
   timeouts; all `dist/` writes go through `_io.atomic_write`.
+
+---
+
+## Found while implementing, not by the review
+
+Two defects the review lanes did not find, both caught by building the thing.
+
+### C12-10 — `_function()` slices a signature when a parameter is destructured
+
+Every JS slicer in `tests/web/` takes `APP.index("{", start)` as the body
+brace. For `paintOrigin(o, { keepZoom = false } = {})` that brace belongs to
+the **parameter**, so the matcher returns the signature alone — and an
+`assert "x" in body` over a signature passes for nothing at all.
+
+Found in `tests/web/test_marker_drag.py`, which is the first test to slice a
+function with that shape. Fixed there by walking the parameter parens first,
+with a guard test that fails if the slice comes back a single line.
+
+- [x] Fixed in `test_marker_drag.py` and `test_departure_list_cap.py`.
+- [ ] The same naive matcher is still in `test_route_geometry.py`,
+      `test_itinerary_grid.py`, `test_city_country.py` and roughly a dozen
+      others. **Not currently vacuous**: none of the functions they slice has
+      a destructured parameter, checked. Deferred to cycle 13 as a latent
+      trap, with the exit criterion that it re-opens the moment any of those
+      functions gains an options object. Severity Medium, confidence High.
+
+### C12-11 — a temporal dead zone ReferenceError, caught before it shipped
+
+Building the search keys (C12-3b) put a `for (const c of cities)` loop calling
+`countryName` **above** `const countryName = (() => …)()`. That is a
+`ReferenceError: Cannot access 'countryName' before initialization` at module
+load; `boot.js` catches it, `index.html` turns it into `display:none` over the
+whole rail, and the page is blank with no console error left to find.
+
+`node --check` passes it — a temporal dead zone error is valid syntax. CLAUDE.md
+records three of these having shipped (`SMALL`, `bandMark`, `bandSpan`); this
+would have been the fourth, and the first not caught by
+`tests/web/test_module_scope_order.py`, whose walk starts at handlers
+registered before the top-level await and so does not reach module-body code
+after it.
+
+- [x] The loop moved below the IIFE; the ReferenceError reproduced in node to
+      confirm the claim rather than assert it; pinned by
+      `test_departure_list_cap.py::test_the_search_key_is_built_below_countryname`.
+- [ ] **C12-11b**: `test_module_scope_order.py` only walks handlers registered
+      before the top-level await. Module-body code *after* it is unchecked, and
+      that is where this one was. Extending the walk is cycle 13. Severity
+      High, confidence High — it is the failure mode CLAUDE.md is written
+      around, and the existing gate cannot see it.
