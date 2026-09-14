@@ -34,6 +34,22 @@ const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;")
 // the bottom sheet until the layout runs, so the sheet is hidden as well.
 function fatal(msg) {
   document.body.classList.add("fatal");
+  // ...and `body.fatal .rail{display:none}` (index.html) hides the bottom
+  // sheet so the message is not covered on a phone. That rule worked until
+  // layoutForSize() was moved ABOVE the globe-load race: at <= 860px it puts
+  // .reading INSIDE .rail, so from that line onwards the rule hid the very
+  // sentence it exists to reveal. Three of the four viewports CLAUDE.md's
+  // deploy rule names sit below the breakpoint, and the visitor saw a black
+  // canvas, a masthead and nothing else -- the blank-page failure this page
+  // has shipped twice, restored by a reorder.
+  //
+  // Put the readout back where the rule can leave it alone, exactly as
+  // layoutForSize() does when it crosses the breakpoint upward. The rule then
+  // hides the sheet's panels and the message stays readable at every size.
+  const readout = document.querySelector(".reading");
+  if (readout && readout.parentElement !== document.body) {
+    document.body.insertBefore(readout, document.getElementById("tip"));
+  }
   $("time").textContent = "";
   $("where").textContent = msg;
   throw new Error(msg);

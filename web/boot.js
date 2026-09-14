@@ -20,6 +20,16 @@
     if (shown || document.body.classList.contains("fatal")) return;
     shown = true;
     document.body.classList.add("fatal");
+    // Same reason as app.js's fatal(): `body.fatal .rail{display:none}` hides
+    // the bottom sheet, and on a small layout app.js has already moved
+    // .reading inside it -- so the message would be written where nothing can
+    // see it. Put the readout back in the body first. This runs whether or
+    // not app.js got far enough to move it, so it must be a no-op when it did
+    // not.
+    var readout = document.querySelector(".reading");
+    if (readout && readout.parentElement !== document.body) {
+      document.body.insertBefore(readout, document.getElementById("tip"));
+    }
     var where = document.getElementById("where");
     var time = document.getElementById("time");
     // NOT an em dash: that is the 50px piece of punctuation the empty state

@@ -55,13 +55,23 @@ const window = {
   // page. Capture it, so a test can assert it was reported rather than eaten.
   console: { warn: (...a) => warnings.push(a.map(String).join(" ")) },
 };
+// `body.fatal .rail{display:none}` hides the bottom sheet so a fatal message
+// is not covered on a phone -- but app.js's layoutForSize() puts .reading
+// INSIDE .rail below 860 px, so on a small layout the rule hides the message
+// itself. boot.js has to put the readout back in the body before writing, and
+// a stub with no parentage at all cannot see whether it did. `opts.smallLayout`
+// starts the readout inside the rail, the way a phone does.
+const rail = { tagName: "DIV", className: "rail" };
+const readout = { tagName: "SECTION", className: "reading", parentElement: null };
 const document = {
   body: {
     classList: {
       contains: (c) => classes.has(c),
       add: (c) => classes.add(c),
     },
+    insertBefore: (node) => { node.parentElement = document.body; return node; },
   },
+  querySelector: (sel) => (sel === ".reading" ? readout : null),
   getElementById: element,
   // The watchdog reads a flag app.js sets as its last statement. It used to
   // count departure-city buttons, which is the SEARCH-FILTERED list -- typing
@@ -73,6 +83,7 @@ const document = {
   // bug, and the test below would then fail as it should.
   querySelectorAll: () => new Array(opts.cities || 0).fill({}),
 };
+readout.parentElement = opts.smallLayout ? rail : document.body;
 const location = { href: opts.href, origin: new URL(opts.href).origin };
 const setTimeout = (fn, ms) => timers.push({ fn, ms }) - 1;
 
@@ -110,6 +121,9 @@ process.stdout.write(JSON.stringify({
   time: (elements.time || {}).textContent || "",
   watchdogArmed: timers.some((t) => t.ms >= 20000),
   warnings: warnings,
+  // Where the readout ended up. `true` means the message is a child of <body>
+  // and `body.fatal .rail{display:none}` cannot hide it.
+  readoutInBody: readout.parentElement === document.body,
 }));
 """
 
@@ -126,8 +140,9 @@ def harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def run_boot(harness: Path, *steps: dict, ready: bool = False, cities: int = 0,
-             href: str = SITE) -> dict:
-    opts = {"ready": ready, "cities": cities, "href": href, "steps": list(steps)}
+             href: str = SITE, small_layout: bool = False) -> dict:
+    opts = {"ready": ready, "cities": cities, "href": href, "steps": list(steps),
+            "smallLayout": small_layout}
     out = subprocess.run(
         ["node", str(harness), str(BOOT), json.dumps(opts)],
         capture_output=True, text=True, check=True, cwd=ROOT)
@@ -311,3 +326,41 @@ def test_a_filtered_city_list_does_not_declare_a_working_page_dead(harness: Path
         "typed a search that matches no departure city")
     assert seen["where"] == "", "and it wrote a failure message over the readout"
     assert seen["time"] == "", "and it overwrote the reading"
+
+
+def test_the_failure_message_is_not_hidden_by_the_rule_that_reveals_it(harness: Path) -> None:
+    """`body.fatal .rail{display:none}` (index.html) exists so a phone's bottom
+    sheet cannot cover the failure message. app.js's layoutForSize() puts
+    .reading INSIDE .rail below 860 px -- so on three of the four viewports
+    CLAUDE.md's deploy rule names, the rule hid the sentence it exists to
+    reveal, and a visitor saw a masthead, a black canvas and nothing else.
+
+    That is this page's worst failure class and it has shipped twice. boot.js
+    must put the readout back in the body before it writes.
+
+    Mutation performed and reverted: delete the re-parenting from boot.js's
+    say() -> red (readoutInBody false, and the message is written where
+    nothing can see it).
+    """
+    seen = run_boot(harness, {"kind": "resourceError", "src": SITE + "app.js"},
+                    small_layout=True)
+    assert seen["fatal"], "the fixture did not reach a fatal state"
+    assert seen["where"], "no message was written at all"
+    assert seen["readoutInBody"], (
+        "the failure message was written inside .rail, which body.fatal hides: "
+        "the visitor sees a black canvas and no explanation")
+
+
+def test_the_re_parenting_is_a_no_op_on_a_desktop_layout(harness: Path) -> None:
+    """Above 860 px the readout is already a child of <body> and moving it
+    would be a pointless DOM write during a failure. It must be conditional,
+    not unconditional.
+
+    Mutation performed and reverted: drop the `parentElement !== document.body`
+    test -> still green here, so the guard is asserted directly below.
+    """
+    seen = run_boot(harness, {"kind": "resourceError", "src": SITE + "app.js"},
+                    small_layout=False)
+    assert seen["readoutInBody"] and seen["where"]
+    assert "parentElement !== document.body" in BOOT.read_text(encoding="utf-8"), (
+        "boot.js re-parents the readout unconditionally")
