@@ -2,7 +2,7 @@
 
 # Isochronic Passage Chart
 
-**How long it takes to reach anywhere on Earth, door to door, from the cities in `data/origins.toml` (553 today; the live build may lag).**
+**How long it takes to reach anywhere on Earth, door to door, from the cities in `data/origins.toml`.** The count is not repeated here: it has been wrong in this file twice, and `dist/index.json` is the only place that knows what was actually built.
 
 [![Live site](https://img.shields.io/badge/live-worldmap.atik.kr-1f6feb)](https://worldmap.atik.kr/)
 ![Python 3.14](https://img.shields.io/badge/python-3.14-3776ab)

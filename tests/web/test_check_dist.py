@@ -153,16 +153,69 @@ def test_a_corrupt_routes_json_is_refused(check_dist, tmp_path):
     assert any("not valid JSON" in m for m in check_dist.check_dist(d))
 
 
-def test_the_page_copy_may_not_state_a_count(check_dist, tmp_path):
+#: Every shape of count that has actually shipped or could. The four-digit
+#: rows are the ones that matter now: the pattern was `[0-9]{3}` -- exactly
+#: three digits -- so it caught "553 cities" and missed every form of 1,464.
+#: The gate stopped gating at precisely the transition it exists to police.
+#: The spelled-out rows were live on the site in five places while the numeric
+#: pattern could never have seen them.
+COUNTS_THAT_MUST_BE_CAUGHT = [
+    "from 553 cities",
+    "from 1464 cities",
+    "from 1,464 cities",
+    "1464 origins",
+    "1464 departure cities",
+    "over 1464 cities",
+    "hundreds of cities",
+    "more than five hundred cities",
+    "from a thousand departure cities",
+    "from two thousand origins",
+]
+
+#: Copy that names no count. "the cities in data/origins.toml" is the README's
+#: phrasing and "cities on every inhabited continent" is the meta
+#: description's, so both are load-bearing: a regex that fires on either one
+#: makes the gate unpassable and gets deleted.
+COUNTS_THAT_MUST_PASS = [
+    "the cities listed in index.json",
+    "from cities on every inhabited continent",
+    "the cities in data/origins.toml",
+    "Global travel-time isochrones from cities worldwide",
+    "reach any point on Earth from the departure cities",
+]
+
+
+@pytest.mark.parametrize("claim", COUNTS_THAT_MUST_BE_CAUGHT)
+def test_the_page_copy_may_not_state_a_count(check_dist, tmp_path, claim):
+    """Mutation performed and reverted: restore `[0-9]{3}` -> the six
+    four-digit rows go red; drop the spelled-out alternation -> three more.
+    """
     web = tmp_path / "web"
     web.mkdir()
-    (web / "index.html").write_text("<p>from 553 cities</p>")
-    (web / "llms.txt").write_text("hundreds of cities")
+    (web / "index.html").write_text(f"<p>{claim}</p>")
+    (web / "llms.txt").write_text("nothing to see")
     problems = check_dist.check_copy(web)
-    assert len(problems) == 2
-    (web / "index.html").write_text("<p>from more than a hundred cities</p>")
+    assert len(problems) == 1, (
+        f"{claim!r} passed the page-copy gate; the count must come from "
+        "index.json at runtime")
+    assert "index.json" in problems[0], "the refusal does not name the remedy"
+
+
+@pytest.mark.parametrize("clean", COUNTS_THAT_MUST_PASS)
+def test_copy_that_names_no_count_is_left_alone(check_dist, tmp_path, clean):
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text(f"<p>{clean}</p>")
     (web / "llms.txt").write_text("the cities listed in index.json")
-    assert check_dist.check_copy(web) == []
+    assert check_dist.check_copy(web) == [], (
+        f"{clean!r} was refused, and it states no count")
+
+
+def test_the_real_page_copy_passes_its_own_gate(check_dist):
+    """The five live violations this widening exposed are fixed in the same
+    commit. If a sixth appears, it fails here rather than on the deploy."""
+    from transport_maps import config
+    assert check_dist.check_copy(config.ROOT / "web") == []
 
 
 @pytest.mark.parametrize("missing", ["hoverCellCount", "modeChannels"])

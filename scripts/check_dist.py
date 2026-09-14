@@ -30,10 +30,26 @@ REQUIRED_EXTRAS = ("places.json", "airports.json", "borders.json", "water.pmtile
 # the partial file next to them.
 STRAY = re.compile(r"^(\..*|.*-journal|.*\.tmp|.*\.part|.*\.partial|tmp.*)$")
 PMTILES_MAGIC = b"PMTiles"
-# "N cities" / "N departures" with a three-digit literal, or "hundreds": the
-# count must come from index.json at runtime (it said 553 over a 157-origin
-# build once, and "hundreds" over 157 after that).
-COUNT_CLAIM = re.compile(r"\b[0-9]{3} (cities|departure|origin)|\bhundreds of (cities|departure)", re.I)
+# "N cities" / "N departures": the count must come from index.json at runtime
+# (it said 553 over a 157-origin build once, and "hundreds" over 157 after
+# that).
+#
+# The literal was `[0-9]{3}` -- exactly three digits -- which stopped working
+# the moment origins.toml went from 553 to 1,464. Measured before widening it:
+# "553 cities" was caught, and "1464 cities", "1464 origins", "1464 departure
+# cities" and "over 1464 cities" were all missed. A gate that silently stops
+# gating at the transition it exists to police is worse than no gate, and
+# deploy/README.md documents this one as what prevents a stale count shipping.
+#
+# Spelled-out counts are matched too: five of them were live on the site
+# ("more than five hundred cities" in the meta description, the og and twitter
+# cards, the JSON-LD name and the noscript block) and the numeric pattern
+# could never have seen any of them.
+_N = r"[0-9]{1,3}(?:[,\u00a0 ][0-9]{3})*|[0-9]{4,}"
+_WORDS = (r"(?:a |one |two |three |four |five |six |seven |eight |nine )?"
+          r"(?:hundred|thousand)s?(?: of)?")
+COUNT_CLAIM = re.compile(
+    rf"\b(?:{_N}|{_WORDS}) (?:cities|departure|origin)", re.I)
 
 
 #: Substrings that must never appear in a PMTiles metadata blob. The blob is
