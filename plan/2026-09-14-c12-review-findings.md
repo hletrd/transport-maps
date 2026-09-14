@@ -338,3 +338,56 @@ Times are measured from Tokyo, not from that point.", the marker returned to
 Tokyo's real coordinates, and the permalink followed. The destination handle
 dragged Seoul → Beijing and the headline and the Route panel agreed at 6 h 35
 min; dragged into open water it correctly refused and dropped the pin.
+
+---
+
+## C12-1, closed: the build was stopped and the land audit run
+
+The owner stopped `rebuild19` at origin 65 of 1,464 after verifying the finding
+independently, and reaped the eight orphan `build-all` processes (4 d 21 h old,
+parented to init, fully swapped). Free memory went from 7.75 GB to 21.28 GB.
+Forty minutes lost against the 26 to 33 hours projected.
+
+One correction from the owner worth keeping, because it would have made an
+automated reaper dangerous: **"ppid 1" alone does not identify an orphan.** The
+live build's own `nohup` wrapper (pid 34887) also showed ppid 1. Nothing in
+this repository selects processes to kill, and nothing should on that basis.
+
+### The pre-restart audit — all 1,464 origins
+
+Run against `land_cells_r6_74c3737a.parquet`, which is what
+`landmask._cells_cache_path(SOLVE_RES)` resolves to on this tree (4,091,715
+cells). Resolution 6 is the correct level to check at: `_split` is built from
+the land mask, so an off-mask cell is never split into fine children.
+
+| outcome | count |
+|---|---|
+| on the mask, no snap needed | 1,463 |
+| snapped, ring 1 (~6 km) | 1 |
+| snapped, ring 2 (~13 km) | 0 |
+| no land within two rings — would abort | **0** |
+
+The single snap is `kota-kinabalu`, 4.24 km, one cell east. No origin needs
+removal.
+
+Stated honestly: that table comes from a script that re-implements the two-ring
+test against the same cache file the build reads — it is not a call into the
+shipped `origin_node`. The shipped function is covered separately by the four
+tests in `tests/solve/test_origin_snap.py`, two of them mutated red. The logic
+and the data are each verified, by different means, rather than one standing in
+for the other.
+
+Build-path tests before the go-ahead: 42 passed, 1 deselected, exit 0
+(`test_origin_snap.py`, `test_golden.py`, `contour/test_bands.py`,
+`test_cli.py`).
+
+### Still open, scheduled rather than done
+
+- [ ] **C12-1e** A pre-flight that resolves every origin against the mask right
+      after `build_index()`, turning a future bad coordinate into a first-minute
+      failure instead of an hour-26 one. **Deliberately not landed before the
+      restart**: it is a change to the build path immediately before a 39-hour
+      run, and the restart was the critical path. The `expand_origins.py` land
+      check and `tests/solve/test_origin_snap.py` already prevent a bad
+      coordinate being introduced; this would catch one that arrives by some
+      other route, such as a land-mask regression. Cycle 13.
