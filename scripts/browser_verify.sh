@@ -25,7 +25,17 @@ TINTS=$((BANDS + 2))
 # was correct. Parse the block; do not pattern-match the file.
 SCHEMES=$(python3 -c 'import re,sys; s=open(sys.argv[1],encoding="utf-8").read(); m=re.search(r"const RAMPS = \{(.*?)\n\};", s, re.S); print(len(re.findall(r"^\s{2}[a-z]+:\s*\{", m.group(1), re.M)) if m else 0)' "$ROOT/web/app.js")
 [ "${SCHEMES:-0}" -ge 6 ] || { echo "!! could not read the RAMPS table from web/app.js"; exit 1; }
-echo "expecting $CITIES cities, $BANDS bands ($TINTS swatches) from index.json; $SCHEMES schemes; screenshots in $SHOTS"
+# The resting list is capped: at 553 origins it is 14,486 px and at 1,464 it is
+# 38,357, which nobody scrolls and every keystroke rebuilt. This asked for one
+# row per origin, which was right when the list showed all of them and is a
+# stale assumption now -- so it asks for the capped number instead, AND for the
+# footer that names the true total, which is the thing that makes a cap honest.
+# Read from app.js, not a literal, for the same reason SCHEMES is.
+CAP=$(python3 -c 'import re,sys; m=re.search(r"const UNFILTERED_CAP = (\d+);", open(sys.argv[1],encoding="utf-8").read()); print(m.group(1) if m else 0)' "$ROOT/web/app.js")
+[ "${CAP:-0}" -ge 1 ] || { echo "!! could not read UNFILTERED_CAP from web/app.js"; exit 1; }
+ROWS=$CITIES
+[ "$CITIES" -gt "$CAP" ] && ROWS=$CAP
+echo "expecting $ROWS of $CITIES cities in the list (cap $CAP), $BANDS bands ($TINTS swatches) from index.json; $SCHEMES schemes; screenshots in $SHOTS"
 
 # The departure city the phone checks tap near, from index.json rather than a
 # literal. Both tap checks below used a hardcoded [120, 40], which is in the
@@ -126,7 +136,21 @@ echo "$R" | grep -q '"fatal":false' || {
 }
 echo "$R" | grep -q '"canvas":true' || fail=1
 echo "$R" | grep -q "\"tints\":$TINTS," || { echo "  !! expected $TINTS legend swatches ($BANDS bands + 2)"; fail=1; }
-echo "$R" | grep -q "\"cities\":$CITIES," || { echo "  !! expected $CITIES cities in the list"; fail=1; }
+echo "$R" | grep -q "\"cities\":$ROWS," || { echo "  !! expected $ROWS cities in the list (cap $CAP of $CITIES)"; fail=1; }
+# A capped list that does not say so has silently lost the rest. This is the
+# check that keeps the cap honest, and it must read the TRUE total -- so it
+# fails both if the footer is missing and if it names the wrong number.
+if [ "$CITIES" -gt "$CAP" ]; then
+  MORE=$(agent-browser eval '(()=>{const el=document.querySelector(".results .listmore");
+    return JSON.stringify({present:!!el,text:el?el.textContent.trim().slice(0,120):""})})()' 2>&1 | tail -1 | tr -d '\\')
+  echo "  list footer: $MORE"
+  echo "$MORE" | grep -q '"present":true' || {
+    echo "  !! the list is capped at $CAP of $CITIES and says nothing about the rest"; fail=1; }
+  # The count is grouped on the page, so compare against the grouped form.
+  GROUPED=$(python3 -c 'print(f"{int(__import__(\"sys\").argv[1]):,}")' "$CITIES")
+  echo "$MORE" | grep -q "$GROUPED" || {
+    echo "  !! the list footer does not name the true total ($GROUPED)"; fail=1; }
+fi
 # A VISIBLE disclaimer element, not the <noscript> text this used to certify.
 echo "$R" | grep -q '"disclaimer":true' || { echo "  !! no visible .disclaimer element"; fail=1; }
 echo "$R" | grep -q '"originLabel":true' || { echo "  !! the departure city has no label on the opening view"; fail=1; }
