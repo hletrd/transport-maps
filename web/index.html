@@ -985,6 +985,28 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
            nobody looking for them would be. -->
       <p class="hint">Locking to north disables rotation, so dragging only
         pans.</p>
+      <!-- Deliberately a statement and NOT a control.
+           An ETOPS option was asked for here, and there is no honest switch to
+           put here: every flight on this map is a scheduled service already
+           flying under its operator's extended-range approval, so the rule is
+           upstream of the data rather than something to apply on top of it.
+           A checkbox that changed no figure would claim more modelling than
+           this page does. It uses the .rampwrap + .rowlabel + .hint group so
+           its SHAPE reads as a statement -- every other group in this panel
+           has a control between the label and the hint, and the absence is
+           the point. The longer reason is under "What this does not know". -->
+      <div class="rampwrap">
+        <div class="rowlabel">Long over-water flights</div>
+        <p class="hint">There is no ETOPS setting, because there is nothing
+          for it to change. Every flight here is a scheduled service already
+          operating under its airline&rsquo;s extended-range approval, and a
+          flight&rsquo;s time is computed from the great-circle distance
+          between its two airports — which carries no aircraft type and no
+          diversion radius to apply a rule to.
+          <a href="#limits" class="inline-link">What this does not know</a>
+          sets out why the difference could not be shown even if there were
+          one.</p>
+      </div>
     </div>
   </details>
 
@@ -1055,6 +1077,23 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          kilometres of many journeys. And the build that is being served may lag
          the code: <code>index.json</code> records what was actually
          computed.</p>
+      <p><b>Long over-water flights.</b> Every flight here is a scheduled
+         service, already operating under its airline&rsquo;s extended-range
+         approval — ETOPS, and its equivalents for three and four engines. So
+         an ETOPS rule is not a constraint this map could apply on top of the
+         routes: it is a constraint the routes were already flying under
+         before they reached the data. That is why there is no setting for it,
+         and why adding one would be a switch that changed no figure on this
+         page.
+         The more useful admission is the second one: this model could not
+         represent the difference if there were one. A flight&rsquo;s time here
+         is a function of the great-circle distance between its two airports
+         and nothing else. The data carries no aircraft type and no engine
+         count, so there is nothing to apply a rule to; and the page draws the
+         great circle, which is precisely the track an ETOPS-limited flight
+         does not fly. The real cost of staying inside a diversion radius is a
+         longer track, and a longer track is the one thing this model has no
+         way to express.</p>
       <p><b>Where the number is read.</b> The outlined hexagon under the pointer
          is the cell the time is read from: resolution 6, about 6.5 km across
          and 36 km². Where the road network is dense the bands are painted one
