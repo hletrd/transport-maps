@@ -361,8 +361,19 @@ echo "=== a searched destination writes the answer, not only the itinerary ==="
 # The two search branches used to call renderPins()+renderLegs() and nothing
 # else, so the 50px headline kept the PREVIOUS destination's time above an
 # itinerary describing the new one. The check is that the two agree.
-agent-browser eval '(()=>{const q=document.getElementById("q");q.value="JFK";q.dispatchEvent(new Event("input",{bubbles:true}));
-  const b=document.querySelector(".results button[data-airport]");if(!b)return 0;b.click();return 1})()' >/dev/null 2>&1; sleep 4
+# Typing and clicking are TWO steps, with a frame between them. render() is
+# coalesced to one animation frame now -- a keystroke rebuilds up to 1,464
+# rows -- so reading `.results` in the same tick as the input event finds the
+# list built for the PREVIOUS query. This check did exactly that and reported
+# a defect on a page that was correct: the airport row did not exist yet, the
+# click never happened, and the total row it then looked for was absent for
+# that reason rather than because the headline disagreed with anything.
+#
+# The gate was wrong here, not the page: no human types and clicks inside one
+# frame, and the two paths that CAN act within one -- Enter and ArrowDown --
+# flush the pending render themselves. The assertion below is unchanged.
+agent-browser eval '(()=>{const q=document.getElementById("q");q.value="JFK";q.dispatchEvent(new Event("input",{bubbles:true}));return 1})()' >/dev/null 2>&1; sleep 2
+agent-browser eval '(()=>{const b=document.querySelector(".results button[data-airport]");if(!b)return 0;b.click();return 1})()' >/dev/null 2>&1; sleep 4
 # The total is found by its CLASS, not by counting lines from the end. It was
 # `l[l.length-2]`, which assumed the last two lines of #legs were the total's
 # time and its label -- so appending anything after the itinerary shifted the
@@ -374,7 +385,8 @@ S=$(agent-browser eval '(()=>{const t=document.querySelector("#legs .leg.total .
   const head=document.getElementById("time").innerText;
   return JSON.stringify({head:head.replace(/\n/g," "),
    total:t?t.textContent:"(no total row)",agree:!!t&&norm(head)===norm(t.textContent),
-   announced:/JFK/.test(document.getElementById("status").textContent)})})()' 2>&1 | tail -1 | tr -d '\\')
+   announced:/door to door/.test(document.getElementById("status").textContent)
+    && /JFK/.test(document.getElementById("status").textContent)})})()' 2>&1 | tail -1 | tr -d '\\')
 echo "  $S"
 echo "$S" | grep -q '"agree":true' || { echo "  !! the headline and the itinerary total disagree after a search"; fail=1; }
 echo "$S" | grep -q '"announced":true' || { echo "  !! a searched destination is not announced"; fail=1; }
