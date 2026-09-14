@@ -2087,6 +2087,11 @@ function partial(chain) {
   return chain;
 }
 
+// Returns HTML, and therefore escapes its own OSM strings. It used to return
+// raw text and rely on its ONE call site to wrap it in esc(); that worked, and
+// it made the safety of an OSM station name a property of the caller rather
+// than of this function. A second call site would have been stored XSS with
+// every gate green. The escape lives where the untrusted value enters.
 function railVia(i) {
   const rail = origin.rail;
   if (!rail || i < 0) return "";
@@ -2094,7 +2099,7 @@ function railVia(i) {
   if (k === NO_RAIL || !rail.table[k]) return "";
   const [station, line] = rail.table[k];
   if (!station && !line) return "";
-  return ` via ${station || "a station"}${line ? ` (${line})` : ""}`;
+  return ` via ${esc(station || "a station")}${line ? ` (${esc(line)})` : ""}`;
 }
 
 // Wrapper so every early return still re-fits the column (U6).
@@ -2165,7 +2170,7 @@ function renderLegsInto() {
       .sort((a, b) => b[1] - a[1]);
     surfaceMin = used.reduce((t, [, m]) => t + m, 0);
     return used.map(([name, m]) =>
-      [fmtDur(m), `by <b>${mode(name)}</b>${name === "rail" ? esc(railVia(i)) : ""}`]);
+      [fmtDur(m), `by <b>${mode(name)}</b>${name === "rail" ? railVia(i) : ""}`]);
   };
 
   if (chain.length === 0) {

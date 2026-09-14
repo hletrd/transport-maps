@@ -57,6 +57,14 @@ from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
+# The REAL escape, not a stub. This harness is the only place `esc`'s call
+# sites actually run, and it used to declare `const esc = (t) => String(t)` --
+# so the escape was switched off in the one test that exercised it, and
+# deleting the `"` replacement left every gate green while opening live XSS
+# through `data-tip="..."`. Sliced from app.js by the same helper
+# tests/web/test_esc.py uses, so the two cannot drift apart.
+from tests.web.test_esc import ESC_SRC  # noqa: E402
+
 
 def _function(name: str) -> str:
     start = APP.index(f"function {name}(")
@@ -125,7 +133,7 @@ const MAX_MINUTES = 65534, NO_AIRPORT = 0xFFFF, NO_RAIL = 0xFFFF;
 const MODE_NAMES = ["rail", "ferry", "highway"];
 const MODE_FALLBACK = {{ rail: "by train", ferry: "by boat", highway: "by road" }};
 const meta = {{ modeDetail: null }};
-const esc = (t) => String(t);
+{ESC_SRC}
 const fmtDur = (m) => String(m);          // raw minutes, so the rows can be summed
 const countryName = () => "Somewhere";
 // [iata, name, country, lat, lon, size] -- legsTo reads 3 and 4.
@@ -329,3 +337,27 @@ def test_a_chain_that_cannot_be_continued_is_not_asserted(
     assert any("not recorded" in n and "not drawn" in n for n in got["notes"]), (
         f"the globe draws no leading leg, and the key must not promise one: "
         f"{got['notes']}")
+
+
+def test_a_hostile_airport_name_cannot_escape_its_tooltip(node, tmp_path) -> None:
+    """`ap()` interpolates an OurAirports name into `data-tip="..."`, and this
+    harness is the only place that code actually runs.
+
+    It ran with `esc` stubbed to the identity function, so the escape was off
+    in the one test that exercised it. With the real helper in place, a name
+    carrying a double quote must not be able to close the attribute and add an
+    event handler.
+
+    Mutation performed and reverted: put the stub back (`const esc = (t) =>
+    String(t)`) -> red, `onmouseover=` appears outside the attribute.
+    """
+    body = _probe(GROUND_TOTAL).replace(
+        '["BBB", "B Airport", "YY", 20, 20]',
+        '["BBB", "B\\" onmouseover=\\"alert(1)", "YY", 20, 20]')
+    got = _run(node, tmp_path, body)
+    html = "".join(text for _, text, _ in got["rows"])
+    assert "onmouseover" in html, (
+        "the hostile name never reached the row; the fixture no longer bites")
+    assert 'onmouseover="' not in html, (
+        "the airport name closed data-tip and added a live event handler")
+    assert "&quot; onmouseover=&quot;alert(1)" in html
