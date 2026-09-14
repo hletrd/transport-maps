@@ -2859,6 +2859,13 @@ function describe(lat, lon) {
 function showReading(lat, lng, point) {
   lastPointer = { lat, lng, point };
   const t = lookup(lat, lng);
+  // Captured HERE, on the line after the lookup, and not read again forty
+  // lines down where it is used. readingGrid() answers about the LAST lookup,
+  // and this function is not the only caller of lookup() -- onScreenBandRange
+  // and capCities each make hundreds. Nothing between these two lines calls
+  // lookup() today (checked: bandRangeOf, markBand and placeLine do not), and
+  // capturing the value means nothing has to keep checking.
+  const grid = readingGrid();
   const [big, unit] = fmtTime(t);
   // === null, not == null. Loose equality caught `undefined` -- land whose
   // times have not arrived or have FAILED -- as well as `null` (open water),
@@ -2890,7 +2897,7 @@ function showReading(lat, lng, point) {
       // before the tier existed, and gating on it made the method panel's
       // "the outlined hexagon is the cell the time is read from" a claim
       // nothing on the page qualified.
-      + (readingGrid() !== SOLVE_RES ? " · read from a wider cell than the outline" : "");
+      + (grid !== SOLVE_RES ? " · read from a wider cell than the outline" : "");
   return t;
 }
 // One live region for the whole page, written only when a reading is

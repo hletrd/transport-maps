@@ -177,3 +177,26 @@ def test_a_reading_before_the_coarse_array_arrives_does_not_invent_a_number(node
     assert seen["value"] == 65535, (
         "with no coarse array there is nothing to fall back to; the sentinel "
         "is the honest answer")
+
+
+def test_the_grid_is_captured_beside_the_lookup_it_describes():
+    """`readingGrid()` answers about the LAST lookup, and `showReading` is not
+    the only caller: `onScreenBandRange` and `capCities` each make hundreds.
+    Reading it forty lines below the lookup it describes makes the disclosure
+    depend on nothing in between ever calling `lookup()` again -- true today,
+    and not a property anyone would think to preserve.
+
+    Mutation performed and reverted: move the capture back to its use site ->
+    red.
+    """
+    body = _function("showReading")
+    lookup_at = body.index("lookup(lat, lng)")
+    capture_at = body.index("const grid = readingGrid();")
+    between = body[lookup_at:capture_at]
+    assert capture_at > lookup_at, "the grid is captured before the lookup it describes"
+    assert between.count("\n") <= 8, (
+        "the grid is captured well after the lookup; anything added in between "
+        "that calls lookup() silently changes what the disclosure describes")
+    assert "readingGrid()" not in body[capture_at + 26:], (
+        "readingGrid() is called twice in showReading; the second call can "
+        "describe a different lookup from the first")

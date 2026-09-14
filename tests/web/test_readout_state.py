@@ -239,13 +239,30 @@ def test_the_page_says_when_the_number_came_from_a_coarser_cell_than_the_ring():
     never appeared against the live data and the method panel's sentence
     stood unqualified.
 
+    Cycle 13 note: `readingGrid()` became stateful -- it now answers about the
+    LAST lookup, because a reading that falls back from the res-6 tier to the
+    res-4 one came from a wider cell and the old "is the array present?" test
+    could not see that. So `showReading` captures it on the line after its own
+    lookup rather than calling it forty lines later, and this guard pins BOTH
+    halves: the capture and the comparison. That is strictly more than it
+    asserted before, not less -- a captured value compared against the wrong
+    constant, or a comparison against a value captured from someone else's
+    lookup, both fail here.
+
     Mutation performed and reverted: compare against READING_RES -> red.
+    Mutation performed and reverted: drop the capture and call `readingGrid()`
+    at the use site -> red.
     """
     body = CODE[CODE.index("function showReading("):]
     body = body[:body.index("\n}")]
-    assert "readingGrid() !== SOLVE_RES" in body, (
+    assert "const grid = readingGrid();" in body, (
+        "showReading no longer captures the grid beside the lookup it describes")
+    assert "grid !== SOLVE_RES" in body, (
         "the reading line does not compare the grid it read against the grid the ring "
         "is drawn at, so it cannot say when the two differ")
+    assert "READING_RES" not in body.split("grid !== SOLVE_RES")[0][-200:], (
+        "the comparison is gated on READING_RES, which is null on a build made "
+        "before the reading tier existed")
     assert "wider cell than the outline" in body
     html = (config.ROOT / "web" / "index.html").read_text(encoding="utf-8")
     flat = " ".join(html.split())
