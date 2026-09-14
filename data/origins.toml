@@ -3326,3 +3326,6382 @@ slug = "porto-novo"
 name = "Porto-Novo"
 lat = 6.4965
 lon = 2.6036
+
+# Added by scripts/expand_origins.py: population >= 300,000, or a national capital >= 100,000 (GeoNames cities15000, CC BY 4.0).
+
+[[origin]]
+slug = "dongying"
+name = "Dongying"
+lat = 37.4627
+lon = 118.4917
+country = "CN"
+
+[[origin]]
+slug = "luzhou"
+name = "Luzhou"
+lat = 28.8903
+lon = 105.4257
+country = "CN"
+
+[[origin]]
+slug = "san-jose-us"
+name = "San Jose"
+lat = 37.3394
+lon = -121.895
+country = "US"
+
+[[origin]]
+slug = "sholapur"
+name = "Sholapur"
+lat = 17.6715
+lon = 75.9104
+country = "IN"
+
+[[origin]]
+slug = "marrakesh"
+name = "Marrakesh"
+lat = 31.6342
+lon = -7.9999
+country = "MA"
+
+[[origin]]
+slug = "meizhou"
+name = "Meizhou"
+lat = 24.2886
+lon = 116.1177
+country = "CN"
+
+[[origin]]
+slug = "yueyang"
+name = "Yueyang"
+lat = 29.3745
+lon = 113.0948
+country = "CN"
+
+[[origin]]
+slug = "laiwu"
+name = "Laiwu"
+lat = 36.1928
+lon = 117.6569
+country = "CN"
+
+[[origin]]
+slug = "perm"
+name = "Perm"
+lat = 58.0105
+lon = 56.2502
+country = "RU"
+
+[[origin]]
+slug = "zaria"
+name = "Zaria"
+lat = 11.1113
+lon = 7.7227
+country = "NG"
+
+[[origin]]
+slug = "chiba"
+name = "Chiba"
+lat = 35.6
+lon = 140.1167
+country = "JP"
+
+[[origin]]
+slug = "pingdingshan"
+name = "Pingdingshan"
+lat = 33.7309
+lon = 113.3155
+country = "CN"
+
+[[origin]]
+slug = "ciudad-guayana"
+name = "Ciudad Guayana"
+lat = 8.3512
+lon = -62.641
+country = "VE"
+
+[[origin]]
+slug = "sargodha"
+name = "Sargodha"
+lat = 32.0859
+lon = 72.6742
+country = "PK"
+
+[[origin]]
+slug = "austin"
+name = "Austin"
+lat = 30.2672
+lon = -97.7431
+country = "US"
+
+[[origin]]
+slug = "bengbu"
+name = "Bengbu"
+lat = 32.9408
+lon = 117.3608
+country = "CN"
+
+[[origin]]
+slug = "jerusalem"
+name = "Jerusalem"
+lat = 31.769
+lon = 35.2163
+country = "IL"
+
+[[origin]]
+slug = "chandigarh"
+name = "Chandigarh"
+lat = 30.7363
+lon = 76.7884
+country = "IN"
+
+[[origin]]
+slug = "dnipro"
+name = "Dnipro"
+lat = 48.4666
+lon = 35.0407
+country = "UA"
+
+[[origin]]
+slug = "sanhe"
+name = "Sanhe"
+lat = 39.9805
+lon = 117.0689
+country = "CN"
+
+[[origin]]
+slug = "guli"
+name = "Guli"
+lat = 28.8816
+lon = 120.0331
+country = "CN"
+
+[[origin]]
+slug = "tiruppur"
+name = "Tiruppur"
+lat = 11.1154
+lon = 77.3546
+country = "IN"
+
+[[origin]]
+slug = "guwahati"
+name = "Guwahati"
+lat = 26.1844
+lon = 91.7458
+country = "IN"
+
+[[origin]]
+slug = "linfen"
+name = "Linfen"
+lat = 36.0889
+lon = 111.5189
+country = "CN"
+
+[[origin]]
+slug = "enugu"
+name = "Enugu"
+lat = 6.4413
+lon = 7.4988
+country = "NG"
+
+[[origin]]
+slug = "rosario"
+name = "Rosario"
+lat = -32.9468
+lon = -60.6393
+country = "AR"
+
+[[origin]]
+slug = "huludao"
+name = "Huludao"
+lat = 40.7524
+lon = 120.8355
+country = "CN"
+
+[[origin]]
+slug = "hubballi"
+name = "Hubballi"
+lat = 15.3478
+lon = 75.1338
+country = "IN"
+
+[[origin]]
+slug = "padang"
+name = "Padang"
+lat = -0.9492
+lon = 100.3543
+country = "ID"
+
+[[origin]]
+slug = "kitakyushu"
+name = "Kitakyushu"
+lat = 33.8518
+lon = 130.8503
+country = "JP"
+
+[[origin]]
+slug = "taiz"
+name = "Taiz"
+lat = 13.5795
+lon = 44.0209
+country = "YE"
+
+[[origin]]
+slug = "baoshan"
+name = "Baoshan"
+lat = 25.1163
+lon = 99.1637
+country = "CN"
+
+[[origin]]
+slug = "chihuahua"
+name = "Chihuahua"
+lat = 28.6353
+lon = -106.0889
+country = "MX"
+
+[[origin]]
+slug = "eskisehir"
+name = "Eskişehir"
+lat = 39.7767
+lon = 30.5206
+country = "TR"
+
+[[origin]]
+slug = "mysuru"
+name = "Mysuru"
+lat = 12.2979
+lon = 76.6393
+country = "IN"
+
+[[origin]]
+slug = "chengde"
+name = "Chengde"
+lat = 40.9519
+lon = 117.9588
+country = "CN"
+
+[[origin]]
+slug = "salem"
+name = "Salem"
+lat = 11.6538
+lon = 78.1554
+country = "IN"
+
+[[origin]]
+slug = "sao-luis"
+name = "São Luís"
+lat = -2.5297
+lon = -44.3028
+country = "BR"
+
+[[origin]]
+slug = "cartagena"
+name = "Cartagena"
+lat = 10.3982
+lon = -75.4933
+country = "CO"
+
+[[origin]]
+slug = "columbus"
+name = "Columbus"
+lat = 39.9612
+lon = -82.9988
+country = "US"
+
+[[origin]]
+slug = "sialkot"
+name = "Sialkot"
+lat = 32.4927
+lon = 74.5313
+country = "PK"
+
+[[origin]]
+slug = "charlotte"
+name = "Charlotte"
+lat = 35.2271
+lon = -80.8431
+country = "US"
+
+[[origin]]
+slug = "laibin"
+name = "Laibin"
+lat = 23.7474
+lon = 109.2222
+country = "CN"
+
+[[origin]]
+slug = "warri"
+name = "Warri"
+lat = 5.5174
+lon = 5.7501
+country = "NG"
+
+[[origin]]
+slug = "naples"
+name = "Naples"
+lat = 40.8522
+lon = 14.2681
+country = "IT"
+
+[[origin]]
+slug = "xiaogan"
+name = "Xiaogan"
+lat = 30.9269
+lon = 113.9222
+country = "CN"
+
+[[origin]]
+slug = "campo-grande"
+name = "Campo Grande"
+lat = -20.4428
+lon = -54.6464
+country = "BR"
+
+[[origin]]
+slug = "ziyang"
+name = "Ziyang"
+lat = 30.1211
+lon = 104.6481
+country = "CN"
+
+[[origin]]
+slug = "bobo-dioulasso"
+name = "Bobo-Dioulasso"
+lat = 11.1806
+lon = -4.2949
+country = "BF"
+
+[[origin]]
+slug = "bahawalpur"
+name = "Bahawalpur"
+lat = 29.3978
+lon = 71.6752
+country = "PK"
+
+[[origin]]
+slug = "quzhou"
+name = "Quzhou"
+lat = 28.9594
+lon = 118.8686
+country = "CN"
+
+[[origin]]
+slug = "blantyre"
+name = "Blantyre"
+lat = -15.785
+lon = 35.0085
+country = "MW"
+
+[[origin]]
+slug = "donetsk"
+name = "Donetsk"
+lat = 48.023
+lon = 37.8022
+country = "UA"
+
+[[origin]]
+slug = "qom"
+name = "Qom"
+lat = 34.6401
+lon = 50.8764
+country = "IR"
+
+[[origin]]
+slug = "krasnodar"
+name = "Krasnodar"
+lat = 45.0453
+lon = 38.9818
+country = "RU"
+
+[[origin]]
+slug = "natal"
+name = "Natal"
+lat = -5.795
+lon = -35.2094
+country = "BR"
+
+[[origin]]
+slug = "pingxiang"
+name = "Pingxiang"
+lat = 27.6167
+lon = 113.8535
+country = "CN"
+
+[[origin]]
+slug = "malang"
+name = "Malang"
+lat = -7.9797
+lon = 112.6304
+country = "ID"
+
+[[origin]]
+slug = "indianapolis"
+name = "Indianapolis"
+lat = 39.7684
+lon = -86.158
+country = "US"
+
+[[origin]]
+slug = "bhubaneswar"
+name = "Bhubaneswar"
+lat = 20.2724
+lon = 85.8338
+country = "IN"
+
+[[origin]]
+slug = "zhoushan"
+name = "Zhoushan"
+lat = 29.9887
+lon = 122.2049
+country = "CN"
+
+[[origin]]
+slug = "qiqihar"
+name = "Qiqihar"
+lat = 47.3392
+lon = 123.9615
+country = "CN"
+
+[[origin]]
+slug = "sulaymaniyah"
+name = "Sulaymaniyah"
+lat = 35.565
+lon = 45.4329
+country = "IQ"
+
+[[origin]]
+slug = "marseille"
+name = "Marseille"
+lat = 43.297
+lon = 5.3811
+country = "FR"
+
+[[origin]]
+slug = "laiyang"
+name = "Laiyang"
+lat = 36.9758
+lon = 120.7136
+country = "CN"
+
+[[origin]]
+slug = "daye"
+name = "Daye"
+lat = 30.0833
+lon = 114.95
+country = "CN"
+
+[[origin]]
+slug = "teresina"
+name = "Teresina"
+lat = -5.0892
+lon = -42.8019
+country = "BR"
+
+[[origin]]
+slug = "ankang"
+name = "Ankang"
+lat = 32.68
+lon = 109.0172
+country = "CN"
+
+[[origin]]
+slug = "jalandhar"
+name = "Jalandhar"
+lat = 31.3256
+lon = 75.5792
+country = "IN"
+
+[[origin]]
+slug = "rotterdam"
+name = "Rotterdam"
+lat = 51.9225
+lon = 4.4792
+country = "NL"
+
+[[origin]]
+slug = "langfang"
+name = "Langfang"
+lat = 39.5208
+lon = 116.7147
+country = "CN"
+
+[[origin]]
+slug = "lhasa"
+name = "Lhasa"
+lat = 29.65
+lon = 91.1
+country = "CN"
+
+[[origin]]
+slug = "jiaozuo"
+name = "Jiaozuo"
+lat = 35.2392
+lon = 113.2391
+country = "CN"
+
+[[origin]]
+slug = "samarinda"
+name = "Samarinda"
+lat = -0.4917
+lon = 117.1458
+country = "ID"
+
+[[origin]]
+slug = "benxi"
+name = "Benxi"
+lat = 41.2886
+lon = 123.765
+country = "CN"
+
+[[origin]]
+slug = "guang-an"
+name = "Guang’an"
+lat = 30.4741
+lon = 106.637
+country = "CN"
+
+[[origin]]
+slug = "arifwala"
+name = "Arifwala"
+lat = 30.2906
+lon = 73.0657
+country = "PK"
+
+[[origin]]
+slug = "kanayannur"
+name = "Kanayannur"
+lat = 9.9667
+lon = 76.2667
+country = "IN"
+
+[[origin]]
+slug = "thanh-hoa"
+name = "Thanh Hóa"
+lat = 19.8
+lon = 105.7667
+country = "VN"
+
+[[origin]]
+slug = "turin"
+name = "Turin"
+lat = 45.0705
+lon = 7.6868
+country = "IT"
+
+[[origin]]
+slug = "al-ain-city"
+name = "Al Ain City"
+lat = 24.1917
+lon = 55.7606
+country = "AE"
+
+[[origin]]
+slug = "saratov"
+name = "Saratov"
+lat = 51.5405
+lon = 45.9901
+country = "RU"
+
+[[origin]]
+slug = "weihai"
+name = "Weihai"
+lat = 37.5091
+lon = 122.1136
+country = "CN"
+
+[[origin]]
+slug = "takeo"
+name = "Takeo"
+lat = 10.9908
+lon = 104.785
+country = "KH"
+
+[[origin]]
+slug = "cochabamba"
+name = "Cochabamba"
+lat = -17.3819
+lon = -66.1599
+country = "BO"
+
+[[origin]]
+slug = "ahvaz"
+name = "Ahvaz"
+lat = 31.319
+lon = 48.6842
+country = "IR"
+
+[[origin]]
+slug = "xinyu"
+name = "Xinyu"
+lat = 27.8043
+lon = 114.9334
+country = "CN"
+
+[[origin]]
+slug = "pietermaritzburg"
+name = "Pietermaritzburg"
+lat = -29.6168
+lon = 30.3928
+country = "ZA"
+
+[[origin]]
+slug = "yibin"
+name = "Yibin"
+lat = 28.7593
+lon = 104.6399
+country = "CN"
+
+[[origin]]
+slug = "bouake"
+name = "Bouaké"
+lat = 7.6939
+lon = -5.0303
+country = "CI"
+
+[[origin]]
+slug = "valencia-es"
+name = "Valencia"
+lat = 39.4739
+lon = -0.3797
+country = "ES"
+
+[[origin]]
+slug = "chenzhou"
+name = "Chenzhou"
+lat = 25.8
+lon = 113.0333
+country = "CN"
+
+[[origin]]
+slug = "joao-pessoa"
+name = "João Pessoa"
+lat = -7.115
+lon = -34.8631
+country = "BR"
+
+[[origin]]
+slug = "bukavu"
+name = "Bukavu"
+lat = -2.4908
+lon = 28.8428
+country = "CD"
+
+[[origin]]
+slug = "krakow"
+name = "Kraków"
+lat = 50.0614
+lon = 19.9366
+country = "PL"
+
+[[origin]]
+slug = "dandong"
+name = "Dandong"
+lat = 40.1292
+lon = 124.3947
+country = "CN"
+
+[[origin]]
+slug = "barcelona-ve"
+name = "Barcelona"
+lat = 10.1384
+lon = -64.6877
+country = "VE"
+
+[[origin]]
+slug = "hermosillo"
+name = "Hermosillo"
+lat = 29.0887
+lon = -110.9668
+country = "MX"
+
+[[origin]]
+slug = "culiacan"
+name = "Culiacán"
+lat = 24.8021
+lon = -107.3942
+country = "MX"
+
+[[origin]]
+slug = "anqing"
+name = "Anqing"
+lat = 30.5136
+lon = 117.0472
+country = "CN"
+
+[[origin]]
+slug = "oran"
+name = "Oran"
+lat = 35.6991
+lon = -0.6359
+country = "DZ"
+
+[[origin]]
+slug = "san-pedro-sula"
+name = "San Pedro Sula"
+lat = 15.5059
+lon = -88.0259
+country = "HN"
+
+[[origin]]
+slug = "xingtai"
+name = "Xingtai"
+lat = 37.0622
+lon = 114.4927
+country = "CN"
+
+[[origin]]
+slug = "niigata"
+name = "Niigata"
+lat = 37.9226
+lon = 139.0412
+country = "JP"
+
+[[origin]]
+slug = "hamamatsu"
+name = "Hamamatsu"
+lat = 34.7
+lon = 137.7333
+country = "JP"
+
+[[origin]]
+slug = "kolwezi"
+name = "Kolwezi"
+lat = -10.7148
+lon = 25.4667
+country = "CD"
+
+[[origin]]
+slug = "vinh"
+name = "Vinh"
+lat = 18.6734
+lon = 105.6923
+country = "VN"
+
+[[origin]]
+slug = "thiruvananthapuram"
+name = "Thiruvananthapuram"
+lat = 8.4855
+lon = 76.9492
+country = "IN"
+
+[[origin]]
+slug = "zhaotong"
+name = "Zhaotong"
+lat = 27.3167
+lon = 103.7167
+country = "CN"
+
+[[origin]]
+slug = "panzhihua"
+name = "Panzhihua"
+lat = 26.5851
+lon = 101.7128
+country = "CN"
+
+[[origin]]
+slug = "chuzhou"
+name = "Chuzhou"
+lat = 32.3219
+lon = 118.2978
+country = "CN"
+
+[[origin]]
+slug = "port-said"
+name = "Port Said"
+lat = 31.2653
+lon = 32.3019
+country = "EG"
+
+[[origin]]
+slug = "cucuta"
+name = "Cúcuta"
+lat = 7.9074
+lon = -72.5049
+country = "CO"
+
+[[origin]]
+slug = "homs"
+name = "Homs"
+lat = 34.724
+lon = 36.7256
+country = "SY"
+
+[[origin]]
+slug = "xuancheng"
+name = "Xuancheng"
+lat = 30.9525
+lon = 118.7553
+country = "CN"
+
+[[origin]]
+slug = "ibb"
+name = "Ibb"
+lat = 13.9667
+lon = 44.1833
+country = "YE"
+
+[[origin]]
+slug = "tasikmalaya"
+name = "Tasikmalaya"
+lat = -7.3274
+lon = 108.2207
+country = "ID"
+
+[[origin]]
+slug = "nampula"
+name = "Nampula"
+lat = -15.1165
+lon = 39.2666
+country = "MZ"
+
+[[origin]]
+slug = "bujumbura"
+name = "Bujumbura"
+lat = -3.3819
+lon = 29.3614
+country = "BI"
+
+[[origin]]
+slug = "tyumen"
+name = "Tyumen"
+lat = 57.1522
+lon = 65.5272
+country = "RU"
+
+[[origin]]
+slug = "erzurum"
+name = "Erzurum"
+lat = 39.9086
+lon = 41.2769
+country = "TR"
+
+[[origin]]
+slug = "anshun"
+name = "Anshun"
+lat = 26.25
+lon = 105.9333
+country = "CN"
+
+[[origin]]
+slug = "rajshahi"
+name = "Rajshahi"
+lat = 24.374
+lon = 88.6011
+country = "BD"
+
+[[origin]]
+slug = "dera-ismail-khan"
+name = "Dera Ismail Khan"
+lat = 31.8313
+lon = 70.9017
+country = "PK"
+
+[[origin]]
+slug = "sorocaba"
+name = "Sorocaba"
+lat = -23.5017
+lon = -47.4581
+country = "BR"
+
+[[origin]]
+slug = "wuzhou"
+name = "Wuzhou"
+lat = 23.4805
+lon = 111.2885
+country = "CN"
+
+[[origin]]
+slug = "ipoh"
+name = "Ipoh"
+lat = 4.5841
+lon = 101.0829
+country = "MY"
+
+[[origin]]
+slug = "qinhuangdao"
+name = "Qinhuangdao"
+lat = 39.941
+lon = 119.5894
+country = "CN"
+
+[[origin]]
+slug = "benghazi"
+name = "Benghazi"
+lat = 32.1149
+lon = 20.0686
+country = "LY"
+
+[[origin]]
+slug = "uberlandia"
+name = "Uberlândia"
+lat = -18.9186
+lon = -48.2772
+country = "BR"
+
+[[origin]]
+slug = "aligarh"
+name = "Alīgarh"
+lat = 27.8815
+lon = 78.0746
+country = "IN"
+
+[[origin]]
+slug = "shaoyang"
+name = "Shaoyang"
+lat = 27.2382
+lon = 111.4621
+country = "CN"
+
+[[origin]]
+slug = "malatya"
+name = "Malatya"
+lat = 38.3502
+lon = 38.3167
+country = "TR"
+
+[[origin]]
+slug = "winnipeg"
+name = "Winnipeg"
+lat = 49.8844
+lon = -97.147
+country = "CA"
+
+[[origin]]
+slug = "andijon"
+name = "Andijon"
+lat = 40.7834
+lon = 72.3507
+country = "UZ"
+
+[[origin]]
+slug = "bareilly"
+name = "Bareilly"
+lat = 28.3668
+lon = 79.4317
+country = "IN"
+
+[[origin]]
+slug = "buraydah"
+name = "Buraydah"
+lat = 26.326
+lon = 43.975
+country = "SA"
+
+[[origin]]
+slug = "hegang"
+name = "Hegang"
+lat = 47.3473
+lon = 130.2903
+country = "CN"
+
+[[origin]]
+slug = "morelia"
+name = "Morelia"
+lat = 19.7008
+lon = -101.1844
+country = "MX"
+
+[[origin]]
+slug = "zhuanghe"
+name = "Zhuanghe"
+lat = 39.7008
+lon = 122.9911
+country = "CN"
+
+[[origin]]
+slug = "cagayan-de-oro"
+name = "Cagayan de Oro"
+lat = 8.4822
+lon = 124.6472
+country = "PH"
+
+[[origin]]
+slug = "shizuishan"
+name = "Shizuishan"
+lat = 38.9808
+lon = 106.3892
+country = "CN"
+
+[[origin]]
+slug = "kumamoto"
+name = "Kumamoto"
+lat = 32.8059
+lon = 130.6918
+country = "JP"
+
+[[origin]]
+slug = "oyo"
+name = "Oyo"
+lat = 7.8537
+lon = 3.9324
+country = "NG"
+
+[[origin]]
+slug = "serang"
+name = "Serang"
+lat = -6.1153
+lon = 106.1542
+country = "ID"
+
+[[origin]]
+slug = "torreon"
+name = "Torreón"
+lat = 25.5439
+lon = -103.419
+country = "MX"
+
+[[origin]]
+slug = "deyang"
+name = "Deyang"
+lat = 31.1302
+lon = 104.382
+country = "CN"
+
+[[origin]]
+slug = "abeokuta"
+name = "Abeokuta"
+lat = 7.1557
+lon = 3.3451
+country = "NG"
+
+[[origin]]
+slug = "al-hudaydah"
+name = "Al Ḩudaydah"
+lat = 14.7978
+lon = 42.9545
+country = "YE"
+
+[[origin]]
+slug = "yangquan"
+name = "Yangquan"
+lat = 37.8575
+lon = 113.5633
+country = "CN"
+
+[[origin]]
+slug = "akure"
+name = "Akure"
+lat = 7.2526
+lon = 5.1931
+country = "NG"
+
+[[origin]]
+slug = "sao-jose-dos-campos"
+name = "São José dos Campos"
+lat = -23.1794
+lon = -45.8869
+country = "BR"
+
+[[origin]]
+slug = "evaton"
+name = "Evaton"
+lat = -26.5333
+lon = 27.85
+country = "ZA"
+
+[[origin]]
+slug = "muzaffarabad"
+name = "Muzaffarābād"
+lat = 34.37
+lon = 73.4708
+country = "PK"
+
+[[origin]]
+slug = "okayama"
+name = "Okayama"
+lat = 34.65
+lon = 133.9333
+country = "JP"
+
+[[origin]]
+slug = "san-luis-potosi"
+name = "San Luis Potosí"
+lat = 22.1523
+lon = -100.9714
+country = "MX"
+
+[[origin]]
+slug = "aguascalientes"
+name = "Aguascalientes"
+lat = 21.8826
+lon = -102.2843
+country = "MX"
+
+[[origin]]
+slug = "general-santos"
+name = "General Santos"
+lat = 6.1128
+lon = 125.1717
+country = "PH"
+
+[[origin]]
+slug = "zhumadian"
+name = "Zhumadian"
+lat = 32.9838
+lon = 114.0259
+country = "CN"
+
+[[origin]]
+slug = "moradabad"
+name = "Morādābād"
+lat = 28.8389
+lon = 78.7768
+country = "IN"
+
+[[origin]]
+slug = "lviv"
+name = "Lviv"
+lat = 49.8383
+lon = 24.0232
+country = "UA"
+
+[[origin]]
+slug = "namangan"
+name = "Namangan"
+lat = 40.9983
+lon = 71.6726
+country = "UZ"
+
+[[origin]]
+slug = "zaporizhzhya"
+name = "Zaporizhzhya"
+lat = 47.8517
+lon = 35.1171
+country = "UA"
+
+[[origin]]
+slug = "zanzibar"
+name = "Zanzibar"
+lat = -6.1639
+lon = 39.1979
+country = "TZ"
+
+[[origin]]
+slug = "saltillo"
+name = "Saltillo"
+lat = 25.426
+lon = -100.9796
+country = "MX"
+
+[[origin]]
+slug = "latakia"
+name = "Latakia"
+lat = 35.5312
+lon = 35.7909
+country = "SY"
+
+[[origin]]
+slug = "warangal"
+name = "Warangal"
+lat = 18.0
+lon = 79.5833
+country = "IN"
+
+[[origin]]
+slug = "tolyatti"
+name = "Tolyatti"
+lat = 53.5303
+lon = 49.3461
+country = "RU"
+
+[[origin]]
+slug = "battagram"
+name = "Battagram"
+lat = 34.6772
+lon = 73.0233
+country = "PK"
+
+[[origin]]
+slug = "suez"
+name = "Suez"
+lat = 29.9737
+lon = 32.5263
+country = "EG"
+
+[[origin]]
+slug = "changzhi-cn"
+name = "Changzhi"
+lat = 35.2089
+lon = 111.7386
+country = "CN"
+
+[[origin]]
+slug = "ribeirao-preto"
+name = "Ribeirão Preto"
+lat = -21.1775
+lon = -47.8103
+country = "BR"
+
+[[origin]]
+slug = "agadir"
+name = "Agadir"
+lat = 30.4202
+lon = -9.5982
+country = "MA"
+
+[[origin]]
+slug = "balikpapan"
+name = "Balikpapan"
+lat = -1.2675
+lon = 116.8289
+country = "ID"
+
+[[origin]]
+slug = "bauchi"
+name = "Bauchi"
+lat = 10.3103
+lon = 9.8439
+country = "NG"
+
+[[origin]]
+slug = "shizuoka"
+name = "Shizuoka"
+lat = 34.9833
+lon = 138.3833
+country = "JP"
+
+[[origin]]
+slug = "zhangjiakou"
+name = "Zhangjiakou"
+lat = 40.7834
+lon = 114.8714
+country = "CN"
+
+[[origin]]
+slug = "nashville"
+name = "Nashville"
+lat = 36.1659
+lon = -86.7844
+country = "US"
+
+[[origin]]
+slug = "fuxin"
+name = "Fuxin"
+lat = 42.0156
+lon = 121.6589
+country = "CN"
+
+[[origin]]
+slug = "ta-if"
+name = "Ta’if"
+lat = 21.2703
+lon = 40.4158
+country = "SA"
+
+[[origin]]
+slug = "changsha-cn"
+name = "Changsha"
+lat = 22.3812
+lon = 112.6849
+country = "CN"
+
+[[origin]]
+slug = "beira"
+name = "Beira"
+lat = -19.8436
+lon = 34.8389
+country = "MZ"
+
+[[origin]]
+slug = "zaragoza"
+name = "Zaragoza"
+lat = 41.6561
+lon = -0.8773
+country = "ES"
+
+[[origin]]
+slug = "sevilla"
+name = "Sevilla"
+lat = 37.3828
+lon = -5.9732
+country = "ES"
+
+[[origin]]
+slug = "baise"
+name = "Baise"
+lat = 23.8901
+lon = 106.6268
+country = "CN"
+
+[[origin]]
+slug = "pontianak"
+name = "Pontianak"
+lat = -0.0319
+lon = 109.325
+country = "ID"
+
+[[origin]]
+slug = "situbondo"
+name = "Situbondo"
+lat = -7.7062
+lon = 114.0098
+country = "ID"
+
+[[origin]]
+slug = "binzhou"
+name = "Binzhou"
+lat = 37.3667
+lon = 118.0167
+country = "CN"
+
+[[origin]]
+slug = "oklahoma-city"
+name = "Oklahoma City"
+lat = 35.4676
+lon = -97.5164
+country = "US"
+
+[[origin]]
+slug = "yuncheng"
+name = "Yuncheng"
+lat = 35.0231
+lon = 110.9928
+country = "CN"
+
+[[origin]]
+slug = "dezhou"
+name = "Dezhou"
+lat = 37.4466
+lon = 116.3671
+country = "CN"
+
+[[origin]]
+slug = "gorakhpur"
+name = "Gorakhpur"
+lat = 26.7663
+lon = 83.3689
+country = "IN"
+
+[[origin]]
+slug = "wroclaw"
+name = "Wrocław"
+lat = 51.1029
+lon = 17.0301
+country = "PL"
+
+[[origin]]
+slug = "katsina"
+name = "Katsina"
+lat = 12.9908
+lon = 7.6018
+country = "NG"
+
+[[origin]]
+slug = "tabuk"
+name = "Tabuk"
+lat = 28.3998
+lon = 36.5715
+country = "SA"
+
+[[origin]]
+slug = "kitwe"
+name = "Kitwe"
+lat = -12.8024
+lon = 28.2132
+country = "ZM"
+
+[[origin]]
+slug = "bulawayo"
+name = "Bulawayo"
+lat = -20.15
+lon = 28.5833
+country = "ZW"
+
+[[origin]]
+slug = "mudanjiang"
+name = "Mudanjiang"
+lat = 44.548
+lon = 129.6259
+country = "CN"
+
+[[origin]]
+slug = "aracaju"
+name = "Aracaju"
+lat = -10.9111
+lon = -37.0717
+country = "BR"
+
+[[origin]]
+slug = "joinville"
+name = "Joinville"
+lat = -26.3044
+lon = -48.8456
+country = "BR"
+
+[[origin]]
+slug = "leshan"
+name = "Leshan"
+lat = 29.5623
+lon = 103.7639
+country = "CN"
+
+[[origin]]
+slug = "rizhao"
+name = "Rizhao"
+lat = 35.4141
+lon = 119.5291
+country = "CN"
+
+[[origin]]
+slug = "cheonan"
+name = "Cheonan"
+lat = 36.8065
+lon = 127.1522
+country = "KR"
+
+[[origin]]
+slug = "acapulco-de-juarez"
+name = "Acapulco de Juárez"
+lat = 16.8494
+lon = -99.9089
+country = "MX"
+
+[[origin]]
+slug = "dongcun"
+name = "Dongcun"
+lat = 36.7767
+lon = 121.1597
+country = "CN"
+
+[[origin]]
+slug = "banjarmasin"
+name = "Banjarmasin"
+lat = -3.3199
+lon = 114.5907
+country = "ID"
+
+[[origin]]
+slug = "puducherry"
+name = "Puducherry"
+lat = 11.9338
+lon = 79.8298
+country = "IN"
+
+[[origin]]
+slug = "suining"
+name = "Suining"
+lat = 30.508
+lon = 105.5733
+country = "CN"
+
+[[origin]]
+slug = "puyang-cn"
+name = "Puyang"
+lat = 35.7564
+lon = 115.0436
+country = "CN"
+
+[[origin]]
+slug = "portland"
+name = "Portland"
+lat = 45.5234
+lon = -122.6762
+country = "US"
+
+[[origin]]
+slug = "calumbo"
+name = "Calumbo"
+lat = -9.1469
+lon = 13.4194
+country = "AO"
+
+[[origin]]
+slug = "palermo"
+name = "Palermo"
+lat = 38.1166
+lon = 13.3636
+country = "IT"
+
+[[origin]]
+slug = "izhevsk"
+name = "Izhevsk"
+lat = 56.8522
+lon = 53.1986
+country = "RU"
+
+[[origin]]
+slug = "maturin"
+name = "Maturín"
+lat = 9.7457
+lon = -63.1832
+country = "VE"
+
+[[origin]]
+slug = "amravati"
+name = "Amravati"
+lat = 20.9333
+lon = 77.75
+country = "IN"
+
+[[origin]]
+slug = "lingyuan"
+name = "Lingyuan"
+lat = 41.24
+lon = 119.4011
+country = "CN"
+
+[[origin]]
+slug = "detroit"
+name = "Detroit"
+lat = 42.3314
+lon = -83.0457
+country = "US"
+
+[[origin]]
+slug = "mingguang"
+name = "Mingguang"
+lat = 32.7802
+lon = 117.9638
+country = "CN"
+
+[[origin]]
+slug = "osogbo"
+name = "Osogbo"
+lat = 7.771
+lon = 4.557
+country = "NG"
+
+[[origin]]
+slug = "bikaner"
+name = "Bikaner"
+lat = 28.0176
+lon = 73.3149
+country = "IN"
+
+[[origin]]
+slug = "new-south-memphis"
+name = "New South Memphis"
+lat = 35.0868
+lon = -90.0568
+country = "US"
+
+[[origin]]
+slug = "hwaseong-si"
+name = "Hwaseong-si"
+lat = 37.2068
+lon = 126.8169
+country = "KR"
+
+[[origin]]
+slug = "gold-coast"
+name = "Gold Coast"
+lat = -28.0003
+lon = 153.4309
+country = "AU"
+
+[[origin]]
+slug = "lodz"
+name = "Łódź"
+lat = 51.7706
+lon = 19.4739
+country = "PL"
+
+[[origin]]
+slug = "jeonju"
+name = "Jeonju"
+lat = 35.8219
+lon = 127.1489
+country = "KR"
+
+[[origin]]
+slug = "chongming"
+name = "Chongming"
+lat = 31.6185
+lon = 121.6962
+country = "CN"
+
+[[origin]]
+slug = "cuenca"
+name = "Cuenca"
+lat = -2.8953
+lon = -78.9963
+country = "EC"
+
+[[origin]]
+slug = "likasi"
+name = "Likasi"
+lat = -10.983
+lon = 26.7384
+country = "CD"
+
+[[origin]]
+slug = "jambi-city"
+name = "Jambi City"
+lat = -1.6
+lon = 103.6167
+country = "ID"
+
+[[origin]]
+slug = "hebi"
+name = "Hebi"
+lat = 35.7323
+lon = 114.2862
+country = "CN"
+
+[[origin]]
+slug = "comilla"
+name = "Comilla"
+lat = 23.4619
+lon = 91.185
+country = "BD"
+
+[[origin]]
+slug = "tshikapa"
+name = "Tshikapa"
+lat = -6.4162
+lon = 20.7999
+country = "CD"
+
+[[origin]]
+slug = "chunian"
+name = "Chunian"
+lat = 30.9662
+lon = 73.9791
+country = "PK"
+
+[[origin]]
+slug = "jingmen"
+name = "Jingmen"
+lat = 31.0336
+lon = 112.2047
+country = "CN"
+
+[[origin]]
+slug = "barnaul"
+name = "Barnaul"
+lat = 53.362
+lon = 83.7279
+country = "RU"
+
+[[origin]]
+slug = "piura"
+name = "Piura"
+lat = -5.1819
+lon = -80.6572
+country = "PE"
+
+[[origin]]
+slug = "siping"
+name = "Siping"
+lat = 43.1614
+lon = 124.3778
+country = "CN"
+
+[[origin]]
+slug = "ndola"
+name = "Ndola"
+lat = -12.9587
+lon = 28.6366
+country = "ZM"
+
+[[origin]]
+slug = "ulyanovsk"
+name = "Ulyanovsk"
+lat = 54.3282
+lon = 48.3866
+country = "RU"
+
+[[origin]]
+slug = "glasgow"
+name = "Glasgow"
+lat = 55.8651
+lon = -4.2576
+country = "GB"
+
+[[origin]]
+slug = "louisville"
+name = "Louisville"
+lat = 38.2542
+lon = -85.7594
+country = "US"
+
+[[origin]]
+slug = "irkutsk"
+name = "Irkutsk"
+lat = 52.2957
+lon = 104.2908
+country = "RU"
+
+[[origin]]
+slug = "al-mansurah"
+name = "Al Mansurah"
+lat = 31.0364
+lon = 31.3807
+country = "EG"
+
+[[origin]]
+slug = "kermanshah"
+name = "Kermanshah"
+lat = 34.3142
+lon = 47.065
+country = "IR"
+
+[[origin]]
+slug = "jiaozhou"
+name = "Jiaozhou"
+lat = 36.2839
+lon = 120.0033
+country = "CN"
+
+[[origin]]
+slug = "suizhou"
+name = "Suizhou"
+lat = 31.7111
+lon = 113.3631
+country = "CN"
+
+[[origin]]
+slug = "khabarovsk"
+name = "Khabarovsk"
+lat = 48.462
+lon = 135.0971
+country = "RU"
+
+[[origin]]
+slug = "cuiaba"
+name = "Cuiabá"
+lat = -15.5961
+lon = -56.0967
+country = "BR"
+
+[[origin]]
+slug = "arusha"
+name = "Arusha"
+lat = -3.3667
+lon = 36.6833
+country = "TZ"
+
+[[origin]]
+slug = "feira-de-santana"
+name = "Feira de Santana"
+lat = -12.2667
+lon = -38.9667
+country = "BR"
+
+[[origin]]
+slug = "chizhou"
+name = "Chizhou"
+lat = 30.6613
+lon = 117.4778
+country = "CN"
+
+[[origin]]
+slug = "stuttgart"
+name = "Stuttgart"
+lat = 48.7823
+lon = 9.177
+country = "DE"
+
+[[origin]]
+slug = "ya-an"
+name = "Ya'an"
+lat = 29.9852
+lon = 102.999
+country = "CN"
+
+[[origin]]
+slug = "chiclayo"
+name = "Chiclayo"
+lat = -6.7701
+lon = -79.855
+country = "PE"
+
+[[origin]]
+slug = "yaroslavl"
+name = "Yaroslavl"
+lat = 57.6299
+lon = 39.8737
+country = "RU"
+
+[[origin]]
+slug = "gothenburg"
+name = "Gothenburg"
+lat = 57.7072
+lon = 11.9668
+country = "SE"
+
+[[origin]]
+slug = "jhang-sadr"
+name = "Jhang Sadr"
+lat = 31.2698
+lon = 72.3169
+country = "PK"
+
+[[origin]]
+slug = "ha-il"
+name = "Ha'il"
+lat = 27.5219
+lon = 41.6907
+country = "SA"
+
+[[origin]]
+slug = "bhavnagar"
+name = "Bhavnagar"
+lat = 21.7629
+lon = 72.1533
+country = "IN"
+
+[[origin]]
+slug = "vladivostok"
+name = "Vladivostok"
+lat = 43.1056
+lon = 131.8735
+country = "RU"
+
+[[origin]]
+slug = "tuxtla"
+name = "Tuxtla"
+lat = 16.7536
+lon = -93.1158
+country = "MX"
+
+[[origin]]
+slug = "kryvyy-rih"
+name = "Kryvyy Rih"
+lat = 47.9057
+lon = 33.394
+country = "UA"
+
+[[origin]]
+slug = "sanming"
+name = "Sanming"
+lat = 26.2486
+lon = 117.6186
+country = "CN"
+
+[[origin]]
+slug = "sangli"
+name = "Sāngli"
+lat = 16.8544
+lon = 74.5642
+country = "IN"
+
+[[origin]]
+slug = "jamnagar"
+name = "Jamnagar"
+lat = 22.4729
+lon = 70.0667
+country = "IN"
+
+[[origin]]
+slug = "lubango"
+name = "Lubango"
+lat = -14.9172
+lon = 13.4925
+country = "AO"
+
+[[origin]]
+slug = "pokhara"
+name = "Pokhara"
+lat = 28.2669
+lon = 83.9685
+country = "NP"
+
+[[origin]]
+slug = "shuangyashan"
+name = "Shuangyashan"
+lat = 46.6769
+lon = 131.1327
+country = "CN"
+
+[[origin]]
+slug = "borama"
+name = "Borama"
+lat = 9.9361
+lon = 43.1828
+country = "SO"
+
+[[origin]]
+slug = "makhachkala"
+name = "Makhachkala"
+lat = 42.9778
+lon = 47.5003
+country = "RU"
+
+[[origin]]
+slug = "huambo"
+name = "Huambo"
+lat = -12.7761
+lon = 15.7392
+country = "AO"
+
+[[origin]]
+slug = "samarkand"
+name = "Samarkand"
+lat = 39.6546
+lon = 66.9644
+country = "UZ"
+
+[[origin]]
+slug = "mengzi"
+name = "Mengzi"
+lat = 23.3678
+lon = 103.3821
+country = "CN"
+
+[[origin]]
+slug = "kagoshima"
+name = "Kagoshima"
+lat = 31.5667
+lon = 130.55
+country = "JP"
+
+[[origin]]
+slug = "mukalla"
+name = "Mukalla"
+lat = 14.5425
+lon = 49.1242
+country = "YE"
+
+[[origin]]
+slug = "rasht"
+name = "Rasht"
+lat = 37.2761
+lon = 49.5886
+country = "IR"
+
+[[origin]]
+slug = "mar-del-plata"
+name = "Mar del Plata"
+lat = -38.0004
+lon = -57.5562
+country = "AR"
+
+[[origin]]
+slug = "essen"
+name = "Essen"
+lat = 51.4566
+lon = 7.0123
+country = "DE"
+
+[[origin]]
+slug = "malaga"
+name = "Málaga"
+lat = 36.7202
+lon = -4.4203
+country = "ES"
+
+[[origin]]
+slug = "yingkou"
+name = "Yingkou"
+lat = 40.6647
+lon = 122.2318
+country = "CN"
+
+[[origin]]
+slug = "zhangzhou"
+name = "Zhangzhou"
+lat = 24.5133
+lon = 117.6556
+country = "CN"
+
+[[origin]]
+slug = "reynosa"
+name = "Reynosa"
+lat = 26.08
+lon = -98.2846
+country = "MX"
+
+[[origin]]
+slug = "suginami"
+name = "Suginami"
+lat = 36.2013
+lon = 140.2841
+country = "JP"
+
+[[origin]]
+slug = "baltimore"
+name = "Baltimore"
+lat = 39.2904
+lon = -76.6122
+country = "US"
+
+[[origin]]
+slug = "londrina"
+name = "Londrina"
+lat = -23.3103
+lon = -51.1628
+country = "BR"
+
+[[origin]]
+slug = "bucaramanga"
+name = "Bucaramanga"
+lat = 7.125
+lon = -73.1189
+country = "CO"
+
+[[origin]]
+slug = "genoa"
+name = "Genoa"
+lat = 44.4048
+lon = 8.9444
+country = "IT"
+
+[[origin]]
+slug = "malacca"
+name = "Malacca"
+lat = 2.196
+lon = 102.2405
+country = "MY"
+
+[[origin]]
+slug = "nha-trang"
+name = "Nha Trang"
+lat = 12.2451
+lon = 109.1943
+country = "VN"
+
+[[origin]]
+slug = "kerman"
+name = "Kerman"
+lat = 30.2832
+lon = 57.0788
+country = "IR"
+
+[[origin]]
+slug = "orumiyeh"
+name = "Orūmīyeh"
+lat = 37.5527
+lon = 45.0761
+country = "IR"
+
+[[origin]]
+slug = "tanta"
+name = "Tanta"
+lat = 30.7885
+lon = 31.0019
+country = "EG"
+
+[[origin]]
+slug = "jammu"
+name = "Jammu"
+lat = 32.7353
+lon = 74.8617
+country = "IN"
+
+[[origin]]
+slug = "calamba"
+name = "Calamba"
+lat = 14.2117
+lon = 121.1653
+country = "PH"
+
+[[origin]]
+slug = "herat"
+name = "Herāt"
+lat = 34.3482
+lon = 62.1997
+country = "AF"
+
+[[origin]]
+slug = "gujrat"
+name = "Gujrat"
+lat = 32.5742
+lon = 74.0754
+country = "PK"
+
+[[origin]]
+slug = "tomsk"
+name = "Tomsk"
+lat = 56.5005
+lon = 84.9822
+country = "RU"
+
+[[origin]]
+slug = "shihezi"
+name = "Shihezi"
+lat = 44.3023
+lon = 86.0369
+country = "CN"
+
+[[origin]]
+slug = "nakuru"
+name = "Nakuru"
+lat = -0.3072
+lon = 36.0722
+country = "KE"
+
+[[origin]]
+slug = "hamilton"
+name = "Hamilton"
+lat = 43.2501
+lon = -79.8496
+country = "CA"
+
+[[origin]]
+slug = "irbid"
+name = "Irbid"
+lat = 32.5556
+lon = 35.85
+country = "JO"
+
+[[origin]]
+slug = "kota-bharu"
+name = "Kota Bharu"
+lat = 6.1236
+lon = 102.2433
+country = "MY"
+
+[[origin]]
+slug = "meknes"
+name = "Meknes"
+lat = 33.8935
+lon = -5.5473
+country = "MA"
+
+[[origin]]
+slug = "nyala"
+name = "Nyala"
+lat = 12.0489
+lon = 24.8807
+country = "SD"
+
+[[origin]]
+slug = "xinmin"
+name = "Xinmin"
+lat = 41.9908
+lon = 122.8253
+country = "CN"
+
+[[origin]]
+slug = "dresden"
+name = "Dresden"
+lat = 51.0509
+lon = 13.7383
+country = "DE"
+
+[[origin]]
+slug = "orenburg"
+name = "Orenburg"
+lat = 51.7671
+lon = 55.0988
+country = "RU"
+
+[[origin]]
+slug = "albuquerque"
+name = "Albuquerque"
+lat = 35.0845
+lon = -106.6511
+country = "US"
+
+[[origin]]
+slug = "sukkur"
+name = "Sukkur"
+lat = 27.7032
+lon = 68.8589
+country = "PK"
+
+[[origin]]
+slug = "milwaukee"
+name = "Milwaukee"
+lat = 43.0389
+lon = -87.9065
+country = "US"
+
+[[origin]]
+slug = "wenchang"
+name = "Wenchang"
+lat = 19.5516
+lon = 110.8028
+country = "CN"
+
+[[origin]]
+slug = "gombe"
+name = "Gombe"
+lat = 10.2897
+lon = 11.1673
+country = "NG"
+
+[[origin]]
+slug = "hamhung"
+name = "Hamhŭng"
+lat = 39.9183
+lon = 127.5364
+country = "KP"
+
+[[origin]]
+slug = "kemerovo"
+name = "Kemerovo"
+lat = 55.3542
+lon = 86.1043
+country = "RU"
+
+[[origin]]
+slug = "nasiriyah"
+name = "Nasiriyah"
+lat = 31.058
+lon = 46.2573
+country = "IQ"
+
+[[origin]]
+slug = "bloemfontein"
+name = "Bloemfontein"
+lat = -29.1211
+lon = 26.214
+country = "ZA"
+
+[[origin]]
+slug = "sheffield"
+name = "Sheffield"
+lat = 53.383
+lon = -1.4659
+country = "GB"
+
+[[origin]]
+slug = "santiago-de-cuba"
+name = "Santiago de Cuba"
+lat = 20.0229
+lon = -75.8217
+country = "CU"
+
+[[origin]]
+slug = "benguela"
+name = "Benguela"
+lat = -12.5767
+lon = 13.4027
+country = "AO"
+
+[[origin]]
+slug = "chuxiong"
+name = "Chuxiong"
+lat = 25.0364
+lon = 101.5456
+country = "CN"
+
+[[origin]]
+slug = "huaihua"
+name = "Huaihua"
+lat = 27.5634
+lon = 110.004
+country = "CN"
+
+[[origin]]
+slug = "sishui"
+name = "Sishui"
+lat = 35.6489
+lon = 117.2758
+country = "CN"
+
+[[origin]]
+slug = "zahedan"
+name = "Zahedan"
+lat = 29.4963
+lon = 60.8629
+country = "IR"
+
+[[origin]]
+slug = "nanded"
+name = "Nanded"
+lat = 19.1602
+lon = 77.315
+country = "IN"
+
+[[origin]]
+slug = "kozhikode"
+name = "Kozhikode"
+lat = 11.248
+lon = 75.7804
+country = "IN"
+
+[[origin]]
+slug = "ulanqab"
+name = "Ulanqab"
+lat = 40.993
+lon = 113.133
+country = "CN"
+
+[[origin]]
+slug = "cabinda"
+name = "Cabinda"
+lat = -5.562
+lon = 12.1948
+country = "AO"
+
+[[origin]]
+slug = "jiamusi"
+name = "Jiamusi"
+lat = 46.7971
+lon = 130.3112
+country = "CN"
+
+[[origin]]
+slug = "korla"
+name = "Korla"
+lat = 41.7606
+lon = 86.1523
+country = "CN"
+
+[[origin]]
+slug = "porto-velho"
+name = "Porto Velho"
+lat = -8.7619
+lon = -63.9039
+country = "BR"
+
+[[origin]]
+slug = "san-miguel-de-tucuman"
+name = "San Miguel de Tucumán"
+lat = -26.816
+lon = -65.2105
+country = "AR"
+
+[[origin]]
+slug = "kuantan"
+name = "Kuantan"
+lat = 3.8077
+lon = 103.326
+country = "MY"
+
+[[origin]]
+slug = "sevastopol"
+name = "Sevastopol"
+lat = 44.608
+lon = 33.5213
+country = "UA"
+
+[[origin]]
+slug = "nellore"
+name = "Nellore"
+lat = 14.4499
+lon = 79.987
+country = "IN"
+
+[[origin]]
+slug = "bremen"
+name = "Bremen"
+lat = 53.0758
+lon = 8.8072
+country = "DE"
+
+[[origin]]
+slug = "wanning"
+name = "Wanning"
+lat = 18.7993
+lon = 110.3841
+country = "CN"
+
+[[origin]]
+slug = "owerri"
+name = "Owerri"
+lat = 5.4836
+lon = 7.0332
+country = "NG"
+
+[[origin]]
+slug = "kota-kuala-muda"
+name = "Kota Kuala Muda"
+lat = 5.5882
+lon = 100.3709
+country = "MY"
+
+[[origin]]
+slug = "xinzhou"
+name = "Xinzhou"
+lat = 38.4092
+lon = 112.7333
+country = "CN"
+
+[[origin]]
+slug = "kalaburagi"
+name = "Kalaburagi"
+lat = 17.3358
+lon = 76.8376
+country = "IN"
+
+[[origin]]
+slug = "tucson"
+name = "Tucson"
+lat = 32.2217
+lon = -110.9265
+country = "US"
+
+[[origin]]
+slug = "ajmer"
+name = "Ajmer"
+lat = 26.4521
+lon = 74.6387
+country = "IN"
+
+[[origin]]
+slug = "pingdu"
+name = "Pingdu"
+lat = 36.7844
+lon = 119.9464
+country = "CN"
+
+[[origin]]
+slug = "fresno"
+name = "Fresno"
+lat = 36.7477
+lon = -119.7724
+country = "US"
+
+[[origin]]
+slug = "mbeya"
+name = "Mbeya"
+lat = -8.9
+lon = 33.45
+country = "TZ"
+
+[[origin]]
+slug = "juiz-de-fora"
+name = "Juiz de Fora"
+lat = -21.7642
+lon = -43.3503
+country = "BR"
+
+[[origin]]
+slug = "calabar"
+name = "Calabar"
+lat = 4.9589
+lon = 8.327
+country = "NG"
+
+[[origin]]
+slug = "oujda"
+name = "Oujda"
+lat = 34.6814
+lon = -1.9086
+country = "MA"
+
+[[origin]]
+slug = "novokuznetsk"
+name = "Novokuznetsk"
+lat = 53.7575
+lon = 87.136
+country = "RU"
+
+[[origin]]
+slug = "ryazan"
+name = "Ryazan’"
+lat = 54.627
+lon = 39.7041
+country = "RU"
+
+[[origin]]
+slug = "ji-an"
+name = "Ji’an"
+lat = 27.1172
+lon = 114.9793
+country = "CN"
+
+[[origin]]
+slug = "sahiwal"
+name = "Sahiwal"
+lat = 30.6659
+lon = 73.1019
+country = "PK"
+
+[[origin]]
+slug = "mersin"
+name = "Mersin"
+lat = 36.812
+lon = 34.6389
+country = "TR"
+
+[[origin]]
+slug = "leeds"
+name = "Leeds"
+lat = 53.7965
+lon = -1.5478
+country = "GB"
+
+[[origin]]
+slug = "poznan"
+name = "Poznań"
+lat = 52.4069
+lon = 16.9299
+country = "PL"
+
+[[origin]]
+slug = "aqsu"
+name = "Aqsu"
+lat = 41.1842
+lon = 80.2792
+country = "CN"
+
+[[origin]]
+slug = "tanggu"
+name = "Tanggu"
+lat = 39.0211
+lon = 117.6469
+country = "CN"
+
+[[origin]]
+slug = "astrakhan"
+name = "Astrakhan"
+lat = 46.3497
+lon = 48.0408
+country = "RU"
+
+[[origin]]
+slug = "ar-raqqah"
+name = "Ar Raqqah"
+lat = 35.9528
+lon = 39.0079
+country = "SY"
+
+[[origin]]
+slug = "quebec"
+name = "Québec"
+lat = 46.8123
+lon = -71.2145
+country = "CA"
+
+[[origin]]
+slug = "shangluo"
+name = "Shangluo"
+lat = 33.8667
+lon = 109.9306
+country = "CN"
+
+[[origin]]
+slug = "himeji"
+name = "Himeji"
+lat = 34.8167
+lon = 134.7
+country = "JP"
+
+[[origin]]
+slug = "ibague"
+name = "Ibagué"
+lat = 4.4357
+lon = -75.2029
+country = "CO"
+
+[[origin]]
+slug = "antwerp"
+name = "Antwerp"
+lat = 51.2205
+lon = 4.4003
+country = "BE"
+
+[[origin]]
+slug = "assiut"
+name = "Assiut"
+lat = 27.181
+lon = 31.1837
+country = "EG"
+
+[[origin]]
+slug = "hamadan"
+name = "Hamadān"
+lat = 34.7992
+lon = 48.5146
+country = "IR"
+
+[[origin]]
+slug = "qionghai"
+name = "Qionghai"
+lat = 19.2425
+lon = 110.4642
+country = "CN"
+
+[[origin]]
+slug = "cangzhou"
+name = "Cangzhou"
+lat = 38.3112
+lon = 116.8533
+country = "CN"
+
+[[origin]]
+slug = "mohammadpur"
+name = "Mohammadpur"
+lat = 24.8984
+lon = 88.5284
+country = "BD"
+
+[[origin]]
+slug = "surakarta"
+name = "Surakarta"
+lat = -7.5561
+lon = 110.8317
+country = "ID"
+
+[[origin]]
+slug = "beihai"
+name = "Beihai"
+lat = 21.4835
+lon = 109.1155
+country = "CN"
+
+[[origin]]
+slug = "van"
+name = "Van"
+lat = 38.4946
+lon = 43.3832
+country = "TR"
+
+[[origin]]
+slug = "sacramento"
+name = "Sacramento"
+lat = 38.5816
+lon = -121.4944
+country = "US"
+
+[[origin]]
+slug = "penza"
+name = "Penza"
+lat = 53.1957
+lon = 45.0108
+country = "RU"
+
+[[origin]]
+slug = "mazar-e-sharif"
+name = "Mazār-e Sharīf"
+lat = 36.709
+lon = 67.1109
+country = "AF"
+
+[[origin]]
+slug = "kandahar"
+name = "Kandahār"
+lat = 31.6133
+lon = 65.7101
+country = "AF"
+
+[[origin]]
+slug = "hengshui"
+name = "Hengshui"
+lat = 37.7391
+lon = 115.6835
+country = "CN"
+
+[[origin]]
+slug = "dehradun"
+name = "Dehradun"
+lat = 30.3244
+lon = 78.0339
+country = "IN"
+
+[[origin]]
+slug = "erode"
+name = "Erode"
+lat = 11.3428
+lon = 77.7274
+country = "IN"
+
+[[origin]]
+slug = "lyon"
+name = "Lyon"
+lat = 45.7491
+lon = 4.8479
+country = "FR"
+
+[[origin]]
+slug = "salta"
+name = "Salta"
+lat = -24.8065
+lon = -65.42
+country = "AR"
+
+[[origin]]
+slug = "serra"
+name = "Serra"
+lat = -20.1286
+lon = -40.3078
+country = "BR"
+
+[[origin]]
+slug = "daxing-anling"
+name = "Daxing’anling"
+lat = 52.3338
+lon = 124.7124
+country = "CN"
+
+[[origin]]
+slug = "qui-nhon"
+name = "Qui Nhon"
+lat = 13.7765
+lon = 109.2237
+country = "VN"
+
+[[origin]]
+slug = "al-fayyum"
+name = "Al Fayyum"
+lat = 29.31
+lon = 30.8418
+country = "EG"
+
+[[origin]]
+slug = "durgapur"
+name = "Durgapur"
+lat = 23.5158
+lon = 87.308
+country = "IN"
+
+[[origin]]
+slug = "utsunomiya"
+name = "Utsunomiya"
+lat = 36.5667
+lon = 139.8833
+country = "JP"
+
+[[origin]]
+slug = "victoria-de-durango"
+name = "Victoria de Durango"
+lat = 24.0203
+lon = -104.6576
+country = "MX"
+
+[[origin]]
+slug = "rahim-yar-khan"
+name = "Rahim Yar Khan"
+lat = 28.4199
+lon = 70.3034
+country = "PK"
+
+[[origin]]
+slug = "guangyuan"
+name = "Guangyuan"
+lat = 32.442
+lon = 105.823
+country = "CN"
+
+[[origin]]
+slug = "siliguri"
+name = "Siliguri"
+lat = 26.71
+lon = 88.4285
+country = "IN"
+
+[[origin]]
+slug = "nuremberg"
+name = "Nuremberg"
+lat = 49.4542
+lon = 11.0775
+country = "DE"
+
+[[origin]]
+slug = "ujjain"
+name = "Ujjain"
+lat = 23.1824
+lon = 75.7764
+country = "IN"
+
+[[origin]]
+slug = "hannover"
+name = "Hannover"
+lat = 52.3705
+lon = 9.7332
+country = "DE"
+
+[[origin]]
+slug = "macapa"
+name = "Macapá"
+lat = 0.0389
+lon = -51.0664
+country = "BR"
+
+[[origin]]
+slug = "xianning"
+name = "Xianning"
+lat = 29.8435
+lon = 114.322
+country = "CN"
+
+[[origin]]
+slug = "toulouse"
+name = "Toulouse"
+lat = 43.6043
+lon = 1.4437
+country = "FR"
+
+[[origin]]
+slug = "matsuyama"
+name = "Matsuyama"
+lat = 33.8392
+lon = 132.7657
+country = "JP"
+
+[[origin]]
+slug = "bilimora"
+name = "Bilimora"
+lat = 20.7696
+lon = 72.9613
+country = "IN"
+
+[[origin]]
+slug = "kasur"
+name = "Kasur"
+lat = 31.1187
+lon = 74.4502
+country = "PK"
+
+[[origin]]
+slug = "heroica-matamoros"
+name = "Heroica Matamoros"
+lat = 25.8797
+lon = -97.5042
+country = "MX"
+
+[[origin]]
+slug = "tonghua"
+name = "Tonghua"
+lat = 41.7197
+lon = 125.9264
+country = "CN"
+
+[[origin]]
+slug = "naberezhnyye-chelny"
+name = "Naberezhnyye Chelny"
+lat = 55.7372
+lon = 52.4196
+country = "RU"
+
+[[origin]]
+slug = "lipetsk"
+name = "Lipetsk"
+lat = 52.5876
+lon = 39.5515
+country = "RU"
+
+[[origin]]
+slug = "kikwit"
+name = "Kikwit"
+lat = -5.041
+lon = 18.8162
+country = "CD"
+
+[[origin]]
+slug = "florianopolis"
+name = "Florianópolis"
+lat = -27.5967
+lon = -48.5492
+country = "BR"
+
+[[origin]]
+slug = "newcastle"
+name = "Newcastle"
+lat = -32.9295
+lon = 151.7801
+country = "AU"
+
+[[origin]]
+slug = "zhangye"
+name = "Zhangye"
+lat = 38.9342
+lon = 100.4517
+country = "CN"
+
+[[origin]]
+slug = "kirov"
+name = "Kirov"
+lat = 58.5981
+lon = 49.6578
+country = "RU"
+
+[[origin]]
+slug = "kashgar"
+name = "Kashgar"
+lat = 39.4672
+lon = 75.9868
+country = "CN"
+
+[[origin]]
+slug = "najran"
+name = "Najrān"
+lat = 17.4933
+lon = 44.1277
+country = "SA"
+
+[[origin]]
+slug = "zhoukou"
+name = "Zhoukou"
+lat = 33.6333
+lon = 114.6333
+country = "CN"
+
+[[origin]]
+slug = "leipzig"
+name = "Leipzig"
+lat = 51.3396
+lon = 12.3713
+country = "DE"
+
+[[origin]]
+slug = "pingliang"
+name = "Pingliang"
+lat = 35.5392
+lon = 106.6861
+country = "CN"
+
+[[origin]]
+slug = "arak"
+name = "Arāk"
+lat = 34.0949
+lon = 49.6981
+country = "IR"
+
+[[origin]]
+slug = "homyel"
+name = "Homyel'"
+lat = 52.4345
+lon = 30.9754
+country = "BY"
+
+[[origin]]
+slug = "aktobe"
+name = "Aktobe"
+lat = 50.2797
+lon = 57.2072
+country = "KZ"
+
+[[origin]]
+slug = "kota-kinabalu"
+name = "Kota Kinabalu"
+lat = 5.9749
+lon = 116.0724
+country = "MY"
+
+[[origin]]
+slug = "saminaka"
+name = "Saminaka"
+lat = 10.4123
+lon = 8.6875
+country = "NG"
+
+[[origin]]
+slug = "jalalpur-pirwala"
+name = "Jalalpur Pirwala"
+lat = 29.5051
+lon = 71.222
+country = "PK"
+
+[[origin]]
+slug = "mangaluru"
+name = "Mangaluru"
+lat = 12.9172
+lon = 74.856
+country = "IN"
+
+[[origin]]
+slug = "santa-marta"
+name = "Santa Marta"
+lat = 11.2386
+lon = -74.1943
+country = "CO"
+
+[[origin]]
+slug = "karagandy"
+name = "Karagandy"
+lat = 49.8019
+lon = 73.1021
+country = "KZ"
+
+[[origin]]
+slug = "loudi"
+name = "Loudi"
+lat = 27.7344
+lon = 111.9944
+country = "CN"
+
+[[origin]]
+slug = "liverpool"
+name = "Liverpool"
+lat = 53.4106
+lon = -2.9779
+country = "GB"
+
+[[origin]]
+slug = "dera-ghazi-khan"
+name = "Dera Ghazi Khan"
+lat = 30.0459
+lon = 70.6403
+country = "PK"
+
+[[origin]]
+slug = "pindi-bhattian"
+name = "Pindi Bhattian"
+lat = 31.8984
+lon = 73.2734
+country = "PK"
+
+[[origin]]
+slug = "cheboksary"
+name = "Cheboksary"
+lat = 56.1322
+lon = 47.246
+country = "RU"
+
+[[origin]]
+slug = "pohang"
+name = "Pohang"
+lat = 36.0292
+lon = 129.3648
+country = "KR"
+
+[[origin]]
+slug = "shanwei"
+name = "Shanwei"
+lat = 22.782
+lon = 115.3475
+country = "CN"
+
+[[origin]]
+slug = "monteria"
+name = "Montería"
+lat = 8.7508
+lon = -75.8782
+country = "CO"
+
+[[origin]]
+slug = "valledupar"
+name = "Valledupar"
+lat = 10.4654
+lon = -73.2531
+country = "CO"
+
+[[origin]]
+slug = "belagavi"
+name = "Belagavi"
+lat = 15.8521
+lon = 74.5045
+country = "IN"
+
+[[origin]]
+slug = "jianshui"
+name = "Jianshui"
+lat = 24.2774
+lon = 101.224
+country = "CN"
+
+[[origin]]
+slug = "port-sudan"
+name = "Port Sudan"
+lat = 19.6175
+lon = 37.2164
+country = "SD"
+
+[[origin]]
+slug = "toluca"
+name = "Toluca"
+lat = 19.2879
+lon = -99.6532
+country = "MX"
+
+[[origin]]
+slug = "jeju-city"
+name = "Jeju City"
+lat = 33.5097
+lon = 126.5219
+country = "KR"
+
+[[origin]]
+slug = "gdansk"
+name = "Gdańsk"
+lat = 54.3523
+lon = 18.6491
+country = "PL"
+
+[[origin]]
+slug = "omaha"
+name = "Omaha"
+lat = 41.2563
+lon = -95.9404
+country = "US"
+
+[[origin]]
+slug = "saharanpur"
+name = "Sahāranpur"
+lat = 29.9679
+lon = 77.5452
+country = "IN"
+
+[[origin]]
+slug = "vellore"
+name = "Vellore"
+lat = 12.9184
+lon = 79.1325
+country = "IN"
+
+[[origin]]
+slug = "campos-dos-goytacazes"
+name = "Campos dos Goytacazes"
+lat = -21.7523
+lon = -41.3304
+country = "BR"
+
+[[origin]]
+slug = "angeles-city"
+name = "Angeles City"
+lat = 15.15
+lon = 120.5833
+country = "PH"
+
+[[origin]]
+slug = "jijiga"
+name = "Jijiga"
+lat = 9.35
+lon = 42.8
+country = "ET"
+
+[[origin]]
+slug = "tula"
+name = "Tula"
+lat = 54.1961
+lon = 37.6182
+country = "RU"
+
+[[origin]]
+slug = "najaf"
+name = "Najaf"
+lat = 32.0259
+lon = 44.3462
+country = "IQ"
+
+[[origin]]
+slug = "raleigh"
+name = "Raleigh"
+lat = 35.7721
+lon = -78.6386
+country = "US"
+
+[[origin]]
+slug = "xichang"
+name = "Xichang"
+lat = 27.8964
+lon = 102.2634
+country = "CN"
+
+[[origin]]
+slug = "malegaon"
+name = "Malegaon"
+lat = 20.5497
+lon = 74.5346
+country = "IN"
+
+[[origin]]
+slug = "zaoyang"
+name = "Zaoyang"
+lat = 32.1272
+lon = 112.7542
+country = "CN"
+
+[[origin]]
+slug = "sao-jose-do-rio-preto"
+name = "São José do Rio Preto"
+lat = -20.8197
+lon = -49.3794
+country = "BR"
+
+[[origin]]
+slug = "caxias-do-sul"
+name = "Caxias do Sul"
+lat = -29.1681
+lon = -51.1794
+country = "BR"
+
+[[origin]]
+slug = "okene"
+name = "Okene"
+lat = 7.5512
+lon = 6.2359
+country = "NG"
+
+[[origin]]
+slug = "bristol"
+name = "Bristol"
+lat = 51.4552
+lon = -2.5966
+country = "GB"
+
+[[origin]]
+slug = "east-london"
+name = "East London"
+lat = -33.0153
+lon = 27.9116
+country = "ZA"
+
+[[origin]]
+slug = "yazd"
+name = "Yazd"
+lat = 31.8972
+lon = 54.3675
+country = "IR"
+
+[[origin]]
+slug = "hargeysa"
+name = "Hargeysa"
+lat = 9.56
+lon = 44.065
+country = "SO"
+
+[[origin]]
+slug = "oita"
+name = "Ōita"
+lat = 33.2333
+lon = 131.6
+country = "JP"
+
+[[origin]]
+slug = "jincheng"
+name = "Jincheng"
+lat = 35.5022
+lon = 112.8328
+country = "CN"
+
+[[origin]]
+slug = "hongjiang"
+name = "Hongjiang"
+lat = 27.11
+lon = 109.9956
+country = "CN"
+
+[[origin]]
+slug = "eldoret"
+name = "Eldoret"
+lat = 0.5204
+lon = 35.2699
+country = "KE"
+
+[[origin]]
+slug = "kansas-city"
+name = "Kansas City"
+lat = 39.0997
+lon = -94.5786
+country = "US"
+
+[[origin]]
+slug = "yan-an"
+name = "Yan’an"
+lat = 36.5989
+lon = 109.4917
+country = "CN"
+
+[[origin]]
+slug = "kaliningrad"
+name = "Kaliningrad"
+lat = 54.7064
+lon = 20.511
+country = "RU"
+
+[[origin]]
+slug = "kupang"
+name = "Kupang"
+lat = -10.1708
+lon = 123.6069
+country = "ID"
+
+[[origin]]
+slug = "gaya"
+name = "Gaya"
+lat = 24.7969
+lon = 85.0038
+country = "IN"
+
+[[origin]]
+slug = "iloilo"
+name = "Iloilo"
+lat = 10.6969
+lon = 122.5644
+country = "PH"
+
+[[origin]]
+slug = "jingdezhen"
+name = "Jingdezhen"
+lat = 29.2947
+lon = 117.2079
+country = "CN"
+
+[[origin]]
+slug = "murcia"
+name = "Murcia"
+lat = 37.987
+lon = -1.13
+country = "ES"
+
+[[origin]]
+slug = "halifax"
+name = "Halifax"
+lat = 44.6427
+lon = -63.5769
+country = "CA"
+
+[[origin]]
+slug = "morogoro"
+name = "Morogoro"
+lat = -6.821
+lon = 37.6612
+country = "TZ"
+
+[[origin]]
+slug = "mykolayiv"
+name = "Mykolayiv"
+lat = 46.9763
+lon = 31.993
+country = "UA"
+
+[[origin]]
+slug = "fukuyama"
+name = "Fukuyama"
+lat = 34.4833
+lon = 133.3667
+country = "JP"
+
+[[origin]]
+slug = "nanping"
+name = "Nanping"
+lat = 26.645
+lon = 118.1736
+country = "CN"
+
+[[origin]]
+slug = "pereira"
+name = "Pereira"
+lat = 4.8143
+lon = -75.6949
+country = "CO"
+
+[[origin]]
+slug = "kanazawa"
+name = "Kanazawa"
+lat = 36.6
+lon = 136.6167
+country = "JP"
+
+[[origin]]
+slug = "gonder"
+name = "Gonder"
+lat = 12.6
+lon = 37.4667
+country = "ET"
+
+[[origin]]
+slug = "longshan"
+name = "Longshan"
+lat = 42.8854
+lon = 125.1367
+country = "CN"
+
+[[origin]]
+slug = "ikare"
+name = "Ikare"
+lat = 7.5259
+lon = 5.7534
+country = "NG"
+
+[[origin]]
+slug = "vung-tau"
+name = "Vũng Tàu"
+lat = 10.346
+lon = 107.0843
+country = "VN"
+
+[[origin]]
+slug = "maracay"
+name = "Maracay"
+lat = 10.2497
+lon = -67.5948
+country = "VE"
+
+[[origin]]
+slug = "tamale"
+name = "Tamale"
+lat = 9.4008
+lon = -0.8393
+country = "GH"
+
+[[origin]]
+slug = "heyuan"
+name = "Heyuan"
+lat = 23.7333
+lon = 114.6833
+country = "CN"
+
+[[origin]]
+slug = "esna"
+name = "Esna"
+lat = 25.2934
+lon = 32.554
+country = "EG"
+
+[[origin]]
+slug = "huangshan"
+name = "Huangshan"
+lat = 29.7114
+lon = 118.3125
+country = "CN"
+
+[[origin]]
+slug = "hamah"
+name = "Ḩamāh"
+lat = 35.1318
+lon = 36.7578
+country = "SY"
+
+[[origin]]
+slug = "jalgaon"
+name = "Jalgaon"
+lat = 21.0029
+lon = 75.566
+country = "IN"
+
+[[origin]]
+slug = "kurnool"
+name = "Kurnool"
+lat = 15.8289
+lon = 78.036
+country = "IN"
+
+[[origin]]
+slug = "yola"
+name = "Yola"
+lat = 9.2084
+lon = 12.4815
+country = "NG"
+
+[[origin]]
+slug = "tieling"
+name = "Tieling"
+lat = 42.2931
+lon = 123.8414
+country = "CN"
+
+[[origin]]
+slug = "rach-gia"
+name = "Rạch Giá"
+lat = 10.0124
+lon = 105.0809
+country = "VN"
+
+[[origin]]
+slug = "manado"
+name = "Manado"
+lat = 1.4822
+lon = 124.8489
+country = "ID"
+
+[[origin]]
+slug = "santo-domingo-de-los-colorados"
+name = "Santo Domingo de los Colorados"
+lat = -0.2537
+lon = -79.1763
+country = "EC"
+
+[[origin]]
+slug = "tartus"
+name = "Ţarţūs"
+lat = 34.889
+lon = 35.8866
+country = "SY"
+
+[[origin]]
+slug = "mek-ele"
+name = "Mek'ele"
+lat = 13.4967
+lon = 39.4753
+country = "ET"
+
+[[origin]]
+slug = "nazret"
+name = "Nazrēt"
+lat = 8.55
+lon = 39.2667
+country = "ET"
+
+[[origin]]
+slug = "colorado-springs"
+name = "Colorado Springs"
+lat = 38.8339
+lon = -104.8214
+country = "US"
+
+[[origin]]
+slug = "huancayo"
+name = "Huancayo"
+lat = -12.0687
+lon = -75.2103
+country = "PE"
+
+[[origin]]
+slug = "al-hillah"
+name = "Al Hillah"
+lat = 32.4637
+lon = 44.4196
+country = "IQ"
+
+[[origin]]
+slug = "mbandaka"
+name = "Mbandaka"
+lat = 0.0486
+lon = 18.2603
+country = "CD"
+
+[[origin]]
+slug = "malanje"
+name = "Malanje"
+lat = -9.5402
+lon = 16.341
+country = "AO"
+
+[[origin]]
+slug = "namp-o"
+name = "Namp’o"
+lat = 38.7375
+lon = 125.4078
+country = "KP"
+
+[[origin]]
+slug = "bacolod-city"
+name = "Bacolod City"
+lat = 10.6667
+lon = 122.95
+country = "PH"
+
+[[origin]]
+slug = "virginia-beach"
+name = "Virginia Beach"
+lat = 36.8529
+lon = -75.978
+country = "US"
+
+[[origin]]
+slug = "wafangdian"
+name = "Wafangdian"
+lat = 39.6183
+lon = 122.0081
+country = "CN"
+
+[[origin]]
+slug = "kahama"
+name = "Kahama"
+lat = -3.8333
+lon = 32.6
+country = "TZ"
+
+[[origin]]
+slug = "hsinchu"
+name = "Hsinchu"
+lat = 24.8036
+lon = 120.9686
+country = "TW"
+
+[[origin]]
+slug = "ramgundam"
+name = "Rāmgundam"
+lat = 18.8008
+lon = 79.4521
+country = "IN"
+
+[[origin]]
+slug = "batman"
+name = "Batman"
+lat = 37.8874
+lon = 41.1322
+country = "TR"
+
+[[origin]]
+slug = "yongji"
+name = "Yongji"
+lat = 34.8661
+lon = 110.4403
+country = "CN"
+
+[[origin]]
+slug = "lishui"
+name = "Lishui"
+lat = 28.4604
+lon = 119.9103
+country = "CN"
+
+[[origin]]
+slug = "udaipur"
+name = "Udaipur"
+lat = 24.5858
+lon = 73.7135
+country = "IN"
+
+[[origin]]
+slug = "warder"
+name = "Warder"
+lat = 6.9744
+lon = 45.3408
+country = "ET"
+
+[[origin]]
+slug = "wenshan-city"
+name = "Wenshan City"
+lat = 23.3631
+lon = 104.2505
+country = "CN"
+
+[[origin]]
+slug = "bac-giang"
+name = "Bắc Giang"
+lat = 21.2731
+lon = 106.1946
+country = "VN"
+
+[[origin]]
+slug = "sanliurfa"
+name = "Şanlıurfa"
+lat = 37.1671
+lon = 38.7939
+country = "TR"
+
+[[origin]]
+slug = "kursk"
+name = "Kursk"
+lat = 51.7269
+lon = 36.1846
+country = "RU"
+
+[[origin]]
+slug = "nam-gjinh"
+name = "Nam Định"
+lat = 20.4339
+lon = 106.1773
+country = "VN"
+
+[[origin]]
+slug = "constantine"
+name = "Constantine"
+lat = 36.365
+lon = 6.6147
+country = "DZ"
+
+[[origin]]
+slug = "patiala"
+name = "Patiāla"
+lat = 30.3362
+lon = 76.3922
+country = "IN"
+
+[[origin]]
+slug = "basuo"
+name = "Basuo"
+lat = 19.1027
+lon = 108.6656
+country = "CN"
+
+[[origin]]
+slug = "campina-grande"
+name = "Campina Grande"
+lat = -7.2306
+lon = -35.8811
+country = "BR"
+
+[[origin]]
+slug = "ensenada"
+name = "Ensenada"
+lat = 31.8715
+lon = -116.6007
+country = "MX"
+
+[[origin]]
+slug = "elazig"
+name = "Elazığ"
+lat = 38.6743
+lon = 39.2232
+country = "TR"
+
+[[origin]]
+slug = "zhangjiajie"
+name = "Zhangjiajie"
+lat = 29.1294
+lon = 110.4783
+country = "CN"
+
+[[origin]]
+slug = "mataram"
+name = "Mataram"
+lat = -8.5833
+lon = 116.1167
+country = "ID"
+
+[[origin]]
+slug = "korhogo"
+name = "Korhogo"
+lat = 9.458
+lon = -5.6296
+country = "CI"
+
+[[origin]]
+slug = "piracicaba"
+name = "Piracicaba"
+lat = -22.7253
+lon = -47.6492
+country = "BR"
+
+[[origin]]
+slug = "sandakan"
+name = "Sandakan"
+lat = 5.8402
+lon = 118.1179
+country = "MY"
+
+[[origin]]
+slug = "mawlamyine"
+name = "Mawlamyine"
+lat = 16.4905
+lon = 97.6282
+country = "MM"
+
+[[origin]]
+slug = "palma"
+name = "Palma"
+lat = 39.5694
+lon = 2.6502
+country = "ES"
+
+[[origin]]
+slug = "montes-claros"
+name = "Montes Claros"
+lat = -16.735
+lon = -43.8617
+country = "BR"
+
+[[origin]]
+slug = "sunch-on"
+name = "Sunch’ŏn"
+lat = 39.4317
+lon = 125.9328
+country = "KP"
+
+[[origin]]
+slug = "uyo"
+name = "Uyo"
+lat = 5.0513
+lon = 7.9335
+country = "NG"
+
+[[origin]]
+slug = "bei-an"
+name = "Bei’an"
+lat = 48.2667
+lon = 126.6
+country = "CN"
+
+[[origin]]
+slug = "davangere"
+name = "Davangere"
+lat = 14.4669
+lon = 75.9269
+country = "IN"
+
+[[origin]]
+slug = "macheng"
+name = "Macheng"
+lat = 31.1801
+lon = 115.0221
+country = "CN"
+
+[[origin]]
+slug = "ado-ekiti"
+name = "Ado-Ekiti"
+lat = 7.6233
+lon = 5.2209
+country = "NG"
+
+[[origin]]
+slug = "buon-ma-thuot"
+name = "Buôn Ma Thuột"
+lat = 12.6675
+lon = 108.0378
+country = "VN"
+
+[[origin]]
+slug = "stavropol"
+name = "Stavropol"
+lat = 45.0344
+lon = 41.9642
+country = "RU"
+
+[[origin]]
+slug = "shuozhou"
+name = "Shuozhou"
+lat = 39.3158
+lon = 112.4225
+country = "CN"
+
+[[origin]]
+slug = "ogbomoso"
+name = "Ogbomoso"
+lat = 8.1337
+lon = 4.2401
+country = "NG"
+
+[[origin]]
+slug = "goma"
+name = "Goma"
+lat = -1.6741
+lon = 29.2284
+country = "CD"
+
+[[origin]]
+slug = "buenaventura"
+name = "Buenaventura"
+lat = 3.5833
+lon = -77.0
+country = "CO"
+
+[[origin]]
+slug = "welkom"
+name = "Welkom"
+lat = -27.9774
+lon = 26.7351
+country = "ZA"
+
+[[origin]]
+slug = "zagazig"
+name = "Zagazig"
+lat = 30.5877
+lon = 31.502
+country = "EG"
+
+[[origin]]
+slug = "vinnytsya"
+name = "Vinnytsya"
+lat = 49.2322
+lon = 28.4687
+country = "UA"
+
+[[origin]]
+slug = "ismailia"
+name = "Ismailia"
+lat = 30.6043
+lon = 32.2722
+country = "EG"
+
+[[origin]]
+slug = "ningde"
+name = "Ningde"
+lat = 26.6617
+lon = 119.5228
+country = "CN"
+
+[[origin]]
+slug = "akola"
+name = "Akola"
+lat = 20.7096
+lon = 76.9981
+country = "IN"
+
+[[origin]]
+slug = "cusco"
+name = "Cusco"
+lat = -13.5319
+lon = -71.967
+country = "PE"
+
+[[origin]]
+slug = "jiuquan"
+name = "Jiuquan"
+lat = 39.7432
+lon = 98.5174
+country = "CN"
+
+[[origin]]
+slug = "veracruz"
+name = "Veracruz"
+lat = 19.1809
+lon = -96.1429
+country = "MX"
+
+[[origin]]
+slug = "bryansk"
+name = "Bryansk"
+lat = 53.271
+lon = 34.3214
+country = "RU"
+
+[[origin]]
+slug = "tando-bago"
+name = "Tando Bago"
+lat = 24.7891
+lon = 68.9654
+country = "PK"
+
+[[origin]]
+slug = "kuala-terengganu"
+name = "Kuala Terengganu"
+lat = 5.3302
+lon = 103.1408
+country = "MY"
+
+[[origin]]
+slug = "matadi"
+name = "Matadi"
+lat = -5.8386
+lon = 13.4631
+country = "CD"
+
+[[origin]]
+slug = "al-kharj"
+name = "Al Kharj"
+lat = 24.1554
+lon = 47.3346
+country = "SA"
+
+[[origin]]
+slug = "minna"
+name = "Minna"
+lat = 9.6152
+lon = 6.5478
+country = "NG"
+
+[[origin]]
+slug = "xalapa-de-enriquez"
+name = "Xalapa de Enríquez"
+lat = 19.5312
+lon = -96.9159
+country = "MX"
+
+[[origin]]
+slug = "al-hasakah"
+name = "Al Ḩasakah"
+lat = 36.5024
+lon = 40.7477
+country = "SY"
+
+[[origin]]
+slug = "luxor"
+name = "Luxor"
+lat = 25.6989
+lon = 32.6421
+country = "EG"
+
+[[origin]]
+slug = "london-ca"
+name = "London"
+lat = 42.9834
+lon = -81.233
+country = "CA"
+
+[[origin]]
+slug = "awasa"
+name = "Awasa"
+lat = 7.0621
+lon = 38.4763
+country = "ET"
+
+[[origin]]
+slug = "chimoio"
+name = "Chimoio"
+lat = -19.1164
+lon = 33.4833
+country = "MZ"
+
+[[origin]]
+slug = "daloa"
+name = "Daloa"
+lat = 6.8773
+lon = -6.4502
+country = "CI"
+
+[[origin]]
+slug = "dingxi"
+name = "Dingxi"
+lat = 35.5709
+lon = 104.623
+country = "CN"
+
+[[origin]]
+slug = "bamenda"
+name = "Bamenda"
+lat = 5.9597
+lon = 10.146
+country = "CM"
+
+[[origin]]
+slug = "tver"
+name = "Tver"
+lat = 56.8584
+lon = 35.9006
+country = "RU"
+
+[[origin]]
+slug = "thai-nguyen"
+name = "Thái Nguyên"
+lat = 21.5942
+lon = 105.8482
+country = "VN"
+
+[[origin]]
+slug = "boa-vista"
+name = "Boa Vista"
+lat = 2.8197
+lon = -60.6733
+country = "BR"
+
+[[origin]]
+slug = "rio-branco"
+name = "Rio Branco"
+lat = -9.9747
+lon = -67.81
+country = "BR"
+
+[[origin]]
+slug = "christchurch"
+name = "Christchurch"
+lat = -43.5333
+lon = 172.6333
+country = "NZ"
+
+[[origin]]
+slug = "korba"
+name = "Korba"
+lat = 22.3458
+lon = 82.6963
+country = "IN"
+
+[[origin]]
+slug = "santos"
+name = "Santos"
+lat = -23.9608
+lon = -46.3336
+country = "BR"
+
+[[origin]]
+slug = "petrolina"
+name = "Petrolina"
+lat = -9.3986
+lon = -40.5008
+country = "BR"
+
+[[origin]]
+slug = "alor-setar"
+name = "Alor Setar"
+lat = 6.121
+lon = 100.3601
+country = "MY"
+
+[[origin]]
+slug = "tongchuan"
+name = "Tongchuan"
+lat = 34.8988
+lon = 108.9506
+country = "CN"
+
+[[origin]]
+slug = "nuevo-laredo"
+name = "Nuevo Laredo"
+lat = 27.4763
+lon = -99.5164
+country = "MX"
+
+[[origin]]
+slug = "toyama"
+name = "Toyama"
+lat = 36.7
+lon = 137.2167
+country = "JP"
+
+[[origin]]
+slug = "tetouan"
+name = "Tétouan"
+lat = 35.5784
+lon = -5.3684
+country = "MA"
+
+[[origin]]
+slug = "viet-tri"
+name = "Việt Trì"
+lat = 21.3227
+lon = 105.402
+country = "VN"
+
+[[origin]]
+slug = "tampa"
+name = "Tampa"
+lat = 27.9475
+lon = -82.4584
+country = "US"
+
+[[origin]]
+slug = "magnitogorsk"
+name = "Magnitogorsk"
+lat = 53.3981
+lon = 59.0066
+country = "RU"
+
+[[origin]]
+slug = "tulsa"
+name = "Tulsa"
+lat = 36.154
+lon = -95.9928
+country = "US"
+
+[[origin]]
+slug = "jhansi"
+name = "Jhānsi"
+lat = 25.4589
+lon = 78.5799
+country = "IN"
+
+[[origin]]
+slug = "ciudad-bolivar"
+name = "Ciudad Bolívar"
+lat = 8.1237
+lon = -63.5469
+country = "VE"
+
+[[origin]]
+slug = "guyuan"
+name = "Guyuan"
+lat = 36.0067
+lon = 106.2808
+country = "CN"
+
+[[origin]]
+slug = "minneapolis"
+name = "Minneapolis"
+lat = 44.98
+lon = -93.2638
+country = "US"
+
+[[origin]]
+slug = "jayapura"
+name = "Jayapura"
+lat = -2.5337
+lon = 140.7181
+country = "ID"
+
+[[origin]]
+slug = "thoothukudi"
+name = "Thoothukudi"
+lat = 8.7674
+lon = 78.1342
+country = "IN"
+
+[[origin]]
+slug = "ardabil"
+name = "Ardabīl"
+lat = 38.2498
+lon = 48.2933
+country = "IR"
+
+[[origin]]
+slug = "ballari"
+name = "Ballari"
+lat = 15.142
+lon = 76.924
+country = "IN"
+
+[[origin]]
+slug = "chaoyang"
+name = "Chaoyang"
+lat = 41.5703
+lon = 120.4586
+country = "CN"
+
+[[origin]]
+slug = "gaza"
+name = "Gaza"
+lat = 31.5016
+lon = 34.4667
+country = "PS"
+
+[[origin]]
+slug = "maringa"
+name = "Maringá"
+lat = -23.4253
+lon = -51.9386
+country = "BR"
+
+[[origin]]
+slug = "yokosuka"
+name = "Yokosuka"
+lat = 35.2836
+lon = 139.6672
+country = "JP"
+
+[[origin]]
+slug = "kom-ombo"
+name = "Kom Ombo"
+lat = 24.4767
+lon = 32.9463
+country = "EG"
+
+[[origin]]
+slug = "nagasaki"
+name = "Nagasaki"
+lat = 32.75
+lon = 129.8833
+country = "JP"
+
+[[origin]]
+slug = "gujangbagh"
+name = "Gujangbagh"
+lat = 37.1093
+lon = 79.9343
+country = "CN"
+
+[[origin]]
+slug = "zhijiang"
+name = "Zhijiang"
+lat = 30.4214
+lon = 111.7533
+country = "CN"
+
+[[origin]]
+slug = "ivanovo"
+name = "Ivanovo"
+lat = 56.9999
+lon = 40.9726
+country = "RU"
+
+[[origin]]
+slug = "cumana"
+name = "Cumaná"
+lat = 10.4639
+lon = -64.1786
+country = "VE"
+
+[[origin]]
+slug = "newcastle-za"
+name = "Newcastle"
+lat = -27.758
+lon = 29.9318
+country = "ZA"
+
+[[origin]]
+slug = "jixi"
+name = "Jixi"
+lat = 45.2932
+lon = 130.9622
+country = "CN"
+
+[[origin]]
+slug = "kuching"
+name = "Kuching"
+lat = 1.55
+lon = 110.3333
+country = "MY"
+
+[[origin]]
+slug = "caruaru"
+name = "Caruaru"
+lat = -8.2833
+lon = -35.9761
+country = "BR"
+
+[[origin]]
+slug = "tongling"
+name = "Tongling"
+lat = 30.95
+lon = 117.7833
+country = "CN"
+
+[[origin]]
+slug = "kassala"
+name = "Kassala"
+lat = 15.451
+lon = 36.4
+country = "SD"
+
+[[origin]]
+slug = "miyazaki"
+name = "Miyazaki"
+lat = 31.9167
+lon = 131.4167
+country = "JP"
+
+[[origin]]
+slug = "antofagasta"
+name = "Antofagasta"
+lat = -23.6509
+lon = -70.3975
+country = "CL"
+
+[[origin]]
+slug = "bhagalpur"
+name = "Bhāgalpur"
+lat = 25.2445
+lon = 86.9718
+country = "IN"
+
+[[origin]]
+slug = "agartala"
+name = "Agartala"
+lat = 23.8361
+lon = 91.2794
+country = "IN"
+
+[[origin]]
+slug = "bida"
+name = "Bida"
+lat = 9.0804
+lon = 6.0099
+country = "NG"
+
+[[origin]]
+slug = "bunia"
+name = "Bunia"
+lat = 1.5594
+lon = 30.2522
+country = "CD"
+
+[[origin]]
+slug = "antakya"
+name = "Antakya"
+lat = 36.2066
+lon = 36.1572
+country = "TR"
+
+[[origin]]
+slug = "sunshine-coast"
+name = "Sunshine Coast"
+lat = -26.6568
+lon = 153.0796
+country = "AU"
+
+[[origin]]
+slug = "kisumu"
+name = "Kisumu"
+lat = -0.1022
+lon = 34.7617
+country = "KE"
+
+[[origin]]
+slug = "luhansk"
+name = "Luhansk"
+lat = 48.5681
+lon = 39.3055
+country = "UA"
+
+[[origin]]
+slug = "bengkulu"
+name = "Bengkulu"
+lat = -3.8004
+lon = 102.2655
+country = "ID"
+
+[[origin]]
+slug = "barinas"
+name = "Barinas"
+lat = 8.6206
+lon = -70.231
+country = "VE"
+
+[[origin]]
+slug = "hancheng"
+name = "Hancheng"
+lat = 35.4603
+lon = 110.4292
+country = "CN"
+
+[[origin]]
+slug = "vitoria-da-conquista"
+name = "Vitória da Conquista"
+lat = -14.8661
+lon = -40.8394
+country = "BR"
+
+[[origin]]
+slug = "wichita"
+name = "Wichita"
+lat = 37.6922
+lon = -97.3375
+country = "US"
+
+[[origin]]
+slug = "al-hoceima"
+name = "Al Hoceïma"
+lat = 35.2516
+lon = -3.9372
+country = "MA"
+
+[[origin]]
+slug = "szczecin"
+name = "Szczecin"
+lat = 53.4289
+lon = 14.553
+country = "PL"
+
+[[origin]]
+slug = "liaozhong"
+name = "Liaozhong"
+lat = 41.5061
+lon = 122.7242
+country = "CN"
+
+[[origin]]
+slug = "bologna"
+name = "Bologna"
+lat = 44.4938
+lon = 11.3387
+country = "IT"
+
+[[origin]]
+slug = "samsun"
+name = "Samsun"
+lat = 41.2798
+lon = 36.3361
+country = "TR"
+
+[[origin]]
+slug = "tanga"
+name = "Tanga"
+lat = -5.0689
+lon = 39.0988
+country = "TZ"
+
+[[origin]]
+slug = "el-obeid"
+name = "El Obeid"
+lat = 13.1842
+lon = 30.2167
+country = "SD"
+
+[[origin]]
+slug = "saurimo"
+name = "Saurimo"
+lat = -9.6608
+lon = 20.3915
+country = "AO"
+
+[[origin]]
+slug = "bauru"
+name = "Bauru"
+lat = -22.3147
+lon = -49.0606
+country = "BR"
+
+[[origin]]
+slug = "pasto"
+name = "Pasto"
+lat = 1.2146
+lon = -77.2785
+country = "CO"
+
+[[origin]]
+slug = "santa-fe"
+name = "Santa Fe"
+lat = -31.6488
+lon = -60.7087
+country = "AR"
+
+[[origin]]
+slug = "san-pedro"
+name = "San-Pédro"
+lat = 4.7485
+lon = -6.6363
+country = "CI"
+
+[[origin]]
+slug = "makurdi"
+name = "Makurdi"
+lat = 7.7337
+lon = 8.5214
+country = "NG"
+
+[[origin]]
+slug = "palu"
+name = "Palu"
+lat = -0.9083
+lon = 119.8708
+country = "ID"
+
+[[origin]]
+slug = "takoradi"
+name = "Takoradi"
+lat = 4.8982
+lon = -1.7603
+country = "GH"
+
+[[origin]]
+slug = "khamis-mushait"
+name = "Khamis Mushait"
+lat = 18.3
+lon = 42.7333
+country = "SA"
+
+[[origin]]
+slug = "ambato"
+name = "Ambato"
+lat = -1.2491
+lon = -78.6167
+country = "EC"
+
+[[origin]]
+slug = "kahramanmaras"
+name = "Kahramanmaraş"
+lat = 37.5847
+lon = 36.9264
+country = "TR"
+
+[[origin]]
+slug = "chongzuo"
+name = "Chongzuo"
+lat = 22.3816
+lon = 107.3683
+country = "CN"
+
+[[origin]]
+slug = "kakinada"
+name = "Kākināda"
+lat = 16.9604
+lon = 82.2381
+country = "IN"
+
+[[origin]]
+slug = "las-palmas-de-gran-canaria"
+name = "Las Palmas de Gran Canaria"
+lat = 28.1018
+lon = -15.4157
+country = "ES"
+
+[[origin]]
+slug = "latur"
+name = "Latur"
+lat = 18.3972
+lon = 76.5678
+country = "IN"
+
+[[origin]]
+slug = "mazatlan"
+name = "Mazatlán"
+lat = 23.2216
+lon = -106.4189
+country = "MX"
+
+[[origin]]
+slug = "nizhny-tagil"
+name = "Nizhny Tagil"
+lat = 57.9194
+lon = 59.965
+country = "RU"
+
+[[origin]]
+slug = "irapuato"
+name = "Irapuato"
+lat = 20.671
+lon = -101.3558
+country = "MX"
+
+[[origin]]
+slug = "aswan"
+name = "Aswān"
+lat = 24.0908
+lon = 32.8994
+country = "EG"
+
+[[origin]]
+slug = "brno"
+name = "Brno"
+lat = 49.1952
+lon = 16.608
+country = "CZ"
+
+[[origin]]
+slug = "iasi"
+name = "Iaşi"
+lat = 47.1667
+lon = 27.6
+country = "RO"
+
+[[origin]]
+slug = "shibganj"
+name = "Shibganj"
+lat = 25.0015
+lon = 89.3227
+country = "BD"
+
+[[origin]]
+slug = "iquitos"
+name = "Iquitos"
+lat = -3.7481
+lon = -73.2529
+country = "PE"
+
+[[origin]]
+slug = "hechuan"
+name = "Hechuan"
+lat = 29.9923
+lon = 106.2646
+country = "CN"
+
+[[origin]]
+slug = "rajamahendravaram"
+name = "Rajamahendravaram"
+lat = 17.0052
+lon = 81.7778
+country = "IN"
+
+[[origin]]
+slug = "yogyakarta"
+name = "Yogyakarta"
+lat = -7.8014
+lon = 110.3647
+country = "ID"
+
+[[origin]]
+slug = "dhule"
+name = "Dhule"
+lat = 20.9013
+lon = 74.7774
+country = "IN"
+
+[[origin]]
+slug = "minato"
+name = "Minato"
+lat = 34.2152
+lon = 135.1501
+country = "JP"
+
+[[origin]]
+slug = "ondo"
+name = "Ondo"
+lat = 7.0932
+lon = 4.8353
+country = "NG"
+
+[[origin]]
+slug = "pingyin"
+name = "Pingyin"
+lat = 36.2831
+lon = 116.4453
+country = "CN"
+
+[[origin]]
+slug = "rohtak"
+name = "Rohtak"
+lat = 28.8945
+lon = 76.5892
+country = "IN"
+
+[[origin]]
+slug = "bhawana"
+name = "Bhawana"
+lat = 31.5688
+lon = 72.6492
+country = "PK"
+
+[[origin]]
+slug = "rustenburg"
+name = "Rustenburg"
+lat = -25.6676
+lon = 27.2421
+country = "ZA"
+
+[[origin]]
+slug = "bakersfield"
+name = "Bakersfield"
+lat = 35.3733
+lon = -119.0187
+country = "US"
+
+[[origin]]
+slug = "emalahleni"
+name = "Emalahleni"
+lat = -25.8713
+lon = 29.2332
+country = "ZA"
+
+[[origin]]
+slug = "bafoussam"
+name = "Bafoussam"
+lat = 5.4778
+lon = 10.4176
+country = "CM"
+
+[[origin]]
+slug = "takasaki"
+name = "Takasaki"
+lat = 36.3333
+lon = 139.0167
+country = "JP"
+
+[[origin]]
+slug = "seremban"
+name = "Seremban"
+lat = 2.7297
+lon = 101.9381
+country = "MY"
+
+[[origin]]
+slug = "nagano"
+name = "Nagano"
+lat = 36.65
+lon = 138.1833
+country = "JP"
+
+[[origin]]
+slug = "tawau"
+name = "Tawau"
+lat = 4.2448
+lon = 117.8911
+country = "MY"
+
+[[origin]]
+slug = "cardiff"
+name = "Cardiff"
+lat = 51.48
+lon = -3.18
+country = "GB"
+
+[[origin]]
+slug = "fenghuang"
+name = "Fenghuang"
+lat = 27.9356
+lon = 109.5996
+country = "CN"
+
+[[origin]]
+slug = "umuahia"
+name = "Umuahia"
+lat = 5.5249
+lon = 7.4946
+country = "NG"
+
+[[origin]]
+slug = "usak"
+name = "Uşak"
+lat = 38.6735
+lon = 29.4058
+country = "TR"
+
+[[origin]]
+slug = "bharatpur"
+name = "Bharatpur"
+lat = 27.6803
+lon = 84.4365
+country = "NP"
+
+[[origin]]
+slug = "leicester"
+name = "Leicester"
+lat = 52.6386
+lon = -1.1317
+country = "GB"
+
+[[origin]]
+slug = "cascavel"
+name = "Cascavel"
+lat = -24.9558
+lon = -53.4553
+country = "BR"
+
+[[origin]]
+slug = "florence"
+name = "Florence"
+lat = 43.7792
+lon = 11.2463
+country = "IT"
+
+[[origin]]
+slug = "ahilyanagar"
+name = "Ahilyanagar"
+lat = 19.0946
+lon = 74.7384
+country = "IN"
+
+[[origin]]
+slug = "kollam"
+name = "Kollam"
+lat = 8.8811
+lon = 76.5847
+country = "IN"
+
+[[origin]]
+slug = "huanggang"
+name = "Huanggang"
+lat = 30.4514
+lon = 114.8704
+country = "CN"
+
+[[origin]]
+slug = "bilaspur"
+name = "Bilāspur"
+lat = 22.08
+lon = 82.1554
+country = "IN"
+
+[[origin]]
+slug = "franca"
+name = "Franca"
+lat = -20.5386
+lon = -47.4008
+country = "BR"
+
+[[origin]]
+slug = "cleveland"
+name = "Cleveland"
+lat = 41.4995
+lon = -81.6954
+country = "US"
+
+[[origin]]
+slug = "yenagoa"
+name = "Yenagoa"
+lat = 4.9268
+lon = 6.2676
+country = "NG"
+
+[[origin]]
+slug = "gboko"
+name = "Gboko"
+lat = 7.3228
+lon = 9.0011
+country = "NG"
+
+[[origin]]
+slug = "alanya"
+name = "Alanya"
+lat = 36.5438
+lon = 31.9998
+country = "TR"
+
+[[origin]]
+slug = "larkana"
+name = "Larkana"
+lat = 27.559
+lon = 68.212
+country = "PK"
+
+[[origin]]
+slug = "al-qadarif"
+name = "Al Qadarif"
+lat = 14.0349
+lon = 35.3834
+country = "SD"
+
+[[origin]]
+slug = "hrodna"
+name = "Hrodna"
+lat = 53.6758
+lon = 23.8289
+country = "BY"
+
+[[origin]]
+slug = "nawabshah"
+name = "Nawabshah"
+lat = 26.2394
+lon = 68.4037
+country = "PK"
+
+[[origin]]
+slug = "new-orleans"
+name = "New Orleans"
+lat = 29.9547
+lon = -90.0751
+country = "US"
+
+[[origin]]
+slug = "maradi"
+name = "Maradi"
+lat = 13.5
+lon = 7.1017
+country = "NE"
+
+[[origin]]
+slug = "burewala"
+name = "Burewala"
+lat = 30.1667
+lon = 72.65
+country = "PK"
+
+[[origin]]
+slug = "blumenau"
+name = "Blumenau"
+lat = -26.9194
+lon = -49.0661
+country = "BR"
+
+[[origin]]
+slug = "mingora"
+name = "Mingora"
+lat = 34.7795
+lon = 72.3627
+country = "PK"
+
+[[origin]]
+slug = "santarem"
+name = "Santarém"
+lat = -2.4431
+lon = -54.7083
+country = "BR"
+
+[[origin]]
+slug = "ulan-ude"
+name = "Ulan-Ude"
+lat = 51.8265
+lon = 107.5998
+country = "RU"
+
+[[origin]]
+slug = "huocheng"
+name = "Huocheng"
+lat = 44.053
+lon = 80.8717
+country = "CN"
+
+[[origin]]
+slug = "ijebu-ode"
+name = "Ijebu Ode"
+lat = 6.8194
+lon = 3.9173
+country = "NG"
+
+[[origin]]
+slug = "bhilwara"
+name = "Bhilwara"
+lat = 25.3471
+lon = 74.6408
+country = "IN"
+
+[[origin]]
+slug = "vitebsk"
+name = "Vitebsk"
+lat = 55.1904
+lon = 30.2049
+country = "BY"
+
+[[origin]]
+slug = "taraz"
+name = "Taraz"
+lat = 42.898
+lon = 71.3733
+country = "KZ"
+
+[[origin]]
+slug = "zanjan"
+name = "Zanjan"
+lat = 36.6764
+lon = 48.4963
+country = "IR"
+
+[[origin]]
+slug = "neiva"
+name = "Neiva"
+lat = 2.93
+lon = -75.2797
+country = "CO"
+
+[[origin]]
+slug = "iwaki"
+name = "Iwaki"
+lat = 37.05
+lon = 140.8833
+country = "JP"
+
+[[origin]]
+slug = "vladimir"
+name = "Vladimir"
+lat = 56.1385
+lon = 40.3998
+country = "RU"
+
+[[origin]]
+slug = "tete"
+name = "Tete"
+lat = -16.1564
+lon = 33.5867
+country = "MZ"
+
+[[origin]]
+slug = "uberaba"
+name = "Uberaba"
+lat = -19.7483
+lon = -47.9319
+country = "BR"
+
+[[origin]]
+slug = "brahmapur"
+name = "Brahmapur"
+lat = 19.3115
+lon = 84.7929
+country = "IN"
+
+[[origin]]
+slug = "misratah"
+name = "Misratah"
+lat = 32.3753
+lon = 15.0925
+country = "LY"
+
+[[origin]]
+slug = "cuito"
+name = "Cuíto"
+lat = -12.3833
+lon = 16.9333
+country = "AO"
+
+[[origin]]
+slug = "kyzylorda"
+name = "Kyzylorda"
+lat = 44.8528
+lon = 65.5092
+country = "KZ"
+
+[[origin]]
+slug = "sinjhoro"
+name = "Sinjhoro"
+lat = 26.0301
+lon = 68.8087
+country = "PK"
+
+[[origin]]
+slug = "muzaffarpur"
+name = "Muzaffarpur"
+lat = 26.1226
+lon = 85.3906
+country = "IN"
+
+[[origin]]
+slug = "tapachula"
+name = "Tapachula"
+lat = 14.9054
+lon = -92.2589
+country = "MX"
+
+[[origin]]
+slug = "lhoka"
+name = "Lhoka"
+lat = 29.243
+lon = 91.7724
+country = "CN"
+
+[[origin]]
+slug = "villahermosa"
+name = "Villahermosa"
+lat = 17.9862
+lon = -92.9393
+country = "MX"
+
+[[origin]]
+slug = "mahilyow"
+name = "Mahilyow"
+lat = 53.9088
+lon = 30.3404
+country = "BY"
+
+[[origin]]
+slug = "bandar-abbas"
+name = "Bandar Abbas"
+lat = 27.1865
+lon = 56.2808
+country = "IR"
+
+[[origin]]
+slug = "pravyi-bereh"
+name = "Pravyi Bereh"
+lat = 47.115
+lon = 37.5852
+country = "UA"
+
+[[origin]]
+slug = "ras-al-khaimah"
+name = "Ras Al Khaimah"
+lat = 25.7895
+lon = 55.9432
+country = "AE"
+
+[[origin]]
+slug = "kendari"
+name = "Kendari"
+lat = -3.9778
+lon = 122.5151
+country = "ID"
+
+[[origin]]
+slug = "honolulu"
+name = "Honolulu"
+lat = 21.3069
+lon = -157.8583
+country = "US"
+
+[[origin]]
+slug = "pengze"
+name = "Pengze"
+lat = 29.8988
+lon = 116.5457
+country = "CN"
+
+[[origin]]
+slug = "bahir-dar"
+name = "Bahir Dar"
+lat = 11.5936
+lon = 37.3908
+country = "ET"
+
+[[origin]]
+slug = "punasa"
+name = "Punāsa"
+lat = 22.2351
+lon = 76.3933
+country = "IN"
+
+[[origin]]
+slug = "xilinhot"
+name = "Xilinhot"
+lat = 43.9389
+lon = 116.0702
+country = "CN"
+
+[[origin]]
+slug = "quelimane"
+name = "Quelimane"
+lat = -17.8786
+lon = 36.8883
+country = "MZ"
+
+[[origin]]
+slug = "arkhangel-sk"
+name = "Arkhangel’sk"
+lat = 64.5461
+lon = 40.5518
+country = "RU"
+
+[[origin]]
+slug = "muzaffarnagar"
+name = "Muzaffarnagar"
+lat = 29.4709
+lon = 77.7033
+country = "IN"
+
+[[origin]]
+slug = "hulunbuir"
+name = "Hulunbuir"
+lat = 49.2114
+lon = 119.7558
+country = "CN"
+
+[[origin]]
+slug = "dumai"
+name = "Dumai"
+lat = 1.6671
+lon = 101.4432
+country = "ID"
+
+[[origin]]
+slug = "sikasso"
+name = "Sikasso"
+lat = 11.3176
+lon = -5.6665
+country = "ML"
+
+[[origin]]
+slug = "sanandaj"
+name = "Sanandaj"
+lat = 35.315
+lon = 46.9988
+country = "IR"
+
+[[origin]]
+slug = "chita"
+name = "Chita"
+lat = 52.0431
+lon = 113.4917
+country = "RU"
+
+[[origin]]
+slug = "alicante"
+name = "Alicante"
+lat = 38.3452
+lon = -0.4815
+country = "ES"
+
+[[origin]]
+slug = "kalemyo"
+name = "Kalemyo"
+lat = 23.1901
+lon = 94.064
+country = "MM"
+
+[[origin]]
+slug = "belfast"
+name = "Belfast"
+lat = 54.5968
+lon = -5.9254
+country = "GB"
+
+[[origin]]
+slug = "camagueey"
+name = "Camagüey"
+lat = 21.3808
+lon = -77.9169
+country = "CU"
+
+[[origin]]
+slug = "bilbao"
+name = "Bilbao"
+lat = 43.2627
+lon = -2.9253
+country = "ES"
+
+[[origin]]
+slug = "ambon"
+name = "Ambon"
+lat = -3.6958
+lon = 128.1833
+country = "ID"
+
+[[origin]]
+slug = "brest"
+name = "Brest"
+lat = 52.1089
+lon = 23.7175
+country = "BY"
+
+[[origin]]
+slug = "chifeng"
+name = "Chifeng"
+lat = 42.2683
+lon = 118.9636
+country = "CN"
+
+[[origin]]
+slug = "central-coast"
+name = "Central Coast"
+lat = -33.4298
+lon = 151.3714
+country = "AU"
+
+[[origin]]
+slug = "corrientes"
+name = "Corrientes"
+lat = -27.4678
+lon = -58.8344
+country = "AR"
+
+[[origin]]
+slug = "belgorod"
+name = "Belgorod"
+lat = 50.6034
+lon = 36.5809
+country = "RU"
+
+[[origin]]
+slug = "toamasina"
+name = "Toamasina"
+lat = -18.1492
+lon = 49.4023
+country = "MG"
+
+[[origin]]
+slug = "kosti"
+name = "Kosti"
+lat = 13.1629
+lon = 32.6635
+country = "SD"
+
+[[origin]]
+slug = "qitaihe"
+name = "Qitaihe"
+lat = 45.768
+lon = 130.9953
+country = "CN"
+
+[[origin]]
+slug = "kadapa"
+name = "Kadapa"
+lat = 14.48
+lon = 78.8235
+country = "IN"
+
+[[origin]]
+slug = "cirebon"
+name = "Cirebon"
+lat = -6.7063
+lon = 108.557
+country = "ID"
+
+[[origin]]
+slug = "cabanatuan-city"
+name = "Cabanatuan City"
+lat = 15.4859
+lon = 120.9665
+country = "PH"
+
+[[origin]]
+slug = "pizhou"
+name = "Pizhou"
+lat = 34.3114
+lon = 117.9503
+country = "CN"
+
+[[origin]]
+slug = "dire-dawa"
+name = "Dire Dawa"
+lat = 9.5931
+lon = 41.8661
+country = "ET"
+
+[[origin]]
+slug = "annaba"
+name = "Annaba"
+lat = 36.9
+lon = 7.7667
+country = "DZ"
+
+[[origin]]
+slug = "nice"
+name = "Nice"
+lat = 43.7031
+lon = 7.2661
+country = "FR"
+
+[[origin]]
+slug = "iligan"
+name = "Iligan"
+lat = 8.2289
+lon = 124.2434
+country = "PH"
+
+[[origin]]
+slug = "dihok"
+name = "Dihok"
+lat = 36.8661
+lon = 42.9879
+country = "IQ"
+
+[[origin]]
+slug = "kaluga"
+name = "Kaluga"
+lat = 54.5306
+lon = 36.27
+country = "RU"
+
+[[origin]]
+slug = "celaya"
+name = "Celaya"
+lat = 20.5218
+lon = -100.814
+country = "MX"
+
+[[origin]]
+slug = "serekunda"
+name = "Serekunda"
+lat = 13.4383
+lon = -16.6781
+country = "GM"
+
+[[origin]]
+slug = "cuernavaca"
+name = "Cuernavaca"
+lat = 18.9261
+lon = -99.2308
+country = "MX"
+
+[[origin]]
+slug = "kaesong"
+name = "Kaesŏng"
+lat = 37.9708
+lon = 126.5544
+country = "KP"
+
+[[origin]]
+slug = "safi"
+name = "Safi"
+lat = 32.2994
+lon = -9.2372
+country = "MA"
+
+[[origin]]
+slug = "simferopol"
+name = "Simferopol"
+lat = 44.9572
+lon = 34.1108
+country = "UA"
+
+[[origin]]
+slug = "lublin"
+name = "Lublin"
+lat = 51.2506
+lon = 22.5701
+country = "PL"
+
+[[origin]]
+slug = "pelotas"
+name = "Pelotas"
+lat = -31.77
+lon = -52.341
+country = "BR"
+
+[[origin]]
+slug = "vina-del-mar"
+name = "Viña del Mar"
+lat = -33.0246
+lon = -71.5518
+country = "CL"
+
+[[origin]]
+slug = "qazvin"
+name = "Qazvin"
+lat = 36.2688
+lon = 50.0041
+country = "IR"
+
+[[origin]]
+slug = "asahikawa"
+name = "Asahikawa"
+lat = 43.7706
+lon = 142.3649
+country = "JP"
+
+[[origin]]
+slug = "tepic"
+name = "Tepic"
+lat = 21.5073
+lon = -104.8933
+country = "MX"
+
+[[origin]]
+slug = "wonju"
+name = "Wŏnju"
+lat = 37.3514
+lon = 127.9453
+country = "KR"
+
+[[origin]]
+slug = "wad-medani"
+name = "Wad Medani"
+lat = 14.4012
+lon = 33.5199
+country = "SD"
+
+[[origin]]
+slug = "nukus"
+name = "Nukus"
+lat = 42.4586
+lon = 59.6058
+country = "UZ"
+
+[[origin]]
+slug = "ciudad-victoria"
+name = "Ciudad Victoria"
+lat = 23.7406
+lon = -99.1436
+country = "MX"
+
+[[origin]]
+slug = "kochi"
+name = "Kochi"
+lat = 33.55
+lon = 133.5333
+country = "JP"
+
+[[origin]]
+slug = "bielefeld"
+name = "Bielefeld"
+lat = 52.0333
+lon = 8.5333
+country = "DE"
+
+[[origin]]
+slug = "ganja"
+name = "Ganja"
+lat = 40.6816
+lon = 46.3613
+country = "AZ"
+
+[[origin]]
+slug = "mathura"
+name = "Mathura"
+lat = 27.5035
+lon = 77.6722
+country = "IN"
+
+[[origin]]
+slug = "hechi"
+name = "Hechi"
+lat = 24.6928
+lon = 108.0838
+country = "CN"
+
+[[origin]]
+slug = "bydgoszcz"
+name = "Bydgoszcz"
+lat = 53.1235
+lon = 18.0076
+country = "PL"
+
+[[origin]]
+slug = "smolensk"
+name = "Smolensk"
+lat = 54.7783
+lon = 32.0509
+country = "RU"
+
+[[origin]]
+slug = "oral"
+name = "Oral"
+lat = 51.246
+lon = 51.4256
+country = "KZ"
+
+[[origin]]
+slug = "khorramabad"
+name = "Khorramabad"
+lat = 33.4878
+lon = 48.3558
+country = "IR"
+
+[[origin]]
+slug = "plovdiv"
+name = "Plovdiv"
+lat = 42.1539
+lon = 24.75
+country = "BG"
+
+[[origin]]
+slug = "ciudad-obregon"
+name = "Ciudad Obregón"
+lat = 27.4864
+lon = -109.9408
+country = "MX"
+
+[[origin]]
+slug = "wonsan"
+name = "Wŏnsan"
+lat = 39.1528
+lon = 127.4436
+country = "KP"
+
+[[origin]]
+slug = "pavlodar"
+name = "Pavlodar"
+lat = 52.276
+lon = 76.9688
+country = "KZ"
+
+[[origin]]
+slug = "chanda"
+name = "Chānda"
+lat = 19.9508
+lon = 79.2952
+country = "IN"
+
+[[origin]]
+slug = "koriyama"
+name = "Kōriyama"
+lat = 37.4
+lon = 140.3833
+country = "JP"
+
+[[origin]]
+slug = "sochi"
+name = "Sochi"
+lat = 43.597
+lon = 39.7248
+country = "RU"
+
+[[origin]]
+slug = "aksaray"
+name = "Aksaray"
+lat = 38.3725
+lon = 34.0254
+country = "TR"
+
+[[origin]]
+slug = "vijayapura"
+name = "Vijayapura"
+lat = 16.8244
+lon = 75.7154
+country = "IN"
+
+[[origin]]
+slug = "chipata"
+name = "Chipata"
+lat = -13.6333
+lon = 32.65
+country = "ZM"
+
+[[origin]]
+slug = "chongjin"
+name = "Chongjin"
+lat = 41.7956
+lon = 129.7758
+country = "KP"
+
+[[origin]]
+slug = "yanji"
+name = "Yanji"
+lat = 42.8882
+lon = 129.5024
+country = "CN"
+
+[[origin]]
+slug = "pucallpa"
+name = "Pucallpa"
+lat = -8.3791
+lon = -74.5539
+country = "PE"
+
+[[origin]]
+slug = "mogi-das-cruzes"
+name = "Mogi das Cruzes"
+lat = -23.5228
+lon = -46.1883
+country = "BR"
+
+[[origin]]
+slug = "cordoba-es"
+name = "Córdoba"
+lat = 37.8916
+lon = -4.7728
+country = "ES"
+
+[[origin]]
+slug = "nantes"
+name = "Nantes"
+lat = 47.2172
+lon = -1.5534
+country = "FR"
+
+[[origin]]
+slug = "pekalongan"
+name = "Pekalongan"
+lat = -6.8886
+lon = 109.6753
+country = "ID"
+
+[[origin]]
+slug = "kluang"
+name = "Kluang"
+lat = 2.0305
+lon = 103.3169
+country = "MY"
+
+[[origin]]
+slug = "lincang"
+name = "Lincang"
+lat = 23.8797
+lon = 100.0945
+country = "CN"
+
+[[origin]]
+slug = "al-amarah"
+name = "Al ‘Amārah"
+lat = 31.8356
+lon = 47.1448
+country = "IQ"
+
+[[origin]]
+slug = "xingyi"
+name = "Xingyi"
+lat = 25.0962
+lon = 104.9064
+country = "CN"
+
+[[origin]]
+slug = "shivamogga"
+name = "Shivamogga"
+lat = 13.9316
+lon = 75.5679
+country = "IN"
+
+[[origin]]
+slug = "alwar"
+name = "Alwar"
+lat = 27.5625
+lon = 76.625
+country = "IN"
+
+[[origin]]
+slug = "uige"
+name = "Uíge"
+lat = -7.6087
+lon = 15.0613
+country = "AO"
+
+[[origin]]
+slug = "osh"
+name = "Osh"
+lat = 40.5283
+lon = 72.7985
+country = "KG"
+
+[[origin]]
+slug = "portoviejo"
+name = "Portoviejo"
+lat = -1.0576
+lon = -80.4514
+country = "EC"
+
+[[origin]]
+slug = "villavicencio"
+name = "Villavicencio"
+lat = 4.1324
+lon = -73.6256
+country = "CO"
+
+[[origin]]
+slug = "shahjanpur"
+name = "Shāhjānpur"
+lat = 27.8817
+lon = 79.9092
+country = "IN"
+
+[[origin]]
+slug = "lexington"
+name = "Lexington"
+lat = 37.9887
+lon = -84.4777
+country = "US"
+
+[[origin]]
+slug = "anapolis"
+name = "Anápolis"
+lat = -16.3267
+lon = -48.9528
+country = "BR"
+
+[[origin]]
+slug = "junagadh"
+name = "Jūnāgadh"
+lat = 21.5197
+lon = 70.4598
+country = "IN"
+
+[[origin]]
+slug = "holguin"
+name = "Holguín"
+lat = 20.8872
+lon = -76.2631
+country = "CU"
+
+[[origin]]
+slug = "ust-kamenogorsk"
+name = "Ust-Kamenogorsk"
+lat = 49.9714
+lon = 82.6059
+country = "KZ"
+
+[[origin]]
+slug = "zinder"
+name = "Zinder"
+lat = 13.8072
+lon = 8.9881
+country = "NE"
+
+[[origin]]
+slug = "saransk"
+name = "Saransk"
+lat = 54.1848
+lon = 45.1717
+country = "RU"
+
+[[origin]]
+slug = "al-diwaniyah"
+name = "Al Diwaniyah"
+lat = 31.9929
+lon = 44.9255
+country = "IQ"
+
+[[origin]]
+slug = "varna"
+name = "Varna"
+lat = 43.2191
+lon = 27.9102
+country = "BG"
+
+[[origin]]
+slug = "hafizabad"
+name = "Hafizabad"
+lat = 32.071
+lon = 73.688
+country = "PK"
+
+[[origin]]
+slug = "palangkaraya"
+name = "Palangkaraya"
+lat = -2.2083
+lon = 113.9167
+country = "ID"
+
+[[origin]]
+slug = "damanhur"
+name = "Damanhur"
+lat = 31.0341
+lon = 30.4682
+country = "EG"
+
+[[origin]]
+slug = "popayan"
+name = "Popayán"
+lat = 2.4382
+lon = -76.6132
+country = "CO"
+
+[[origin]]
+slug = "reading"
+name = "Reading"
+lat = 51.4562
+lon = -0.9711
+country = "GB"
+
+[[origin]]
+slug = "geita"
+name = "Geita"
+lat = -2.8725
+lon = 32.2325
+country = "TZ"
+
+[[origin]]
+slug = "constanta"
+name = "Constanţa"
+lat = 44.1807
+lon = 28.6343
+country = "RO"
+
+[[origin]]
+slug = "thessaloniki"
+name = "Thessaloníki"
+lat = 40.6407
+lon = 22.9349
+country = "GR"
+
+[[origin]]
+slug = "thies"
+name = "Thiès"
+lat = 14.7894
+lon = -16.926
+country = "SN"
+
+[[origin]]
+slug = "naha"
+name = "Naha"
+lat = 26.213
+lon = 127.6785
+country = "JP"
+
+[[origin]]
+slug = "riverside"
+name = "Riverside"
+lat = 33.9534
+lon = -117.3962
+country = "US"
+
+[[origin]]
+slug = "baicheng"
+name = "Baicheng"
+lat = 45.6175
+lon = 122.833
+country = "CN"
+
+[[origin]]
+slug = "chimbote"
+name = "Chimbote"
+lat = -9.0751
+lon = -78.5937
+country = "PE"
+
+[[origin]]
+slug = "bari"
+name = "Bari"
+lat = 41.1207
+lon = 16.8698
+country = "IT"
+
+[[origin]]
+slug = "corpus-christi"
+name = "Corpus Christi"
+lat = 27.8006
+lon = -97.3964
+country = "US"
+
+[[origin]]
+slug = "thrissur"
+name = "Thrissur"
+lat = 10.5167
+lon = 76.2167
+country = "IN"
+
+[[origin]]
+slug = "cherepovets"
+name = "Cherepovets"
+lat = 59.1333
+lon = 37.9
+country = "RU"
+
+[[origin]]
+slug = "al-kut"
+name = "Al-Kut"
+lat = 32.5128
+lon = 45.8182
+country = "IQ"
+
+[[origin]]
+slug = "muar"
+name = "Muar"
+lat = 2.0442
+lon = 102.5689
+country = "MY"
+
+[[origin]]
+slug = "maroua"
+name = "Maroua"
+lat = 10.5909
+lon = 14.3159
+country = "CM"
+
+[[origin]]
+slug = "kingston-upon-hull"
+name = "Kingston upon Hull"
+lat = 53.7446
+lon = -0.3352
+country = "GB"
+
+[[origin]]
+slug = "preston"
+name = "Preston"
+lat = 53.7628
+lon = -2.7045
+country = "GB"
+
+[[origin]]
+slug = "denizli"
+name = "Denizli"
+lat = 37.7742
+lon = 29.0875
+country = "TR"
+
+[[origin]]
+slug = "vologda"
+name = "Vologda"
+lat = 59.2239
+lon = 39.884
+country = "RU"
+
+[[origin]]
+slug = "catania"
+name = "Catania"
+lat = 37.4922
+lon = 15.0704
+country = "IT"
+
+[[origin]]
+slug = "nizamabad"
+name = "Nizāmābād"
+lat = 18.6715
+lon = 78.0988
+country = "IN"
+
+[[origin]]
+slug = "cincinnati"
+name = "Cincinnati"
+lat = 39.1271
+lon = -84.5144
+country = "US"
+
+[[origin]]
+slug = "coatzacoalcos"
+name = "Coatzacoalcos"
+lat = 18.149
+lon = -94.4447
+country = "MX"
+
+[[origin]]
+slug = "santa-ana"
+name = "Santa Ana"
+lat = 33.7456
+lon = -117.8678
+country = "US"
+
+[[origin]]
+slug = "botshabelo"
+name = "Botshabelo"
+lat = -29.2674
+lon = 26.726
+country = "ZA"
+
+[[origin]]
+slug = "butuan"
+name = "Butuan"
+lat = 8.9492
+lon = 125.5436
+country = "PH"
+
+[[origin]]
+slug = "kurgan"
+name = "Kurgan"
+lat = 55.449
+lon = 65.3434
+country = "RU"
+
+[[origin]]
+slug = "tampico"
+name = "Tampico"
+lat = 22.2852
+lon = -97.8778
+country = "MX"
+
+[[origin]]
+slug = "tabora"
+name = "Tabora"
+lat = -5.0162
+lon = 32.8266
+country = "TZ"
+
+[[origin]]
+slug = "muenster"
+name = "Münster"
+lat = 51.9624
+lon = 7.6257
+country = "DE"
+
+[[origin]]
+slug = "mannheim"
+name = "Mannheim"
+lat = 49.4891
+lon = 8.4669
+country = "DE"
+
+[[origin]]
+slug = "karawang"
+name = "Karawang"
+lat = -6.3053
+lon = 107.3197
+country = "ID"
+
+[[origin]]
+slug = "akita"
+name = "Akita"
+lat = 39.7167
+lon = 140.1167
+country = "JP"
+
+[[origin]]
+slug = "tumkur"
+name = "Tumkūr"
+lat = 13.3414
+lon = 77.1022
+country = "IN"
+
+[[origin]]
+slug = "chinju"
+name = "Chinju"
+lat = 35.1928
+lon = 128.0847
+country = "KR"
+
+[[origin]]
+slug = "parbhani"
+name = "Parbhani"
+lat = 19.2686
+lon = 76.7708
+country = "IN"
+
+[[origin]]
+slug = "hisar"
+name = "Hisar"
+lat = 29.1539
+lon = 75.7229
+country = "IN"
+
+[[origin]]
+slug = "palmas"
+name = "Palmas"
+lat = -10.1675
+lon = -48.3277
+country = "BR"
+
+[[origin]]
+slug = "vladikavkaz"
+name = "Vladikavkaz"
+lat = 43.041
+lon = 44.6699
+country = "RU"
+
+[[origin]]
+slug = "port-de-paix"
+name = "Port-de-Paix"
+lat = 19.9398
+lon = -72.8304
+country = "HT"
+
+[[origin]]
+slug = "damietta"
+name = "Damietta"
+lat = 31.4165
+lon = 31.8133
+country = "EG"
+
+[[origin]]
+slug = "posadas"
+name = "Posadas"
+lat = -27.3918
+lon = -55.9238
+country = "AR"
+
+[[origin]]
+slug = "parauapebas"
+name = "Parauapebas"
+lat = -6.0675
+lon = -49.9022
+country = "BR"
+
+[[origin]]
+slug = "stockton"
+name = "Stockton"
+lat = 37.9577
+lon = -121.2908
+country = "US"
+
+[[origin]]
+slug = "juazeiro-do-norte"
+name = "Juazeiro do Norte"
+lat = -7.2131
+lon = -39.3153
+country = "BR"
+
+[[origin]]
+slug = "kulti"
+name = "Kulti"
+lat = 23.7317
+lon = 86.8437
+country = "IN"
+
+[[origin]]
+slug = "sapele"
+name = "Sapele"
+lat = 5.8941
+lon = 5.6767
+country = "NG"
+
+[[origin]]
+slug = "kashan"
+name = "Kashan"
+lat = 33.9824
+lon = 51.4277
+country = "IR"
+
+[[origin]]
+slug = "pittsburgh"
+name = "Pittsburgh"
+lat = 40.4406
+lon = -79.9959
+country = "US"
+
+[[origin]]
+slug = "sumbawanga"
+name = "Sumbawanga"
+lat = -7.9667
+lon = 31.6167
+country = "TZ"
+
+[[origin]]
+slug = "orel"
+name = "Orël"
+lat = 52.9688
+lon = 36.0791
+country = "RU"
+
+[[origin]]
+slug = "graz"
+name = "Graz"
+lat = 47.0673
+lon = 15.442
+country = "AT"
+
+[[origin]]
+slug = "nghi-son"
+name = "Nghi Sơn"
+lat = 19.3275
+lon = 105.8214
+country = "VN"
+
+[[origin]]
+slug = "karnal"
+name = "Karnāl"
+lat = 29.692
+lon = 76.9845
+country = "IN"
+
+[[origin]]
+slug = "ciudad-del-este"
+name = "Ciudad del Este"
+lat = -25.5036
+lon = -54.6507
+country = "PY"
+
+[[origin]]
+slug = "rosetta"
+name = "Rosetta"
+lat = 31.3995
+lon = 30.4172
+country = "EG"
+
+[[origin]]
+slug = "barddhaman"
+name = "Barddhamān"
+lat = 23.2557
+lon = 87.8569
+country = "IN"
+
+[[origin]]
+slug = "kediri"
+name = "Kediri"
+lat = -7.8167
+lon = 112.0167
+country = "ID"
+
+[[origin]]
+slug = "solwezi"
+name = "Solwezi"
+lat = -12.1688
+lon = 26.3894
+country = "ZM"
+
+[[origin]]
+slug = "augsburg"
+name = "Augsburg"
+lat = 48.3715
+lon = 10.8985
+country = "DE"
+
+[[origin]]
+slug = "valladolid"
+name = "Valladolid"
+lat = 41.6554
+lon = -4.7235
+country = "ES"
+
+[[origin]]
+slug = "miri"
+name = "Miri"
+lat = 4.3993
+lon = 113.9916
+country = "MY"
+
+[[origin]]
+slug = "mardan"
+name = "Mardan"
+lat = 34.1979
+lon = 72.0496
+country = "PK"
+
+[[origin]]
+slug = "surgut"
+name = "Surgut"
+lat = 61.2576
+lon = 73.4177
+country = "RU"
+
+[[origin]]
+slug = "swansea"
+name = "Swansea"
+lat = 51.6208
+lon = -3.9432
+country = "GB"
+
+[[origin]]
+slug = "newcastle-upon-tyne"
+name = "Newcastle upon Tyne"
+lat = 54.9733
+lon = -1.614
+country = "GB"
+
+[[origin]]
+slug = "yangshuo"
+name = "Yangshuo"
+lat = 24.7808
+lon = 110.4897
+country = "CN"
+
+[[origin]]
+slug = "winejok"
+name = "Winejok"
+lat = 9.0122
+lon = 27.5708
+country = "SS"
+
+[[origin]]
+slug = "merida-ve"
+name = "Mérida"
+lat = 8.579
+lon = -71.1692
+country = "VE"
+
+[[origin]]
+slug = "gaborone"
+name = "Gaborone"
+lat = -24.6545
+lon = 25.9086
+country = "BW"
+
+[[origin]]
+slug = "podgorica"
+name = "Podgorica"
+lat = 42.4412
+lon = 19.2631
+country = "ME"
+
+[[origin]]
+slug = "georgetown"
+name = "Georgetown"
+lat = 6.8045
+lon = -58.1553
+country = "GY"
+
+[[origin]]
+slug = "nassau"
+name = "Nassau"
+lat = 25.0582
+lon = -77.3431
+country = "BS"
+
+[[origin]]
+slug = "sucre"
+name = "Sucre"
+lat = -19.0333
+lon = -65.2627
+country = "BO"
+
+[[origin]]
+slug = "paramaribo"
+name = "Paramaribo"
+lat = 5.8664
+lon = -55.1668
+country = "SR"
+
+[[origin]]
+slug = "nicosia"
+name = "Nicosia"
+lat = 35.1728
+lon = 33.354
+country = "CY"
+
+[[origin]]
+slug = "port-louis"
+name = "Port Louis"
+lat = -20.1619
+lon = 57.4989
+country = "MU"
+
+[[origin]]
+slug = "saint-denis"
+name = "Saint-Denis"
+lat = -20.8823
+lon = 55.4504
+country = "RE"
+
+[[origin]]
+slug = "dili"
+name = "Dili"
+lat = -8.5586
+lon = 125.5736
+country = "TL"
+
+[[origin]]
+slug = "praia"
+name = "Praia"
+lat = 14.9315
+lon = -23.5125
+country = "CV"
+
+[[origin]]
+slug = "willemstad"
+name = "Willemstad"
+lat = 12.1225
+lon = -68.8864
+country = "CW"
+
+[[origin]]
+slug = "bern"
+name = "Bern"
+lat = 46.9481
+lon = 7.4474
+country = "CH"
+
+[[origin]]
+slug = "male"
+name = "Male"
+lat = 4.1752
+lon = 73.5092
+country = "MV"
