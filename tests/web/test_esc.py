@@ -192,33 +192,172 @@ def test_the_apostrophe_is_deliberately_not_escaped_and_no_sink_needs_it():
         "which esc() does not protect: either escape ' or quote with \"")
 
 
+def _sink_statements() -> list[tuple[int, str]]:
+    r"""Every `.innerHTML = <expr>;` with the WHOLE expression, not its first line.
+
+    The previous inventory used `re.finditer(r"\.innerHTML\s*=\s*(.+)")`, and
+    `.` does not match a newline. Two of the six sinks span more than one
+    line, so the loop below them never ran: the first line of each is a
+    condition with no `${` in it, the `continue` fired, and the interpolations
+    -- including two that carry a city name and a place name straight from
+    fetched JSON -- were never looked at. Deleting `esc()` from `app.js:2704`
+    or `:2785` was live XSS with all 362 tests in this directory green, proved
+    by mutation.
+
+    The give-away that it had never worked is still in the allow-list this
+    test ships: `piece.startswith("t >= ")` names the CONDITION at `:2785`, so
+    whoever wrote it believed the scanner was capturing that statement. It was
+    capturing the condition and calling it an interpolation.
+
+    Statement ends are found by scanning with a stack, so a `;` inside a
+    string, a template, a nested call or an object literal does not end it.
+    """
+    out: list[tuple[int, str]] = []
+    for m in re.finditer(r"\.innerHTML\s*=\s*", APP):
+        i, stack = m.end(), []
+        while i < len(APP):
+            c = APP[i]
+            nxt = APP[i + 1] if i + 1 < len(APP) else ""
+            top = stack[-1] if stack else None
+            if top in ('"', "'"):
+                if c == "\\":
+                    i += 2
+                    continue
+                if c == top:
+                    stack.pop()
+            elif top == "`":
+                if c == "\\":
+                    i += 2
+                    continue
+                if c == "`":
+                    stack.pop()
+                elif c == "$" and nxt == "{":
+                    stack.append("{")
+                    i += 2
+                    continue
+            else:
+                if c == "/" and nxt == "/":
+                    i = APP.index("\n", i)
+                    continue
+                if c in "\"'`([{":
+                    stack.append(c)
+                elif c in ")]}":
+                    if not stack:
+                        break
+                    stack.pop()
+                elif c == ";" and not stack:
+                    break
+            i += 1
+        out.append((APP[:m.start()].count("\n") + 1, APP[m.end():i]))
+    return out
+
+
+def _interpolations(expr: str) -> list[str]:
+    """The `${...}` parts of a template, brace-balanced.
+
+    `[^}]*` -- what the old inventory used -- stops at the first `}` , so an
+    interpolation containing an object literal or a nested template was read as
+    a truncated fragment and matched against the allow-list as one.
+    """
+    out, i = [], 0
+    while True:
+        j = expr.find("${", i)
+        if j < 0:
+            return out
+        k, depth = j + 2, 1
+        while k < len(expr) and depth:
+            if expr[k] == "{":
+                depth += 1
+            elif expr[k] == "}":
+                depth -= 1
+            k += 1
+        out.append(expr[j + 2:k - 1])
+        i = k
+
+
+# Interpolations that reach innerHTML without `esc(`, each with the reason it
+# is safe. A new sink must either escape or be argued for HERE -- which is the
+# point of an allow-list: it makes the argument visible in review.
+SAFE_PIECES = {
+    # Formatters that produce digits and a unit from a number.
+    "big": "fmtTime()'s figure: a number formatted by the page",
+    "unit": "fmtTime()'s unit: one of a fixed set of literals",
+    "band": "bandRangeOf()'s label, built from index.json's numeric band edges",
+    'unit ? " " + unit : ""': "the same fixed unit set, or the empty string",
+    'band ? " · " + band : ""': "the same band label, or the empty string",
+    'active ? " · from " + esc(active.name) : ""': "escapes the only fetched value",
+}
+
+# Sinks assigned a bare variable rather than a template. Static analysis cannot
+# clear these, so each names the guard that does.
+SAFE_VARIABLE_SINKS = {
+    "text": "itinerary leg text, built at app.js:2294-2376 only from ap(), "
+            "mode(), railVia() and fmtDur(); asserted by "
+            "tests/web/test_itinerary_grid.py",
+}
+
+
 def test_every_html_sink_routes_through_esc():
     """A seventh sink that forgets `esc` must fail here, not on the live site.
 
     The dangerous shape is a template literal containing `${` assigned to
-    innerHTML. Each one below is checked to interpolate only through `esc(`,
-    a nested helper that escapes its own inputs, or a number formatter.
+    innerHTML. Each one below must interpolate only through `esc(`, a nested
+    helper that escapes its own inputs, or a named entry in SAFE_PIECES.
+
+    Mutation performed and reverted: drop `esc()` from `${esc(active.name)}`
+    at app.js:2704 -> red. Same at `${esc(where)}` at :2785 -> red. Both were
+    GREEN before this inventory captured whole statements.
     """
     for banned in ("outerHTML", "insertAdjacentHTML", "document.write",
                    "srcdoc", "createContextualFragment", "setHTML"):
         assert banned not in APP, f"{banned} is a new HTML sink with no escape"
 
-    sinks = [m for m in re.finditer(r"\.innerHTML\s*=\s*(.+)", APP)]
-    assert len(sinks) >= 5, "the sink inventory found nothing; the regex is stale"
-    for m in sinks:
-        expr = m.group(1)
-        if "${" not in expr:
-            continue                      # a literal string is not a sink
-        line = APP[:m.start()].count("\n") + 1
-        interpolations = re.findall(r"\$\{([^}]*)\}", expr)
-        for piece in interpolations:
-            safe = ("esc(" in piece or "railVia(" in piece or "mode(" in piece
-                    or "ap(" in piece or piece.strip() in ("big", "unit", "band")
-                    or piece.startswith("t >= "))
+    sinks = _sink_statements()
+    assert len(sinks) >= 5, "the sink inventory found nothing; the scanner is stale"
+    # The scanner's own guard: at least three sinks MUST span more than one
+    # line, because three do. If that stops being true the scanner has probably
+    # started truncating again, and a one-line capture would look identical.
+    multiline = [line for line, expr in sinks if "\n" in expr]
+    assert len(multiline) >= 2, (
+        f"only {len(multiline)} multi-line sink(s) captured; the statement "
+        "scanner is truncating, which is exactly the old defect")
+
+    checked = 0
+    for line, expr in sinks:
+        pieces = _interpolations(expr)
+        if not pieces:
+            # A bare variable, or a literal string. A literal is not a sink.
+            name = expr.strip().rstrip(";").strip()
+            if name.isidentifier():
+                assert name in SAFE_VARIABLE_SINKS, (
+                    f"app.js:{line} assigns the variable `{name}` to innerHTML. "
+                    "Static analysis cannot clear that: escape at the point of "
+                    "use, or name it in SAFE_VARIABLE_SINKS with the guard that "
+                    "does.")
+            continue
+        for piece in pieces:
+            checked += 1
+            body = piece.strip()
+            safe = ("esc(" in body or "railVia(" in body or "mode(" in body
+                    or "ap(" in body or body in SAFE_PIECES)
             assert safe, (
-                f"app.js:{line} interpolates `{piece}` into innerHTML without "
-                "esc(); if it is provably safe, name it in this allow-list "
-                "with the reason")
+                f"app.js:{line} interpolates `{body}` into innerHTML without "
+                "esc(); if it is provably safe, name it in SAFE_PIECES with "
+                "the reason")
+    # And the count, so a scanner that silently stops finding interpolations
+    # cannot pass by checking nothing. Eleven today across the five templates.
+    assert checked >= 10, (
+        f"only {checked} interpolation(s) were checked; the extractor is stale")
+
+
+def test_the_allow_list_has_no_dead_entries():
+    """An entry for an interpolation that no longer exists is an argument
+    nobody has to make again. Worse, it can silently cover a NEW piece that
+    happens to be spelled the same.
+    """
+    live = {p.strip() for _, expr in _sink_statements() for p in _interpolations(expr)}
+    stale = {k for k in SAFE_PIECES if k not in live and k not in ("big", "unit", "band")}
+    assert not stale, f"SAFE_PIECES entries no longer present in app.js: {stale}"
 
 
 def test_railvia_escapes_its_own_osm_strings():
