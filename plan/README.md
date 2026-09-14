@@ -37,6 +37,8 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 
 | Plan | Scope | Status |
 |---|---|---|
+| `2026-09-14-c13-solver-service.md` | Cycle 13: the F2 on-demand solver service — the design, the measured footprint, and the graph-free half that was built (C13-F2.1…C13-F2.12) | cycle 13: current; design done, nothing resident started |
+| `2026-09-14-c13-review-findings.md` | Cycle 13: all 250 raw findings from the eleven lanes, indexed with citations, scheduled or deferred (C13-1…C13-11) | cycle 13: current |
 | `2026-09-14-c12-requested-features.md` | Cycle 12: the three tasks the owner named — a real test for `esc()`, draggable start and end markers, and the ETOPS decision (F1…F3) | cycle 12 done; all three landed |
 | `2026-09-14-c12-review-findings.md` | Cycle 12: everything else the eleven review lanes found, scheduled or deferred (C12-1…C12-11) | cycle 12: current |
 | `2026-09-13-c11-design-slop.md` | The owner's design pass: "remove ai slops from overall designs". Prose, type scale, three false statements, and the gate that keeps the design policy enforced | cycle 11 done; all ten tasks landed |
@@ -47,7 +49,7 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; tasks still open, carried forward |
 | `2026-09-13-c9-page-failure-paths.md` | Cycle 9: the page's failure paths, its accessibility, and the gates that cannot see either (C9-1…C9-31) | cycle 9 done; open tasks carried forward |
 | `2026-09-13-c10-four-live-defects.md` | Cycle 10: the four defects the owner and the deploy's own verification reported, plus the two they uncovered (C10-1…C10-14) | cycle 10: current |
-| `2026-09-13-c10-requested-features.md` | Cycle 10: four features the owner asked for, PLANNED and deliberately not built — draggable markers, an on-demand solver service, many more departure cities, an ETOPS option (F1…F4) | cycle 10: analysis only, nothing built |
+| `2026-09-13-c10-requested-features.md` | Cycle 10: four features the owner asked for — draggable markers (F1), an on-demand solver service (F2), many more departure cities (F3), an ETOPS option (F4) | **three of the four have since shipped**: F1 in `6214283`, F3 in `b21e808`, F4 as the documented decision not to build it in `12e68ac`. F2's analysis is superseded by `2026-09-14-c13-solver-service.md`, which corrects three of its load-bearing claims. The file's own "PLANNED, NOT BUILT" heading describes cycle 10, not HEAD |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened and closed items | living |
 | `archive/2026-09-10-c1-*.md` | The five cycle-1 plans: every cycle-1 task done; every unfinished task carried into the matching c2 plan under its original ID | archived (cycle 2) |
 | `archive/2026-09-10-c3-page-detail-and-defects.md` | Cycle 3 (T1…T31): 28 done; T24, T26 and T28 carried into the cycle-4 plan as U28, U10 and U11 | archived (cycle 4) |
