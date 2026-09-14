@@ -411,6 +411,11 @@ body.crowded .depart-card{display:none}
    the buttons', so an outset ring was clipped to a one-pixel underline. */
 .results button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .results .empty{font-size:var(--t-cap);color:var(--text-3);padding:6px 0;line-height:1.45}
+/* The footer of a capped list. Same voice as .empty and a rule above it,
+   so it reads as the end of the list rather than as another row you
+   could click. */
+.results .listmore{font-size:var(--t-cap);color:var(--text-3);padding:8px 0 2px;
+  line-height:1.45;border-top:1px solid var(--line);margin-top:4px}
 .results button:hover{color:var(--text)}
 .results button[aria-current="true"]{color:var(--accent);font-weight:500}
 /* `flex:none` meant a long secondary column could not shrink, and the row's

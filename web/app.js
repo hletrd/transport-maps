@@ -584,7 +584,16 @@ const PAGE_CREDITS = [
   }
   if (first) el.textContent = "Attribution missing from index.json.";
 }
-$("n-cities").textContent = String(meta.origins.length);
+// Grouped. Every other number the page prints is -- the flight-leg count in
+// the method section, the cell counts -- and this one was about to go from
+// "553" to "1464", which reads as a year.
+//
+// Locale-aware rather than a hardcoded comma: this is the same formatter the
+// browser would use for the visitor's own numbers, and it is in the platform.
+const fmtCount = (n) => {
+  try { return Number(n).toLocaleString(); } catch { return String(n); }
+};
+$("n-cities").textContent = fmtCount(meta.origins.length);
 // When the data was built, once index.json says so.
 if (meta.builtAt) {
   const d = new Date(meta.builtAt);
@@ -3186,6 +3195,28 @@ const countryName = (() => {
   };
 })();
 
+// Below countryName ON PURPOSE, not for tidiness. `const countryName` is in
+// its temporal dead zone until this line, so building the search keys above it
+// throws ReferenceError at module load -- boot.js catches that, index.html
+// turns it into display:none over the whole rail, and the page is blank with
+// no console error left to find. CLAUDE.md records three of these; this would
+// have been the fourth, and `node --check` passes it happily.
+//
+// Searching matched the city NAME only, which is fine at 553 rows you can
+// scroll and useless at 1,464 you cannot: there was no way to ask for "the
+// Japanese ones". index.json carries an ISO-2 code for every origin whose row
+// in origins.toml has one, so both the code and the country's English name
+// join the key -- "jp", "japan" and "Osaka" all find Osaka.
+//
+// Deliberately NOT the places.json fallback cityCountry() uses for the 553
+// older origins: nearestPlace scans 34,000 gazetteer rows, and doing that once
+// per origin would be 50 million distance calculations on the first keystroke.
+// The copy under the list therefore promises a search, not a country search.
+for (const c of cities) {
+  const where = c.country ? `${c.country} ${countryName(c.country)}` : "";
+  c.skey = where ? `${c.key} ${fold(where)}` : c.key;
+}
+
 fetch("./airports.json")
   .then((r) => (r.ok ? r.json() : null))
   .then((a) => {
@@ -3205,9 +3236,59 @@ fetch("./airports.json")
     if (pinB) renderLegs();
   })
   .catch(() => {});
+// How many departure cities the list shows when nothing is being searched.
+//
+// 1,464 rows is 38,357 px of list: 175 screens on a 390x844 phone, and 378 in
+// landscape, where the scrollbar thumb is a quarter of a pixel. Nobody scrolls
+// that, and every keystroke rebuilt all of it -- "a" alone matches 1,097 of
+// the real names, so the first character paid nearly full price.
+//
+// Capping the RESTING view rather than windowing the whole list: windowing
+// would mean rewriting the roving tabindex, the focus restore and the
+// scroll-into-view, each of which has shipped a defect of its own. The cap
+// removes the symptom by not building what nobody reads, and a search still
+// reaches every city.
+const UNFILTERED_CAP = 60;
+
+// Which departure cities the resting list shows, and whether it had to leave
+// any out. Split out of render() so it can be run and checked: a cap that
+// silently drops 1,404 of 1,464 cities is not something to pin with a
+// substring assertion.
+//
+// The current departure is always in, whatever its rank -- it is the row
+// aria-current, the roving tabindex and the scroll-into-view all look for, and
+// a list that omits the city you are departing from is worse than a long one.
+function capCities(matched) {
+  if (matched.length <= UNFILTERED_CAP) return { hits: matched, capped: false };
+  const timed = matched.map((c) => {
+    // -1, not 0: it must sort ahead of a city zero minutes away, and there is
+    // no lookup to do for the origin itself.
+    const t = c.slug === active?.slug ? -1 : lookup(c.lat, c.lon);
+    return { c, t: typeof t === "number" && t < MAX_MINUTES ? t : Infinity };
+  });
+  // Before the arrays land there is nothing to rank by and every entry is
+  // Infinity; an alphabetical head is honest, and the list is rebuilt when
+  // they arrive.
+  const ranked = timed.some((e) => e.t !== Infinity);
+  const hits = ranked
+    ? timed.slice().sort((a, b) => a.t - b.t).slice(0, UNFILTERED_CAP)
+        // Back to alphabetical for display: the ranking chooses WHICH cities,
+        // not the order they are read in. A list that reorders itself on every
+        // origin change cannot be scanned.
+        .map((e) => e.c).sort((a, b) => a.name.localeCompare(b.name))
+    : matched.slice(0, UNFILTERED_CAP);
+  return { hits, capped: hits.length < matched.length };
+}
+
 function render(filter = "") {
   const f = fold(filter.trim());
-  const hits = f ? cities.filter((c) => c.key.includes(f)) : cities;
+  // Matched against name AND country: see the key built above.
+  const matched = f ? cities.filter((c) => (c.skey ?? c.key).includes(f)) : cities;
+  // At rest, the departure you are on plus the quickest to reach from it --
+  // which is the list a visitor actually wants and the one an alphabet buries.
+  // Before the arrays land there is nothing to rank by, so it stays
+  // alphabetical; the list is rebuilt when they do.
+  const { hits, capped } = f ? { hits: matched, capped: false } : capCities(matched);
   const list = document.createDocumentFragment();
   const row = (b) => { const li = document.createElement("li"); li.setAttribute("role", "none"); li.append(b); return li; };
 
@@ -3315,9 +3396,23 @@ function render(filter = "") {
     list.append(row(b));
   }
   if (!codeFirst) list.append(...airportRows);
+  // A capped list that does not say it is capped is a list that has silently
+  // lost 1,404 cities. The count comes from the data, never from a literal:
+  // this page has shipped a hardcoded city count twice, and scripts/check_dist
+  // now refuses one in the copy.
+  if (capped) {
+    const li = document.createElement("li");
+    li.className = "listmore"; li.setAttribute("role", "none");
+    li.textContent = active
+      ? `Showing ${hits.length} of ${fmtCount(matched.length)} departure cities, `
+        + `the quickest to reach from ${active.name}. Type to search all of them.`
+      : `Showing ${hits.length} of ${fmtCount(matched.length)} departure cities. `
+        + "Type to search all of them.";
+    list.append(li);
+  }
   // Silence read as "nothing happened"; say what the list did not find and
   // where to look next.
-  if (f && !hits.length && !apHits.length) {
+  if (f && !matched.length && !apHits.length) {
     const li = document.createElement("li");
     li.className = "empty"; li.setAttribute("role", "none");
     li.textContent = `No departure city or airport matches “${filter.trim()}”. Press Enter or “Search address” to look it up.`;
@@ -3328,7 +3423,7 @@ function render(filter = "") {
   // matched nothing". Announced only when a filter is active, so the
   // once-per-origin rebuild in settle() stays silent.
   if (f) {
-    const n = hits.length + apHits.length;
+    const n = matched.length + apHits.length;
     announce(n
       ? `${n} match${n === 1 ? "" : "es"} for “${filter.trim()}”.`
       : `No match for “${filter.trim()}”. Press Enter or Search address to look it up.`);
@@ -3549,7 +3644,19 @@ $("results").addEventListener("click", (e) => {
   $("here").textContent = "";
   paintOrigin(bySlug.get(b.dataset.slug));
 });
-$("q").addEventListener("input", (e) => render(e.target.value));
+// Coalesced to one render per animation frame. The handler ran synchronously
+// on every keystroke, and a keystroke rebuilds the whole list: at 1,464 rows
+// that is ~8,800 DOM nodes, and "a" alone matches 1,097 of the real names, so
+// the first character of most searches paid nearly full price. Holding a key
+// down, or a fast typist, queued renders faster than they could complete.
+// rAF also means the work happens once per PAINT, which is the most often it
+// can be seen.
+let renderFrame = 0;
+$("q").addEventListener("input", (e) => {
+  const value = e.target.value;
+  if (renderFrame) cancelAnimationFrame(renderFrame);
+  renderFrame = requestAnimationFrame(() => { renderFrame = 0; render(value); });
+});
 // Enter picks the first match: a city departs, an airport becomes the
 // destination; with no local match it searches the address. Arrows walk the
 // list; Escape clears the filter, then the route.
