@@ -256,3 +256,85 @@ after it.
       that is where this one was. Extending the walk is cycle 13. Severity
       High, confidence High — it is the failure mode CLAUDE.md is written
       around, and the existing gate cannot see it.
+
+### C12-12 — the input debounce made Enter depart from the wrong city
+
+Caught by the deploy gate, which is the outcome the gate exists for.
+
+The keydown handler decides what Enter means by **reading the rendered list**:
+a first row means "depart from that city", no row means "search this as an
+address" (`app.js`, the `$("q")` keydown handler). Coalescing `render()` to one
+animation frame (C12-3c) broke that — typing an address and pressing Enter
+within the same frame found the list built for the **previous** query and
+clicked its first row, so the page departed from an unrelated city instead of
+searching. A fast typist reproduces it as readily as the gate does.
+
+- [x] `flushRender()` runs a pending frame immediately; Enter and ArrowDown
+      call it before reading the list, and Escape cancels the pending frame
+      rather than letting it land on the query it has just cleared.
+- [x] Three tests, two mutants confirmed red.
+
+### C12-13 — a check I wrote in this cycle could not fail
+
+`browser_verify.sh`'s new "the list footer names the true total" assertion
+built its expected value with
+
+```
+python3 -c 'print(f"{int(__import__(\"sys\").argv[1]):,}")' "$CITIES"
+```
+
+whose backslashes the shell ate. Python printed a `SyntaxError`, the variable
+came back **empty**, and `grep -q ""` matches anything — so the check passed on
+every page, including one with no footer at all. It was green for two runs
+before the `SyntaxError` in the log was noticed.
+
+Exactly the failure mode CLAUDE.md's testing rule names, in a gate written to
+enforce honesty about a cap.
+
+- [x] Rewritten without nested quoting, and it now asserts the expected value
+      is non-empty before using it.
+
+### C12-14 — the browser gate typed and clicked inside one frame
+
+The searched-destination check dispatched an `input` event and read `.results`
+in the same tick. With the render coalesced, the airport row did not exist yet,
+the click never happened, and the total row it looked for was absent for that
+reason rather than because anything disagreed — a reported defect on a correct
+page, which is the fourth time a gate in this project has done that.
+
+**The gate was wrong, not the page**: no human types and clicks inside one
+frame, and the two paths that can act within one now flush the pending render
+themselves. The assertion is unchanged; only the interaction is split into the
+two steps a person takes.
+
+The same check's `announced` assertion also tested only `/JFK/` against the
+live region, which `render()` satisfies on its own by announcing "1 match for
+JFK" — it passed with no destination chosen at all. It now also requires "door
+to door", which only `announceReading()` writes.
+
+- [x] Both fixed. Live gate after them: **ALL CHECKS PASSED**, zero failures,
+      console errors 0, all four viewports clean.
+
+---
+
+## Gates and deploy, cycle 12
+
+| gate | result |
+|---|---|
+| `uv run ruff check .` | All checks passed |
+| `uv run pytest` | 869 passed, 4 deselected, exit 0 (17:01) |
+| `bash scripts/deploy_verify.sh --page-only` | deployed; `browser_verify.sh` ALL CHECKS PASSED |
+
+Verified live at 1280x800, 820x1180, 390x844 and 844x390, plus the
+return-to-desktop path, a phone tap, and the folded sheet. Console errors: 0.
+
+Verified against the **deployed 553-origin build**, which the page must keep
+working on while the rebuild runs: the list reads 60 rows with the footer
+"Showing 60 of 553 departure cities, the quickest to reach from Seoul", the
+count coming from `index.json` rather than any literal. Both drags were
+exercised on the live site: the departure snapped Seoul → Tokyo with "Moved to
+Tokyo — the nearest departure city, 1130 km from where you dropped the marker.
+Times are measured from Tokyo, not from that point.", the marker returned to
+Tokyo's real coordinates, and the permalink followed. The destination handle
+dragged Seoul → Beijing and the headline and the Route panel agreed at 6 h 35
+min; dragged into open water it correctly refused and dropped the pin.
