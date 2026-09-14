@@ -1072,7 +1072,13 @@ originLabel.addEventListener("click", (ev) => ev.stopPropagation());
 // element's left edge, vertically centred, on the point -- and the dot is
 // placed there by CSS, so no pixel offset is needed and none can go stale
 // when the font size changes.
-const originMarker = new maplibregl.Marker({ element: originLabel, anchor: "left" });
+// draggable: the owner asked to be able to pick the departure by moving it
+// rather than by finding a name in a list of 1,464. Where it lands is almost
+// never a departure city -- see commitDraggedOrigin for what that costs and
+// how the page says so.
+const originMarker = new maplibregl.Marker({
+  element: originLabel, anchor: "left", draggable: true,
+});
 // MapLibre stamps role="button" aria-label="Map marker" on every marker
 // element, so the departure city announced as "Map marker, button, current"
 // and its visible name was nowhere in its accessible name (WCAG 2.2 SC 2.5.3,
@@ -1084,6 +1090,108 @@ const nameMarker = (el, label) => {
 };
 let originMarkerOn = false;
 let showLabels = () => {};
+
+// ---- dragging the departure ----
+//
+// The destination may be any point on Earth. The departure may NOT: only the
+// cities in index.json have a precomputed surface, so a dragged departure is
+// answered by the nearest charted city and the marker returns to it.
+//
+// That substitution is the whole risk in this feature. Every figure on the
+// page -- the headline, the itinerary, the Route panel's Time row, the band
+// under the cursor -- is measured from the DEPARTURE. Leave the marker where
+// it was dropped and all of them silently become readings for a place nobody
+// computed. So two things are non-negotiable: the marker goes back to the
+// real city, and the page says in words that it moved.
+//
+// The snap is unconditional, with no radius. A radius leaves drags that
+// silently do nothing, and index.html has promised "a departure snaps to the
+// nearest of them" since long before this existed -- which was not true of
+// anything until now. The distance is always stated, so a 780 km substitution
+// reads as the substitution it is rather than as an answer.
+function nearestOrigin(lat, lon) {
+  let best = null, bestKm = Infinity;
+  for (const o of meta.origins) {
+    const km = haversineKm(lat, lon, o.lat, o.lon);
+    if (km < bestKm) { best = o; bestKm = km; }
+  }
+  return best && { origin: best, km: bestKm };
+}
+
+// Rounded the way the rest of the page rounds a distance: whole kilometres
+// close in, no false precision far out.
+function fmtKm(km) {
+  if (km < 1) return "less than a kilometre";
+  if (km < 100) return `${Math.round(km)} km`;
+  return `${Math.round(km / 10) * 10} km`;
+}
+
+function snapNotice(html) {
+  const el = $("snapped");
+  if (!el) return;
+  if (!html) { el.hidden = true; el.textContent = ""; return; }
+  el.innerHTML = html;
+  el.hidden = false;
+}
+
+// While the marker is moving, say what dropping it there would do. This is
+// the only honest form of live feedback: the times on screen still belong to
+// the origin that has not changed yet, so the line speaks in the future tense.
+function originDragMove() {
+  const { lng, lat } = originMarker.getLngLat();
+  const near = nearestOrigin(lat, lng);
+  if (!near) return snapNotice("No departure cities are loaded.");
+  snapNotice(near.origin.slug === active?.slug
+    ? `Release to keep <b>${esc(near.origin.name)}</b> — still the nearest departure city.`
+    : `Release to depart from <b>${esc(near.origin.name)}</b>, ${fmtKm(near.km)} from here.`);
+}
+
+function originDragEnd() {
+  originLabel.classList.remove("dragging");
+  const { lng, lat } = originMarker.getLngLat();
+  const near = nearestOrigin(lat, lng);
+  if (!near) {
+    snapNotice("No departure cities are loaded, so the departure did not move.");
+    if (active) originMarker.setLngLat([active.lon, active.lat]);
+    return;
+  }
+  const { origin: o, km } = near;
+  // Put the marker back on the city FIRST, so there is no frame in which it
+  // sits on a point the numbers do not describe. paintOrigin sets it again for
+  // a real switch; this covers the case where it does not switch at all.
+  originMarker.setLngLat([o.lon, o.lat]);
+  if (o.slug === active?.slug) {
+    snapNotice(`Kept <b>${esc(o.name)}</b> — still the nearest departure city, `
+      + `${fmtKm(km)} from where you dropped the marker.`);
+    announce(`Departure unchanged: ${o.name} is still the nearest departure city.`);
+    return;
+  }
+  // Same synchronous pair the "Depart from" button uses: clear the pin before
+  // switching, or a stale lastPointer is re-read as a live reading for a place
+  // the pointer left. keepZoom, because a drag is a statement about where you
+  // are looking and flying the camera away discards it.
+  dropDestination();
+  paintOrigin(o, { keepZoom: true });
+  // AFTER paintOrigin, which clears the notice: every other route to a new
+  // departure should drop a stale snap message, and this is the one route
+  // that must write one. Ordering it the other way round showed the message
+  // for a single frame and then erased it.
+  snapNotice(`Moved to <b>${esc(o.name)}</b> — the nearest departure city, `
+    + `${fmtKm(km)} from where you dropped the marker. `
+    + `Times are measured from ${esc(o.name)}, not from that point.`);
+  // On a phone the readout is inside the bottom sheet; folded, the notice
+  // would be written somewhere nothing can see it.
+  unfoldSheet();
+  announce(`Departure moved to ${o.name}, ${fmtKm(km)} from where you dropped `
+    + `the marker. Times are measured from ${o.name}.`);
+}
+
+originMarker.on("dragstart", () => {
+  originLabel.classList.add("dragging");
+  snapNotice("");
+});
+originMarker.on("drag", originDragMove);
+originMarker.on("dragend", originDragEnd);
 
 fetch("./places.json")
   .then((r) => (r.ok ? r.json() : null))
@@ -1477,6 +1585,11 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // cannot reintroduce it. A failed origin is still retryable: that is the one
   // case where re-picking the active city has something to do.
   if (o.slug === active?.slug && !origin.failed) return;
+  // A snap notice describes ONE drag. Picking a city from the list, following
+  // a permalink or clicking "Depart from" all make it false, so it goes with
+  // the origin it described. The drag path rewrites it immediately after this
+  // returns; nothing else does.
+  snapNotice("");
   if (o.slug !== active?.slug) captureComparison();
   active = o;
   const gen = ++originGen;
@@ -2656,13 +2769,54 @@ map.on("mousemove", (e) => {
 });
 
 // ---- point to point ----
+// A transparent 34 px handle riding on the pin, so the destination can be
+// dragged. The pin itself stays two circle layers: converting it to a marker
+// would take it out of the layer order that keeps the route line underneath it
+// (tests/web/test_app_constants.py asserts exactly that), and the drawn dot is
+// 9 px across -- no touch target at all. The handle is invisible; it exists
+// for the cursor, the hit area and the keyboard focus ring.
+const pinHandleEl = document.createElement("div");
+pinHandleEl.className = "pinhandle";
+const pinHandle = new maplibregl.Marker({
+  element: pinHandleEl, anchor: "center", draggable: true,
+});
+let pinHandleOn = false;
+
 function drawPin() {
   const src = map.getSource("pin");
   if (!src) return;
   src.setData({ type: "FeatureCollection", features: pinB
     ? [{ type: "Feature", geometry: { type: "Point", coordinates: [pinB.lon, pinB.lat] } }]
     : [] });
+  // The handle follows the pin, and exists only while there is one to drag.
+  if (pinB) {
+    pinHandle.setLngLat([pinB.lon, pinB.lat]);
+    if (!pinHandleOn) { pinHandle.addTo(map); pinHandleOn = true; }
+    nameMarker(pinHandleEl, `Destination: ${pinB.label}. Drag to move it.`);
+  } else if (pinHandleOn) {
+    pinHandle.remove(); pinHandleOn = false;
+  }
 }
+
+// The destination is unconstrained -- any point on Earth has a reading, or an
+// honest "no scheduled route" -- so dragging it just re-reads. The live
+// headline during the drag is the real answer for the point under the handle,
+// not a promise about one.
+pinHandle.on("drag", () => {
+  const { lng, lat } = pinHandle.getLngLat();
+  showReading(lat, lng, onNearSide(lat, lng) ? map.project([lng, lat]) : null);
+});
+pinHandle.on("dragend", () => {
+  const { lng, lat } = pinHandle.getLngLat();
+  // Name the dropped point the same way a map click does, then commit through
+  // the one path that keeps the headline, the itinerary and the permalink in
+  // step. commitDestination drops the pin when the point has no journey, and
+  // drawPin then removes this handle with it -- which is correct: there is no
+  // destination left to drag.
+  const p = nearestPlace(lat, lng);
+  commitDestination(lat, lng, placeLead(p) ?? fmtCoord(lat, lng));
+  if (namePlaces) reverseGeocode(lat, lng);
+});
 
 function renderPins() {
   drawPin();

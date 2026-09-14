@@ -268,6 +268,14 @@ body.crowded .depart-card{display:none}
   color:var(--text-2);background:rgba(224,168,74,.14);
   border-left:2px solid rgba(224,168,74,.7);border-radius:3px}
 .reading .at b{color:var(--text);font-weight:500}
+/* The departure-snap notice. Same shape as .trouble and deliberately NOT its
+   amber: nothing has gone wrong, the page is naming a substitution it made.
+   Accent-tinted, because it describes the departure city, which is the one
+   thing on the page already drawn in the accent. */
+.reading .snapped{margin:6px 0 0;padding:6px 8px;font-size:var(--t-ui);line-height:1.4;
+  color:var(--text-2);background:rgba(228,143,53,.10);
+  border-left:2px solid rgba(228,143,53,.55);border-radius:3px}
+.reading .snapped b{color:var(--text);font-weight:500}
 
 .legend{margin-top:14px}
 .tints{display:flex;height:9px;border-radius:1px;overflow:hidden;position:relative}
@@ -509,7 +517,21 @@ body.crowded .depart-card{display:none}
 .lbl.origin .dot{position:absolute;left:0;top:50%;width:4px;height:4px;
   margin:-2px 0 0 -2px;border-radius:50%;background:currentColor}
 .lbl.origin:hover{text-decoration:underline}
-.lbl.origin[aria-current="true"]{color:var(--accent);cursor:default}
+.lbl.origin[aria-current="true"]{color:var(--accent);cursor:grab}
+/* Dragging the departure is how you move it without finding it in a list of
+   1,464. The grab cursor is the only affordance a pointer user gets, so the
+   active row carries it even though clicking it is a no-op. */
+.lbl.origin[aria-current="true"]:active{cursor:grabbing}
+.lbl.origin.dragging{opacity:.85}
+/* The destination pin is drawn by two circle layers, not by a marker, and its
+   dot is 9 px across -- no touch target at all. This is a transparent handle
+   riding on top of it: 34 px, comfortably over the 24 px minimum, invisible
+   except for the cursor it carries. Converting the pin itself to a marker
+   would have moved it out of the layer order that keeps the route line under
+   it (tests/web/test_app_constants.py), for no gain. */
+.pinhandle{width:34px;height:34px;border-radius:50%;cursor:grab;background:none;border:0;padding:0}
+.pinhandle:active{cursor:grabbing}
+.pinhandle:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .lbl.origin[aria-current="true"]:hover{text-decoration:none}
 .lbl.origin:focus-visible{text-decoration:underline;outline:2px solid var(--accent);outline-offset:0;border-radius:var(--r)}
 .pins .depart{margin-top:8px}
@@ -799,6 +821,14 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
        never come back, not even for a different origin's missing tileset
        later in the session. It gets its own line, and it stays. -->
   <p class="trouble" id="tiletrouble" hidden></p>
+  <!-- The departure marker can be dragged, and the dragged point is almost
+       never a departure city: only the charted cities have a precomputed
+       surface, so the marker snaps to the nearest one. That substitution has
+       to be stated, or every number below it is being read as though it were
+       measured from where the marker was dropped. Its own line for the same
+       reason #tiletrouble has one -- showReading rewrites #where on every
+       pointer frame and would erase it at the first mouse move. -->
+  <p class="snapped" id="snapped" hidden></p>
 
   <div class="legend">
     <div class="tints" id="tints"></div>
