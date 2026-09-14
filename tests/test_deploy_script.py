@@ -179,3 +179,73 @@ def test_the_remote_free_space_check_quotes_the_deploy_root():
     for line in df:
         assert re.search(r"df -Pk\s+'\$DEPLOY_ROOT'|df -Pk\s+\\\"\$DEPLOY_ROOT\\\"", line), (
             f"$DEPLOY_ROOT reaches the remote df unquoted: {line.strip()}")
+
+
+def test_a_remote_free_space_figure_cannot_run_a_command_on_this_machine():
+    """`free_kb` is remote output, and every use of it is an arithmetic
+    context: `[ "$free_kb" -lt ... ]` and three `$(( free_kb/1024/1024 ))`.
+
+    Bash evaluates a NAME inside `$(( ))` by evaluating its value as an
+    arithmetic expression, and an array subscript inside one is a command
+    substitution. A host answering `MODE[$(id -un > PWNED)]` instead of a
+    number therefore runs that command here. It was demonstrated with a stub
+    `ssh`, and `set -u` is not a defence: it only decides which already-set
+    name works as the subscript.
+
+    The remote is the owner's own server, so this is a primitive rather than a
+    live attack. It is also one `case` to close, in the one script that talks
+    to another machine.
+
+    This test runs the real shell, because the defect IS the shell's
+    behaviour: a pattern assertion would pass against a `case` that does not
+    actually reject.
+    """
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    guard = re.search(r"case \$\{free_kb:-\} in(.+?)esac", DEPLOY, re.S)
+    assert guard, "the free-space figure is no longer sanitised before it is used"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        marker = Path(tmp) / "PWNED"
+        # Exactly the shape the script has: a hostile value, the sanitiser, and
+        # then the arithmetic the script performs on it.
+        script = f'''set -u
+DEPLOY_HOST=stub
+free_kb='MODE[$(printf x > {marker})]'
+case ${{free_kb:-}} in
+  "") ;;
+  *[!0-9]*) echo "  $DEPLOY_HOST returned a non-numeric free-space figure; ignoring it"
+            free_kb="" ;;
+esac
+if [ -z "$free_kb" ]; then echo REFUSED
+else echo $(( free_kb / 1024 / 1024 )); fi
+'''
+        done = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+        assert done.returncode == 0, done.stderr
+        assert "REFUSED" in done.stdout, done.stdout
+        assert not marker.exists(), (
+            "the arithmetic expansion executed a command from remote output")
+
+        # ...and the positive control: a real figure must still be used, or the
+        # guard has simply disabled the free-space check.
+        ok = subprocess.run(
+            ["bash", "-c", script.replace("'MODE[$(printf x > " + str(marker) + ")]'",
+                                          "'20971520'")],
+            capture_output=True, text=True)
+        assert ok.stdout.strip() == "20", ok.stdout
+
+
+def test_the_sanitised_figure_is_read_before_every_arithmetic_use_of_it():
+    """A second `free_kb=` assignment after the `case`, or an arithmetic use
+    before it, would reopen the hole silently.
+    """
+    code = _code(DEPLOY)
+    case_at = code.index("case ${free_kb:-} in")
+    read_at = code.index("free_kb=$(ssh")
+    assert read_at < case_at, "the figure is sanitised before it is read"
+    uses = [m.start() for m in re.finditer(r'\[ "\$free_kb" -lt|\$\(\(\s*free_kb', code)]
+    assert len(uses) >= 3, f"the arithmetic uses moved; found {len(uses)}"
+    assert min(uses) > case_at, "free_kb reaches an arithmetic context before the sanitiser"
+    assert code.count("free_kb=$(") == 1, "a second assignment can reopen the hole"

@@ -112,6 +112,24 @@ if [ "$MODE" = full ]; then
   # half-written dist/ reaching the server silently measured somewhere else.
   free_kb=$(ssh -o BatchMode=yes "$DEPLOY_HOST" \
     "df -Pk '$DEPLOY_ROOT' | awk 'NR==2{print \$4}'" 2>/dev/null || true)
+  # Whatever came back is REMOTE OUTPUT, and every use of it below is an
+  # arithmetic context: `[ "$free_kb" -lt ... ]` and `$(( free_kb/1024/1024 ))`.
+  # Bash evaluates a name inside `$(( ))` by evaluating its VALUE as an
+  # arithmetic expression, and an array subscript inside one is a command
+  # substitution -- so a host answering `MODE[$(...)]` instead of a number runs
+  # that command on the operator's machine. Demonstrated: a stub ssh returning
+  # `MODE[$(id -un > PWNED)]` wrote the file locally. `set -u` is not a
+  # defence; it only decides which already-set name works as the subscript.
+  #
+  # The remote is the owner's own server, so this is not a realistic attacker
+  # today. It is a shell-injection primitive sitting in the one script that
+  # reaches out to another machine, and it costs one `case` to close.
+  case ${free_kb:-} in
+    "") ;;                       # ssh failed; the branch below says so
+    *[!0-9]*)
+      echo "  $DEPLOY_HOST returned a non-numeric free-space figure; ignoring it"
+      free_kb="" ;;
+  esac
   if [ -z "$free_kb" ]; then
     echo "  could not read free space on $DEPLOY_HOST; continuing without the check"
   elif [ "$free_kb" -lt "$want_kb" ]; then
