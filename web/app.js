@@ -80,6 +80,18 @@ const UNREACHABLE = meta.unreachable ?? 65535;
 // (45 days); read it the same way, so an old array never prints a duration.
 const MAX_MINUTES = UNREACHABLE - 1;
 const HOVER_RES = meta.hoverRes ?? 4;
+// Which grid the last reading came from, for the line that says so. Declared
+// HERE, beside HOVER_RES, and not beside lookup() where it is written: a
+// module-scope listener registered at :574 can call lookup() while the module
+// is suspended at its top-level await, and a `let` declared 1,600 lines lower
+// is in its temporal dead zone until then -- a ReferenceError on a pointer
+// move, which on this page is a blank globe with nothing in the console.
+// tests/web/test_module_scope_order.py refuses it, correctly.
+//
+// It cannot be derived from `origin.reading` alone: a reading that falls back
+// to the coarse tier comes from a wider cell than the outline, which is
+// exactly what that line exists to disclose.
+let lastReadingRes = HOVER_RES;
 // The surface is solved per res-6 cell (~6.5 km across), refined to res 7
 // (2.4 km) in dense regions; the readout array is res 4 (~45 km) and holds
 // each parent's CENTRE child's value, to stay small. The highlight shows the
@@ -2165,17 +2177,46 @@ function lookup(lat, lon) {
   // genuinely unreachable cell does. Asking the reading tier "is this sea?"
   // would answer "no route" for every one of them.
   const i = cellIndex(lat, lon);
-  if (i < 0) return null;
+  if (i < 0) { lastReadingRes = HOVER_RES; return null; }
+  const coarse = origin.times ? origin.times[i] : undefined;
   if (origin.reading && readingParents) {
     const j = readingIndex(lat, lon);
-    if (j >= 0) return origin.reading[j];
+    if (j >= 0) {
+      const fine = origin.reading[j];
+      // The two tiers can contradict each other, and one of them is a lie.
+      // `write_reading` fills every slot of a res-3 block with the sentinel
+      // and then writes only the slots that are LAND CELLS; the res-4 tier
+      // has no such gap, because `_representative_children` falls back to the
+      // fastest child when a parent's centre is water. So a point inside a
+      // land res-4 cell whose own res-6 cell is absent from the mask reads
+      // "no scheduled route" at one zoom and a real duration at another.
+      //
+      // Measured on the shipped build: 553 of 553 origins do this at Kota
+      // Kinabalu -- 10 h 18 min from Kolkata at res 4, "no scheduled route" at
+      // res 6 -- and 13 of 34,135 labelled places and 47 of 4,008 airports sit
+      // on such a cell, Bodo, Tarawa, Bora Bora and the Galapagos among them.
+      //
+      // The page cannot tell a padding slot from a genuinely unreachable land
+      // cell: it ships no res-6 land set. What it CAN tell is that the coarse
+      // tier, whose land set it does ship, has a real answer for this cell.
+      // Printing that, with the disclosure the page already has for a value
+      // read from a wider cell, replaces a false statement with a true and
+      // qualified one. When both tiers say unreachable, nothing changes.
+      if (fine >= MAX_MINUTES && coarse !== undefined && coarse < MAX_MINUTES) {
+        lastReadingRes = HOVER_RES;
+        return coarse;
+      }
+      lastReadingRes = READING_RES;
+      return fine;
+    }
   }
-  return origin.times ? origin.times[i] : undefined;
+  lastReadingRes = HOVER_RES;
+  return coarse;
 }
 
 // Which grid the last reading came from, for the line that says so.
 function readingGrid() {
-  return origin.reading && readingParents ? READING_RES : HOVER_RES;
+  return lastReadingRes;
 }
 
 // Walk the shortest-path tree back from where the journey landed. The chain is
