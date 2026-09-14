@@ -213,7 +213,15 @@ class GateFailure(RuntimeError):
 def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     """Solve and emit one origin. Returns the table row to print."""
     slug = origin["slug"]
-    source = dijkstra.origin_node(idx, origin["lat"], origin["lon"])
+    # A coordinate too far from any land cell to snap is a bad row in
+    # data/origins.toml, not a bug in the solver -- so it is a per-origin gate
+    # failure that names the slug, not a traceback out of a worker. Every
+    # other gate below already reports itself this way; this one did not,
+    # which is how one unvalidated coordinate could kill a 39-hour build.
+    try:
+        source = dijkstra.origin_node(idx, origin["lat"], origin["lon"])
+    except ValueError as exc:
+        raise GateFailure(f"{slug}: {exc}") from exc
     minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
 
     coverage = validate.check_coverage(minutes, idx)

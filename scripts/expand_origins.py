@@ -25,10 +25,13 @@ import tomllib
 import unicodedata
 import zipfile
 
+import h3
 import httpx
+import pyarrow.parquet as pq
 
 from transport_maps import _io, config
 from transport_maps.emit.index import _SLUG_RE
+from transport_maps.sources import landmask
 
 NEAR_KM = 40.0
 GEONAMES_URL = "https://download.geonames.org/export/dump/cities15000.zip"
@@ -56,6 +59,31 @@ def slugify(name: str) -> str:
     return s
 
 
+def _land_cells_if_built() -> set[str] | None:
+    """The solver's land mask, but only if a build has already produced it.
+
+    Deliberately not built on demand: that is a 1.5 GB download and several
+    minutes, and this script is also run on machines that never build. When
+    the mask is absent the check is SKIPPED AND SAID SO -- a silent skip here
+    would be the same vacuous pass CLAUDE.md's testing rule warns about.
+    """
+    path = landmask._cells_cache_path(config.SOLVE_RES)
+    if not path.exists():
+        print(f"  land check SKIPPED: {path.name} has not been built")
+        return None
+    cells = set(pq.read_table(path).column(0).to_pylist())
+    print(f"  land check against {path.name} ({len(cells):,} cells)")
+    return cells
+
+
+def _on_or_near_land(lat: float, lon: float, land: set[str]) -> bool:
+    """The same two-ring test `origin_node` will apply when it solves this."""
+    cell = h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
+    if cell in land:
+        return True
+    return any(n in land for ring in (1, 2) for n in h3.grid_ring(cell, ring))
+
+
 def km(a, b, c, d):
     r = math.pi / 180
     x = math.sin((c - a) * r / 2) ** 2 + math.cos(a * r) * math.cos(c * r) * math.sin((d - b) * r / 2) ** 2
@@ -73,7 +101,9 @@ def main() -> None:
     slugs = {o["slug"] for o in existing}
 
     rows = geonames()
+    land = _land_cells_if_built()
     added = []
+    rejected: list[tuple[str, str, float, float]] = []
     for r in sorted(rows, key=lambda r: -int(r["pop"] or 0)):
         name, country = r["name"], r["cc"]
         pop = int(r["pop"] or 0)
@@ -92,6 +122,18 @@ def main() -> None:
         if slug in slugs:
             slug = f"{slug}-{r['id']}"
         assert _SLUG_RE.fullmatch(slug), slug
+        # A city centre is on land by definition; a city centre's GEONAMES
+        # COORDINATE is not always on the 1:10m land outline the solver uses.
+        # This script appended 911 origins on 2026-09-14 with no check at all,
+        # and one of them -- Kota Kinabalu -- landed on a cell the mask does
+        # not have. `origin_node` now snaps within two rings, so a near miss is
+        # harmless; what is not harmless is a coordinate with no land within
+        # about 13 km, which is a typo or a swapped pair and which still aborts
+        # the build. Rejecting it here costs one set lookup and turns a
+        # multi-day failure into a line of output.
+        if land is not None and not _on_or_near_land(lat, lon, land):
+            rejected.append((slug, name, lat, lon))
+            continue
         slugs.add(slug)
         added.append({"slug": slug, "name": name, "lat": round(lat, 4), "lon": round(lon, 4),
                       "country": country, "pop": pop, "capital": capital})
@@ -113,6 +155,10 @@ def main() -> None:
                      f'lat = {o["lat"]}\nlon = {o["lon"]}\n'
                      f'country = "{o["country"]}"\n')
     print(f"  {len(existing)} existing, {len(added)} added -> {len(existing) + len(added)} origins")
+    if rejected:
+        print(f"  {len(rejected)} rejected: no land cell within two rings of the coordinate")
+        for slug, name, lat, lon in rejected[:12]:
+            print(f"    {name:<22} {slug:<24} {lat:.4f}, {lon:.4f}")
     for o in added[:12]:
         print(f"    {o['name']:<22} {o['country']:<18} {o['pop']:>10,}{'  capital' if o['capital'] else ''}")
     print("    ...")
