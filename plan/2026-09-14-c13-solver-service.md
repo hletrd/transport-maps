@@ -79,6 +79,17 @@ The dominant term is not the graph. It is Python.
 
 int32 indices are safe with 26× headroom: the limit is `nnz`, not node count.
 
+**The per-object model was cross-checked independently**, because 2.3 GB of
+Python objects is the number the whole design rests on and it is derived, not
+observed. Building 251,595 real res-6 cells as a list of strings plus a
+`str -> int` dict, under `tracemalloc`, gives **126.5 bytes per cell** against
+the model's **125.8** for the same two structures — 0.6 % apart. That is a
+cheap measurement (35 MB) that can be repeated on a loaded box; the full-scale
+figure stays an extrapolation until a solver is actually started, and it is
+labelled as one. It extrapolates higher than a naive count because
+`graph/refine.py` keeps 15,361,631 distinct cell strings against 13,751,643
+list slots: a split base cell's string outlives the slot it came from.
+
 Two consequences that shape the design:
 
 - **Two thirds of the footprint is a Python data structure the solver does not
