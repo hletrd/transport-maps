@@ -210,6 +210,75 @@ class GateFailure(RuntimeError):
     """
 
 
+# An origin the land mask cannot place is a bad row in data/origins.toml, and
+# the run cannot publish it. What made that a build-killer rather than a
+# five-minute edit is WHEN it was discovered: at whatever position the origin
+# happened to occupy in the queue. rebuild19 died at origin 970 of 1,464, 26
+# hours in, on one city centre the 1:10m outline cuts inside -- and it would
+# have died on the next bad row 26 hours after the fix. The pre-flight below
+# resolves every selected origin the moment the index exists, which costs one
+# dictionary lookup each, and reports EVERY bad row at once.
+#
+# The snapped bound exists for the reason MAX_SNAPPED_AIRPORT_FRACTION does
+# (graph/nodes.py): with a snap in place, a land mask that lost its coastline
+# does not fail any of these checks -- every coastal origin simply snaps one
+# cell inland and the build passes. A handful of snaps is normal (exactly one
+# of 1,464 on 2026-09-14, Kota Kinabalu at 4.2 km); a tenth of the roster
+# moving means the mask regressed.
+MAX_SNAPPED_ORIGIN_FRACTION = 0.05
+# ...but a fraction of a handful means nothing, and applying it to one would
+# make `--only kota-kinabalu` -- the exact invocation for investigating the
+# city that snaps -- abort with "the land mask lost coverage". A regressed
+# mask is a global property and is not visible in twenty rows, so the bound
+# waits until the roster is big enough to carry it.
+MIN_ORIGINS_FOR_SNAP_BOUND = 100
+
+
+def _preflight_origins(idx, origins: list[dict]) -> None:
+    """Resolve every selected origin against the land mask, before the graph.
+
+    Raises `GateFailure` naming every unresolvable slug, not the first one:
+    two bad coordinates should cost one run, not two. Snapped origins are
+    logged with their distance -- the snap was silent, so a future roster
+    expansion could move a city 13 km with nothing said -- and a mask
+    regression that snaps a large share of the roster fails here too.
+    """
+    log = logging.getLogger(__name__)
+    bad: list[str] = []
+    snapped: list[tuple[str, float]] = []
+    for origin in origins:
+        try:
+            _, km = dijkstra.snap_origin(idx, origin["lat"], origin["lon"])
+        except ValueError as exc:
+            bad.append(f"{origin['slug']} ({origin['lat']}, {origin['lon']}): {exc}")
+            continue
+        if km > 0.0:
+            snapped.append((origin["slug"], km))
+    if bad:
+        raise GateFailure(
+            f"{len(bad)} of {len(origins)} origin(s) in data/origins.toml are not "
+            "on a land cell and have no land cell within two rings of them. Fix "
+            "the coordinate(s) or remove the row(s); the graph was not built.\n  "
+            + "\n  ".join(bad)
+        )
+    if snapped:
+        worst = sorted(snapped, key=lambda r: -r[1])
+        log.warning(
+            "%d of %d origin(s) snapped to the nearest land cell (%s)",
+            len(snapped), len(origins),
+            ", ".join(f"{slug} {km:.1f} km" for slug, km in worst[:8])
+            + (", ..." if len(worst) > 8 else ""))
+        share = len(snapped) / len(origins)
+        if len(origins) >= MIN_ORIGINS_FOR_SNAP_BOUND and share > MAX_SNAPPED_ORIGIN_FRACTION:
+            raise GateFailure(
+                f"{share:.1%} of origins snapped to a neighbouring cell, above the "
+                f"{MAX_SNAPPED_ORIGIN_FRACTION:.0%} bound. One or two is a "
+                "gazetteer point falling outside a 1:10m coastline; this many "
+                "means the land mask lost coverage. Check the mask before "
+                "spending a day on the solve."
+            )
+
+
 def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     """Solve and emit one origin. Returns the table row to print."""
     slug = origin["slug"]
@@ -332,7 +401,29 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
     modes_detail = index.mode_detail()
     rail_routes = _load_rail()
     ferry_links = _load_ferries()
+    # Selected BEFORE the graph exists, so the pre-flight below can check
+    # exactly the rows this run will solve -- not the whole file, which would
+    # abort a `--only seoul` smoke test over a bad coordinate in a city it was
+    # never going to touch.
+    origins = index.load_origins()
+    if only:
+        known = {o["slug"] for o in origins}
+        missing = [s for s in only if s not in known]
+        if missing:
+            raise SystemExit(f"--only names origins not in origins.toml: {missing}")
+        origins = [o for o in origins if o["slug"] in set(only)]
+    if limit is not None:
+        origins = origins[:limit]
+    partial = limit is not None or bool(only)
+
     idx = nodes.build_index(rail_routes=rail_routes)
+    # Before the graph, because the graph is the expensive half and a bad
+    # coordinate does not need it. See _preflight_origins: this is the gate
+    # that turns a lost day into a message in the first two minutes.
+    try:
+        _preflight_origins(idx, origins)
+    except GateFailure as exc:
+        raise SystemExit(str(exc)) from exc
     csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links)
     # Graph-level gate: runs once, before any origin is solved, because a
     # disconnected airport is a property of the network rather than of a
@@ -364,17 +455,6 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
               # 4,091,715 cells of index arithmetic x 553, for an answer that
               # cannot change between origins.
               "reading": hover.reading_layout(idx)}
-
-    origins = index.load_origins()
-    if only:
-        known = {o["slug"] for o in origins}
-        missing = [s for s in only if s not in known]
-        if missing:
-            raise SystemExit(f"--only names origins not in origins.toml: {missing}")
-        origins = [o for o in origins if o["slug"] in set(only)]
-    if limit is not None:
-        origins = origins[:limit]
-    partial = limit is not None or bool(only)
 
     # hover_cells.bin depends only on the graph, not on any origin, so it is
     # safe to write eagerly. index.json is different: it lists the origins the

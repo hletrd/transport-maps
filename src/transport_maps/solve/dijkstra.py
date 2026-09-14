@@ -18,6 +18,33 @@ def solve_from(csr: sp.csr_matrix, source: int, with_predecessors: bool = False)
     return _dijkstra(csgraph=csr, directed=True, indices=source)
 
 
+def snap_origin(idx: NodeIndex, lat: float, lon: float) -> tuple[int, float]:
+    """Graph node for an origin city centre, and how far the snap moved it.
+
+    Returns `(position, km)`. `km` is 0.0 when the coordinate's own cell is
+    indexed, and the great-circle distance to the chosen cell's centre when it
+    is not. Raises `ValueError` when no land cell lies within two rings.
+
+    Split out from `origin_node` so the build's pre-flight
+    (`cli._preflight_origins`) can report the distance without reimplementing
+    the search. A second copy of the two-ring walk would be free to disagree
+    with the one the solver actually uses, which is the failure the pre-flight
+    exists to catch -- so there is one implementation and both callers reach
+    it.
+    """
+    cell = idx.cell_at(lat, lon)
+    pos = idx.try_cell_index(cell)
+    if pos is not None:
+        return pos, 0.0
+    found = _nearest_land(cell, idx._cell_pos, lat, lon, idx._split)
+    if found is not None:
+        return found
+    raise ValueError(
+        f"origin ({lat}, {lon}) is not on a land cell, and no land cell lies "
+        "within two rings of it"
+    )
+
+
 def origin_node(idx: NodeIndex, lat: float, lon: float) -> int:
     """Graph node for an origin city centre, snapped to land if it has to be.
 
@@ -41,14 +68,4 @@ def origin_node(idx: NodeIndex, lat: float, lon: float) -> int:
     rather than merely imprecise, and it still raises -- but `cli.py` now
     turns that into a named per-origin failure.
     """
-    cell = idx.cell_at(lat, lon)
-    pos = idx.try_cell_index(cell)
-    if pos is not None:
-        return pos
-    found = _nearest_land(cell, idx._cell_pos, lat, lon, idx._split)
-    if found is not None:
-        return found[0]
-    raise ValueError(
-        f"origin ({lat}, {lon}) is not on a land cell, and no land cell lies "
-        "within two rings of it"
-    )
+    return snap_origin(idx, lat, lon)[0]
