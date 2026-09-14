@@ -96,7 +96,18 @@ def _stub_pipeline(monkeypatch, written, coverages):
     # ORIGIN. Keyed on call order (an iterator) this was wrong under fork:
     # every worker inherits its own copy of the iterator, so each origin
     # would have drawn the first value.
-    monkeypatch.setattr(cli.dijkstra, "origin_node", lambda idx, lat, lon: int(lat))
+    # ONE stub for both entry points, because the real ones are one function:
+    # `origin_node` is `snap_origin(...)[0]`, and the build's pre-flight calls
+    # `snap_origin` directly. Two independent stubs could pass a test the
+    # shipped code would fail, which is exactly the drift the pre-flight and
+    # the solve share an implementation to prevent -- so the double shares one
+    # too. `FakeIdx` has no `cell_at`, deliberately: it is a one-node stand-in
+    # for the build's SEQUENCING, not for the land mask, and the real
+    # resolution path is covered against a hand-built NodeIndex in
+    # tests/cli/test_origin_preflight.py.
+    monkeypatch.setattr(cli.dijkstra, "snap_origin", lambda idx, lat, lon: (int(lat), 0.0))
+    monkeypatch.setattr(cli.dijkstra, "origin_node",
+                        lambda idx, lat, lon: cli.dijkstra.snap_origin(idx, lat, lon)[0])
     monkeypatch.setattr(
         cli.dijkstra, "solve_from",
         lambda csr, source, with_predecessors=False: (np.array([float(source)]), np.array([-9999])),
@@ -449,3 +460,49 @@ def test_a_zero_limit_build_does_not_crash_on_the_cost_log(monkeypatch, tmp_path
                         lambda origins, out, **kw: written.append("index"))
     cli._build_all(limit=0)
     assert "index" not in written, "a partial build must not rewrite index.json"
+
+
+def test_a_bad_origin_aborts_before_the_graph_is_built_and_names_every_one(
+        monkeypatch, tmp_path):
+    """The pre-flight, proved by RUNNING the build rather than by reading its
+    source.
+
+    `tests/cli/test_origin_preflight.py` covers what `_preflight_origins` does
+    against a hand-built NodeIndex, and asserts the call's position in the
+    source. Source order is a weak assertion on its own -- it passes for a call
+    that is unreachable, or one whose result is discarded. This one takes the
+    build path end to end: a roster with two unresolvable coordinates must exit
+    naming BOTH, with `build_graph` never called and not one byte written.
+
+    Mutations performed and reverted, each red:
+      - delete the `_preflight_origins` call -> build_graph runs and the abort
+        comes from the solve loop, naming one origin, after files are written;
+      - move it below `csr = build.build_graph(...)` -> `graph` is non-empty;
+      - drop the try/except around it -> GateFailure escapes, not SystemExit;
+      - collect only the first bad origin -> "second" is absent.
+    """
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    written: list = []
+    _stub_pipeline(monkeypatch, written, coverages=[1.0, 1.0])
+
+    # Both stub origins are unresolvable. The real snap raises ValueError here;
+    # so does this, through the same shared stub the solve would have used.
+    def _nowhere(idx, lat, lon):
+        raise ValueError("origin is not on a land cell, and no land cell lies "
+                         "within two rings of it")
+    monkeypatch.setattr(cli.dijkstra, "snap_origin", _nowhere)
+
+    graph: list = []
+    real_build_graph = cli.build.build_graph
+    monkeypatch.setattr(cli.build, "build_graph",
+                        lambda idx, **kw: (graph.append(1), real_build_graph(idx, **kw))[1])
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli._build_all()
+
+    message = str(exit_info.value)
+    assert "first" in message and "second" in message, (
+        f"the pre-flight named only some of the bad origins: {message}")
+    assert "2 of 2" in message, f"the count is missing or wrong: {message}"
+    assert graph == [], "the graph was assembled before the coordinates were checked"
+    assert written == [], "a file was written for a run that could never publish"
