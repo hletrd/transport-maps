@@ -1440,8 +1440,15 @@ function lastFromLabel() {
   const where = c && cityCountry(c);
   return where ? `${lastFrom.name} (${where})` : lastFrom.name;
 }
+// index.json carries `country` only for origins whose row in origins.toml has
+// one: the 911 added on 2026-09-14 do, the 553 before them do not. That is an
+// ISO-2 code, while the places.json fallback below resolves a country NAME --
+// so the same list printed "London United Kingdom" directly above "London CA".
+// Ambiguous names went from 4 to 13 with that tranche and 8 of the 13 pairs
+// are mixed-source, so this is most of them. countryName() is the same
+// resolver the airport rows have used since they hit the identical problem.
 function cityCountry(c) {
-  if (c.country) return c.country;
+  if (c.country) return countryName(c.country);
   const p = places ? nearestPlace(c.lat, c.lon) : null;
   return (p && (p.country || p.region)) || "";
 }
@@ -1609,6 +1616,13 @@ function paintOrigin(o, { keepZoom = false } = {}) {
           // headline, and a pin with no pointer would otherwise keep a coarse
           // reading forever.
           if (pinB || lastPointer) rereadPointer();
+          // ...and the Route panel, which reads lookup() for its own "Time"
+          // row. Without this it kept the res-4 value while the headline and
+          // the itinerary above it moved to res-6 -- the two tiers differ at
+          // 96.4% of land points, median 26 min, p99 5 h. The panel was the
+          // one place still printing the coarse number after the finer array
+          // landed.
+          renderPins();
           renderLegs();
           render($("q").value);
           renderDeparture();
