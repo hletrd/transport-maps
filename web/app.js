@@ -1137,6 +1137,116 @@ function fmtKm(km) {
 
 // Built from DOM nodes, not from a string of HTML.
 //
+// ---- on-demand solving for an arbitrary departure point ----
+//
+// OFF BY DEFAULT, and this is the non-negotiable part: the 1,464-city site
+// must keep working with zero dependency on a service. Nothing below runs
+// unless a visitor turns it on, nothing below can call fatal(), and every
+// failure path ends with a sentence and a working page rather than a blank
+// one. The design is plan/2026-09-14-c13-solver-service.md.
+//
+// Deliberately NOT readable from the address. `?from=` and `?to=` are read
+// twenty lines above and a third URL parameter here would let a pasted link
+// arm an experimental network dependency in someone else's browser -- and
+// under a rate limit, one shared link is a way to spend a stranger's quota.
+// It is a stored preference, like the two Settings switches, and only the
+// viewer sets it.
+const SOLVER_PATH = "./api/solve";
+// The wire version the page was written against. A response carrying any
+// other number is refused rather than parsed: a field that changed meaning
+// would otherwise print a figure that measures something else, which is worse
+// than printing nothing. Kept in step with WIRE_VERSION in
+// src/transport_maps/service/wire.py; tests/service/test_wire.py compares the
+// code table below against that module's, so the two cannot drift silently.
+const SOLVER_WIRE_VERSION = 1;
+// A measured solve is about ten seconds on the full graph. Thirty is the
+// point past which the answer is no longer worth the wait, and it must be
+// bounded here as well as at the server: a fetch with no timeout is how one
+// stalled request becomes a page that never resolves.
+const SOLVER_TIMEOUT_MS = 30000;
+// Every code the service can emit, and what each one says to a visitor. The
+// page branches on these strings, so they are a contract: the service's
+// ERRORS table and this one are asserted equal by
+// tests/service/test_wire.py. A code missing here is a silent failure; a code
+// here the service cannot send is dead code that reads as a handled case.
+const SOLVER_CODES = {
+  bad_request: "That point could not be computed.",
+  out_of_range: "That point is not on the Earth.",
+  not_on_land: "There is no land within about 13 km of that point, so there is nothing to depart from.",
+  busy: "Too many points are being computed at once.",
+  timeout: "That point took too long to compute.",
+  unavailable: "The service that computes an uncharted departure did not answer.",
+};
+// The sentence that follows every one of them. The static map is still on
+// screen and still correct, and saying so is the difference between a failure
+// and a dead end.
+const SOLVER_FALLBACK = (name) => name
+  ? ` The times below are still measured from ${name}, the nearest charted departure city.`
+  : " The charted departure cities are unaffected; pick one from the list.";
+let solverEnabled = store.get("solver", false);
+
+// Returns a result object and NEVER throws, so no caller can turn a network
+// hiccup into an unhandled rejection -- which on this page reaches boot.js's
+// capturing listener and paints "The page could not start" over a globe that
+// is drawing perfectly. Shape: {ok: true, minutes, reachable, snappedKm,
+// snappedLat, snappedLon} or {ok: false, code, message}.
+async function solvePoint(from, to, signal) {
+  if (!solverEnabled) return { ok: false, code: "unavailable", message: SOLVER_CODES.unavailable };
+  const ctl = new AbortController();
+  const stop = setTimeout(() => ctl.abort("timeout"), SOLVER_TIMEOUT_MS);
+  // The caller's own signal (a "Stop waiting" button, or a second drag) must
+  // cancel the request too, without discarding the timeout.
+  const relay = () => ctl.abort("cancelled");
+  if (signal) signal.addEventListener("abort", relay, { once: true });
+  const fail = (code) => ({ ok: false, code, message: SOLVER_CODES[code] });
+  try {
+    const url = `${SOLVER_PATH}?from=${from.lat.toFixed(5)},${from.lon.toFixed(5)}`
+      + `&to=${to.lat.toFixed(5)},${to.lon.toFixed(5)}`;
+    const r = await fetch(url, { signal: ctl.signal, headers: { Accept: "application/json" } });
+    // A body is expected on every status this service defines, including the
+    // failures, so the JSON is read before the status is judged. A proxy or a
+    // captive portal answering with HTML lands in the catch below as
+    // `unavailable`, which is exactly what it is.
+    const body = await r.json();
+    if (!body || body.v !== SOLVER_WIRE_VERSION) return fail("unavailable");
+    if (body.status === "error") {
+      return Object.hasOwn(SOLVER_CODES, body.code) ? fail(body.code) : fail("unavailable");
+    }
+    if (!r.ok || body.status !== "ok") return fail("unavailable");
+    // Validate the shape rather than trusting it. `minutes` may be null, which
+    // is "no scheduled route" and not an error; anything else non-numeric is a
+    // response the page cannot render, and rendering it would print NaN.
+    const reachable = body.reachable === true;
+    if (reachable && typeof body.minutes !== "number" || !Number.isFinite(body.snappedKm)) {
+      return fail("unavailable");
+    }
+    return {
+      ok: true,
+      reachable,
+      minutes: reachable ? body.minutes : null,
+      snappedKm: body.snappedKm,
+      snappedLat: body.snappedLat,
+      snappedLon: body.snappedLon,
+    };
+  } catch {
+    // The timeout firing, the caller cancelling, a DNS failure, a CSP refusal,
+    // a body that is not JSON: all of them end here, and all of them end as a
+    // code the page has a sentence for. None of them ends the page.
+    //
+    // Branching on the SIGNAL, not on the rejection value: `abort(reason)`
+    // rejects with the reason itself, so a string reason arrives with no
+    // `.name` at all and an `e.name === "AbortError"` test would silently
+    // report every timeout as an outage.
+    if (ctl.signal.aborted) {
+      return fail(ctl.signal.reason === "cancelled" ? "unavailable" : "timeout");
+    }
+    return fail("unavailable");
+  } finally {
+    clearTimeout(stop);
+    if (signal) signal.removeEventListener("abort", relay);
+  }
+}
+
 // The first version took an HTML string and relied on every call site
 // remembering esc() -- which is exactly the shape that made railVia() a stored
 // XSS waiting for a second caller, fixed three commits ago. Writing it the
