@@ -3674,11 +3674,35 @@ $("q").addEventListener("input", (e) => {
   if (renderFrame) cancelAnimationFrame(renderFrame);
   renderFrame = requestAnimationFrame(() => { renderFrame = 0; render(value); });
 });
+
+// Run a pending debounced render NOW.
+//
+// The keydown handler below decides what Enter means by READING THE RENDERED
+// LIST: a first row means "depart from that city", no row means "search this
+// as an address". Deferring the render to the next frame broke that, and not
+// subtly -- typing an address and pressing Enter within the same frame found
+// the list built for the PREVIOUS query and clicked its first row, so the page
+// departed from an unrelated city instead of searching. Caught by
+// browser_verify.sh, which types and presses Enter in one tick; a fast typist
+// does the same thing.
+//
+// The debounce is still right -- a keystroke rebuilds up to 1,464 rows -- so
+// the fix is to make the one reader that cannot tolerate staleness flush it,
+// rather than to give up the coalescing.
+function flushRender() {
+  if (!renderFrame) return;
+  cancelAnimationFrame(renderFrame);
+  renderFrame = 0;
+  render($("q").value);
+}
 // Enter picks the first match: a city departs, an airport becomes the
 // destination; with no local match it searches the address. Arrows walk the
 // list; Escape clears the filter, then the route.
 $("q").addEventListener("keydown", (e) => {
   const q = e.target.value.trim();
+  // Enter and ArrowDown both act on the rendered list, so it has to describe
+  // the query that is in the box right now.
+  if (e.key === "Enter" || e.key === "ArrowDown") flushRender();
   if (e.key === "Enter") {
     e.preventDefault();
     const first = q ? $("results").querySelector("button[data-slug], button[data-airport]") : null;
@@ -3687,7 +3711,13 @@ $("q").addEventListener("keydown", (e) => {
     e.preventDefault();
     $("results").querySelector("button")?.focus();
   } else if (e.key === "Escape") {
-    if (q) { e.target.value = ""; render(); } else if (pinB) clearRoute();
+    // Cancel the pending frame as well, or it lands a moment later and
+    // re-filters the list for the query Escape has just cleared.
+    if (q) {
+      e.target.value = "";
+      if (renderFrame) { cancelAnimationFrame(renderFrame); renderFrame = 0; }
+      render();
+    } else if (pinB) clearRoute();
   }
 });
 $("results").addEventListener("keydown", (e) => {

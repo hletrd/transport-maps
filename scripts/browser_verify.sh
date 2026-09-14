@@ -147,7 +147,15 @@ if [ "$CITIES" -gt "$CAP" ]; then
   echo "$MORE" | grep -q '"present":true' || {
     echo "  !! the list is capped at $CAP of $CITIES and says nothing about the rest"; fail=1; }
   # The count is grouped on the page, so compare against the grouped form.
-  GROUPED=$(python3 -c 'print(f"{int(__import__(\"sys\").argv[1]):,}")' "$CITIES")
+  # Written without nested quoting: the first version was
+  # `python3 -c 'print(f"{int(__import__(\"sys\").argv[1]):,}")'`, whose
+  # backslashes the shell ate -- python printed a SyntaxError, GROUPED came
+  # back EMPTY, and `grep -q ""` matches anything. The check passed on every
+  # page, including one with no footer at all. A gate that cannot fail is the
+  # thing CLAUDE.md rates worse than no gate, so this one proves it is not
+  # empty before it is used.
+  GROUPED=$(python3 -c "print(f'{$CITIES:,}')")
+  [ -n "$GROUPED" ] || { echo "  !! could not format the expected total; the footer check would pass vacuously"; fail=1; }
   echo "$MORE" | grep -q "$GROUPED" || {
     echo "  !! the list footer does not name the true total ($GROUPED)"; fail=1; }
 fi

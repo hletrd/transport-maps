@@ -316,3 +316,56 @@ def test_the_city_count_in_the_page_is_grouped():
     as a year. Every other number on the page is grouped."""
     assert 'fmtCount(meta.origins.length)' in APP
     assert "toLocaleString" in APP
+
+
+# --------------------------------------- the debounce must not leak staleness ---
+
+def test_enter_and_arrowdown_flush_the_pending_render_first():
+    """The debounce introduced a real regression, caught by the deploy gate.
+
+    The keydown handler decides what Enter means by READING THE RENDERED LIST:
+    a first row means "depart from that city", no row means "search this as an
+    address". With the render deferred to the next frame, typing an address and
+    pressing Enter in the same tick found the list built for the PREVIOUS query
+    and clicked its first row -- so the page departed from an unrelated city
+    instead of searching. `browser_verify.sh` types and presses Enter in one
+    tick; so does a fast typist.
+
+    Mutation performed and reverted: delete the `flushRender()` call from the
+    keydown handler -> red here, and red on the live address-search check.
+    """
+    block = APP[APP.index('$("q").addEventListener("keydown"'):]
+    block = block[:block.index("\n});") + 4]
+    assert "flushRender()" in block, (
+        "the keydown handler reads the results list without flushing the "
+        "debounced render, so Enter can act on a list built for an earlier "
+        "query")
+    # ...and it must happen BEFORE the list is read, not after.
+    assert block.index("flushRender()") < block.index('querySelector("button[data-slug]'), (
+        "flushRender runs after the list is read, which is no flush at all")
+    for key in ('"Enter"', '"ArrowDown"'):
+        assert key in block[:block.index("flushRender()") + 120], (
+            f"{key} does not flush, and it reads the list")
+
+
+def test_escape_cancels_the_pending_frame_rather_than_racing_it():
+    """Escape clears the box and renders. A frame queued by the keystroke
+    before it lands a moment later and re-filters for the query Escape has
+    just cleared.
+    """
+    block = APP[APP.index('$("q").addEventListener("keydown"'):]
+    block = block[:block.index("\n});") + 4]
+    esc = block[block.index('=== "Escape"'):]
+    assert "cancelAnimationFrame" in esc, (
+        "Escape does not cancel the pending render, so the cleared list is "
+        "re-filtered a frame later")
+
+
+def test_flushrender_is_a_real_flush_not_a_cancel():
+    """Cancelling without rendering would leave the list describing an older
+    query forever, which is worse than the staleness it was meant to fix.
+    """
+    body = _function("flushRender")
+    assert "cancelAnimationFrame" in body and "render(" in body
+    assert "renderFrame = 0" in body, (
+        "the frame id is not cleared, so the next flush is a no-op")
