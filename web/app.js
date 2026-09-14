@@ -1208,6 +1208,12 @@ const SOLVER_CODES = {
 // The sentence that follows every one of them. The static map is still on
 // screen and still correct, and saying so is the difference between a failure
 // and a dead end.
+//
+// Not called from this file YET, and deliberately kept rather than written
+// later with the UI: the copy IS the contract for a failure path, and
+// tests/web/test_solver_client.py pins it. Written at the same time as the
+// error taxonomy it belongs to, it gets reviewed as part of the design; added
+// hurriedly beside a spinner, it becomes "Something went wrong".
 const SOLVER_FALLBACK = (name) => name
   ? ` The times below are still measured from ${name}, the nearest charted departure city.`
   : " The charted departure cities are unaffected; pick one from the list.";
