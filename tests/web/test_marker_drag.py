@@ -192,20 +192,36 @@ def test_the_snap_is_stated_in_words_with_the_city_and_the_distance():
     # whole-function `"fmtKm(km)" in body` passes while the "Moved to" message
     # has lost its distance entirely. That mutation survived the first version
     # of this test.
-    moved = body[body.index("`Moved to"):]
+    moved = body[body.index('"Moved to '):]
     moved = moved[:moved.index(");") + 2]
-    kept = body[body.index("`Kept "):]
+    kept = body[body.index('"Kept "'):]
     kept = kept[:kept.index(");") + 2]
 
     for label, branch in (("moved", moved), ("kept", kept)):
         assert "fmtKm(km)" in branch, (
             f"the {label} message does not state how far the departure is "
             "from where the marker was dropped")
-        assert "esc(o.name)" in branch, (
-            f"the {label} message interpolates the city name unescaped")
+        assert "{ b: o.name }" in branch, (
+            f"the {label} message does not name the city it snapped to")
     assert "not from that point" in moved, (
         "the notice does not say the times are NOT measured from where the "
         "marker was dropped, which is the one thing it exists to say")
+
+
+def test_the_notice_cannot_be_given_markup_to_render():
+    """It took an HTML string first, relying on every call site to remember
+    esc() -- the same shape that made railVia() a stored XSS waiting for a
+    second caller. A city name from index.json is not attacker-controlled
+    today, but "safe because of who calls it" is what this repository has
+    already had to fix once.
+
+    Mutation performed and reverted: `el.innerHTML = parts.join("")` -> red.
+    """
+    body = _function("snapNotice")
+    assert "innerHTML" not in body, (
+        "the snap notice writes HTML, so its safety is a property of its "
+        "callers rather than of itself")
+    assert "createTextNode" in body and "textContent" in body
 
 
 def test_the_switch_goes_through_the_one_guarded_entry_point():
@@ -242,7 +258,7 @@ def test_any_other_route_to_a_new_departure_clears_a_stale_notice():
     -> red.
     """
     body = _handler("paintOrigin")
-    assert 'snapNotice("")' in body, (
+    assert "snapNotice();" in body, (
         "paintOrigin does not clear the snap notice, so picking a city from "
         "the list leaves a message about a drag that no longer applies")
 

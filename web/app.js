@@ -1135,11 +1135,24 @@ function fmtKm(km) {
   return `${Math.round(km / 10) * 10} km`;
 }
 
-function snapNotice(html) {
+// Built from DOM nodes, not from a string of HTML.
+//
+// The first version took an HTML string and relied on every call site
+// remembering esc() -- which is exactly the shape that made railVia() a stored
+// XSS waiting for a second caller, fixed three commits ago. Writing it the
+// same way here would have been shipping the lesson and the defect together.
+// A part is either a plain string (text) or {b: "..."} (bold), and neither can
+// carry markup.
+function snapNotice(...parts) {
   const el = $("snapped");
   if (!el) return;
-  if (!html) { el.hidden = true; el.textContent = ""; return; }
-  el.innerHTML = html;
+  if (!parts.length) { el.hidden = true; el.replaceChildren(); return; }
+  el.replaceChildren(...parts.map((part) => {
+    if (typeof part === "string") return document.createTextNode(part);
+    const b = document.createElement("b");
+    b.textContent = part.b;
+    return b;
+  }));
   el.hidden = false;
 }
 
@@ -1150,9 +1163,13 @@ function originDragMove() {
   const { lng, lat } = originMarker.getLngLat();
   const near = nearestOrigin(lat, lng);
   if (!near) return snapNotice("No departure cities are loaded.");
-  snapNotice(near.origin.slug === active?.slug
-    ? `Release to keep <b>${esc(near.origin.name)}</b> — still the nearest departure city.`
-    : `Release to depart from <b>${esc(near.origin.name)}</b>, ${fmtKm(near.km)} from here.`);
+  if (near.origin.slug === active?.slug) {
+    snapNotice("Release to keep ", { b: near.origin.name },
+               " — still the nearest departure city.");
+  } else {
+    snapNotice("Release to depart from ", { b: near.origin.name },
+               `, ${fmtKm(near.km)} from here.`);
+  }
 }
 
 function originDragEnd() {
@@ -1170,7 +1187,7 @@ function originDragEnd() {
   // a real switch; this covers the case where it does not switch at all.
   originMarker.setLngLat([o.lon, o.lat]);
   if (o.slug === active?.slug) {
-    snapNotice(`Kept <b>${esc(o.name)}</b> — still the nearest departure city, `
+    snapNotice("Kept ", { b: o.name }, " — still the nearest departure city, "
       + `${fmtKm(km)} from where you dropped the marker.`);
     announce(`Departure unchanged: ${o.name} is still the nearest departure city.`);
     return;
@@ -1185,9 +1202,9 @@ function originDragEnd() {
   // departure should drop a stale snap message, and this is the one route
   // that must write one. Ordering it the other way round showed the message
   // for a single frame and then erased it.
-  snapNotice(`Moved to <b>${esc(o.name)}</b> — the nearest departure city, `
+  snapNotice("Moved to ", { b: o.name }, " — the nearest departure city, "
     + `${fmtKm(km)} from where you dropped the marker. `
-    + `Times are measured from ${esc(o.name)}, not from that point.`);
+    + `Times are measured from ${o.name}, not from that point.`);
   // On a phone the readout is inside the bottom sheet; folded, the notice
   // would be written somewhere nothing can see it.
   unfoldSheet();
@@ -1197,7 +1214,7 @@ function originDragEnd() {
 
 originMarker.on("dragstart", () => {
   originLabel.classList.add("dragging");
-  snapNotice("");
+  snapNotice();
 });
 originMarker.on("drag", originDragMove);
 originMarker.on("dragend", originDragEnd);
@@ -1598,7 +1615,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // a permalink or clicking "Depart from" all make it false, so it goes with
   // the origin it described. The drag path rewrites it immediately after this
   // returns; nothing else does.
-  snapNotice("");
+  snapNotice();
   if (o.slug !== active?.slug) captureComparison();
   active = o;
   const gen = ++originGen;
