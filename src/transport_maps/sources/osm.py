@@ -32,16 +32,90 @@ MIN_STOPS = 2
 
 SCHEMA = {
     "route_id": pl.Int64, "seq": pl.Int64, "stop_id": pl.Int64,
-    "lat": pl.Float64, "lon": pl.Float64, "name": pl.Utf8, "highspeed": pl.Boolean,
+    "lat": pl.Float64, "lon": pl.Float64, "name": pl.Utf8,
+    # Which speed tier the route is priced at, from its `service` tag. This
+    # REPLACED a `highspeed` boolean, which was the only thing distinguishing
+    # one train from another and which 1% of route relations on Earth carry --
+    # 0% outside Europe. See `service_tier` below and `[rail.tiers]` in
+    # calibration.toml.
+    "tier": pl.Utf8,
     # The relation's own name -- "KTX 경부선", "ICE 12" -- so the page can say
     # which line a journey rode, not just that it rode one.
     "route_name": pl.Utf8,
+    # Who runs it and what it is called. Measured coverage over all 19,297
+    # `type=route, route=train` relations in the seven extracts: `operator`
+    # 92%, `ref` 88%. `operator` is the only field whose coverage survives
+    # leaving Europe (Africa 80%, everywhere else 90-95%), which is why it is
+    # here and `service` alone is not enough to caption a leg.
+    "operator": pl.Utf8,
+    "ref": pl.Utf8,
+}
+
+# ---- the service tiers ------------------------------------------------------
+#
+# Slowest first. The order IS the tie-break for a `;`-joined value, so it must
+# stay sorted by speed; `[rail.tiers]` in calibration.toml carries the fitted
+# figures and the residuals.
+#
+# Measured over all 19,297 train route relations, not guessed: `regional` 41.1%,
+# absent 26.7%, `commuter` 14.7%, `long_distance` 11.2%, `high_speed` 1.8%,
+# `national` 1.2%, `tourism` 1.1%, `international` 0.5%, `night` 0.5%. Note what
+# is NOT there: `suburban` has FIVE relations worldwide and `car_shuttle` five,
+# so neither earns a tier -- `commuter`, which an earlier guess did not include
+# at all, has 2,829.
+RAIL_TIERS = ("tourism", "commuter", "default", "regional",
+              "long_distance", "high_speed")
+DEFAULT_TIER = "default"
+
+# Raw `service` value -> tier. Synonyms are folded on meaning and then checked
+# against whatever observations exist, never the other way round:
+#   national (n=44) and international (n=16) price best as long_distance
+#     (median predicted/observed 1.17 and 0.96, against 1.28 and 1.05 as
+#     regional); neither has enough observations to identify its own overhead.
+#   suburban (n=4) prices best as commuter (1.02).
+#   local, urban, stopping, ordinary and light_rail are stopping-service
+#     synonyms with no observations of their own; commuter is their meaning.
+# Everything absent or unrecognised -- `night`, `express`, `car_shuttle`,
+# `industrial`, `rapid`, `branch` -- falls to `default`, which is itself FITTED
+# (n=717) on relations carrying a duration but no `service`. `night` (n=8)
+# prices best there too (0.96, against 0.77 as long_distance).
+_TIER_BY_SERVICE = {
+    "high_speed": "high_speed", "highspeed": "high_speed",
+    "long_distance": "long_distance", "national": "long_distance",
+    "international": "long_distance",
+    "regional": "regional",
+    "commuter": "commuter", "suburban": "commuter", "local": "commuter",
+    "urban": "commuter", "stopping": "commuter", "ordinary": "commuter",
+    "light_rail": "commuter",
+    "tourism": "tourism", "tourist": "tourism", "touristic": "tourism",
 }
 
 
-def _is_highspeed(tags) -> bool:
-    """OSM spells this two ways; both are in active use."""
-    return tags.get("highspeed") == "yes" or tags.get("service") == "high_speed"
+def service_tier(tags) -> str:
+    """The speed tier a route relation is priced at.
+
+    `highspeed=yes` promotes to the top tier whatever `service` says. It is a
+    positive assertion about the track, it can only promote (nothing is faster
+    than `high_speed`), and the two relations carrying it in the fit set imply
+    153 km/h against their tier's 81.8 -- so honouring it is what the data says.
+
+    A `;`-joined value ("international;long_distance", "tourism;night;regional")
+    resolves to the SLOWEST tier among the tokens it recognises. About 60
+    relations worldwide are multi-valued, and the choice is safe rather than
+    arbitrary: `graph/rail.ride_edges` already resolves parallel services on a
+    shared segment by `min(minutes)`, so a genuinely faster service running the
+    same track still wins the edge.
+    """
+    if tags.get("highspeed") == "yes":
+        return "high_speed"
+    raw = (tags.get("service") or "").strip().lower()
+    if not raw:
+        return DEFAULT_TIER
+    found = [_TIER_BY_SERVICE[part] for token in raw.split(";")
+             if (part := token.strip()) in _TIER_BY_SERVICE]
+    if not found:
+        return DEFAULT_TIER
+    return min(found, key=RAIL_TIERS.index)
 
 
 def _relations(path) -> tuple[dict, set[int]]:
@@ -57,7 +131,9 @@ def _relations(path) -> tuple[dict, set[int]]:
             if len(ids) >= MIN_STOPS:
                 routes[obj.id] = {"stops": ids,
                                   "name": t.get("name") or "",
-                                  "highspeed": _is_highspeed(t)}
+                                  "tier": service_tier(t),
+                                  "operator": (t.get("operator") or "").strip(),
+                                  "ref": (t.get("ref") or "").strip()}
                 wanted.update(ids)
                 break
     return routes, wanted
@@ -87,11 +163,18 @@ def _parse(path) -> list[dict]:
         if len(resolved) < MIN_STOPS:
             continue
         for seq, (sid, (lat, lon, node_name)) in enumerate(resolved):
+            # A stop node with no `name` gets an EMPTY name, not the route's.
+            # It used to inherit `r["name"]`, and `emit/rail_detail` then
+            # published that as the station: 1,144 of 124,488 shipped rows read
+            # `via S1: Rostock Hbf -> Warnemünde (S1: Rostock Hbf ->
+            # Warnemünde)`, the line's own name standing in for the place. An
+            # empty string is what the page degrades on; a wrong name is not.
             rows.append({"route_id": route_id, "seq": seq, "stop_id": sid,
                          "lat": lat, "lon": lon,
-                         "name": node_name or r["name"],
-                         "highspeed": r["highspeed"],
-                         "route_name": r["name"]})
+                         "name": node_name,
+                         "tier": r["tier"],
+                         "route_name": r["name"],
+                         "operator": r["operator"], "ref": r["ref"]})
     return rows
 
 
@@ -310,13 +393,26 @@ def _ferry_cache_path(fingerprint) -> pathlib.Path:
 # built by the old code is a MISS and not a silently reused wrong answer.
 # 2: the cross-extract merge below stopped interleaving two extracts' stop
 # sequences into one route.
-RAIL_PARSER_VERSION = 2
+# 3: `service` replaced the `highspeed` boolean as the speed selector, and
+#    `operator`/`ref` joined the schema. Without this bump the 257,007-row
+#    parquet is a cache HIT, the new columns are absent, every train reverts to
+#    one of two speeds, and every test stays green.
+RAIL_PARSER_VERSION = 3
 
 
 def _rail_cache_path(fingerprint) -> pathlib.Path:
-    key = _params_hash(fingerprint, STOP_ROLES, PLATFORM_ROLES, MIN_STOPS, sorted(SCHEMA),
-                       RAIL_PARSER_VERSION)
-    return config.CACHE / f"rail_routes-{key}.parquet"
+    # `sorted(SCHEMA)` yields the KEYS only, so changing a column's dtype --
+    # `tier` from Boolean to Utf8, say -- left the key unchanged and the stale
+    # parquet was read back under the new schema. The items are what govern the
+    # content; `_params_hash` cannot digest a dtype object, so they are
+    # stringified.
+    schema = sorted((k, str(v)) for k, v in SCHEMA.items())
+    return config.CACHE / (
+        "rail_routes-"
+        + _params_hash(fingerprint, STOP_ROLES, PLATFORM_ROLES, MIN_STOPS, schema,
+                       RAIL_TIERS, DEFAULT_TIER,
+                       sorted(_TIER_BY_SERVICE.items()), RAIL_PARSER_VERSION)
+        + ".parquet")
 
 
 def ferry_links(*, extracts_dir=None) -> pl.DataFrame:

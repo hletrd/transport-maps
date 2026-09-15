@@ -20,6 +20,7 @@ import numpy as np
 import polars as pl
 
 from .. import config
+from ..sources import osm
 
 # ~200 m edge (0.35 km across): comfortably merges the platforms of one station while
 # keeping genuinely separate city stations apart.
@@ -27,19 +28,43 @@ STATION_RES = 9
 
 
 @dataclass(frozen=True)
+class RailTier:
+    """One speed tier: a running speed and the cost of making one stop.
+
+    The overhead is charged PER LEG, which is per intermediate call, and it is
+    not a decoration. Fitted without it, implied speed inside a single tier
+    drifts by a factor of two with route length -- `regional` runs 39 km/h over
+    0-20 km and 70 km/h over 150-400 km -- because a fixed per-call cost
+    (decelerate, dwell, accelerate) is being spread over the distance. It is
+    the same structure `[ferry]` found and named `berth_min`.
+    """
+
+    speed_kmh: float
+    stop_overhead_min: float
+
+
+@dataclass(frozen=True)
 class RailCalibration:
-    highspeed_kmh: float
-    conventional_kmh: float
     detour_factor: float
     boarding_min: float
     alighting_min: float
+    tiers: dict[str, RailTier]
 
 
 def load_rail_calibration(path=None) -> RailCalibration:
     path = path or (config.ROOT / "calibration.toml")
     with open(path, "rb") as fh:
-        raw = tomllib.load(fh)["rail"]
-    return RailCalibration(**raw)
+        raw = dict(tomllib.load(fh)["rail"])
+    tiers = {name: RailTier(**vals) for name, vals in raw.pop("tiers").items()}
+    # A tier the parser can emit but the calibration does not price would
+    # otherwise surface as a KeyError deep inside a forked worker, hours into a
+    # build. Say it here, naming the tier.
+    missing = [t for t in osm.RAIL_TIERS if t not in tiers]
+    if missing:
+        raise ValueError(
+            f"calibration.toml [rail.tiers] is missing {', '.join(missing)}; "
+            f"sources/osm.RAIL_TIERS names {len(osm.RAIL_TIERS)} tiers")
+    return RailCalibration(tiers=tiers, **raw)
 
 
 def station_key(lat: float, lon: float) -> str:
@@ -82,6 +107,14 @@ def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
     Consecutive means consecutive in `seq` WITHIN one route; the shift must be
     partitioned or the last stop of one route joins to the first of the next
     and invents an edge across the country.
+
+    Each leg is priced by its route's SERVICE TIER. This replaced a two-speed
+    model -- 200 km/h if the relation carried `highspeed=yes` or
+    `service=high_speed`, else 75 -- whose selector 1% of route relations on
+    Earth carry and 0% outside Europe, so a Tokyo commuter train and a
+    Shinkansen were the same train. Against 2,338 OSM `duration` tags the two
+    speeds ran a median 0.74 of observed and twice too fast below 20 km; the
+    tiers run 1.04 with no residual distance trend.
     """
     df = routes.with_columns(
         pl.struct("lat", "lon")
@@ -97,8 +130,22 @@ def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
 
     km = _haversine_km(nxt["lat"].to_numpy(), nxt["lon"].to_numpy(),
                        nxt["to_lat"].to_numpy(), nxt["to_lon"].to_numpy())
-    speed = np.where(nxt["highspeed"].to_numpy(), cal.highspeed_kmh, cal.conventional_kmh)
-    minutes = 60.0 * km * cal.detour_factor / speed
+    # A tier the calibration does not price must be a loud failure NAMING it,
+    # not a null that becomes a NaN edge and a silently unreachable station.
+    # polars' own `replace_strict` error says only "incomplete mapping", which
+    # would send a reader to the wrong file.
+    unpriced = sorted(set(nxt["tier"].to_list()) - set(cal.tiers))
+    if unpriced:
+        raise ValueError(
+            f"no rail calibration for service tier(s) {', '.join(map(str, unpriced))}; "
+            f"calibration.toml [rail.tiers] prices {', '.join(sorted(cal.tiers))}")
+    speed = nxt["tier"].replace_strict(
+        {t: c.speed_kmh for t, c in cal.tiers.items()},
+        return_dtype=pl.Float64).to_numpy()
+    overhead = nxt["tier"].replace_strict(
+        {t: c.stop_overhead_min for t, c in cal.tiers.items()},
+        return_dtype=pl.Float64).to_numpy()
+    minutes = overhead + 60.0 * km * cal.detour_factor / speed
 
     out = pl.DataFrame({"from_station": nxt["station"], "to_station": nxt["to_station"],
                         "minutes": minutes})

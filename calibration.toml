@@ -122,25 +122,163 @@ large = 75.0
 medium = 50.0
 small = 35.0
 
-# Rail. Pre-calibration defaults from published timetables, NOT fitted: OSM
-# route relations carry the stop sequence but no journey times, so there is
-# nothing here to regress against. Anchor used for the high-speed figure:
-# Seoul-Busan KTX is 417 km of track in 2 h 15 (185 km/h average including
-# intermediate stops); 325 km great-circle x 1.2 detour / 200 km/h = 117 min
-# against a real 135, so the model runs slightly optimistic on high-speed.
-# The conventional figure checks out against real OSM data end to end: CFL
-# Luxembourg -> Sandweiler-Contern -> Wasserbillig comes out at 29 min from
-# the parsed stop sequence, against roughly 30 min in the timetable.
+# Rail. The SPEEDS ARE FITTED; the boarding and alighting figures are
+# published-figure defaults. This table used to say "NOT fitted: OSM route
+# relations carry the stop sequence but no journey times, so there is nothing
+# here to regress against." That was wrong. 2,448 of the 19,297
+# `type=route, route=train` relations in the seven extracts carry a `duration`
+# tag, in exactly the formats `sources/osm.parse_minutes()` already parses for
+# ferries -- an order of magnitude more observations than the eight published
+# headways the ferry wait model was fitted on.
+#
+# ---- what it replaced, and why ----
+#
+# There were two speeds on Earth: 200 km/h if the relation carried
+# `highspeed=yes` or `service=high_speed`, 75 otherwise. The SELECTOR is the
+# defect. Measured over all 19,297 relations, `highspeed=yes` is on 1%
+# worldwide and 0% outside Europe, and `service=high_speed` on 1.8%. So a
+# Shinkansen and a Tokyo commuter train were the same train, and a suburban
+# stopper and an intercity express were both "conventional at 75".
+#
+# ---- the model ----
+#
+#   edge_min = stop_overhead_min + 60 * chord_km * detour_factor / speed_kmh
+#
+# charged per LEG, so a journey over n calls pays n overheads. The overhead is
+# not a decoration: fitted without it, implied speed inside a single tier
+# drifts by a factor of two with route length (`regional` runs 39 km/h over
+# 0-20 km and 70 km/h over 150-400 km), which is a fixed per-call cost --
+# decelerate, dwell, accelerate -- being spread over distance. Same structure
+# as `[ferry]`'s `berth_min`, and the ordering it produces is physically
+# coherent rather than noise: 1.32 min for a commuter call, 5.11 for a
+# high-speed one, because a train decelerating from 300 km/h and back costs
+# minutes that one decelerating from 80 does not.
+#
+# ---- the fit ----
+#
+# Fitted by least squares on log residuals (the ferry precedent) over the
+# 2,338 relations whose `duration` parses, whose stop sequence the extracts
+# resolve WHOLE (a route the extracts truncate has a chord sum that does not
+# correspond to its tagged duration), and whose implied speed lies inside
+# 3-350 km/h. That last filter excludes 15 observations, 0.6%: two Polish
+# relations tagged `duration=2` for 70 km, four tagged 40-57 h for 38-53 km.
+# Reproduce with `sources/osm.rail_routes()` joined to the relations' own tags.
+#
+#   tier             n   overhead   speed   med pred/obs  log-sd  within 2x
+#   high_speed      57     5.11     214.7       0.99       0.156     100%
+#   long_distance  228     3.90     103.9       1.07       0.299      96%
+#   regional       497     2.22      86.7       1.02       0.437      95%
+#   default        717     2.46      81.8       1.08       0.619      85%
+#   commuter       716     1.32      73.8       1.05       0.363      97%
+#   tourism         25     0.90      20.1       1.01       1.027      73%
+#
+# Bootstrap 95% CI on speed (2,000 resamples): high_speed [208, 225],
+# long_distance [93, 112], regional [80, 92], default [75, 85],
+# commuter [59, 77]. A 70/30 holdout over 40 repeats reproduces the in-sample
+# log-sd to within 0.03 in every tier, so this is not overfitting.
+#
+# Against the whole 2,338, including the 15 the fit excluded:
+#
+#                    med pred/obs   log-sd   within 2x   within 1.5x
+#   old, two speeds      0.74        0.592      81%          57%
+#   new, six tiers       1.04        0.476      93%          82%
+#
+# and the distance bias -- the part that mattered -- is gone:
+#
+#   chord km      n    old    new
+#      0-20     431   0.51   1.04
+#     20-50     651   0.65   1.03
+#    50-150     650   0.79   1.05
+#   150-400     315   1.11   1.09
+#  400-1000     241   1.14   1.05
+#    1000+       50   1.02   0.96
+#
+# The old model was TWICE TOO FAST on a short ride. Both anchors this table
+# used to quote improve, and neither is in the fit set: Seoul-Busan KTX
+# (325 km great-circle, published 135 min) was 117 and is now 129 over four
+# legs; CFL Luxembourg -> Wasserbillig (28.7 km, timetable ~30 min) was 28 and
+# is 28 over two legs.
+#
+# ---- tiers that do NOT get their own fit ----
+#
+# `national` (n=44), `international` (n=16) and `night` (n=8) all fit, but
+# their overhead is unidentifiable -- the bootstrap CI spans [0, 5] or pins at
+# zero -- so rather than invent a constant each is folded into the tier that
+# prices its observations best: national -> long_distance (median
+# predicted/observed 1.17, against 1.28 as regional and 1.40 as default),
+# international -> long_distance (0.96), night -> default (0.96, against 0.77
+# as long_distance), suburban (n=4) -> commuter (1.02). `car_shuttle` (n=4)
+# stays at default: n=4 cannot choose between default (1.24) and
+# long_distance (1.06), and five relations worldwide do not justify a special
+# case. The mapping lives in `sources/osm._TIER_BY_SERVICE`.
+#
+# ---- the honest part: the fit set is 74% European ----
+#
+# 1,724 of 2,331 clean observations are European, against Asia 373, Oceania
+# 109, South America 71, North/Central America 35, Africa 11. `long_distance`
+# and `high_speed` are fitted on European observations almost exclusively (216
+# of 228 and 55 of 57). Median implied speed per tier DOES vary by region:
+#
+#   tier            Africa   Asia   Europe   N/C.America   Oceania   S.America
+#   default            -      59      49          58          45         -
+#   commuter           -      61      50           -          43        37
+#   regional           -       -      62           -          70        31
+#
+# so a commuter figure fitted at 73.8 is up to 30% wrong in South America.
+# NO PER-REGION SPEEDS ARE FITTED. n is far too small outside Europe, and
+# fitting them would be exactly the hidden error the CLAUDE.md modelling rule
+# forbids -- "prefer a documented, reproducible error over a hidden one". The
+# skew is recorded here instead so a reader knows which way the number leans.
+#
+# One thing the skew does NOT damage: `default`, which is the tier that prices
+# North America (85% of its relations carry no `service` tag at all), is fitted
+# on a near-even Asia/Europe split, 339 and 328.
+#
+# `tourism` keeps its own tier despite n=25 and a log-sd of 1.03, because every
+# alternative is a factor of two too fast (0.44-0.55) and the direction of the
+# error is the safe one: a heritage railway Dijkstra declines to select is
+# correct behaviour. The weak residual is declared rather than hidden.
 [rail]
-highspeed_kmh = 200.0
-conventional_kmh = 75.0
 # Track is never a great circle: curves, valleys and junctions. Applied to the
-# straight-line distance between consecutive stops.
+# straight-line distance between consecutive stops. NOT refitted here -- it was
+# held at 1.2 while the tier speeds were fitted, so the speeds absorb any error
+# in it and the two must not be read separately.
 detour_factor = 1.2
 # Charged ONCE per journey on the cell -> station edge, not per hop, so riding
-# through twenty intermediate stops is not taxed twenty times.
+# through twenty intermediate stops is not taxed twenty times. Published-figure
+# defaults, not fitted: OSM carries nothing about station access time. Note
+# that the two TOGETHER are 20 minutes -- three surfaces used to say 15.
 boarding_min = 15.0
 alighting_min = 5.0
+
+# FITTED, all six, as tabulated above. `speed_kmh` is the running speed applied
+# to the great-circle chord between consecutive stops after `detour_factor`;
+# `stop_overhead_min` is charged once per leg.
+[rail.tiers.high_speed]
+speed_kmh = 214.7
+stop_overhead_min = 5.11
+
+[rail.tiers.long_distance]
+speed_kmh = 103.9
+stop_overhead_min = 3.90
+
+[rail.tiers.regional]
+speed_kmh = 86.7
+stop_overhead_min = 2.22
+
+# The tier for a relation with no `service` tag, or one this repository does
+# not recognise. 26.7% of relations worldwide, and 85% of North America's.
+[rail.tiers.default]
+speed_kmh = 81.8
+stop_overhead_min = 2.46
+
+[rail.tiers.commuter]
+speed_kmh = 73.8
+stop_overhead_min = 1.32
+
+[rail.tiers.tourism]
+speed_kmh = 20.1
+stop_overhead_min = 0.90
 
 # Ferries. A MIXTURE, and each figure below says which it is.
 #
