@@ -6,7 +6,7 @@ Source: `.context/reviews/` — eleven lanes run concurrently against
 14 known-restated). Per-lane IDs are `CR16-n`, `PR16-n`, `SEC16-n`, `CRIT16-n`, `VER16-n`,
 `TE16-n`, `TR16-n`, `ARCH16-n`, `DBG16-n`, `DOC16-n`, `UX16-n`; merged clusters are
 `AGG16-1…AGG16-41`; this cycle's scheduled tasks are `C16-1…C16-8` and its deferrals
-`DEF16-1…DEF16-23`.
+`DEF16-1…DEF16-24`.
 
 Every one of the 41 is dispositioned in §4 or §5 below. Nothing is dropped.
 
@@ -240,7 +240,14 @@ formula and `calibration.toml`'s own figures, and agreed on the shape:
 | Per-stop allowance, all 20 legs | 49.2 min | 7.9% |
 | The fifteen *extra* calls | 36.9 min | **5.9%** |
 | Error removed by correcting the tier alone | 301.1 of 431.3 min | **69.8%** |
-| Error removed by correcting the stop count alone | ~37 min | 17.8% |
+| Error removed by correcting the stop count alone | 36.9 min | **8.6%** |
+
+*(Corrected during implementation. The review's table paired "~37 min" with "17.8%" and
+those come from two different worlds: 36.9 min is 8.6% of the 431.3-minute error, while
+17.8% is the `15 x 5.11 = 76.7` min that dropping the calls saves **after** the tier is also
+corrected. The shipped copy quotes 9%, the share that matches the minutes beside it.
+Correcting both still lands near 4 h, so a better tag alone would not reach the published
+time — which the new copy says.)*
 
 So the allowance does not dominate anything, and the second cause the paragraph names — the
 `highspeed` tag sitting on the ways rather than the route — **is** a speed error.
@@ -429,6 +436,8 @@ deferral.** Deferred work stays bound by repo policy when picked up.
 
 | DEF16-23 | **`esc()`'s sink inventory cannot follow a value through a helper hop**, so `describe()` and `mode()` are invisible to it and three `esc()` calls can be deleted with the guard staying green. Carried out of cycle 15 as **"DEF15-61a"** -- an ID that appears in **no deferral table**, is absent from `plan/deferred.md`, and **collides with the unrelated DEF15-61**. This row replaces it | `tests/web/test_esc.py:300-350`; `web/app.js` `describe()`, `mode()`; `emit/places.py:64-65` | MEDIUM | Med-High | Cycle 15's stated reason was bounded scope (a fifth test-harness change beside four others), which is sound and applies again this cycle -- C16-7 already makes four changes to the suite's guards. **But cycle 15's rationale also called the path "same-origin content this project writes", and that is false:** `emit/places.py:64-65` writes GeoNames' community-edited `name`/`region`/`country` **verbatim**, and those are exactly what the two unpinned `esc()` calls in `describe()` guard. The severity is unchanged; the reason for deferring is bounded scope alone, not the absence of third-party content | The cycle after C16-7 lands, with DEF15-26 (the untested ramp maths), which touches the same file's slicing machinery |
 
+| DEF16-24 | **`browser_verify.sh` cannot see the error surface cycle 15 built.** Its console check greps `/error|exception/i`; C15-4's nine `okOr` calls print `"places.json: HTTP 404 Not Found"` and five siblings pass `err.message` (a string), so **14 lines are invisible to it**. The one line it does catch works only because it happens to pass an Error *object*. `agent-browser errors` is never read anywhere in the repository | `scripts/browser_verify.sh:431`; `web/app.js` `okOr` sites | MED-HIGH | High | **Scheduled in §3's table and then not given a task — recorded here rather than dropped, which is the rule.** This cycle has already made two independent changes to the deploy gate (C16-2/C16-3's `page_gate` rewrite, and the `ruff check` it now runs) and one to `browser_verify.sh`'s guard set (C16-7.1). DEF16-2's reasoning applies to itself: three independent edits to the deploy path in one cycle would make none of them attributable, and this one changes what can stop a deploy | The cycle after C16-2/C16-3 have shipped and been browser-verified — the same criterion as DEF16-2, and they should land together as one pass over what the browser stage can see |
+
 ### Re-deferred from cycle 15, unchanged, exit criterion re-stated
 
 | ID | Status this cycle |
@@ -500,13 +509,18 @@ is failing and the row should be re-scoped rather than re-measured.
 
 ## 8. Progress
 
-| Task | Status |
-|---|---|
-| C16-1 search ranking | pending |
-| C16-2 `--page-only` skip refusal | pending |
-| C16-3 gate counts one word / no floor / ruff | pending |
-| C16-4 false rail statement live | pending |
-| C16-5 four a11y + copy fixes | pending |
-| C16-6 licence-page fragment link | pending |
-| C16-7 four vacuous gates | pending |
-| C16-8 ledger routing rule | pending |
+| Task | Status | Commit | Mutation evidence |
+|---|---|---|---|
+| **C16-1** search ranking | **done** | `d73ffc4` | Flattening `rankCity` to `return 0` reddens 4 tests and names **20 of 1,464** cities that then depart from somewhere else (Xi'an→Fengxiang, London→East London, Quito→Iquitos, Salem→Jerusalem, Cali→Aguascalientes, +15). Only Xi'an is reachable at today's 553 |
+| **C16-2** `--page-only` skip refusal | **done** | `c2d11f5` | Reverting to C15-2's blanket refusal → 2 failed. A non-sentinel skip still refuses; a sentinel skip while `dist/index.json` exists also refuses |
+| **C16-3** gate: deselect/floor/ruff | **done** | `c2d11f5` | Deleting the deselect loop → 1 failed; deleting the floor → 1 failed; dropping the ruff call → 1 failed; rewording the sentinel in `conftest.py` only → 1 failed. **The first deselect test was VACUOUS and is recorded as such** |
+| **C16-4** false rail statement | **done** | `20c7e6e` | 7 mutations, none green; restoring the whole pre-cycle-16 paragraph reddens 6 of 7. The plan's own 17.8% figure was wrong and is corrected in §3 |
+| **C16-5** four a11y + copy fixes | **done** | `ee947b2` | 8 mutations, all red. One docstring figure written from expectation, corrected to the measurement |
+| **C16-6** licence-page fragment | **done** | `9711bdc` | Pointing the link back at `#key` → 1 failed. The fix was **measured in Chromium**, not argued from the spec — whose own prose states the opposite of its algorithm |
+| **C16-7** four vacuous gates | **done** | `965daa7`, `68435c4` | 12 mutations across the four. Found a real gap: `routes._SECTION_RE`/`_CARGO_RE` reach the stamp with no table rows |
+| **C16-8** ledger routing rule | **done** | `864bb6f` | n/a (documentation); the `grep -c 'DEF15-' plan/deferred.md → 0` measurement is in the commit body |
+
+**Not done, and recorded rather than dropped:** AGG16-7 appears in §3's scheduled
+table and was never given a `C16-n` task. It is now **DEF16-24** in §5, at its
+original Med-High severity, deferred on the same bounded-scope reasoning as
+DEF16-2 — this cycle has already made three changes to the deploy path.
