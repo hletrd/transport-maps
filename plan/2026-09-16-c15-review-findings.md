@@ -131,12 +131,12 @@ or any session other than the one fnm initialised has no `node` on `PATH`, and t
 CLAUDE.md added after two live blank-page incidents becomes decorative without printing a
 word about it.
 
-- [ ] **C15-2.1** `page_gate()` refuses on skips: capture pytest's summary and exit
+- [x] **C15-2.1** `page_gate()` refuses on skips: capture pytest's summary and exit
       non-zero if any test in the page set skipped, naming the count and the reason.
-- [ ] **C15-2.2** Check for `node` up front and fail with a direct message
+- [x] **C15-2.2** Check for `node` up front and fail with a direct message
       ("node is not on PATH; the page gate cannot parse app.js — refusing to deploy")
       rather than letting 19 files quietly skip.
-- [ ] **C15-2.3** Test in `tests/test_deploy_script.py` that the gate refuses a skipping
+- [x] **C15-2.3** Test in `tests/test_deploy_script.py` that the gate refuses a skipping
       run. Mutate: remove the guard, confirm the test goes RED.
 
 ### C15-3 — Three measured page-side performance costs
@@ -515,3 +515,35 @@ because each name is typed in its own keyboard form; the cities unreachable the
 alone sees the whole defect.
 
 `tests/web/` 415 passed. `ruff check .` clean.
+
+### C15-2 — landed
+
+`page_gate()` now refuses twice. A `command -v node` pre-flight, so the
+operator reads one sentence rather than counting dots; and a skip count off
+pytest's own summary, because node is not the only way a check can stop
+running. The two are sequenced with `|| rc=$?` rather than a bare pipeline:
+under `set -e` a failing pytest aborted before the skip check could run, so
+without it the refusals shadowed each other instead of composing.
+
+Two bugs were found and fixed while writing it, both in my own first draft:
+`sed -n 's/.*[^0-9]...'` cannot match pytest's `19 skipped in 0.12s` (no
+non-digit before the count) which is *precisely* the all-skipped case the
+check exists for -- so it is `grep -oE` now; and `skipped=$(grep ...)` without
+`|| true` aborts the script under `set -e` when grep finds nothing, which is
+the HEALTHY path. This script's own free-space check carries a comment about
+having shipped that exact bug once.
+
+Four new tests in `tests/test_deploy_script.py` run the REAL `page_gate` under
+bash with `uv` and `node` stubbed, because the defect IS the shell's behaviour
+and a pattern assertion cannot see it. Mutations, all run:
+
+| Mutation | Result |
+|---|---|
+| Delete the skip refusal | **1 failed** (both summary shapes accepted) |
+| Delete the node pre-flight | **4 failed** (slice guard fires too) |
+| Revert `grep` to the `sed` that misses the all-skip form | **1 failed** |
+
+None came back green. Positive control included: a clean `424 passed` run
+still returns 0, so the refusals cannot be passing by refusing everything.
+Measured on this host today, the page set is **424 passed, 0 skipped**, so
+the new gate does not false-positive.

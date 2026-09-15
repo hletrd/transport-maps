@@ -249,3 +249,104 @@ def test_the_sanitised_figure_is_read_before_every_arithmetic_use_of_it():
     assert len(uses) >= 3, f"the arithmetic uses moved; found {len(uses)}"
     assert min(uses) > case_at, "free_kb reaches an arithmetic context before the sanitiser"
     assert code.count("free_kb=$(") == 1, "a second assignment can reopen the hole"
+
+
+def _page_gate_source() -> str:
+    """The real `page_gate` function, lifted verbatim from the deploy script.
+
+    Anchored on a closing brace in column 0, which is the function's own and
+    not one of the `${...}` or `$(( ))` inside it.
+    """
+    m = re.search(r"^page_gate\(\) \{\n.*?^\}", DEPLOY, re.S | re.M)
+    assert m, "page_gate is gone or has been reshaped; re-read this guard"
+    src = m.group(0)
+    # The guard on the guard: the slice must hold both refusals, or the tests
+    # below would be exercising a fragment and passing for the wrong reason.
+    assert "command -v node" in src, "the node pre-flight is not in the slice"
+    assert "skipped" in src, "the skip check is not in the slice"
+    return src
+
+
+def _run_page_gate(tmp, pytest_summary: str, pytest_rc: int = 0,
+                   with_node: bool = True):
+    """Run the REAL page_gate with `uv` and `node` stubbed out.
+
+    A pattern assertion cannot see this defect: the whole bug was that pytest
+    exits 0 on a skip and the shell therefore carried on. Only the shell can
+    show that it now does not.
+    """
+    import subprocess
+    from pathlib import Path
+
+    bin_dir = Path(tmp) / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    uv = bin_dir / "uv"
+    uv.write_text(f'#!/bin/sh\nprintf "%s\\n" "{pytest_summary}"\nexit {pytest_rc}\n')
+    uv.chmod(0o755)
+    if with_node:
+        node = bin_dir / "node"
+        node.write_text("#!/bin/sh\nexit 0\n")
+        node.chmod(0o755)
+    # A PATH holding only the stubs, so a real `node` on the developer's
+    # machine cannot make the node-missing case pass by accident.
+    script = (f'set -euo pipefail\nPATH="{bin_dir}:/usr/bin:/bin"\n'
+              f"{_page_gate_source()}\npage_gate\necho GATE_RETURNED_OK\n")
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+
+
+def test_the_page_gate_refuses_a_run_whose_tests_skipped(tmp_path):
+    """pytest exits 0 when a test skips. 22 files under tests/web/ skip
+    themselves without `node` -- 19 of them, measured, including the only
+    parse of app.js and the only legend-tick enforcement -- so this stage used
+    to print a row of dots and return success having checked none of it.
+
+    Both summary shapes are covered. pytest writes "N passed, M skipped" when
+    something ran and "M skipped in ..." when nothing did, and the second is
+    exactly the all-skipped case the check exists for -- a `sed` written for
+    the first form silently missed it, which is why this test has two cases.
+
+    Mutation performed and reverted: delete the `skipped` refusal from
+    page_gate -> both cases print GATE_RETURNED_OK and this test goes red.
+    """
+    for summary in ("421 passed, 3 skipped in 30.00s",
+                    "19 skipped in 0.12s"):
+        done = _run_page_gate(tmp_path, summary)
+        assert done.returncode != 0, (
+            f"the page gate accepted {summary!r}:\n{done.stdout}{done.stderr}")
+        assert "SKIPPED rather than ran" in done.stdout, done.stdout
+        assert "GATE_RETURNED_OK" not in done.stdout, (
+            "the gate carried on past a skipped run")
+
+
+def test_the_page_gate_still_accepts_a_clean_run(tmp_path):
+    """The positive control. Without it the test above passes just as well
+    against a gate that refuses everything, which would be a different way of
+    not deploying.
+    """
+    done = _run_page_gate(tmp_path, "424 passed in 34.98s")
+    assert done.returncode == 0, f"{done.stdout}{done.stderr}"
+    assert "GATE_RETURNED_OK" in done.stdout, done.stdout
+
+
+def test_the_page_gate_refuses_when_node_is_absent(tmp_path):
+    """`node` on the build host resolves through an fnm per-shell-session
+    path, so a deploy from launchd, cron, or any shell fnm did not initialise
+    has none -- and every node-gated test would skip itself to green. Checked
+    up front so the operator reads one sentence instead of counting dots.
+    """
+    done = _run_page_gate(tmp_path, "424 passed in 34.98s", with_node=False)
+    assert done.returncode != 0, done.stdout
+    assert "node is not on PATH" in done.stdout, done.stdout
+    assert "GATE_RETURNED_OK" not in done.stdout
+
+
+def test_the_page_gate_still_fails_on_a_real_test_failure(tmp_path):
+    """The skip check must not swallow the case the gate was built for. Under
+    `set -e` a bare failing pipeline would have aborted before the skip check
+    ran, so the two refusals are sequenced with `|| rc=$?` -- this proves they
+    compose rather than shadow each other.
+    """
+    done = _run_page_gate(tmp_path, "2 failed, 419 passed in 31.00s", pytest_rc=1)
+    assert done.returncode != 0, done.stdout
+    assert "page-asset gate failed" in done.stdout, done.stdout
+    assert "GATE_RETURNED_OK" not in done.stdout

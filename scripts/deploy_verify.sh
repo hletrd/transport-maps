@@ -53,8 +53,59 @@ page_gate() {
   # tests/web/test_parses.py is why this stage is worth having at all: nothing
   # else in the repository parses app.js, and a syntax error in it would
   # otherwise be rsynced live before step 4 ever opened a browser.
+  #
+  # A SKIP IS A FAILURE HERE. pytest exits 0 when a test skips, and 22 of the
+  # files under tests/web/ skip themselves when `node` is not on PATH -- 19 of
+  # them, measured, including test_parses.py and the only legend-tick
+  # enforcement. So on a host without node this whole stage printed a row of
+  # dots and returned success while checking none of the things the paragraph
+  # above says it checks. That is not hypothetical on this machine: `node`
+  # here resolves to ~/.local/state/fnm_multishells/<pid>_<ts>/bin/node, an
+  # fnm PER-SHELL-SESSION path, so a deploy from launchd, from cron, or from
+  # any shell fnm did not initialise has no node and would have sailed through.
+  #
+  # Checked up front, so the operator gets one clear sentence rather than a
+  # green run they have to count the dots in.
+  if ! command -v node >/dev/null 2>&1; then
+    echo "  !! node is not on PATH, so the page gate cannot parse app.js."
+    echo "     19 of the tests/web/ files would skip themselves and this stage"
+    echo "     would exit 0 without checking the page at all. Refusing: a"
+    echo "     syntax error in app.js would otherwise be rsynced live."
+    exit 1
+  fi
+  # ...and belt as well as braces: node is not the only reason a test can
+  # skip, and any new skip in this set is a check that silently stopped
+  # running. `tee` keeps the run visible on the operator's screen while
+  # leaving a copy to count the skips in.
+  local out rc=0
+  out="$(mktemp -t page_gate.XXXXXX)"
+  # `|| rc=$?` and not a bare pipeline: under `set -e` a failing pytest would
+  # abort the script here and never reach the skip check below, so the two
+  # refusals would not compose. pipefail is already set, so rc is pytest's
+  # status and not tee's.
   uv run pytest -q -p no:cacheprovider \
-    tests/test_licence_firewall.py tests/web/ tests/emit/test_water.py
+    tests/test_licence_firewall.py tests/web/ tests/emit/test_water.py \
+    2>&1 | tee "$out" || rc=$?
+  local skipped
+  # grep, not `sed -n 's/.*[^0-9]...'`: pytest writes "421 passed, 3 skipped"
+  # when something ran and "3 skipped in 0.12s" when NOTHING did, and the
+  # leading-digit form is exactly the all-skipped case this check exists for.
+  # `|| true` for the same reason the free-space check below carries one:
+  # grep exits 1 when nothing matches, which is the HEALTHY case here, and
+  # under `set -euo pipefail` that aborts the whole script silently. This
+  # script has already shipped that exact bug once.
+  skipped=$(grep -oE '[0-9]+ skipped' "$out" | tail -1 | cut -d' ' -f1 || true)
+  rm -f "$out"
+  if [ "$rc" -ne 0 ]; then
+    echo "  !! page-asset gate failed (pytest exit $rc)"
+    exit "$rc"
+  fi
+  if [ -n "${skipped:-}" ] && [ "$skipped" -gt 0 ]; then
+    echo "  !! $skipped test(s) in the page gate SKIPPED rather than ran."
+    echo "     pytest exits 0 on a skip, so this stage would have reported"
+    echo "     success while checking less than it claims. Refusing."
+    exit 1
+  fi
 }
 
 if [ "$MODE" = full ]; then
