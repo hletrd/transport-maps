@@ -108,19 +108,65 @@ def test_the_poles_and_the_antimeridian_are_valid():
         assert status == 200, body
 
 
-def test_an_enormous_query_is_refused_before_it_is_parsed():
+def test_an_enormous_query_is_refused_before_it_is_parsed(monkeypatch):
     """A megabyte of query string must cost a length test, not a parse.
 
+    This docstring used to describe a `parse_qs` spy and there was no such
+    spy: the only assertion was `stub.calls == []`, which is the SOLVER stub,
+    so the test proved "refused" and said "refused before parsing". Cycle 15
+    moved the `MAX_QUERY_CHARS` check below `parse_qs` and the file stayed at
+    **39 passed, GREEN** -- the refusal still happened, just after paying for
+    the parse the guard exists to avoid.
+
+    The spy is real now. `parse_query` does `from urllib.parse import
+    parse_qs` INSIDE the function, so the name resolves at call time and
+    patching the module attribute is enough to see it.
+
     Mutation performed and reverted: move the length check below `parse_qs`
-    -> still green on the assertion, so the check is made on the SPY: parse_qs
-    must not be reached.
+    -> RED, naming the call.
     """
+    import urllib.parse
+
+    seen = []
+    real = urllib.parse.parse_qs
+
+    def spy(*a, **kw):
+        seen.append(a[0] if a else kw.get("qs"))
+        return real(*a, **kw)
+
+    monkeypatch.setattr(urllib.parse, "parse_qs", spy)
+
     huge = "from=37.5,127.0&to=35.0,139.0&" + "x" * wire.MAX_QUERY_CHARS
     assert len(huge) > wire.MAX_QUERY_CHARS
     stub = Stub()
     status, _, body = wire.handle(huge, stub)
     assert body["code"] == "bad_request" and status == 400
-    assert stub.calls == []
+    assert stub.calls == [], "an over-long query reached the solver"
+    assert seen == [], (
+        f"parse_qs was called on a query of {len(huge)} characters, which the "
+        f"{wire.MAX_QUERY_CHARS}-character limit exists to avoid paying for")
+
+
+def test_the_parse_qs_spy_can_see_a_normal_request(monkeypatch):
+    """The positive control for the spy above.
+
+    Without it, a spy patched onto the wrong module -- or a `parse_query` that
+    stopped using `parse_qs` altogether -- would leave `seen == []` for every
+    query and the guard would pass while watching nothing.
+    """
+    import urllib.parse
+
+    seen = []
+    real = urllib.parse.parse_qs
+    monkeypatch.setattr(urllib.parse, "parse_qs",
+                        lambda *a, **kw: (seen.append(1), real(*a, **kw))[1])
+
+    status, _, body = wire.handle("from=37.5,127.0&to=35.0,139.0", Stub())
+    assert status == 200, body
+    assert seen, (
+        "the spy saw no parse_qs call on a query that must be parsed; it is "
+        "patched somewhere parse_query does not look, and the refusal test "
+        "above is therefore watching nothing")
 
 
 def test_a_repeated_parameter_takes_the_first_value_and_not_a_list():

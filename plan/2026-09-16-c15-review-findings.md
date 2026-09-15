@@ -214,7 +214,7 @@ inferred.
       it would attempt a live fetch with nothing saying so.
 - [x] **C15-5.3** `tests/emit/test_rail_detail.py` pins `_line_between`'s pricing against
       `rail.ride_edges`. Re-run both mutations and confirm **RED**.
-- [ ] **C15-5.4** `tests/service/test_wire.py:111-123` —
+- [x] **C15-5.4** `tests/service/test_wire.py:111-123` —
       `test_an_enormous_query_is_refused_before_it_is_parsed` documents a `parse_qs` spy
       **that does not exist**; it proves "refused", not "before parsed". Add the spy, or
       rename the test to what it checks. Confirm RED under the reordering mutation.
@@ -776,3 +776,40 @@ Mutations, re-run against the shipped guard:
 | drop BOTH | GREEN, 19 passed | **RED, 2 failed** |
 | `/ t.speed_kmh` -> `/ 100.0` | (untested) | **RED, 5 failed** |
 | `60.0` -> `60` | — | **GREEN** — correct: identical in float arithmetic, and a guard that reddens for that trains people to ignore it |
+
+### C15-5.4 — landed
+
+`test_an_enormous_query_is_refused_before_it_is_parsed` described a `parse_qs`
+spy that did not exist; its only assertion was `stub.calls == []`, the SOLVER
+stub. It proved "refused" and claimed "refused before parsing". Moving the
+`MAX_QUERY_CHARS` check below `parse_qs` left the file at **39 passed, GREEN**.
+
+The spy is real now. `parse_query` does `from urllib.parse import parse_qs`
+*inside* the function, so the name resolves at call time and patching the
+module attribute is enough. A second test is the control: without it, a spy
+patched onto the wrong module — or a `parse_query` that stopped calling
+`parse_qs` — would leave `seen == []` for every query and the guard would pass
+while watching nothing.
+
+| Mutation | Was | Now |
+|---|---|---|
+| move the length check below `parse_qs` | GREEN, 39 passed | **RED, 1 failed** |
+
+`tests/service/` 40 passed.
+
+### C15-5.5 — NOT DONE this cycle
+
+The `esc()` sink inventory's blindness to `describe()` and `mode()`
+(SEC15-1/AGG15-24) is **not** landed. Teaching the inventory to follow a value
+through two helper hops is a real change to `tests/web/test_esc.py`'s slicer,
+and this cycle has already rewritten four test files and changed `web/app.js`
+in four separate places. Landing a fifth test-harness change here would make
+the browser verification of the page work harder to attribute, which is the
+same reason DEF15-35 and DEF15-36 were held back.
+
+Carried as **DEF15-61a** with its original Medium/High severity: the three
+deletable `esc()` calls are defence in depth on same-origin content this
+project writes, no sink is visitor-controlled today, and the finding is
+recorded rather than dropped. Exit criterion: the next cycle with test-harness
+budget, landed together with DEF15-26 (the untested ramp maths), which touches
+the same file's slicing machinery.
