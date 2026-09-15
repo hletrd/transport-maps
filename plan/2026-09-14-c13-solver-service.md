@@ -436,103 +436,36 @@ Not built, in the order they must happen:
   `tests/web/test_attribution_and_privacy.py` pins it. They change in the same
   commit that ships the fetch, not later.
 
-## The owner's decision, 2026-09-15: preferred-mode WEIGHTING, not exclusion
+## The owner's decisions, 2026-09-15 — recorded in full elsewhere
 
-Recorded so a later cycle does not re-litigate it, and — the more likely
-failure — does not quietly implement exclusion because exclusion is the easy
-one. **The owner asked for mode filters** ("add filter (not prefered way to
-move) and select for prefered way") and was given four options with their
-measured costs before choosing.
+Two owner requests landed mid-cycle and both are solver features. **The record
+is `2026-09-15-c14-owner-requests.md`** (R1 carry-on-only, R2 preferred and
+excluded modes), including the four costed options the owner chose between and
+the traps each request carries. It is not repeated here; only what it changes
+about the design ABOVE is.
 
-| option | what it costs | chosen |
-|---|---|---|
-| Precompute one variant per filter | 54 GB and ~38 h per variant; the server fits about two | no |
-| Wait for the on-demand solver | no static cost; needs this document's work finished | no |
-| Both | the above, together | no |
-| **Preferred-mode weighting instead of exclusion** | cannot be precomputed at all | **yes** |
+**Preferred-mode weighting cannot be precomputed, and that is the point.**
+Excluding a mode is one more static build — `build_graph` already accepts
+`rail_routes=None` and `ferry_links=None`. A weighting is a continuum and every
+point on it is a different solve, which makes it this service's strongest
+justification rather than an argument against it.
 
-They chose weighting: make a mode cheaper or dearer rather than banning it, so
-"prefer rail" does not forbid flying. The consequence was put to them before
-they chose and is the load-bearing part of this entry: **a weighting cannot be
-precomputed.** Excluding air is one extra map; a weighting is a continuum and
-every point on it is a different solve. So this is now a solver feature rather
-than anything that can ship from static artifacts — and it is arguably the
-strongest justification the solver has, because an on-demand graph build is
-precisely what it is good at.
+Two consequences for the sections above:
 
-### What it changes in the design above
+- **`## The request and the response` needs per-mode weights.** It was designed
+  around an origin. It now needs a bounded map of mode → multiplier, and
+  `service/wire.py` needs matching validation: a fixed key set (the six
+  `MODE_NAMES` the page ships, never caller-supplied), a closed finite bound on
+  each multiplier, rejection rather than clamping outside it, and a canonical
+  form so two requests meaning the same weighting do not solve twice. **Cycle 14
+  deliberately did not touch `wire.py`**: it is the one module in the tree with
+  zero package imports, and that property is worth changing on purpose.
 
-- **The request shape needs per-mode weights, not just a start point.**
-  `## The request and the response` was designed around an origin. It now needs
-  a bounded map of mode → multiplier.
-- **`service/wire.py` will need validation for it, and must NOT be changed
-  now.** Stating what it will need: a fixed key set (the six `MODE_NAMES` the
-  page already ships, no caller-supplied keys), a finite positive bound on each
-  multiplier with both ends closed, a rejection rather than a clamp when a
-  value is outside it, and a canonical form for the cache key so that two
-  requests meaning the same weighting do not solve twice. `wire.py` is the one
-  module in the tree with zero package imports, which is why it is the right
-  place for this and why it should be changed deliberately rather than as a
-  side effect of another task.
-- **Exclusion is already trivially available if the owner ever wants it.**
-  `build_graph` accepts `rail_routes=None` and `ferry_links=None` and simply
-  omits those edges. Weighting is the harder half: it needs the edge costs
-  SCALED at assembly time, which is a different insertion point from omitting
-  a channel wholesale.
-
-### The caveat whoever builds this is owed
-
-**Weighting changes which route is optimal, so everything downstream of the
-solve has to follow the WEIGHTED solve rather than the default one** — the
-itinerary chain, the mode breakdown, and the rail line naming. That coupling is
-not hypothetical: AA17 (closed in cycle 14, see `deferred.md`) was exactly a
-case where the label and the time came from different trains, and it shipped
-for months because nothing checked that the two agreed. A weighted solve
-introduces a second chance for the same class of bug, in a path where the
-default answer is still sitting in memory and is the easy thing to reach for.
-
-## The owner's decision, 2026-09-15: a carry-on-only option
-
-Also recorded rather than built. The owner: *"please note to add option to not
-include luggage in airport. if only carry-ons are carried it save much time."*
-
-The model already separates the components, which is what makes this tractable
-at all. All three are published-figure defaults, not fitted:
-
-| table | large | medium | small | what it covers |
-|---|---|---|---|---|
-| `[processing_min]` | 70 | 55 | 40 | check-in, bag drop, security, walk to gate, boarding |
-| `[disembark_min]` | 30 | 22 | 15 | deplane, walk, and **wait at the belt** |
-| `[border_min]` | 45 | 35 | 25 | unaffected by baggage |
-| `[connection_min]` | 75 | 50 | 35 | unaffected by baggage |
-
-So carry-on removes the belt wait outright and some part of check-in. Three
-traps, each of which has to be answered before a line of this is written.
-
-1. **The split is not in the constants, and must not be invented.**
-   `processing_min` is ONE number covering bag drop and security and the walk.
-   Nobody can subtract "the bag part" without deciding what that part is, and
-   CLAUDE.md is explicit: "Never silently tune a default to match a handful of
-   hand-picked routes: prefer a documented, reproducible error over a hidden
-   one." Whoever builds this either introduces separately-declared constants
-   with stated provenance, or states plainly in `calibration.toml` that the
-   split is an assumption and what the assumption is. A future cycle must not
-   be allowed to guess a number here and leave it looking fitted.
-
-2. **What it can honestly do WITHOUT a rebuild, and what it cannot.** The page
-   knows which airports an itinerary used and their sizes, so it can adjust the
-   DISPLAYED time for the itinerary already on screen. It cannot change the
-   coloured bands, which come from a solve that assumed checked bags. A setting
-   that changes the number while the map underneath still means something else
-   has to say so on the page — otherwise it is the same class of dishonesty as
-   AA17, a figure and a caption that came from different journeys.
-
-3. **It interacts with the weighting decision above and should be designed with
-   it.** Both change edge costs, both belong to the solver, and both change
-   which route is optimal — a shorter airport dwell can make a two-flight
-   itinerary beat a one-flight one. Designing them separately would produce two
-   request shapes, two validation paths in `wire.py` and two chances to leave
-   the itinerary describing the unweighted solve.
+- **Everything derived from the path must come from the WEIGHTED solve** — the
+  itinerary chain, the mode breakdown, and the rail line naming. The default
+  answer will still be in memory and will be the easy thing to reach for. AA17,
+  closed in cycle 14, was exactly this shape: a figure and a caption produced by
+  different journeys, shipped for months because nothing checked they agreed.
 
 ## Status
 
