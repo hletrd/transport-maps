@@ -31,12 +31,32 @@ written to disk every cycle and still read from disk by the next one -- they are
 the working notes -- but **this directory is the durable record.**
 
 So: every review finding is either scheduled in one of the plans here (with a
-target cycle), fixed in a commit whose body carries the evidence, or recorded in
-`deferred.md` with its citation, original severity and confidence, the reason,
-and the exit criterion that reopens it. Nothing is dropped, and nothing needed
-to act on a finding lives only in an untracked file. Cycle 3 audited this
-mechanically: all 142 finding IDs its reviewers raised are named in `plan/`,
-including thirteen that had been carried only in the review text.
+target cycle), fixed in a commit whose body carries the evidence, or **deferred
+with its citation, original severity and confidence, the reason, and the exit
+criterion that reopens it**. Nothing is dropped, and nothing needed to act on a
+finding lives only in an untracked file. Cycle 3 audited this mechanically: all
+142 finding IDs its reviewers raised are named in `plan/`, including thirteen
+that had been carried only in the review text.
+
+**Where a deferral lives depends on its cycle, and this is the part the rule used
+to state wrongly.** Cycles 1-12 deferred into `deferred.md`, under a `# Cycle n`
+heading. **Cycles 13 onward defer into that cycle's own findings file** -- the
+`DEF13-n` / `DEF14-n` / `DEF15-n` / `DEF16-n` rows are in
+`2026-09-14-c13-review-findings.md`, `2026-09-15-c14-review-findings.md`
+(archived), `2026-09-16-c15-review-findings.md` and
+`2026-09-16-c16-review-findings.md` respectively, each with the same four
+columns. `deferred.md` remains the ledger for cycles 1-12 and for anything
+reopened or closed across cycles; it is not, and since cycle 13 has not been, the
+single file every deferral lives in.
+
+Cycle 16 found this the expensive way. `plan/README.md` said "recorded in
+`deferred.md`", and the cycle-16 review brief told all eleven lanes to grep
+`deferred.md` for prior art. `grep -c 'DEF15-' plan/deferred.md` returns **0**;
+the same grep against the cycle-15 findings file returns **137**. Nothing was
+lost -- every row exists with its reason and criterion -- but a reviewer
+following the stated rule finds nothing for the last three cycles and re-raises
+dispositioned findings. **When you write a cycle's brief, point its lanes at that
+cycle's findings file as well as at `deferred.md`.**
 
 Cycle 4's designer found one gap in that audit: six cycle-3 designer findings
 (A3-A8) reached no table, and the designer's `A1…A8` collide with the build
@@ -45,10 +65,10 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 
 | Plan | Scope | Status |
 |---|---|---|
+| `2026-09-16-c16-review-findings.md` | Cycle 16: all 116 raw findings from the eleven lanes merged to 41, scheduled (`C16-1…C16-8`) or deferred (`DEF16-1…DEF16-23`). §2 carries three findings for the owner, including that the running `--only` build **cannot republish `index.json`** | cycle 16: current |
 | `2026-09-16-c15-review-findings.md` | Cycle 15: all 108 raw findings from the eleven lanes merged to 77, indexed with citations, scheduled (`C15-1…C15-7`) or deferred (`DEF15-1…DEF15-61`) | cycle 15: current |
 | `2026-09-15-c14-owner-requests.md` | Cycle 14: the owner's two standing requests — carry-on-only luggage, and preferred/excluded transport modes. **The single authority for both**; amend here, do not open a second record | cycle 14: current; nothing built |
 | `2026-09-15-c14-rail-service-tiers.md` | Cycle 14: the rail service-tier model, the operator/ref labels and the caption fix (C14-R1…C14-R11). §6 lists what is build-baked | cycle 14: current; **pipeline changes reach the site only after a rebuild** |
-| `2026-09-15-c14-review-findings.md` | Cycle 14: all 223 findings from the eleven lanes, clustered CL-A…CL-O, scheduled or deferred with exit criteria | cycle 14: current |
 | `2026-09-14-c13-solver-service.md` | Cycle 13: the F2 on-demand solver service — the design, the measured footprint, and the graph-free half that was built (C13-F2.1…C13-F2.12) | cycle 13: current; design done, nothing resident started |
 | `2026-09-14-c13-review-findings.md` | Cycle 13: all 250 raw findings from the eleven lanes, indexed with citations, scheduled or deferred (C13-1…C13-11) | cycle 13: current |
 | `2026-09-14-c12-review-findings.md` | Cycle 12: everything else the eleven review lanes found, scheduled or deferred (C12-1…C12-11) | cycle 12: current |
@@ -57,7 +77,6 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); open tasks carried forward |
 | `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; tasks still open, carried forward |
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; tasks still open, carried forward |
-| `2026-09-13-c9-page-failure-paths.md` | Cycle 9: the page's failure paths, its accessibility, and the gates that cannot see either (C9-1…C9-31) | cycle 9 done; open tasks carried forward |
 | `2026-09-13-c10-four-live-defects.md` | Cycle 10: the four defects the owner and the deploy's own verification reported, plus the two they uncovered (C10-1…C10-14) | cycle 10: current |
 | `2026-09-13-c10-requested-features.md` | Cycle 10: four features the owner asked for — draggable markers (F1), an on-demand solver service (F2), many more departure cities (F3), an ETOPS option (F4) | **three of the four have since shipped**: F1 in `6214283`, F3 in `b21e808`, F4 as the documented decision not to build it in `12e68ac`. F2's analysis is superseded by `2026-09-14-c13-solver-service.md`, which corrects three of its load-bearing claims. The file's own "PLANNED, NOT BUILT" heading describes cycle 10, not HEAD |
 | `deferred.md` | Findings not scheduled, with reasons and exit criteria; reopened and closed items | living |
@@ -69,6 +88,8 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `archive/2026-09-12-c7-resolution-6-readings.md` | Cycle 7 (C7-1…C7-18): all 18 done | archived (cycle 9) |
 | `archive/2026-09-14-c12-requested-features.md` | Cycle 12: the three tasks the owner named — a real test for `esc()`, draggable start and end markers, and the ETOPS decision (F1…F3) | archived (cycle 15); all three landed |
 | `archive/2026-09-13-c11-design-slop.md` | The owner's design pass: "remove ai slops from overall designs". Prose, type scale, three false statements, and the gate that keeps the design policy enforced | archived (cycle 15); all ten tasks landed |
+| `archive/2026-09-13-c9-page-failure-paths.md` | Cycle 9 (C9-1…C9-31): all 31 done. Archived in cycle 16 after spot-verifying 7 ticks against the TREE -- all 7 hold, including C9-4, whose `outline-offset:-2px` is written in the minified form a naive grep misses | archived (cycle 16) |
+| `archive/2026-09-15-c14-review-findings.md` | Cycle 14: all 223 findings from the eleven lanes, clustered CL-A…CL-O; the seven scheduled tasks C14-1…C14-7 all landed in `e7a90c7`/`15870ac`/`5849e0d` | archived (cycle 16). Its `DEF14-n` deferrals stay readable there -- see the routing note above |
 | `archive/2026-09-13-c8-ferry-wait-legend-url.md` | Cycle 8 (T1.1…T5.5, 38 tasks): 36 done. T5.3 was ticked and half-done (fixed in cycle 9); T2.7 was ticked and not done (carried as M8-14 in `deferred.md`). Both corrections are in the file. | archived (cycle 9) |
 
 The five cycle-2 plans do not move to `archive/` yet: tasks across them are

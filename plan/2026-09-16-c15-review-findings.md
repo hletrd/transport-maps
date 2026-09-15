@@ -816,6 +816,19 @@ recorded rather than dropped. Exit criterion: the next cycle with test-harness
 budget, landed together with DEF15-26 (the untested ramp maths), which touches
 the same file's slicing machinery.
 
+> **CORRECTED IN CYCLE 16 — this carry is superseded by `DEF16-23`.** Two
+> defects in the paragraph above. First, **`DEF15-61a` is an ID that appears in
+> no deferral table in this file**, has no row in `plan/deferred.md`, and
+> collides with the unrelated `DEF15-61` in §4 — so the finding was recorded in
+> prose only, which is the one disposition `plan/README.md` does not allow.
+> Second, **"same-origin content this project writes" is false**:
+> `emit/places.py:64-65` writes GeoNames' community-edited `name`, `region` and
+> `country` verbatim into `places.json`, and those are exactly the values the
+> two unpinned `esc()` calls in `describe()` guard. The severity was right and
+> is unchanged; the *reason* was wrong. `DEF16-23` in
+> `2026-09-16-c16-review-findings.md` §5 carries it properly, deferred on
+> bounded scope alone.
+
 ### C15-6 — landed, except 6.7
 
 **6.1–6.3, the rail prose.** A new paragraph in "What this does not know" on
