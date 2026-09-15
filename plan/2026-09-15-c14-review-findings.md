@@ -67,6 +67,20 @@ concrete reason and an exit criterion that fires.
 
 ## Scheduled this cycle
 
+**All seven landed.** Commits `e7a90c7` (the tiered model), `15870ac` (the
+labels and the two caption defects), `977732b` (the cache stamps). The rail
+work's own document, `2026-09-15-c14-rail-service-tiers.md`, carries the
+survey, the fit and the thirteen mutations that proved each guard.
+
+Two of the seven turned out to be larger than their rows said. **C14-1** was
+filed as "the flag has 3.2% coverage"; measured over all 19,297 relations the
+flag is on **1%** worldwide and **0%** outside Europe, and the fix is not a
+better flag but six fitted service tiers. **C14-3** was filed as seven keys
+against eight; by the time the tiers landed the schema was **eleven**, so the
+fixture now shares one definition between both rail test files and a guard
+reddens when a column is added.
+
+
 Seven items, all of them inside the rail service-tier work's blast radius. The
 implementation, its constants and its tests belong to
 `plan/2026-09-15-c14-rail-service-tiers.md`; what follows is the finding each
@@ -76,7 +90,7 @@ one closes and why it rides with that work rather than waiting.
 and a tick in this repository means "done, with the mutation recorded" -- cycle
 13 found seventeen ticks that did not hold, which is why the bar is that high.
 
-- [ ] **C14-1 -- the high-speed flag is an OSM tagging artefact.** `AGG14-4`
+- [x] **C14-1 -- the high-speed flag is an OSM tagging artefact.** `AGG14-4`
   (Critical / High, `critic`). `sources/osm.py:42-44` decides "high speed" from
   a single relation tag: **537 of 16,781 relations (3.2 %)** carry it, **1.1 %**
   of directed segments, and the coverage is geographically systematic -- Taiwan
@@ -88,7 +102,7 @@ and a tick in this repository means "done, with the mutation recorded" -- cycle
   named in CLAUDE.md -- *"prefer a documented, reproducible error over a hidden
   one."*
 
-- [ ] **C14-2 -- `RAIL_PARSER_VERSION` is missing from the cache-provenance
+- [x] **C14-2 -- `RAIL_PARSER_VERSION` is missing from the cache-provenance
   table.** `AGG14-5` (Critical / High, `test-engineer` SRC-01 + `verifier` V2,
   independently). `tests/sources/test_cache_provenance.py:186-232` covers 27 of
   35 hashed terms, and `STOP_ROLES`, `PLATFORM_ROLES`, `SCHEMA`,
@@ -100,7 +114,7 @@ and a tick in this repository means "done, with the mutation recorded" -- cycle
   `write_index`. (The `STAMPED` completeness guard itself, AGG14-41, is cycle
   16 -- this item covers the rail terms only.)
 
-- [ ] **C14-3 -- the rail fixtures build seven keys against an eight-field
+- [x] **C14-3 -- the rail fixtures build seven keys against an eight-field
   schema.** `AGG14-90` (Medium / Medium, `test-engineer` GRAPH-15).
   `tests/graph/test_rail.py:10-16` and `tests/graph/test_rail_integration.py:21-25`
   pass `schema=SCHEMA` with `route_name` absent; polars does not raise, it
@@ -110,7 +124,7 @@ and a tick in this repository means "done, with the mutation recorded" -- cycle
   `assert set(stop(...).keys()) == set(SCHEMA)` so the next addition fails
   loudly.
 
-- [ ] **C14-4 -- an unnamed stop node inherits the route's name, and ships as a
+- [x] **C14-4 -- an unnamed stop node inherits the route's name, and ships as a
   station.** `AGG14-110` (Medium / High, `tracer` T3). `sources/osm.py:92`
   falls back to the relation name; **1,144 of 124,488 shipped rows across 60
   origins have `station == line`**, and the page renders `by rail via S1:
@@ -119,7 +133,7 @@ and a tick in this repository means "done, with the mutation recorded" -- cycle
   the same schema the `operator`/`ref` fields are being added to, and the same
   `RAIL_PARSER_VERSION` bump.
 
-- [ ] **C14-5 -- half the arrow-named captions name the opposite direction.**
+- [x] **C14-5 -- half the arrow-named captions name the opposite direction.**
   `AGG14-15` (High / High, `tracer` T1). `emit/rail_detail.py:56-57` fills both
   directed keys with one directional string: **55,500 of 111,051 arrow-named
   pairs (50.0 %)**, and **3,834 shipped rows name the line's own origin
@@ -129,7 +143,7 @@ and a tick in this repository means "done, with the mutation recorded" -- cycle
   name; do not drop the reverse key, which would lose the line name on half the
   network.
 
-- [ ] **C14-6 -- the caption names one train and the edge is priced by
+- [x] **C14-6 -- the caption names one train and the edge is priced by
   another.** `AGG14-58` (Medium / High, `code-reviewer` C11 + `tracer` T2).
   `graph/rail.py:103-107` resolves parallel services by `min(minutes)`;
   `emit/rail_detail.py:52-57` resolves them by lowest OSM route id. **30,742 of
@@ -139,7 +153,7 @@ and a tick in this repository means "done, with the mutation recorded" -- cycle
   differ in price -- so the tiebreak has to move into `ride_edges` in the same
   change: one decision, one place.
 
-- [ ] **C14-7 -- rail is charged 20 minutes and every surface says 15.**
+- [x] **C14-7 -- rail is charged 20 minutes and every surface says 15.**
   `AGG14-49` (High / High, `document-specialist` DOC14-1 + `critic` C4).
   `graph/build.py:273-274` stacks `boarding_min = 15.0` and
   `alighting_min = 5.0`; `web/llms.txt:29-30` and `dist/index.json`'s
@@ -552,8 +566,8 @@ this document's.
 | AGG14-1 | Critical | High | `contour/bands.py:65-67,106-107` | `_crosses_antimeridian` runs twice per cell per band per LOD — ~83 s/origin, ~6.8 h of wall clock, for a build-constant answer | scheduled-cycle-15 |
 | AGG14-2 | Critical | High | `contour/bands.py:164-182,290-333`; `validate.py:108-109`; `emit/tiles.py:79-83`; `emit/modes.py:52` | The whole band FeatureCollection is materialised as Python dicts then round-tripped back to shapely — multi-GB per worker, the mechanism behind both build deaths (absorbs debugger D3) | scheduled-cycle-15 |
 | AGG14-3 | Critical | High | `emit/hover.py:98-128,139-142`; `emit/{itinerary:58,66,modes:91,97,rail_detail:86,94}.py` | The res-4 parent list and a duplicate of `NodeIndex._cell_pos` are rebuilt 4× per origin over 10.2 M cells — ~38 s and ~600 MB transient each (absorbs code-reviewer C2) | scheduled-cycle-15 |
-| AGG14-4 | Critical | High | `sources/osm.py:42-44`; `graph/rail.py:100`; `calibration.toml:125-136` | The high-speed flag is a single OSM relation tag with 3.2 % coverage and 0 % in Japan/India/N. America/Russia; Tohoku Shinkansen is charged 10.4 h against 3.8 h real, and none of it is disclosed | scheduled-this-cycle (C14-1) |
-| AGG14-5 | Critical | High | `tests/sources/test_cache_provenance.py:186-232` | The `STAMPED` cache-provenance table covers 27 of 35 hashed terms; `RAIL_PARSER_VERSION`, `SCHEMA`, `FERRY_SCHEMA`, `_CARGO_RE` and four more can be dropped from a cache key with the suite green (absorbs verifier V2) | scheduled-this-cycle (C14-2) |
+| AGG14-4 | Critical | High | `sources/osm.py:42-44`; `graph/rail.py:100`; `calibration.toml:125-136` | The high-speed flag is a single OSM relation tag with 3.2 % coverage and 0 % in Japan/India/N. America/Russia; Tohoku Shinkansen is charged 10.4 h against 3.8 h real, and none of it is disclosed | DONE this cycle (C14-1) |
+| AGG14-5 | Critical | High | `tests/sources/test_cache_provenance.py:186-232` | The `STAMPED` cache-provenance table covers 27 of 35 hashed terms; `RAIL_PARSER_VERSION`, `SCHEMA`, `FERRY_SCHEMA`, `_CARGO_RE` and four more can be dropped from a cache key with the suite green (absorbs verifier V2) | DONE this cycle (C14-2) |
 | AGG14-6 | Critical | High | `tests/sources/test_airports.py:1-31` | Every test in the file reads a warm `data/build/` parquet, so `scheduled_airports`'s filter/dedup/sort never runs; the stamp carries no `PARSER_VERSION`, and on a cold tree the tests do a live HTTP fetch with no `network` marker | scheduled-cycle-16 |
 | AGG14-7 | Critical | High | `tests/graph/test_ferry.py:245-257` | The ferry immigration-zone test passes with the entire zone-crossing branch deleted (verified: 137 min sailing vs a 45 min threshold) | scheduled-cycle-16 |
 | AGG14-8 | Critical | High | `tests/graph/test_build.py` (whole file) | `build._air_edges`, `_access_edges` and `_transfer_edges` are never called directly by any test — the largest unguarded surface, where door-to-door time is assembled | scheduled-cycle-16 |
@@ -563,7 +577,7 @@ this document's.
 | AGG14-12 | High | High | `calibration.toml:126-133` vs `graph/rail.py:98-101` | The `[rail]` anchor is derived from an endpoint great-circle the code never uses; the stated error has the wrong sign, and the same mistake shows `detour_factor` double-counts curvature by 10–20 % on 11+-stop routes | scheduled-cycle-15 |
 | AGG14-13 | High | High | `graph/build.py:263-275`; `graph/nodes.py:1-19` | Stations have no arrival/departure split, so changing trains costs exactly zero minutes (air charges ≥35 min for the same act), and no test asserts anything about it | scheduled-cycle-15 |
 | AGG14-14 | High | High | `sources/osm.py:1-11,86-94`; `graph/rail.py:92-104` | OSM relation member order is taken as authoritative with no length bound, drop counter or gate: 999 "consecutive" hops exceed 200 km (max 1,604 km), and each is a strict shortcut Dijkstra always takes | scheduled-cycle-15 |
-| AGG14-15 | High | High | `emit/rail_detail.py:56-57` → `web/app.js:2421-2429,2499` | `setdefault` fills both directed keys with one directional name: 55,500 of 111,051 arrow-named pairs (50.0 %) caption the service running the opposite way; 3,834 shipped rows name the line's own origin terminus | scheduled-this-cycle (C14-5) |
+| AGG14-15 | High | High | `emit/rail_detail.py:56-57` → `web/app.js:2421-2429,2499` | `setdefault` fills both directed keys with one directional name: 55,500 of 111,051 arrow-named pairs (50.0 %) caption the service running the opposite way; 3,834 shipped rows name the line's own origin terminus | DONE this cycle (C14-5) |
 | AGG14-16 | High | High | `web/app.js:4341-4368,1691,1623-1665`; `web/index.html:1149-1158` | "Show my location" lets the camera sync write the visitor's position to 5 dp into `?at=` and thence the clipboard and the analytics page location, contradicting the page's own privacy statement; the only guard is a 2,000-char window 25,000 chars away | scheduled-cycle-17 |
 | AGG14-17 | High | High | `cli.py:249-256`; `emit/index.py:97-125,330-337` | `_preflight_origins` catches only `ValueError`, so a malformed `origins.toml` row escapes as a bare `KeyError`/`TypeError` naming no slug — or, for a missing `name`, only at `write_index` after the full solve (absorbs code-reviewer's `load_origins` note) | scheduled-cycle-15 |
 | AGG14-18 | High | High | `solve/dijkstra.py:35-45`; `graph/nodes.py:89-95`; `scripts/expand_origins.py:113,134` | h3 normalises rather than raising, so a swapped or out-of-range origin coordinate that lands on land is solved and published with every gate green | scheduled-cycle-15 |
@@ -597,7 +611,7 @@ this document's.
 | AGG14-46 | High | High | `tests/web/test_design_policy.py:63-70,95-131` | The design-policy gate reads only `<style>` blocks and `app.js`, never an inline `style=` attribute; adding letter-spacing, uppercase and tabular figures to `#origin-name` survives all four bans (mutation-verified) | scheduled-cycle-16 |
 | AGG14-47 | High | High | `web/index.html:466-472,478-487` | The twelve colour-scheme and six ocean radios were left out of the `--line-ctl` control-boundary fix: borders measure 1.30:1 and the selected ring 1.57:1 against SC 1.4.11's 3:1 | scheduled-cycle-17 |
 | AGG14-48 | High | High | `web/index.html:718-719,828,836` | The folded phone sheet keeps `#time` but hides `#snapped` and `#tiletrouble` — a large figure attributed to a city the reader did not choose, with the correction suppressed | scheduled-cycle-17 |
-| AGG14-49 | High | High | `web/llms.txt:29-30`; `emit/index.py:166-169`; `graph/build.py:273-274` | Every rail journey pays 20 minutes (`boarding_min` + `alighting_min`) while every user-facing surface says 15, and the same sentence claims "along the track" for a straight-line chord × 1.2 (absorbs critic C4) | scheduled-this-cycle (C14-7) |
+| AGG14-49 | High | High | `web/llms.txt:29-30`; `emit/index.py:166-169`; `graph/build.py:273-274` | Every rail journey pays 20 minutes (`boarding_min` + `alighting_min`) while every user-facing surface says 15, and the same sentence claims "along the track" for a straight-line chord × 1.2 (absorbs critic C4) | DONE this cycle (C14-7) |
 | AGG14-50 | High | High | `docs/superpowers/specs/…design.md:9-11` | The design spec's "As built" table promises to list every superseded claim and misses five, including the document's single largest divergence — "leave now" semantics | scheduled-cycle-18 |
 | AGG14-51 | High | High | `sources/countries.py:32-34` vs `:48-49` | The docstring names India–Pakistan and Russia–Ukraine as deliberately *excluded* from `CLOSED_BORDERS`; both are in the set fourteen lines below | scheduled-cycle-18 |
 | AGG14-52 | High | High | `emit/borders.py:5-16` vs `:31-46` | The whole module docstring — vertex count, both gzip figures, the "213-242 KB saving", the "29 px" arithmetic — describes the 1.1 km / 4 dp configuration the file explicitly rejected | scheduled-cycle-18 |
@@ -606,7 +620,7 @@ this document's.
 | AGG14-55 | Medium | High | `cli.py:464,468` vs `:417,513` | `hover_cells.bin` and `reading_parents.bin` are rewritten before the first origin is solved and unconditionally, including under `--limit`/`--only`, so a smoke test re-indexes 552 origins' arrays against a new cell ordering | deferred |
 | AGG14-56 | Medium | High | `validate.py:31-54` vs `emit/hover.py:50` | The coverage gate's predicate is `np.isfinite`, but the emitters ship the `UNREACHABLE` sentinel above 65,534 minutes — a 70,000-minute cell counts as covered and renders as "no scheduled route" | deferred |
 | AGG14-57 | Medium | High | `scripts/deploy_verify.sh:67-84,169-199` | The live deploy probe omits `{slug}.json`, `reading_parents.bin` and `.r6.bin`, asserts status only, probes a single origin of 1,464, falls back to `seoul` when index.json is unreadable, and is TOCTOU against the build lock (absorbs debugger C6) | deferred |
-| AGG14-58 | Medium | High | `emit/rail_detail.py:52-57` vs `graph/rail.py:103-107` | The caption picks a line by lowest OSM route id while the edge is priced by `min(minutes)`: 30,742 of 147,332 directed pairs (20.9 %) are captioned with a different service, 370 of them in a different speed class (absorbs tracer T2) | scheduled-this-cycle (C14-6) |
+| AGG14-58 | Medium | High | `emit/rail_detail.py:52-57` vs `graph/rail.py:103-107` | The caption picks a line by lowest OSM route id while the edge is priced by `min(minutes)`: 30,742 of 147,332 directed pairs (20.9 %) are captioned with a different service, 370 of them in a different speed class (absorbs tracer T2) | DONE this cycle (C14-6) |
 | AGG14-59 | Medium | High | `contour/bands.py:254-262` | `_coarse_features` rebuilds a 4.5 M-element `dtype=object` parent array and `np.unique`s it per origin — a Python-level sort costing 7–11 s for an origin-independent mapping | deferred |
 | AGG14-60 | Medium | High | `sources/roads.py:99-140` | `roads.cell_class` is uncached and runs a ~36 s, 4.09 M-cell footprint pass four times per build, while its sibling `road_class_grid()` and `urban_mask` are both cached | deferred |
 | AGG14-61 | Medium | High | `deploy/worldmap.atik.kr.conf:66-72`; `emit/hover.py:239-251` | The 10 MB reading tier is gzipped on the fly at nginx's default level 1 with no `gzip_static` or brotli — 5.33 MB per city switch, re-compressed on every uncached request | deferred |
@@ -638,7 +652,7 @@ this document's.
 | AGG14-87 | Medium | High | `tests/graph/test_air.py:91-127` | Four tests pin `air.KNEE_KM`'s upper side only — it can be lowered from 400 to 270 with all four green, readmitting most of the short-range blow-up the commit exists to stop | deferred |
 | AGG14-88 | Medium | High | `tests/graph/test_ferry.py:174-192` | The off-mask-ferry fixture is 100 % off-mask, so `MAX_OFF_MASK_FERRY_FRACTION` can be changed from 0.20 to 0.95 and still raise; the value that decides real detection is unpinned | deferred |
 | AGG14-89 | Medium | High | `tests/graph/test_build.py:36-39` | `np.isfinite(csr.data).all()` and `(csr.data > 0).all()` restate a `RuntimeError` `build_graph` already raises before returning | deferred |
-| AGG14-90 | Medium | Medium | `tests/graph/test_rail.py:10-16`; `tests/graph/test_rail_integration.py:21-25` | Stale test double: `stop()` builds seven keys against an eight-field `sources/osm.SCHEMA`; polars silently nulls `route_name`, so rail consumers are tested against a frame no real extract produces | scheduled-this-cycle (C14-3) |
+| AGG14-90 | Medium | Medium | `tests/graph/test_rail.py:10-16`; `tests/graph/test_rail_integration.py:21-25` | Stale test double: `stop()` builds seven keys against an eight-field `sources/osm.SCHEMA`; polars silently nulls `route_name`, so rail consumers are tested against a frame no real extract produces | DONE this cycle (C14-3) |
 | AGG14-91 | Medium | High | `tests/emit/test_atomic_writes.py:21-31` | `atomic_write`'s "on any failure the target is left untouched" is never proven: `out` does not exist before the failing write, so adding `path.unlink()` before `mkstemp` leaves all three tests green | deferred |
 | AGG14-92 | Medium | High | `tests/emit/test_reading.py:30-41,93-98,300-305` | Every reading-layout fixture has `fine = np.zeros(..., bool)`, so the split-cell branch never runs; the `inspect.getsource` guard pins the function name but not its resolution argument | deferred |
 | AGG14-93 | Medium | High | `tests/emit/test_water.py` vs `web/app.js:777` | `water.LAYER` is never cross-checked against the page's hardcoded `"source-layer": "water"`; renaming it renders no coastline, with no console error and every test green | deferred |
@@ -658,7 +672,7 @@ this document's.
 | AGG14-107 | Medium | High | `plan/` (no entry), `cli.py:400,418` | A 39-hour build that dies restarts from zero and has died twice; resume is unscheduled, blocked by five things (no completion record, no per-origin identity, no host in the lock, no callable publishability predicate, no `--dist`) — but **not** by graph persistence, which costs 310 s against 38 h | deferred |
 | AGG14-108 | Medium | High | `cli.py:108-133,154-183`; `scripts/deploy_verify.sh:74` | `build-all` and a resident solver are mutually invisible: concurrency is detected by matching the literal string `"build-all"` in `ps` output, where the fix is to generalise the already-tested `_acquire_lock` into a shared lock namespace | deferred |
 | AGG14-109 | Medium | High | `cli.py:291,309,317,437-457,483-484`; `emit/rail_detail.py:89` | The worker context is an untyped eight-key dict in a module global, read with a mix of `[]` and `.get`; a renamed `rail_tables` key silently drops station naming from every origin while `check_dist` sees a correctly-sized paired file set (absorbs debugger A5) | deferred |
-| AGG14-110 | Medium | High | `sources/osm.py:92`; `emit/rail_detail.py:75-76` | An unnamed `stop_position` node inherits the relation's name, so the shipped "station" column can hold a service name — 1,144 of 124,488 rows across 60 origins have `station == line` | scheduled-this-cycle (C14-4) |
+| AGG14-110 | Medium | High | `sources/osm.py:92`; `emit/rail_detail.py:75-76` | An unnamed `stop_position` node inherits the relation's name, so the shipped "station" column can hold a service name — 1,144 of 124,488 rows across 60 origins have `station == line` | DONE this cycle (C14-4) |
 | AGG14-111 | Medium | High | `emit/rail_detail.py:24-41,94-106` | `last_station_per_node` propagates through airport nodes, so a cell reached by flying after a rail access leg is captioned with the station on the far side of the flight — 570 of 5,704 rail-attributed cells from Paris, worst 8,426 km | deferred |
 | AGG14-112 | Medium | High | `emit/rail_detail.py:111-113`; `scripts/check_dist.py:315-332`; `web/app.js:1936` | `.rail.bin` and `.rail.json` are never checked as a pair: nothing asserts `max(ordinal) < len(stations)` or that both came from one build, so a stale `.rail.json` names a different real station for every rail cell with no error | deferred |
 | AGG14-113 | Medium | High | `_io.py:46-55` | `atomic_write`'s cleanup `unlink` is outside a try, so an `ESTALE`/`EIO` from the cleanup replaces the real write failure in every NFS error in the project; there is also no `fsync` before `os.replace` | deferred |
