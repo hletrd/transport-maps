@@ -37,6 +37,10 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 
 | Plan | Scope | Status |
 |---|---|---|
+| `2026-09-16-c15-review-findings.md` | Cycle 15: all 108 raw findings from the eleven lanes merged to 77, indexed with citations, scheduled (`C15-1…C15-7`) or deferred (`DEF15-1…DEF15-61`) | cycle 15: current |
+| `2026-09-15-c14-owner-requests.md` | Cycle 14: the owner's two standing requests — carry-on-only luggage, and preferred/excluded transport modes. **The single authority for both**; amend here, do not open a second record | cycle 14: current; nothing built |
+| `2026-09-15-c14-rail-service-tiers.md` | Cycle 14: the rail service-tier model, the operator/ref labels and the caption fix (C14-R1…C14-R11). §6 lists what is build-baked | cycle 14: current; **pipeline changes reach the site only after a rebuild** |
+| `2026-09-15-c14-review-findings.md` | Cycle 14: all 223 findings from the eleven lanes, clustered CL-A…CL-O, scheduled or deferred with exit criteria | cycle 14: current |
 | `2026-09-14-c13-solver-service.md` | Cycle 13: the F2 on-demand solver service — the design, the measured footprint, and the graph-free half that was built (C13-F2.1…C13-F2.12) | cycle 13: current; design done, nothing resident started |
 | `2026-09-14-c13-review-findings.md` | Cycle 13: all 250 raw findings from the eleven lanes, indexed with citations, scheduled or deferred (C13-1…C13-11) | cycle 13: current |
 | `2026-09-14-c12-review-findings.md` | Cycle 12: everything else the eleven review lanes found, scheduled or deferred (C12-1…C12-11) | cycle 12: current |
