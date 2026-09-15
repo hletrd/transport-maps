@@ -6,9 +6,45 @@ the change silently never takes effect and every test still passes, because
 they all read back the same stale artifact. That is this project's signature
 failure mode, so the stamping is pinned from both directions: the path must
 move when a governing constant moves, and must NOT move otherwise.
+
+What the STAMPED table below could not see until cycle 16: nothing checked it
+against the code at all. `tests/emit/test_build_identity.py` had a check of the
+right shape and it was vacuous -- it built its "called" set by filtering the
+table, so it was a subset of the table by construction and could never name a
+constant the table lacked -- and this file was handed the same table with not
+even that much. A constant that reaches a cache key with no row here is simply
+never mutation-tested, which is the precise state that lets it be dropped from
+the key later with every test green. The completeness check now reads each
+stamping function's own AST. Reading the CODE rather than the table is what
+makes that direction possible, and it found two on its first run:
+`routes._SECTION_RE` and `routes._CARGO_RE` -- the very constants
+`routes.PARSER_VERSION`'s comment names as the things a parse change is
+announced through.
+
+Mutations performed and reverted, with measured results:
+
+- delete the `osm.RAIL_PARSER_VERSION` row from STAMPED (a hashed constant
+  with no row). 1 failed, 60 passed: "constants reach a cache stamp with no
+  row in STAMPED: ['osm.RAIL_PARSER_VERSION']".
+- drop `countries.cell_country` from `_NOT_IN_THIS_TABLE`. 1 failed:
+  "new, with no rows in STAMPED: ['countries.cell_country']" -- so the
+  discovery half is live and a NEW stamping function cannot appear unnoticed.
+- add a constant (`RASTER_DTYPE`) to `_params_hash` in a mutated COPY of
+  sources/roads.py -- the real file could not be edited, a 38-hour `build-all`
+  had it imported -- and run `_constants_hashed_by` against the copy:
+  unrowed == `['roads.RASTER_DTYPE']`, red. Dropping `N_TYPES` from the same
+  call instead: unhashed == `['roads.N_TYPES']`, red the other way. The
+  unmutated copy: both empty, green.
 """
 
+import ast
 import hashlib
+import importlib
+import inspect
+import pkgutil
+import re
+import sys
+import textwrap
 
 import numpy as np
 import polars as pl
@@ -227,6 +263,15 @@ STAMPED = [
     (routes, "PARSER_VERSION", 999, routes._network_cache_path),
     (routes, "_SANITY_PAIRS", (("AAA", "BBB"),), routes._network_cache_path),
     (routes, "_SKIP_PREFIXES", ("Nowhere:",), routes._network_cache_path),
+    # Both regexes reach the stamp as `.pattern`, and neither had a row until
+    # the completeness check below was made to read the CODE rather than the
+    # table. They are exactly the constants routes.PARSER_VERSION's own comment
+    # says a parse change is announced through ("Bump when parse_destinations,
+    # _SKIP_PREFIXES, _CARGO_RE or _SECTION_RE change") -- so a change to
+    # either that forgot the version bump was relying on a stamp nothing
+    # checked.
+    (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), routes._network_cache_path),
+    (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), routes._network_cache_path),
     (wikidata, "RESOLVER_VERSION", 999, routes._network_cache_path),
 ]
 
@@ -238,6 +283,169 @@ def test_the_cache_path_moves_when_a_stamped_constant_moves(monkeypatch, module,
     assert getattr(module, name) != new, "fixture value equals the current one"
     monkeypatch.setattr(module, name, new)
     assert path_fn() != before, f"{module.__name__}.{name} is not in the cache stamp"
+
+
+# --- and the table itself, checked against the code ---------------------------
+#
+# The table above is only as good as its completeness, and nothing checked
+# that. `tests/emit/test_build_identity.py` had a check of this shape and it
+# was vacuous -- it built the "called" set by filtering the table, so it was a
+# subset of the table by construction and could never name a constant the table
+# lacked. This file was given the table without even that much. So the set of
+# constants is read out of each stamping function's OWN AST and compared with
+# the table BOTH ways: a constant hashed with no row (never mutation-tested,
+# the failure this file exists for) and a row for a constant no longer hashed
+# both fail. Reading the code, not the table, is what makes the first direction
+# possible at all -- and it immediately found two: routes._SECTION_RE and
+# routes._CARGO_RE.
+
+#: Stamping functions whose constants the table above is responsible for.
+_COVERED_BY_TABLE = {
+    "roads._grid_cache_path",
+    "airports._table_cache_path",
+    "landmask._cells_cache_path",
+    "urban._mask_cache_path",
+    "osm._ferry_cache_path",
+    "osm._rail_cache_path",
+    "routes._network_cache_path",
+}
+#: Stamping functions deliberately outside it, each with the reason. A new
+#: entry here is a decision someone has to write down, not a silent omission.
+_NOT_IN_THIS_TABLE = {
+    # `countries.cell_country` computes its key inline and has no path helper
+    # to parametrise, so there is nothing to call with a monkeypatched
+    # constant. KNOWN GAP: COUNTRIES_URL therefore has no mutation test.
+    # `test_the_country_key_covers_the_whole_cell_list` below covers only the
+    # cell-list half of that key, and it does so by re-typing the key
+    # construction rather than calling the code.
+    "countries.cell_country": "key built inline; no path helper to parametrise",
+}
+
+
+def _callee(node) -> str:
+    return getattr(node, "attr", getattr(node, "id", "")) if node is not None else ""
+
+
+def _params_hash_calls(fndef) -> list[ast.Call]:
+    return [n for n in ast.walk(fndef)
+            if isinstance(n, ast.Call)
+            and _callee(n.func) in {"params_hash", "_params_hash"}]
+
+
+def _stamping_functions() -> dict[str, object]:
+    """Every module-level function in `transport_maps.sources` that hashes.
+
+    Discovered from the package, not listed here, so a brand-new derived cache
+    with brand-new constants cannot be added without this file noticing.
+    """
+    import transport_maps.sources as pkg
+
+    found: dict[str, object] = {}
+    for info in pkgutil.iter_modules(pkg.__path__):
+        mod = importlib.import_module(f"{pkg.__name__}.{info.name}")
+        for name, obj in vars(mod).items():
+            if not (inspect.isfunction(obj) and obj.__module__ == mod.__name__):
+                continue
+            tree = ast.parse(textwrap.dedent(inspect.getsource(obj)))
+            if _params_hash_calls(tree):
+                found[f"{info.name}.{name}"] = obj
+    return found
+
+
+def _constants_hashed_by(fn) -> set[tuple[str, str]]:
+    """(module, name) of every module-level constant reaching fn's params_hash.
+
+    Resolution rules, each one load-bearing:
+
+    * A bare `Name` is a module global of the defining module, or it is a
+      parameter/comprehension variable and is ignored (`res`, `cells`,
+      `fingerprint`, `k`, `v`).
+    * `mod.ATTR` where `mod` resolves to a module is that module's constant --
+      this is how `wikidata.RESOLVER_VERSION` reaches `routes`' stamp.
+    * Modules and callables are dropped: `hashlib.sha256` and
+      `airports._table_cache_path()` are how the key is COMPUTED, not
+      constants that govern it (the airport table's own stamp is in its name,
+      and has its own rows).
+    * A local is followed back to what was assigned to it, which is how
+      `schema = sorted((k, str(v)) for k, v in SCHEMA.items())` still reports
+      `SCHEMA`.
+    """
+    module = sys.modules[fn.__module__]
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    assigned: dict[str, list[ast.AST]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    assigned.setdefault(target.id, []).append(node.value)
+
+    found: set[tuple[str, str]] = set()
+
+    def record(owner, attr: str) -> None:
+        if not hasattr(owner, attr):
+            return
+        value = getattr(owner, attr)
+        if inspect.ismodule(value) or callable(value):
+            return
+        found.add((owner.__name__, attr))
+
+    def visit(node, depth: int = 0) -> None:
+        if depth > 4:
+            return
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name):
+                owner = fn.__globals__.get(sub.value.id)
+                if inspect.ismodule(owner):
+                    record(owner, sub.attr)
+            elif isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                if sub.id in assigned:
+                    for rhs in assigned[sub.id]:
+                        visit(rhs, depth + 1)
+                elif sub.id in fn.__globals__:
+                    record(module, sub.id)
+
+    for call in _params_hash_calls(tree):
+        for arg in call.args:
+            visit(arg)
+    return found
+
+
+def test_every_function_that_stamps_a_cache_is_accounted_for():
+    """A whole new derived cache must not slip past the table unnoticed."""
+    discovered = set(_stamping_functions())
+    declared = _COVERED_BY_TABLE | set(_NOT_IN_THIS_TABLE)
+    assert discovered == declared, (
+        "the set of functions that stamp a cache key has changed.\n"
+        f"  new, with no rows in STAMPED: {sorted(discovered - declared)}\n"
+        f"  gone from the code: {sorted(declared - discovered)}\n"
+        "Add its constants to STAMPED, or record in _NOT_IN_THIS_TABLE why not.")
+
+
+def test_the_table_and_the_stamps_cover_exactly_the_same_constants():
+    """Both directions, and the first one is the one that was missing.
+
+    A row for a constant that no longer reaches its stamp already turns that
+    row's parametrised case red. A constant that reaches a stamp with NO row is
+    what nothing caught: it is simply never mutation-tested, so dropping it
+    from the key later is a silent cache hit on a stale artifact -- this
+    project's signature failure, restated at the top of this file.
+    """
+    fns = _stamping_functions()
+    hashed: set[tuple[str, str]] = set()
+    for dotted in sorted(_COVERED_BY_TABLE):
+        hashed |= _constants_hashed_by(fns[dotted])
+    table = {(module.__name__, name) for module, name, _, _ in STAMPED}
+
+    unrowed = sorted(f"{m.rsplit('.', 1)[-1]}.{n}" for m, n in hashed - table)
+    unhashed = sorted(f"{m.rsplit('.', 1)[-1]}.{n}" for m, n in table - hashed)
+    assert not unrowed, (
+        f"constants reach a cache stamp with no row in STAMPED: {unrowed}. "
+        "Nothing mutation-tests them, so dropping one from its key would be a "
+        "silent cache HIT on the artifact built under the old value, with every "
+        "test green -- add a row whose `new` differs from the current value")
+    assert not unhashed, (
+        f"STAMPED rows for constants that no longer reach any stamp: {unhashed}. "
+        "Either the constant was dropped from its key or the row is stale")
 
 
 def test_a_rail_schema_DTYPE_change_moves_the_key(monkeypatch):

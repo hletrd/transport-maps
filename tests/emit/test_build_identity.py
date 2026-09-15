@@ -8,7 +8,41 @@ mixture `scripts/check_dist.py` says "passes every length check".
 
 Each term is tested by MOVING it and asserting the hash moves, which is the
 only form of this test that cannot pass with the term removed.
+
+What the table guard could not see until cycle 16: it built
+
+    called = {n for n in STAMPED if f"config.{n}" in body}
+
+which is a SUBSET OF `STAMPED` BY CONSTRUCTION, so `called == set(STAMPED)`
+asserted precisely what the `for name in STAMPED` loop beside it already
+asserted. The direction the guard exists for -- a `config.X` added to
+`params_hash` with no row here, and therefore never mutation-tested -- could
+not fail it, and its failure message printed the symmetric difference under the
+label of the half it could never contain. The names are now read out of the
+`params_hash` call's own AST and compared BOTH ways.
+
+Mutations performed and reverted, with measured results:
+
+- delete the `UNREACHABLE` row from STAMPED (a hashed constant with no row,
+  the exact shape the guard exists for). Old guard: 11 passed, 0 failed --
+  green, because `called` shrank with the table. New guard: 1 failed,
+  10 passed, "params_hash hashes config constants with no row in STAMPED:
+  ['UNREACHABLE']".
+- add a bare `config.DIST` argument to the `params_hash` call. The real
+  emit/index.py could NOT be edited (a 38-hour `build-all` had it imported),
+  so the mutation was applied to a copy on disk and both extractions were run
+  against it. Old extraction: `called` == the full table, symmetric difference
+  `[]` -- green, it cannot see a name the table does not already hold. New
+  extraction: `hashed` gains `'DIST'`, unrowed == `['DIST']`, assertion fails.
+- delete `config.HOVER_RES` from that copy's `params_hash` call. New guard:
+  unhashed == `['HOVER_RES']`, fails as "STAMPED rows that params_hash does not
+  hash" -- the other direction, labelled the right way round this time.
+- control: the unmutated copy gives unrowed == `[]` and unhashed == `[]`.
 """
+
+import ast
+import inspect
+import textwrap
 
 import pytest
 
@@ -65,15 +99,62 @@ def test_two_runs_of_one_input_set_stay_distinguishable():
     assert a["buildId"] != b["buildId"]
 
 
-def test_every_constant_the_docstring_names_is_in_the_table():
-    """Guards the table above: a term added to params_hash without a row here
-    would be untested, which is how the three missing ones got in."""
-    import inspect
-    source = inspect.getsource(index.build_identity)
-    body = "\n".join(ln for ln in source.splitlines() if not ln.strip().startswith("#"))
-    called = {n for n in STAMPED if f"config.{n}" in body}
-    assert called == set(STAMPED), (
-        f"params_hash references config constants with no row in STAMPED: "
-        f"{sorted(set(called) ^ set(STAMPED))}")
-    for name in STAMPED:
-        assert f"config.{name}" in body, f"{name} has a row here but is not stamped"
+def _config_names_hashed_by(fn) -> set[str]:
+    """Every `config.X` whose VALUE is an argument of `fn`'s params_hash call.
+
+    Read off the AST, not out of the text: a name in a comment or a docstring
+    cannot satisfy it, and -- the point of cycle 16 -- the set is derived from
+    the CODE, so it can contain a name STAMPED does not, which is the only way
+    round the guard can catch a term added to the hash without a row.
+
+    Recursion stops at a nested `Call`, because what a call contributes to the
+    digest is its RESULT. `_sha256(config.ROOT / "calibration.toml")` hashes the
+    file's contents; `config.ROOT` is the locator that found the file, not a
+    value in the digest, and moving it does not mean "the grid resolution
+    changed" -- so ROOT and DATA are deliberately not rows in STAMPED and
+    deliberately not collected here.
+    """
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    calls = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Call)
+             and getattr(n.func, "attr", getattr(n.func, "id", "")) == "params_hash"]
+    assert len(calls) == 1, (
+        f"{fn.__name__} makes {len(calls)} params_hash calls; this guard reads one. "
+        "A second call would hide every term in it from the table check")
+
+    names: set[str] = set()
+
+    def visit(node) -> None:
+        if isinstance(node, ast.Call):
+            return
+        if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                and node.value.id == "config"):
+            names.add(node.attr)
+            return
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+
+    for arg in calls[0].args:
+        visit(arg)
+    return names
+
+
+def test_the_table_and_the_hash_cover_exactly_the_same_config_constants():
+    """Both directions. The half that matters is the first one.
+
+    A row with no term in the hash was already caught (its parametrised case
+    goes red). A term in the hash with no row was NOT: it is simply never
+    mutation-tested, and this file exists because three such terms shipped.
+    """
+    hashed = _config_names_hashed_by(index.build_identity)
+    unrowed = sorted(hashed - set(STAMPED))
+    unhashed = sorted(set(STAMPED) - hashed)
+    assert not unrowed, (
+        f"params_hash hashes config constants with no row in STAMPED: {unrowed}. "
+        "Nothing mutation-tests them, so dropping one from the hash again would "
+        "leave the suite green -- add a row with a value that differs from the "
+        "real one")
+    assert not unhashed, (
+        f"STAMPED rows that params_hash does not hash: {unhashed}. Either the "
+        "term was dropped from build_identity (two builds differing only in it "
+        "now share a buildId) or the row is stale")

@@ -19,9 +19,37 @@ The guard walks the call graph from every handler registered before the first
 top-level await and fails on any module-level binding it reaches whose
 declaration line is below the registration.
 
-Mutation performed and reverted before committing: move `let bandSpan = null`
-back below `markSpan()` -> red, naming bandSpan, markSpan and the resize
-registration.
+What the guard could not see until cycle 16: a listener registration was
+truncated at its first newline, so `map.on("error", (e) => {` contributed the
+identifiers `map`, `on` and `e` and nothing else. That is the ONLY listener in
+app.js registered above the await besides the one-line `resize` one, i.e. the
+only one that can fire during the 20-second load window, and its callback calls
+`noteTileTrouble`, which calls `announce`. Measured on the unmodified file, the
+old seeding gave `{layoutForSize, paintLegend, paintScale, scheduleScaleRefresh}`
+with `noteTileTrouble` and `announce` BOTH unreached. Cycle 15 wired
+`announce(say)` into that callback and it is safe only because `announce`
+happens to be a hoisted `function` rather than an arrow `const` like
+`originName` two lines above it -- a coin toss the guard was not watching.
+Seeding now uses the balanced-paren span of the registration.
+
+Mutations performed and reverted, with measured results:
+
+- move `let bandSpan = null` back below `markSpan()` -> red, naming bandSpan,
+  markSpan and the resize registration. (cycle 9)
+- cycle 16, web/app.js: rewrite the hoisted `function announce(text) {` at
+  line 2974 as `const announce = (text) => {` -- an arrow const declared 2,184
+  lines BELOW the await, exactly the shape `originName` already has on the line
+  above. Before the seeding fix: 1 passed (the guard never reached
+  `noteTileTrouble`, so it never looked at `announce`). After: 1 failed,
+  "announce (declared line 2974) is read by noteTileTrouble(), which a
+  module-scope listener at line 693 can reach". Reverted.
+- cycle 16, this file: restore the first-newline truncation (`end =
+  src.find("\\n", m.start())`) -> the `noteTileTrouble in seeds` assertion goes
+  red, 1 failed. Reverted.
+
+The LATE list is EMPTY on the real app.js after the fix: `announce`,
+`tileTroubleFor`, `WATER_SOURCE` and `active` are all declared above the await
+or above the registration. So cycle 16 found a blind guard, not a live defect.
 """
 
 from __future__ import annotations
@@ -46,6 +74,32 @@ _LISTEN = re.compile(
     r"^(?:[\w.$?]+\.)?(?:addEventListener|on|then)\(", re.M)
 #: A bare call at column 0, e.g. `layoutForSize();`.
 _CALL = re.compile(r"^([A-Za-z_$][\w$]*)\(", re.M)
+
+
+def _call_span(src: str, open_paren: int) -> int:
+    """Offset just past the `)` matching the `(` at `open_paren`.
+
+    A listener registration is not one line. `map.on("error", (e) => {` opens a
+    twenty-line callback, and truncating the registration at its first newline
+    -- which this guard did until cycle 16 -- reads only `map.on(`, whose only
+    identifiers are `map`, `on` and `e`. None of them is a module-scope
+    function, so THE ONE LISTENER IN app.js THAT FIRES DURING THE 20-SECOND
+    LOAD WINDOW seeded nothing at all and its whole call graph
+    (`noteTileTrouble` -> `announce`) was never walked.
+
+    `src` has already been through `_strip`, so every paren inside a comment or
+    a string literal is a space and cannot unbalance the count.
+    """
+    depth, i, n = 0, open_paren, len(src)
+    while i < n:
+        if src[i] == "(":
+            depth += 1
+        elif src[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return n
 
 
 def _strip(src: str) -> str:
@@ -141,12 +195,14 @@ def test_no_module_scope_listener_reaches_a_binding_declared_below_it() -> None:
     # the await -- the listener when the module suspends there, the direct call
     # before it is ever reached.
     seeds: dict[str, int] = {}
+    listeners_above = 0
     for m in _LISTEN.finditer(src):
         line = _line_of(src, m.start())
         if line >= await_line:
             continue
-        end = src.find("\n", m.start())
-        call = src[m.start(): len(src) if end < 0 else end]
+        listeners_above += 1
+        # The whole registration, callback body included -- not its first line.
+        call = src[m.start():_call_span(src, m.end() - 1)]
         for name in _NAME.findall(call):
             if name in funcs:
                 seeds.setdefault(name, line)
@@ -155,6 +211,17 @@ def test_no_module_scope_listener_reaches_a_binding_declared_below_it() -> None:
         if line < await_line and m.group(1) in funcs:
             seeds.setdefault(m.group(1), line)
     assert seeds, "no module-scope listener or call found above the await"
+    # app.js has exactly two registrations above the await: the one-line
+    # `resize` and the multi-line `map.on("error", ...)`. If the second ever
+    # stops contributing a seed the guard is back to reading `map.on(` and
+    # walking nothing, which is how it stayed green for a cycle.
+    assert listeners_above >= 2, (
+        f"only {listeners_above} module-scope listener(s) found above the await; "
+        "app.js has changed shape -- re-read this guard before trusting it")
+    assert "noteTileTrouble" in seeds, (
+        "the map.on(\"error\", ...) callback no longer seeds noteTileTrouble. That "
+        "listener is the only one that fires during the 20-second load window, so "
+        "a seeding bug there makes this whole guard blind exactly where it matters")
 
     # Transitive closure over module-scope function calls.
     reach: dict[str, int] = dict(seeds)
