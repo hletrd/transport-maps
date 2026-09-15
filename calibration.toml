@@ -238,6 +238,46 @@ small = 35.0
 # alternative is a factor of two too fast (0.44-0.55) and the direction of the
 # error is the safe one: a heritage railway Dijkstra declines to select is
 # correct behaviour. The weak residual is declared rather than hidden.
+#
+# ---- what the tiers do NOT fix, measured ----
+#
+# The tier is only as good as the tag, and where the tag is absent the tier is
+# `default`. That is 26.7% of relations worldwide and it includes flagship
+# high-speed lines. Measured, not supposed: ALL THREE Shinkansen-named
+# relations in the Asia extract carry neither `service` nor `highspeed`.
+#
+# Relation 9326156, 東北新幹線（下り）: 21 stops, 650 km of chord, 20 legs.
+#
+#   old model, 75 km/h                     10.4 h
+#   this model, tier `default` (81.8)      10.4 h   <-- UNCHANGED
+#   this model if it were tiered high_speed 5.3 h
+#   published Tokyo -> Shin-Aomori          ~3.1 h
+#
+# The tiers buy NOTHING here, and the arithmetic says why: 20 legs x 2.46 min
+# of `default` overhead almost exactly cancels the gain from 75 to 81.8 km/h.
+# What this work fixed is the other 98% of the network -- short stopping
+# services, 85% of all legs, which the old model ran twice too fast -- and it
+# left the case the review lane raised exactly where it found it. Said plainly
+# here because a table of improved residuals would otherwise imply otherwise.
+#
+# Two separate causes, and only one of them is a tagging problem:
+#
+# 1. THE SIGNAL IS ON THE WAYS, NOT THE RELATIONS. In the Asia extract alone,
+#    of 987,441 `railway=rail|light_rail|narrow_gauge` ways, 108,970 (11.0%)
+#    carry `highspeed=yes` and 295,676 (29.9%) carry `maxspeed`, whose commonest
+#    values include 350, 300 and 250. The relations carrying the same
+#    information: zero. Reading it means collecting each relation's WAY members
+#    and a third pass over 4.2 GB of PBF, then refitting -- deferred rather than
+#    rushed alongside a 1,464-origin build that has already died twice.
+#
+# 2. OSM MODELS THE ALL-STATIONS PATTERN, AND THE EXPRESS IS NOT A SEPARATE
+#    RELATION. `ride_edges` resolves parallel services by `min(minutes)`, which
+#    is the right rule and needs a faster relation to select. The Tohoku
+#    relation lists 21 calls; the Hayabusa that runs it in 3 h 10 calls at
+#    about six. So even tiered `high_speed` the model charges 20 x 5.11 min of
+#    station overhead and lands at 5.3 h. No amount of speed calibration
+#    reaches 3.1 h from a 21-stop stop sequence, and nothing in this file
+#    should be read as claiming it does.
 [rail]
 # Track is never a great circle: curves, valleys and junctions. Applied to the
 # straight-line distance between consecutive stops. NOT refitted here -- it was
@@ -251,31 +291,64 @@ detour_factor = 1.2
 boarding_min = 15.0
 alighting_min = 5.0
 
-# FITTED, all six, as tabulated above. `speed_kmh` is the running speed applied
-# to the great-circle chord between consecutive stops after `detour_factor`;
-# `stop_overhead_min` is charged once per leg.
+# Every tier below is FITTED, as tabulated above. `speed_kmh` is the running
+# speed applied to the great-circle chord between consecutive stops after
+# `detour_factor`; `stop_overhead_min` is charged once per leg. This header is
+# written out rather than left implicit because tomllib sees `rail.tiers` as a
+# table either way, and test_header_regex_sees_every_table_tomllib_sees pins
+# the provenance regex against tomllib's view precisely so an implicit parent
+# cannot slip through unlabelled.
+[rail.tiers]
+
+# FITTED, n=57. Median predicted/observed 0.99, log-sd 0.156, 100% within 2x;
+# bootstrap 95% CI on the speed [208, 225]. 55 of the 57 are European.
+# Selected by `service=high_speed` or `highspeed=yes` -- read "what the tiers
+# do NOT fix" above before taking this as coverage.
 [rail.tiers.high_speed]
 speed_kmh = 214.7
 stop_overhead_min = 5.11
 
+# FITTED, n=228. Median predicted/observed 1.07, log-sd 0.299, 96% within 2x;
+# speed CI [93, 112]. 216 of the 228 are European. Also prices `national`
+# (n=44) and `international` (n=16), folded here because neither can identify
+# its own overhead and this tier scores them best (1.17 and 0.96).
 [rail.tiers.long_distance]
 speed_kmh = 103.9
 stop_overhead_min = 3.90
 
+# FITTED, n=497. Median predicted/observed 1.02, log-sd 0.437, 95% within 2x;
+# speed CI [80, 92]. The commonest tier on Earth: 41% of route relations.
 [rail.tiers.regional]
 speed_kmh = 86.7
 stop_overhead_min = 2.22
 
-# The tier for a relation with no `service` tag, or one this repository does
-# not recognise. 26.7% of relations worldwide, and 85% of North America's.
+# FITTED, n=717, on relations carrying a duration and NO `service` tag. Median
+# predicted/observed 1.08, log-sd 0.619, 85% within 2x; speed CI [75, 85]. The
+# weakest of the four large tiers, and the one that prices 26.7% of relations
+# worldwide and 85% of North America's -- which is why its fit set being a
+# near-even Asia/Europe split (339/328) matters more here than anywhere else
+# in this table. Also prices `night` (n=8), which scores 0.96 here against
+# 0.77 as long_distance.
 [rail.tiers.default]
 speed_kmh = 81.8
 stop_overhead_min = 2.46
 
+# FITTED, n=716. Median predicted/observed 1.05, log-sd 0.363, 97% within 2x;
+# speed CI [59, 77]. 596 of the 716 are European, and the per-region table
+# above shows this is the tier where that matters most: 61 km/h in Asia, 50 in
+# Europe, 43 in Oceania, 37 in South America.
 [rail.tiers.commuter]
 speed_kmh = 73.8
 stop_overhead_min = 1.32
 
+# FITTED, n=25, and the weakest number in this file. Median predicted/observed
+# 1.01 but log-sd 1.027 -- a factor of 2.8 at one sigma -- and only 73% within
+# 2x. Kept as its own tier rather than folded because every alternative is a
+# factor of two too fast (0.44-0.55) and the error direction is the safe one:
+# a heritage railway Dijkstra declines to select is correct behaviour. NOT a
+# published-figure default, because there is no published figure for "a
+# heritage railway" and inventing one would be worse than a weak fit that says
+# so.
 [rail.tiers.tourism]
 speed_kmh = 20.1
 stop_overhead_min = 0.90

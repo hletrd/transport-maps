@@ -379,7 +379,47 @@ Recorded so a later cycle does not re-do the survey to reach the same answer.
 | `from`/`to` | 93% | the endpoints of the ROUTE, not of the traveller's leg; printing them would caption a Seoul→Daejeon ride "Seoul → Busan", which is the defect C14-R6 exists to remove |
 | `usage` | <1% | 81 relations worldwide |
 
-## 9. Known limits, carried forward
+## 9. What this did NOT fix, measured
+
+The critic lane raised the Tohoku Shinkansen as the headline consequence of the
+old selector. **The tiers do not fix it, and the plan should say so as plainly
+as it reports the residuals that did improve.**
+
+All three Shinkansen-named relations in the Asia extract carry neither
+`service` nor `highspeed`. Relation 9326156, 東北新幹線（下り）: 21 stops,
+650 km of chord, 20 legs.
+
+| | modelled |
+|---|---|
+| old model, 75 km/h | 10.4 h |
+| this model, tier `default` (81.8 km/h) | **10.4 h — unchanged** |
+| this model if it were tiered `high_speed` | 5.3 h |
+| published Tokyo → Shin-Aomori (Hayabusa) | ~3.1 h |
+
+Twenty legs of `default` overhead at 2.46 min almost exactly cancel the gain
+from 75 to 81.8 km/h. What this cycle fixed is the other 98% of the network:
+short stopping services, 85% of all legs, which the old model ran twice too
+fast. Two distinct causes remain, and only one is a tagging problem.
+
+1. **The signal is on the ways, not the relations.** Measured in the Asia
+   extract alone: of 987,441 `railway=rail|light_rail|narrow_gauge` ways,
+   **108,970 (11.0%) carry `highspeed=yes`** and 295,676 (29.9%) carry
+   `maxspeed`, whose commonest values include 350, 300 and 250. Relations
+   carrying the same in Asia: **zero**. Reading it means collecting each
+   relation's WAY members and a third pass over 4.2 GB of PBF, then refitting.
+   Deferred rather than rushed beside a 1,464-origin build that has died twice.
+   Exit criterion: a cycle with no build holding `dist/`.
+
+2. **OSM models the all-stations pattern and the express is not a separate
+   relation.** `ride_edges` resolves parallel services by `min(minutes)`, which
+   is the right rule and needs a faster relation to select. The Tohoku relation
+   lists 21 calls; the Hayabusa that runs it in 3 h 10 calls at about six. Even
+   tiered `high_speed` the model charges 20 × 5.11 min of station overhead and
+   lands at 5.3 h. **No speed calibration reaches 3.1 h from a 21-stop stop
+   sequence**, and nothing in `calibration.toml` should be read as claiming it
+   does. This is not a tagging gap and a way-level pass would not close it.
+
+## 10. Known limits, carried forward
 
 - **The `tourism` tier is fitted on 25 observations with a log-sd of 1.03.**
   Its central value is unambiguous (every alternative tier is a factor of two
