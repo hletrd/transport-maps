@@ -1933,7 +1933,11 @@ function paintOrigin(o, { keepZoom = false } = {}) {
       console.warn(`${o.slug}.rail.json has no stations array; station names unavailable`);
       return;
     }
-    origin.rail = { idx: checked(b, 2, `${o.slug}.rail.bin`), table: j.stations };
+    origin.rail = { idx: checked(b, 2, `${o.slug}.rail.bin`), table: j.stations,
+                    // Operator names are interned into their own array; a file
+                    // from before that shipped has none, and railVia() then
+                    // reads undefined and prints no operator, which is right.
+                    operators: Array.isArray(j.operators) ? j.operators : [] };
     settle();
   }).catch((err) => { if (current() && !sig.aborted) console.warn("rail detail unavailable:", err.message); });
   get(`./origins/${o.slug}.bin`)
@@ -2423,9 +2427,20 @@ function railVia(i) {
   if (!rail || i < 0) return "";
   const k = rail.idx[i];
   if (k === NO_RAIL || !rail.table[k]) return "";
-  const [station, line] = rail.table[k];
+  // Rows written before operator/ref shipped are two long; destructuring a
+  // missing element gives undefined, which the falsy tests below already
+  // handle, so an old .rail.json renders exactly as it used to rather than
+  // printing "undefined".
+  const [station, line, operatorIdx, ref] = rail.table[k];
   if (!station && !line) return "";
-  return ` via ${esc(station || "a station")}${line ? ` (${esc(line)})` : ""}`;
+  const head = ` via ${esc(station || "a station")}${line ? ` (${esc(line)})` : ""}`;
+  // An absent field prints NOTHING -- not an empty bracket, not a bare dash.
+  // `operator` is absent on 8% of route relations worldwide and 20% in Africa,
+  // and `ref` on 12%, so both halves of this are the common case somewhere.
+  const operator = Number.isInteger(operatorIdx) && operatorIdx >= 0
+    ? (rail.operators?.[operatorIdx] ?? "") : "";
+  const sub = [operator, ref].filter(Boolean).map(esc).join(" · ");
+  return sub ? `${head}<span class="via">${sub}</span>` : head;
 }
 
 // Wrapper so every early return still re-fits the column (U6).

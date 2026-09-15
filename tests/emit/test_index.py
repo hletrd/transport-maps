@@ -134,10 +134,23 @@ def test_mode_detail_reads_the_calibration_it_describes(monkeypatch):
     assert "200,000 people" in detail["highway"] and "200,000.0" not in detail["highway"]
     assert "GRIP4 class" not in detail["highway"]
     rc = rail.load_rail_calibration()
-    assert f"{rc.highspeed_kmh:.0f} km/h" in detail["rail"]
-    monkeypatch.setattr(rail, "load_rail_calibration",
-                        lambda path=None: rail.RailCalibration(highspeed_kmh=321.0, conventional_kmh=75.0,
-                                                               detour_factor=1.2, boarding_min=15.0, alighting_min=5.0))
+    assert f"{rc.tiers['high_speed'].speed_kmh:.0f} km/h" in detail["rail"]
+    assert f"{rc.tiers['commuter'].speed_kmh:.0f} km/h" in detail["rail"]
+    # The charge the page quotes is boarding AND alighting. It used to quote
+    # boarding alone and so said 15 minutes where the journey pays 20.
+    assert f"{rc.boarding_min + rc.alighting_min:.0f} min" in detail["rail"]
+    # The model uses the straight-line chord between stops times a detour
+    # factor; `sources/osm.py` states geometry is never consulted, so the
+    # tooltip must not claim the train follows the track.
+    assert "along the track" not in detail["rail"]
+
+    def fake(path=None):
+        tiers = {**rc.tiers,
+                 "high_speed": rail.RailTier(speed_kmh=321.0, stop_overhead_min=5.0)}
+        return rail.RailCalibration(detour_factor=1.2, boarding_min=15.0,
+                                    alighting_min=5.0, tiers=tiers)
+
+    monkeypatch.setattr(rail, "load_rail_calibration", fake)
     assert "321 km/h" in index.mode_detail()["rail"]
 
 

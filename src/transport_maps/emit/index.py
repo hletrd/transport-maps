@@ -160,13 +160,31 @@ def mode_detail() -> dict[str, str]:
 
     kmh = ground.SPEED_BY_ROAD_CLASS_KMH
     rc, fc = rail.load_rail_calibration(), ferry.load_ferry_calibration()
+    # The tooltip quotes the range the tiers span rather than listing six, and
+    # reads it off the calibration so it cannot drift. `tourism` is excluded
+    # from the low end deliberately: at 20 km/h it is a heritage railway, not
+    # the slow end of scheduled service, and quoting it would misdescribe the
+    # model to a reader planning a journey.
+    tier_lo = rc.tiers["commuter"]
+    tier_hi = rc.tiers["high_speed"]
     halved = (f"halved inside cities (within {urban.URBAN_RADIUS_KM:.0f} km of a city "
               f"over {urban.URBAN_POP_MIN:,.0f} people)")
     return {
-        "rail": "Scheduled trains from OpenStreetMap route relations, stop to stop; "
-                f"high-speed lines at {rc.highspeed_kmh:.0f} km/h, conventional at "
-                f"{rc.conventional_kmh:.0f} km/h along the track, plus {rc.boarding_min:.0f} min "
-                "to board.",
+        # Three corrections live in this one string. It named two speeds when
+        # the model now prices six service tiers; it said "along the track"
+        # when the model uses the straight-line chord between stops times a
+        # detour factor, and `sources/osm.py` states outright that geometry is
+        # never consulted; and it charged only `boarding_min`, so it said 15
+        # minutes where the journey actually pays 20 (`boarding_min` on the way
+        # in plus `alighting_min` on the way out).
+        "rail": "Scheduled trains from OpenStreetMap route relations, stop to stop. "
+                f"Six service tiers from each route's own OSM `service` tag, "
+                f"{tier_lo.speed_kmh:.0f} km/h for a commuter train up to "
+                f"{tier_hi.speed_kmh:.0f} km/h for a high-speed one, over the straight-line "
+                f"distance between stops times {rc.detour_factor:.1f} for curves, plus a "
+                "per-stop allowance. "
+                f"{rc.boarding_min + rc.alighting_min:.0f} min covers reaching the platform "
+                "and leaving the arrival station.",
         # Every figure comes from the ferry calibration the graph itself uses,
         # and the sentence says where the wait comes from: this used to claim
         # only a speed and a terminal time, which was the whole model -- a

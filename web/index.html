@@ -367,6 +367,17 @@ body.crowded .depart-card{display:none}
   text-align:right;white-space:nowrap}
 .leg .d{color:var(--text-2)}
 .leg .d b{color:var(--text);font-weight:500}
+/* Who runs the train and what the service is called, on a second line under
+   the sentence rather than inside its bracket. Measured: the .d column is
+   189px at 1280x800 and "by rail via Seoul Station (Gyeongbu Line)" already
+   runs to two lines there, so a third clause inside the sentence would have
+   pushed a German operator name to four. The step down in size and colour is
+   the same one .listcap and .detail-cap use, so the hierarchy is carried by
+   weight and colour -- no micro-label, no uppercase, no letter-spacing.
+   min-width:0 and overflow-wrap let an unbroken operator name wrap instead of
+   giving .legs a horizontal scrollbar. */
+.leg .d{min-width:0;overflow-wrap:anywhere}
+.leg .via{display:block;font-size:var(--t-cap);color:var(--text-3);line-height:1.4}
 /* The door-to-door total is the answer the itinerary exists to produce, so it
    never scrolls out of its own box. Measured at 1280x800 before this: with the
    itinerary bounded so it stops covering the departure card, a seven-leg

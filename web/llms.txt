@@ -27,7 +27,10 @@ small airport, 1 h 40 at a large one). A ferry leg IS charged an expected wait -
 half the interval between sailings, from the route's own OpenStreetMap
 timetable where it carries one and otherwise from a headway fitted to eight
 published crossings -- on top of the sailing and the terminal time. Rail legs
-carry no wait: they are charged running time plus boarding.
+carry no wait: they are charged running time, a per-stop allowance, and 20
+minutes for reaching the platform and leaving the arrival station. Running
+time comes from one of six service tiers, read off each route's own
+OpenStreetMap `service` tag and fitted against 2,338 OSM `duration` tags.
 
 ## How it is computed
 

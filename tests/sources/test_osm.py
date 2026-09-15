@@ -69,12 +69,77 @@ def test_a_route_left_with_one_stop_is_dropped(tmp_path):
     assert 7 not in osm.rail_routes(extracts_dir=tmp_path)["route_id"].to_list()
 
 
-@pytest.mark.parametrize("tags", [{"highspeed": "yes"}, {"service": "high_speed"}])
-def test_both_highspeed_spellings_are_recognised(tmp_path, tags):
+@pytest.mark.parametrize("tags,tier", [
+    # Both spellings of the high-speed assertion still reach the top tier.
+    ({"highspeed": "yes"}, "high_speed"),
+    ({"service": "high_speed"}, "high_speed"),
+    ({"service": "highspeed"}, "high_speed"),
+    # `highspeed=yes` PROMOTES regardless of what `service` says.
+    ({"service": "regional", "highspeed": "yes"}, "high_speed"),
+    # The four tiers the bulk of the world's relations fall into.
+    ({"service": "regional"}, "regional"),
+    ({"service": "commuter"}, "commuter"),
+    ({"service": "long_distance"}, "long_distance"),
+    ({"service": "tourism"}, "tourism"),
+    # Folded synonyms, chosen on meaning and checked against observations.
+    ({"service": "suburban"}, "commuter"),
+    ({"service": "light_rail"}, "commuter"),
+    ({"service": "national"}, "long_distance"),
+    ({"service": "international"}, "long_distance"),
+    ({"service": "tourist"}, "tourism"),
+    # Absent, unrecognised, and whitespace/case noise all fall to default.
+    ({}, "default"),
+    ({"service": "night"}, "default"),
+    ({"service": "car_shuttle"}, "default"),
+    ({"service": "  "}, "default"),
+    ({"service": "Regional"}, "regional"),
+    # A `;`-joined value takes the SLOWEST tier it recognises, and ignores
+    # tokens it does not.
+    ({"service": "international;long_distance"}, "long_distance"),
+    ({"service": "regional;international"}, "regional"),
+    ({"service": "tourism;night;regional;long_distance"}, "tourism"),
+    ({"service": "night;car"}, "default"),
+])
+def test_the_service_tag_selects_the_speed_tier(tmp_path, tags, tier):
     nodes = [(1, 40.0, 1.0, {"name": "A"}), (2, 41.0, 2.0, {"name": "B"})]
     rels = [(7, [("n", 1, "stop"), ("n", 2, "stop")], TRAIN | tags)]
     write_pbf(tmp_path / "h-rail.osm.pbf", nodes, rels)
-    assert osm.rail_routes(extracts_dir=tmp_path)["highspeed"].to_list() == [True, True]
+    assert osm.rail_routes(extracts_dir=tmp_path)["tier"].to_list() == [tier, tier]
+
+
+def test_every_tier_the_mapping_can_yield_is_one_the_calibration_prices():
+    """`_TIER_BY_SERVICE` and `RAIL_TIERS` must not drift apart.
+
+    A synonym mapped to a tier name with a typo would reach `ride_edges` and
+    raise there, hours into a build, rather than here.
+    """
+    assert set(osm._TIER_BY_SERVICE.values()) <= set(osm.RAIL_TIERS)
+    assert osm.DEFAULT_TIER in osm.RAIL_TIERS
+
+
+def test_the_operator_and_ref_tags_are_carried_through_the_parse(tmp_path):
+    """They are 92% and 88% covered worldwide and are what lets a leg read
+    like a timetable instead of a guess."""
+    nodes = [(1, 40.0, 1.0, {"name": "A"}), (2, 41.0, 2.0, {"name": "B"})]
+    rels = [(7, [("n", 1, "stop"), ("n", 2, "stop")],
+             TRAIN | {"operator": " Korail ", "ref": "101", "name": "KTX"})]
+    write_pbf(tmp_path / "o-rail.osm.pbf", nodes, rels)
+    df = osm.rail_routes(extracts_dir=tmp_path)
+    assert df["operator"].to_list() == ["Korail", "Korail"], "must be stripped"
+    assert df["ref"].to_list() == ["101", "101"]
+    assert df["route_name"].to_list() == ["KTX", "KTX"]
+
+
+def test_a_stop_with_no_name_stays_empty_rather_than_taking_the_route_name(tmp_path):
+    """It used to inherit the relation's `name`, and `emit/rail_detail` then
+    published the LINE as the station: 1,144 of 124,488 shipped rows read
+    `via S1: Rostock Hbf -> Warnemünde (S1: Rostock Hbf -> Warnemünde)`."""
+    nodes = [(1, 40.0, 1.0, {"name": "Named"}), (2, 41.0, 2.0, {})]
+    rels = [(7, [("n", 1, "stop"), ("n", 2, "stop")],
+             TRAIN | {"name": "S1: Rostock Hbf -> Warnemünde"})]
+    write_pbf(tmp_path / "n-rail.osm.pbf", nodes, rels)
+    df = osm.rail_routes(extracts_dir=tmp_path).sort("seq")
+    assert df["name"].to_list() == ["Named", ""]
 
 
 def test_non_train_routes_are_ignored(tmp_path):
@@ -154,8 +219,8 @@ def test_a_cross_border_route_keeps_one_extract_whole_never_spliced():
 
     def rows(extract, route, stops):
         return [{"route_id": route, "seq": i, "stop_id": s, "lat": 0.0, "lon": float(s),
-                 "name": f"stop{s}", "highspeed": False, "route_name": "R",
-                 "_extract": extract} for i, s in enumerate(stops)]
+                 "name": f"stop{s}", "tier": "default", "route_name": "R",
+                 "operator": "", "ref": "", "_extract": extract} for i, s in enumerate(stops)]
 
     df = pl.DataFrame(
         rows("east.osm.pbf", 1, [10, 11]) + rows("west.osm.pbf", 1, [20, 21, 22, 23]),
@@ -185,8 +250,9 @@ def test_no_route_carries_two_extracts_stops():
         for extract, base, n in (("east.pbf", 1000, 3), ("west.pbf", 2000, 5)):
             for i in range(n):
                 rows.append({"route_id": route, "seq": i, "stop_id": base + route * 10 + i,
-                             "lat": 0.0, "lon": 0.0, "name": "x", "highspeed": False,
-                             "route_name": "R", "_extract": extract})
+                             "lat": 0.0, "lon": 0.0, "name": "x", "tier": "default",
+                             "route_name": "R", "operator": "", "ref": "",
+                             "_extract": extract})
     out = osm._pick_one_extract_per_route(
         pl.DataFrame(rows, schema={**osm.SCHEMA, "_extract": pl.Utf8}))
 
@@ -205,7 +271,8 @@ def test_a_tie_is_broken_by_extract_name_not_by_directory_order():
     def frame(order):
         return pl.DataFrame(
             [{"route_id": 3, "seq": i, "stop_id": s, "lat": 0.0, "lon": 0.0, "name": "x",
-              "highspeed": False, "route_name": "R", "_extract": e}
+              "tier": "default", "route_name": "R", "operator": "", "ref": "",
+              "_extract": e}
              for e, stops in order for i, s in enumerate(stops)],
             schema={**osm.SCHEMA, "_extract": pl.Utf8})
 
