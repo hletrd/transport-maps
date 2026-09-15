@@ -1085,13 +1085,19 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          which will be too slow for an express and too fast for a stopping
          service. The largest error this model is known to make is on the
          Tohoku Shinkansen, where it returns about 10 hours against a published
-         3 h 10. Two causes, and neither is speed: the OpenStreetMap relation
-         lists 21 station calls where the fastest train makes about six, and
-         the per-stop allowance for the other fifteen dominates the journey;
-         and the tag that marks the line as high-speed sits on the individual
-         track segments rather than on the route, so the route reads as
-         ordinary. Long-distance express services on all-stations relations are
-         over-stated for the same reason, anywhere in the world.</p>
+         3 h 10, and the larger part of that is speed. All three Shinkansen
+         relations in the data carry no <code>service</code> tag at all, so all
+         three are priced at the default, 82 km/h; the tag that marks the line
+         as high-speed sits on the individual track segments rather than on the
+         route, so the route reads as ordinary. Pricing them as high-speed
+         instead would take about 5 hours off, 70% of the error. The stop
+         sequence is the second and smaller cause: the relation lists 21
+         station calls where the fastest train makes about six, and the
+         per-stop allowance for the other fifteen is 37 minutes, 9% of the
+         error. Corrected both ways the journey would still come out near
+         4 hours, so a better tag on its own would not reach the published
+         time. Long-distance express services on all-stations relations are
+         over-stated for the same reasons, anywhere in the world.</p>
       <p>Flight frequency is a gravity model fitted to two anchor routes, not
          a timetable. Rail legs carry no waiting time at all. A ferry is
          charged half the interval between sailings, taken from the route&rsquo;s

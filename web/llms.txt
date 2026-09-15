@@ -35,10 +35,16 @@ and tourist lines, fitted against OSM `duration` tags. A route's tier is
 read from its own OpenStreetMap `service` tag WHERE IT CARRIES ONE: about a
 quarter of route relations do not, and those fall to a general-purpose
 default. The model's largest known error is the Tohoku Shinkansen at about
-10 h against a published 3 h 10, and speed is not the cause -- the relation
-lists 21 station calls where the fastest train makes about six, and the
-`highspeed` tag sits on the track segments rather than on the route. Express
-services running on all-stations relations are over-stated the same way.
+10 h against a published 3 h 10, and the larger part of that IS speed: all
+three Shinkansen relations carry no `service` tag at all, so all three are
+priced at the default, 82 km/h -- the `highspeed` tag sits on the track
+segments rather than on the route, so the route reads as ordinary. Pricing
+them as high-speed instead would take about 5 h off, 70% of the error. The
+stop sequence is the second and smaller cause: the relation lists 21 station
+calls where the fastest train makes about six, and the per-stop allowance for
+the other fifteen is 37 minutes, 9% of the error. Corrected both ways the
+journey would still come out near 4 h. Express services running on
+all-stations relations are over-stated the same way.
 
 ## How it is computed
 
