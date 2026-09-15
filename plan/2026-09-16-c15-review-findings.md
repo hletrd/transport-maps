@@ -186,7 +186,7 @@ set: a trace showing >16 ms frames.
 - [x] **C15-4.5** The globe wears the **1 px UA focus ring on the viewport edge**, 440 px
       of it behind the sheet at 390×844. Add `canvas:focus-visible` (and the same for the
       links at `web/index.html:611-612`).
-- [ ] **C15-4.6** Verify each in the browser at all four viewports. 4.1 and 4.4 need an
+- [x] **C15-4.6** Verify each in the browser at all four viewports. 4.1 and 4.4 need an
       accessibility snapshot, not a screenshot.
 
 ### C15-5 — Five tests proven vacuous by mutation
@@ -485,8 +485,10 @@ forty-four judgements.
 
 ## 6. Status
 
-**Planned.** Nothing in §2 is implemented yet. Progress is recorded against each
-checkbox as it lands, with the mutation evidence CLAUDE.md requires.
+**Implemented and deployed.** Six of the seven scheduled tasks landed in full;
+C15-5.5 and C15-6.7 are recorded as not done, with reasons, in §7. Every
+progress entry carries the mutation evidence CLAUDE.md requires, including the
+three mutations that came back GREEN.
 
 ---
 
@@ -863,3 +865,84 @@ task.* AB41's own example citation is deliberately left stale, because the row
 quotes it as evidence.
 
 `tests/web/` + `tests/emit/test_index.py`: 456 passed. `ruff check .` clean.
+
+---
+
+## 8. Gates, deploy and live verification
+
+### Gates
+
+| Gate | Result |
+|---|---|
+| `ruff check .` | **clean** |
+| `uv run pytest` (full) | **1075 passed, 4 deselected, 0 failed, 20 m 19 s** — up from the 1028 baseline, +47 tests |
+| `ruff format --check` | **RED, and it was red before this cycle** — see below |
+
+**`ruff format --check` is a pre-existing red gate and is not fixed here.**
+Measured: **126 files** would be reformatted at `fc1008e`, before any change of
+mine, including **37 of the 47 files in `src/`**; with this cycle's work it is
+127. This repository does not use `ruff format` — `pyproject.toml` configures
+only `[tool.ruff.lint]`, and the lint gate `ruff check .` passes. Reformatting
+126 untouched files would be a sweeping change to code that is not this cycle's
+work and would erase a deliberate house style (the hanging-paren form used
+throughout `tests/web/`). New files here match their neighbours. Flagged for the
+owner rather than silently actioned either way.
+
+### Deploy
+
+`bash scripts/deploy_verify.sh --page-only` — **succeeded**, and it now runs
+through the stricter `page_gate()` this cycle added (node pre-flight + skip
+refusal), which passed with 0 skips.
+
+`scripts/browser_verify.sh` runs as its step 4: **ALL CHECKS PASSED**, **0
+console errors**, all four viewports clean —
+
+| viewport | canvas | h-scroll | overlap | time | legend | scale |
+|---|---|---|---|---|---|---|
+| 1280x800 | yes | none | none | yes | yes | yes |
+| 820x1180 | yes | none | none | yes | yes | yes |
+| 390x844 | yes | none | none | yes | yes | yes |
+| 844x390 | yes | none | none | yes | yes | yes |
+
+### The specific fixes, verified live
+
+A generic gate passing is not evidence about a specific fix, so each was
+checked on `https://worldmap.atik.kr` after the deploy:
+
+| Change | Live evidence |
+|---|---|
+| **C15-1** search fold | `Lu'an` **2**, `Lu’an` 2, `Luan` 2 (was **0** for the straight quote); `Tai'an` **1** (was 0); `Xi’an` **4** (was 0); `N’Djamena` **1** (was 0); `Huai’an` **1** (was 0); `Washington DC` **1** (was 0). Every spelling of a name now returns the same rows |
+| **C15-3.2** filtered cap | typing `a` gives **60 rows** and *"Showing the first 60 of 413 matches for “a”. Keep typing to narrow it."* — capped, and the sentence is actionable |
+| **C15-4.2** tile notice copy | live text: *"The shaded bands could not be loaded, so the globe is blank."* — no "below" |
+| **C15-4.1** live region | `#status` `role="status"` present; `#tiletrouble` has **no** `aria-live`, so the failure is announced once, not twice |
+| **C15-4.3** `okOr` | present in the deployed `app.js` |
+| **C15-4.5** focus ring | the focusable element is MapLibre's `canvas` (`tabindex=0`); focused, it computes `outline: solid 3px rgb(228,143,53)`, `outline-offset: -3px` — the page's accent, inset, not the UA's 1 px on the viewport edge. (`#map` itself is `tabindex=-1`, so the `#map:focus-visible` half of the rule is defensive only; `#map canvas:focus-visible` is what fires.) |
+| **C15-6.1/6.3** rail prose | the Tohoku paragraph is served |
+| **C15-6.5** licence link | `vendor/licences/` now links `../../#key`, and the id exists |
+
+### C15-7 is committed and tested but **NOT LIVE**
+
+`curl -I https://worldmap.atik.kr/` still returns
+`permissions-policy: camera=(), microphone=(), geolocation=(self)` — the old
+value. `deploy/worldmap-security-headers.conf` is an **nginx snippet installed
+by hand**: `deploy/README.md:122-126` documents `scp` to
+`/etc/nginx/snippets/`, `nginx -t`, and a reload, as root on the host.
+`--page-only` rsyncs `web/` and nothing else, so no deploy path this cycle can
+ship it.
+
+**Operator action required**, exactly as `deploy/README.md` prescribes. Not
+performed here: it is a root-level change to a live server's configuration,
+well outside a page deploy, and reloading nginx on the strength of my own
+change is not a call to make unilaterally. The commit, the test and the
+measurement are in place for whoever does it.
+
+### The running build
+
+Untouched throughout. PID 26512 alive at **14 h 32 m** elapsed, `dist/.build.lock`
+still dated 10:56, **605** origins logged. Nothing was written under `dist/` or
+`data/`; no build, `reindex` or lock operation was run.
+
+### Browser cleanup
+
+`agent-browser close` then verified: **0** `.agent-browser` processes, **0** of
+its Chromium tree, and the user's own Google Chrome **7** processes untouched.
