@@ -211,7 +211,19 @@ STAMPED = [
     (osm, "FERRY_PARSER_VERSION", 999, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
     (osm, "SEASON_MONTHS", 4, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
     (osm, "UNSPECIFIED_SEASON_MONTHS", 6, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
+    (osm, "FERRY_SCHEMA", {"way_id": pl.Int64}, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
     (osm, "MIN_STOPS", 3, lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
+    # The rail half of this table was ONE entry, MIN_STOPS, while the rail
+    # parquet's content is governed by eight more. RAIL_PARSER_VERSION is the
+    # one that matters most: it is the constant a parse change is supposed to
+    # be announced through, and nothing checked that it reached the key.
+    (osm, "RAIL_PARSER_VERSION", 999, lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
+    (osm, "STOP_ROLES", ("stop",), lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
+    (osm, "PLATFORM_ROLES", ("platform",), lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
+    (osm, "SCHEMA", {"route_id": pl.Int64}, lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
+    (osm, "RAIL_TIERS", ("slow", "fast"), lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
+    (osm, "DEFAULT_TIER", "unknown", lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
+    (osm, "_TIER_BY_SERVICE", {"maglev": "fast"}, lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
     (routes, "PARSER_VERSION", 999, routes._network_cache_path),
     (routes, "_SANITY_PAIRS", (("AAA", "BBB"),), routes._network_cache_path),
     (routes, "_SKIP_PREFIXES", ("Nowhere:",), routes._network_cache_path),
@@ -226,6 +238,22 @@ def test_the_cache_path_moves_when_a_stamped_constant_moves(monkeypatch, module,
     assert getattr(module, name) != new, "fixture value equals the current one"
     monkeypatch.setattr(module, name, new)
     assert path_fn() != before, f"{module.__name__}.{name} is not in the cache stamp"
+
+
+def test_a_rail_schema_DTYPE_change_moves_the_key(monkeypatch):
+    """`sorted(SCHEMA)` yields the KEYS only.
+
+    So changing a column's type -- `tier` from Boolean to Utf8, exactly what
+    this cycle did -- left the key unchanged, and the stale parquet was read
+    back and reinterpreted under the new schema. The names are identical here;
+    only a dtype differs.
+    """
+    fp = [("d", "x.pbf", 1, 2)]
+    before = osm._rail_cache_path(fp)
+    widened = {**osm.SCHEMA, "lat": pl.Float32}
+    assert sorted(widened) == sorted(osm.SCHEMA), "the fixture must change only a dtype"
+    monkeypatch.setattr(osm, "SCHEMA", widened)
+    assert osm._rail_cache_path(fp) != before
 
 
 def test_the_urban_mask_key_covers_the_whole_cell_list():

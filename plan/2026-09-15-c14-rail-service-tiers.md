@@ -300,4 +300,95 @@ flight (rebuild21) was started before this work and does not carry it.
 
 ## 7. Progress
 
-(unstarted)
+All ten tasks done. Commits `d3e7f4a` (plans), `e7a90c7` (the model), `15870ac`
+(the labels and the captions), `<provenance>` (the cache stamps).
+
+- [x] **C14-R1** — `sources/osm.py` carries `tier`, `operator` and `ref`;
+  `service_tier()` maps the tag, promotes on `highspeed=yes`, and takes the
+  slowest recognised tier of a `;`-joined value. 22 parametrised cases cover
+  every tier, every folded synonym, case and whitespace noise, and four
+  multi-valued forms.
+- [x] **C14-R2** — `RAIL_PARSER_VERSION` 2 → 3, and eight rail constants added
+  to `STAMPED` in `tests/sources/test_cache_provenance.py`, which held exactly
+  one (`MIN_STOPS`). `_rail_cache_path` now hashes the schema's ITEMS: a
+  dtype-only change used to be a cache hit, which is precisely what
+  `tier` going from `Boolean` to `Utf8` is.
+- [x] **C14-R3** — `ride_edges` prices per tier and adds the per-leg overhead.
+  An unpriced tier raises naming itself rather than surfacing as polars'
+  "incomplete mapping".
+- [x] **C14-R4** — `[rail]` rewritten. The claim that there was nothing to
+  regress against is gone, the six tiers are declared FITTED with n, residuals,
+  bootstrap CIs and holdout, and the 74% European skew is tabulated by region.
+- [x] **C14-R5** — the caption resolves by minimum leg minutes, the same
+  tie-break `ride_edges` uses.
+- [x] **C14-R6** — forward and reverse captions are kept separately; an
+  opposite-direction name is a documented fallback for a one-way relation, not
+  the default.
+- [x] **C14-R7** — an unnamed stop stays empty and the page prints
+  "a station".
+- [x] **C14-R8** — `operator` and `ref` ship, the operator interned;
+  `railVia()` renders them on a second line and prints nothing for an absent
+  field. A `.rail.json` written before this change still renders, because
+  destructuring a two-element row leaves both new values `undefined` and the
+  falsy tests already handle that.
+- [x] **C14-R9** — both rail test files share one schema-complete `stop()`, and
+  `test_the_fixture_covers_the_whole_schema` reddens if a column is added to
+  `SCHEMA` and not to the fixture.
+- [x] **C14-R10** — the tooltip and `llms.txt` say 20 minutes, name six tiers
+  instead of two speeds, and no longer claim the train follows the track.
+
+### Mutations run, and what they proved
+
+Thirteen, every one red. The ones worth recording:
+
+| mutation | caught by |
+|---|---|
+| drop the per-leg `stop_overhead_min` | `test_a_leg_costs_its_tier_overhead...` (3 cases) |
+| drop `detour_factor` | same, plus the per-leg overhead test |
+| revert `high_speed` to 75 km/h | both published-timetable anchors |
+| fixture stops naming `route_name` | `test_the_fixture_covers_the_whole_schema` |
+| price `commuter` identically to `regional` | **nothing, at first** — see below |
+| reverse caption overwrites the forward one | `test_the_reverse_direction_is_not_captioned...` |
+| resolve parallel services by relation id | `test_the_caption_names_the_service_the_edge_was_PRICED_from` |
+| drop `ref` from the shipped row | `test_the_rail_json_carries_...` |
+| restore the unnamed-stop fallback | `test_a_stop_with_no_name_stays_empty...` |
+| multi-value takes the fastest tier | two of the `;`-joined cases |
+| drop `RAIL_PARSER_VERSION` from the key | the new `STAMPED` case |
+| revert to `sorted(SCHEMA)` keys-only | `test_a_rail_schema_DTYPE_change_moves_the_key` |
+| swap `boarding_min` and `alighting_min` | `test_boarding_and_alighting_are_charged_at_the_right_END...` |
+
+Two of those are worth reading twice. **Pricing `commuter` identically to
+`regional` initially changed nothing**, because every test in
+`tests/graph/test_rail.py` prices against the fixture calibration and none
+against the shipped one — so `test_the_SHIPPED_tiers_are_ordered_and_none_
+duplicates_another` was written in response and now reddens. And **swapping
+`boarding_min` with `alighting_min` scored an identical 399.020** under the
+existing test, because `boarding + rides + alighting` is symmetric in the two;
+the replacement measures the half-journeys (cell → its station, station → its
+cell) instead, which is not.
+
+## 8. What was measured and NOT used
+
+Recorded so a later cycle does not re-do the survey to reach the same answer.
+
+| field | worldwide | why not |
+|---|---|---|
+| `network` | 67% | +6.5 KB gzipped per origin, duplicates `operator` for the reader's purposes in Europe, and the leg row's description column is 189 px with `.legs` capped at 30vh in landscape |
+| `colour` | 39% | unvetted colours against a near-black ground with no contrast guarantee, competing with a band palette CLAUDE.md requires stay measurably separable |
+| `via` | 19% | absent four times in five, and usually already inside `name` — the owner's own example carries `(구포경유)` there |
+| `from`/`to` | 93% | the endpoints of the ROUTE, not of the traveller's leg; printing them would caption a Seoul→Daejeon ride "Seoul → Busan", which is the defect C14-R6 exists to remove |
+| `usage` | <1% | 81 relations worldwide |
+
+## 9. Known limits, carried forward
+
+- **The `tourism` tier is fitted on 25 observations with a log-sd of 1.03.**
+  Its central value is unambiguous (every alternative tier is a factor of two
+  too fast) and its error direction is safe, but it is the weakest number in
+  the table. Exit criterion: a cycle that can re-run the fit over a rebuilt
+  parquet with more `duration` coverage.
+- **No per-region speeds.** The skew is documented, not corrected. Exit
+  criterion: enough non-European observations to fit a region term without
+  fitting it on single digits.
+- **`detour_factor` was held at 1.2 and not refitted** alongside the tier
+  speeds, so the speeds absorb any error in it. The two must not be read
+  separately, and `calibration.toml` says so.
