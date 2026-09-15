@@ -286,6 +286,7 @@ let lockNorth, namePlaces;
 let places = null;              // gazetteer: flat typed arrays plus the rows
 let hoveredCell = null;
 let raf = 0;
+let scaleTimer = 0;            // scheduleScaleRefresh's debounce; see the resize listener
 let pinB = null;                // the destination, once one is set
 let airports = [];              // OurAirports rows, for search and the route
 let addressSeq = 0, reverseSeq = 0;
@@ -583,7 +584,15 @@ paintScale();
 // showing. refreshScale is a hoisted function declaration and guards on the
 // state it needs, so it is safe to name here and at fonts.ready even though
 // `map` is created 60 lines below.
-addEventListener("resize", () => refreshScale());
+// Debounced, through the SAME scheduler moveend and zoomend already use for
+// the identical work. refreshScale resamples 81 readings, rewrites 44 DOM
+// nodes and forces two layouts; a window drag fires resize per frame, so this
+// was the one path doing that work unthrottled while the map path next to it
+// coalesced it at 160 ms. scheduleScaleRefresh is a hoisted declaration; its
+// `scaleTimer` is declared in the state block at the top of this file,
+// because the module suspends at a top-level await and a resize arriving
+// during that suspension would otherwise hit the timer's temporal dead zone.
+addEventListener("resize", () => scheduleScaleRefresh());
 if (document.fonts?.ready) document.fonts.ready.then(() => refreshScale()).catch(() => {});
 
 // Credits: the pipeline's list from index.json, plus what the PAGE itself
@@ -2835,7 +2844,13 @@ function refreshScale() {
 // work a drag does not need, and CLAUDE.md's own warning about per-pointer-move
 // work applies to the scale as much as to the address bar. The extra timer
 // coalesces the burst of moveend events a flyTo emits.
-let scaleTimer = 0;
+//
+// `scaleTimer` is declared in the state block at the top of this file, not
+// here. The `resize` listener registered ~2,250 lines above calls this, and
+// the module suspends at a top-level await before reaching this point -- so a
+// window resize during load would have hit the timer's temporal dead zone.
+// tests/web/test_module_scope_order.py found exactly that, which is the same
+// class of defect as cycle 9's C9-1.
 function scheduleScaleRefresh() {
   clearTimeout(scaleTimer);
   scaleTimer = setTimeout(() => refreshScale(), 160);
@@ -3315,11 +3330,48 @@ function labelPlacement(row, city) {
 
 // Departure city within reach of a point, if any. 80 km covers a metro area
 // without claiming the next city over.
+//
+// This used to scan all 553 origins per call, and dottedCityRows makes one
+// call per gazetteer label: 900 x 553 = 497,700 haversines in ONE synchronous
+// task on the load path, growing to 1,317,600 at the rebuild's 1,464 origins.
+//
+// The prune below is EXACT, not an approximation, which is the only kind this
+// function can take: it decides which city a dot claims, and the comments
+// above record how carefully that was tuned. On a sphere the great-circle
+// distance between two points is never less than the meridional arc between
+// their latitudes, so |dLat| * KM_PER_DEG_LAT > maxKm proves "further than
+// maxKm" without computing anything. Derived from the SAME radius
+// haversineKm uses, so the two cannot drift apart.
+//
+// The original iterates meta.origins and takes a strict `km < bestKm`, so on
+// an exact tie the lowest index in meta.origins order wins. Iterating in
+// latitude order would resolve such a tie differently, so the original index
+// rides along and breaks it the same way. Ties are vanishingly unlikely in
+// float haversine; "vanishingly unlikely" is not "cannot happen".
+const KM_PER_DEG_LAT = 6371.0088 * Math.PI / 180;
+const originsByLat = meta.origins
+  .map((o, i) => ({ o, i, lat: o.lat }))
+  .sort((a, b) => a.lat - b.lat);
+// First index in originsByLat whose lat is >= v.
+function lowerBoundLat(v) {
+  let lo = 0, hi = originsByLat.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (originsByLat[mid].lat < v) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
 function originNear(lat, lon, maxKm = 80) {
-  let best = null, bestKm = maxKm;
-  for (const o of meta.origins) {
-    const km = haversineKm(lat, lon, o.lat, o.lon);
-    if (km < bestKm) { best = o; bestKm = km; }
+  const span = maxKm / KM_PER_DEG_LAT;
+  const hiLat = lat + span;
+  let best = null, bestKm = maxKm, bestI = 0;
+  for (let k = lowerBoundLat(lat - span); k < originsByLat.length; k++) {
+    const e = originsByLat[k];
+    if (e.lat > hiLat) break;
+    const km = haversineKm(lat, lon, e.o.lat, e.o.lon);
+    if (km < bestKm || (km === bestKm && best !== null && e.i < bestI)) {
+      best = e.o; bestKm = km; bestI = e.i;
+    }
   }
   return best;
 }
@@ -3518,7 +3570,14 @@ function render(filter = "") {
   // which is the list a visitor actually wants and the one an alphabet buries.
   // Before the arrays land there is nothing to rank by, so it stays
   // alphabetical; the list is rebuilt when they do.
-  const { hits, capped } = f ? { hits: matched, capped: false } : capCities(matched);
+  // The filtered branch used to return EVERY match uncapped while the resting
+  // list kept 60: one character builds 553 rows today and ~1,097 at the
+  // rebuild's 1,464 origins -- about 6,600 DOM nodes, per keystroke. Same cap,
+  // same slice; `matched` is already alphabetical, so the 60 are stable rather
+  // than whichever the filter happened to reach first.
+  const { hits, capped } = f
+    ? { hits: matched.slice(0, UNFILTERED_CAP), capped: matched.length > UNFILTERED_CAP }
+    : capCities(matched);
   const list = document.createDocumentFragment();
   const row = (b) => { const li = document.createElement("li"); li.setAttribute("role", "none"); li.append(b); return li; };
 
@@ -3633,11 +3692,16 @@ function render(filter = "") {
   if (capped) {
     const li = document.createElement("li");
     li.className = "listmore"; li.setAttribute("role", "none");
-    li.textContent = active
-      ? `Showing ${hits.length} of ${fmtCount(matched.length)} departure cities, `
-        + `the quickest to reach from ${active.name}. Type to search all of them.`
-      : `Showing ${hits.length} of ${fmtCount(matched.length)} departure cities. `
-        + "Type to search all of them.";
+    // "Type to search all of them" is not advice anyone can act on while they
+    // are already typing, so the filtered list says what to do instead.
+    li.textContent = f
+      ? `Showing the first ${hits.length} of ${fmtCount(matched.length)} matches `
+        + `for \u201C${filter.trim()}\u201D. Keep typing to narrow it.`
+      : active
+        ? `Showing ${hits.length} of ${fmtCount(matched.length)} departure cities, `
+          + `the quickest to reach from ${active.name}. Type to search all of them.`
+        : `Showing ${hits.length} of ${fmtCount(matched.length)} departure cities. `
+          + "Type to search all of them.";
     list.append(li);
   }
   // Silence read as "nothing happened"; say what the list did not find and

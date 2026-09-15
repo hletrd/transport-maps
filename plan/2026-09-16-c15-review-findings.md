@@ -144,19 +144,19 @@ word about it.
 
 Taken in ascending order of risk, and only the three whose measurement is unambiguous.
 
-- [ ] **C15-3.1** **Throttle the `resize` listeners.** `web/app.js:586`, `:991-996`,
+- [x] **C15-3.1** **Throttle the `resize` listeners.** `web/app.js:586`, `:991-996`,
       `:4032` run `refreshScale()` unthrottled — 44 DOM nodes, two forced layouts, 81
       lookups per event, three listeners — while the *identical map path* at `:2838-2844`
       is already debounced at 160 ms. Reuse that debounce. This is a one-line-per-listener
       change against an inconsistency the file already documents.
-- [ ] **C15-3.2** **Cap the filtered city list.** `web/app.js:3495-3503,3556-3609`: the
+- [x] **C15-3.2** **Cap the filtered city list.** `web/app.js:3495-3503,3556-3609`: the
       capped path keeps 60, the *filtered* path is uncapped — one character builds ~1,097
       rows and **~6,600 DOM nodes per keystroke**. Apply the existing cap to both paths.
-- [ ] **C15-3.3** **Hoist `dottedCityRows` off the load path.** `web/app.js:3290-3302,
+- [x] **C15-3.3** **Hoist `dottedCityRows` off the load path.** `web/app.js:3290-3302,
       3318-3325`, entered at `:1419`: O(gazetteer rows × origins) = **1,317,600 haversine
       calls in one synchronous task** during load. Precompute once, or defer past first
       paint.
-- [ ] **C15-3.4** Measure each before and after in the browser and record the numbers in
+- [x] **C15-3.4** Measure each before and after in the browser and record the numbers in
       this file. A perf change with no measurement is not a perf change.
 
 **Deferred from this task:** PR15-2 (~405,000 collision comparisons per animation frame,
@@ -547,3 +547,76 @@ None came back green. Positive control included: a clean `424 passed` run
 still returns 0, so the refusals cannot be passing by refusing everything.
 Measured on this host today, the page set is **424 passed, 0 skipped**, so
 the new gate does not false-positive.
+
+### C15-3 — landed, with the measurement C15-3.4 asked for
+
+**C15-3.3, `dottedCityRows`.** The lane projected 1,317,600 haversines; the
+figure **today** is 900 gazetteer rows x 553 origins = **497,700**, because
+`rows` is `p.places.slice(0, 900)` and not the whole 34,135-row gazetteer. It
+reaches 1,317,600 at the rebuild's 1,464 origins. `originNear` now prunes by an
+exact latitude band instead of scanning every origin. Benchmarked in node over
+the real `dist/index.json` and `dist/places.json`, 20 runs each:
+
+| | one `dottedCityRows(rows)` | cities claimed |
+|---|---|---|
+| linear scan | **204.66 ms** | 511 |
+| latitude band | **1.98 ms** | 511 |
+| | **103.4x** | identical |
+
+511 is the same count `app.js`'s own comment records for the shipped gazetteer,
+so the fast path claims exactly the cities the slow one did. That is a 200 ms
+synchronous stall removed from the load path, and it would have been ~540 ms
+after the rebuild.
+
+The prune is **exact, not approximate** — on a sphere the great-circle distance
+is never less than the meridional arc between the two latitudes, and
+`haversineKm` is spherical with a fixed R = 6371.0088, so a degree of latitude
+is R·pi/180 everywhere. `tests/web/test_origin_near.py` proves it rather than
+asserting it: the pruned and the scanning implementations must return the SAME
+origin for all **34,135** shipped gazetteer rows at both radii (15 km and
+80 km), at the poles and the antimeridian, on rings at 0.5x/0.99x/1.0x/1.01x
+the radius around every origin, and on a constructed exact tie.
+
+Mutations, measured:
+
+| Mutation | Result |
+|---|---|
+| `KM_PER_DEG_LAT` -> 130 (band too narrow) | **RED** — 128/34,135 disagree at 15 km, 340/34,135 at 80 km, every one a city silently becoming an inert label |
+| `KM_PER_DEG_LAT` -> 90 (band too wide) | **GREEN** — as it must be; a wider band costs time and cannot change the answer |
+| drop the `e.i < bestI` tie-break | **RED** on the constructed tie, green on all real data |
+
+**C15-3.1, the resize listener.** Routed through `scheduleScaleRefresh()`, the
+160 ms debounce `moveend`/`zoomend` already use for the identical work.
+
+This is where the suite earned its keep. I reasoned that `scaleTimer` could not
+be in its temporal dead zone "because a resize cannot fire during module
+evaluation". That is **wrong**: the module suspends at a top-level await, so a
+resize during load reaches the listener before the `let` at line 2845 ever
+runs. `tests/web/test_module_scope_order.py` — cycle 9's C9-1 guard — caught it
+and named the await line. `scaleTimer` is now declared in the state block.
+
+Only ONE of the three `resize` listeners was changed, and deliberately.
+`:991` re-frames the camera and debouncing it would make a rotating phone lag;
+`:4050` is `hideLegTip`, which must stay immediate — a tooltip that lingers
+160 ms after a resize is a worse bug than the one being fixed. PR15-3's count
+of three is right; its measured cost (44 DOM nodes, two forced layouts, 81
+lookups) is `refreshScale`, which is the one that moved.
+
+**C15-3.2, the filtered list cap.** `render()` capped the resting list at 60
+and returned every match uncapped when filtering — 553 rows today, ~1,097 after
+the rebuild, ~6,600 DOM nodes per keystroke. Same cap now on both paths. The
+"Showing N of M … Type to search all of them" line would have been nonsense to
+someone already typing, so the filtered branch says "Keep typing to narrow it".
+
+`tests/web/test_city_label_dots.py` needed its harness taught about
+`originNear`'s three new module-level dependencies — it failed with a bare
+`ReferenceError: KM_PER_DEG_LAT is not defined`, which is DEF15-55's slicer
+fragility arriving on schedule. It now carries a guard that names the missing
+dependency instead.
+
+`tests/web/` 422 passed. `ruff check .` clean.
+
+**Deferred from this task as planned:** PR15-2 (~405,000 collision comparisons
+per frame) stays DEF15-2 — cycle 9 deferred the same code as DEF9-22 for the
+same reason, and the designer re-measured CLS 0.033 / FCP 112 ms with no jank
+this cycle.

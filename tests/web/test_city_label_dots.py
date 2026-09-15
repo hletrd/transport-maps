@@ -56,6 +56,30 @@ from transport_maps import config
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
 
+def _const(name: str) -> str:
+    """The verbatim source of a top-level `const NAME = ...;`.
+
+    `originNear` gained three module-level dependencies in cycle 15 when its
+    linear scan over all 553 origins became a latitude-band prune, and this
+    harness went red with `ReferenceError: KM_PER_DEG_LAT is not defined` --
+    the slicer had no way to know. Ends at the first semicolon outside any
+    bracket, which is enough for the two declarations it is used for and is
+    checked by test_the_harness_defines_everything_origin_near_needs rather
+    than assumed.
+    """
+    start = APP.index(f"const {name} = ")
+    depth = 0
+    for j in range(start, len(APP)):
+        c = APP[j]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif c == ";" and depth == 0:
+            return APP[start:j + 1]
+    raise AssertionError(f"const {name} has no terminating semicolon")
+
+
 def _function(name: str) -> str:
     start = APP.index(f"function {name}(")
     i = APP.index("{", start)
@@ -105,6 +129,9 @@ def _run(node: str, tmp_path, tail: str, rows=None, cities=None) -> object:
 const meta = {{ origins: {json.dumps(cities if cities is not None else CITIES)} }};
 const ROWS = {json.dumps(rows if rows is not None else ROWS)};
 {_function("haversineKm")}
+{_const("KM_PER_DEG_LAT")}
+{_const("originsByLat")}
+{_function("lowerBoundLat")}
 {_function("originNear")}
 {_function("dottedCityRows")}
 {_function("labelPlacement")}
@@ -115,6 +142,39 @@ const ROWS = {json.dumps(rows if rows is not None else ROWS)};
     out = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout.strip().splitlines()[-1])
+
+
+#: Module-level names `originNear` reads. Assembling the harness without one
+#: of these fails in node with a bare `ReferenceError`, several frames deep in
+#: a generated file, which is a poor way to learn that a slicer needs updating.
+ORIGIN_NEAR_DEPS = ("KM_PER_DEG_LAT", "originsByLat", "lowerBoundLat", "haversineKm")
+
+
+def test_the_harness_defines_everything_origin_near_needs(node, tmp_path) -> None:
+    """The guard on the harness.
+
+    `originNear` was a self-contained loop over `meta.origins` until cycle 15
+    gave it a latitude-band prune and three module-level dependencies. Every
+    test in this file went red with `ReferenceError: KM_PER_DEG_LAT is not
+    defined`. Read the identifiers out of the real function and check the
+    assembled body declares each one, so the NEXT dependency says so here
+    instead.
+    """
+    src = _function("originNear")
+    body = _run(node, tmp_path, "console.log(JSON.stringify(Object.keys({})));")
+    assert body == [], "the probe tail should print an empty key list"
+    assembled = "\n".join((
+        _function("haversineKm"), _const("KM_PER_DEG_LAT"),
+        _const("originsByLat"), _function("lowerBoundLat"), _function("originNear")))
+    for dep in ORIGIN_NEAR_DEPS:
+        if dep == "originNear":
+            continue
+        assert dep in src or dep == "haversineKm", (
+            f"{dep} is listed as a dependency of originNear but is not read by "
+            "it; the list has gone stale")
+        assert f"const {dep}" in assembled or f"function {dep}(" in assembled, (
+            f"the harness does not define {dep}, which originNear reads -- node "
+            "would fail with a bare ReferenceError instead of this message")
 
 
 def test_a_dotted_label_is_placed_on_the_city_not_on_the_gazetteer_row(
