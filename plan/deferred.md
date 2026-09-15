@@ -27,6 +27,50 @@ rebuilds; no writes under `dist/`/`data/`).
 |---|---|---|---|---|---|---|
 | M8-14 | The legend's trailing build-date line overshoots the landscape rail at 844×390 by **19 px**. Cycle 8's plan ticks T2.7 as fixing this and its own progress section records the 19 px and carries the item forward — the file both closes and re-opens it. Improved from 36 px, not closed. | `web/index.html`, the `@media (max-width:860px) and (orientation:landscape)` block | LOW | High | Closing the last 19 px means re-tuning that block's margins, and cycle 9 already changed the same block (the folded sheet now keeps `#time`). Two margin changes in one cycle to a layout whose only verification is a browser pass would make neither attributable. The rail scrolls and every guarantee CLAUDE.md names — strip, ticks, keys, caption, credit — measures visible at all four viewports. | A page cycle that has not otherwise touched the landscape rail; measure the overshoot before and after |
 
+## Cycle 14: AA17 closed, by the owner reporting it on the live site
+
+| ID | Exit criterion, and what fired it | Now |
+|---|---|---|
+| AA17 | "The rule is corrected in `emit/rail_detail.py` and the orchestrator's next rebuild republishes the rows." The first half fired in cycle 14 (`47215f9`, with a partial fix in `15870ac`); the second is the orchestrator's to schedule. | **Closed as a source defect**, and the row is removed from the deferral table below rather than left to be cleaned up by a later cycle. The rebuild dependency is not a deferral — it is stated in `plan/2026-09-15-c14-rail-service-tiers.md` §6 along with every other pipeline change this cycle. |
+
+The owner hit it live before the ledger's exit criterion did: *"KTX 는 왜 자꾸
+구포경유만 뜨지? 그냥 경부선 호남선은 왜 안떠?"* — why does KTX always show the
+via-Gupo variant rather than the plain Gyeongbu line.
+
+Two separate defects were behind it, and the first fix did not close the second.
+
+1. **The label was chosen by lowest OSM relation id while the minutes were
+   chosen by fastest service.** Corrected in `15870ac` to pick the
+   minimum-minutes route, the same criterion `graph/rail.ride_edges` uses.
+   Measured over 119,973 directed hops the network actually runs: **5,168
+   (4.31%) named a strictly slower service, 3,647 of them a train of the wrong
+   speed class → 0 and 0.** Zero by construction, not by luck: the candidate
+   set IS the set of routes achieving the minimum.
+
+2. **That was not enough, and the owner's own example is why.** Relations
+   11208904 (`경부선 KTX: 서울 → 부산 (구포경유)`, seven stops) and 11214334
+   (`경부선 KTX: 서울 → 부산`, four stops) share exactly one hop, 대전 → 동대구.
+   Both are `service=high_speed`, `highspeed=yes`, operated by 한국철도공사,
+   over the same two stations — so the minutes are equal, `minutes < best` is
+   false, and the tie still fell to the lower relation id. **33.82% of hops
+   (40,579 of 119,973) carry such a tie.** `47215f9` keeps ties as ties and
+   breaks them with the traveller's own chain: walking back up to eight station
+   hops, the service that also runs the preceding hops is the one this journey
+   was on. Riding 서울 → 대전 → 동대구 only the direct KTX covers both, because
+   the 구포 variant calls at 광명 in between and has no 서울 → 대전 hop at all.
+
+The ledger's figure was 10.35% of shipped ROWS; the figures above are the share
+of hops in the network. Both describe the same defect — the row-level number is
+weighted by how often each hop ends a journey and needs a build to measure,
+which is why the hop-level one is quoted for the fix.
+
+A note for whoever reads this next: an independent tie-break such as "fewest
+stops" or "highest service class" would have made the owner's symptom go away
+while leaving the label and the time free to diverge again. The property that
+actually holds now is narrower and checkable — **the named service is never
+slower than the one the traveller was charged for** — and
+`tests/emit/test_rail_detail.py` asserts it directly rather than by implication.
+
 ## Cycle 9: six rows whose exit criterion had already fired
 
 The cycle-9 document-specialist audited every deferred row against HEAD rather
@@ -425,7 +469,6 @@ or rebuild-gated items.
 | AA9 | Four of six route-mode tooltips on the live site are the pre-fix prose, including "fitted at 57-50 km/h" — backwards, and a **published-figure default described as fitted**, a direct breach of CLAUDE.md's provenance rule | Medium / High (CRIT6-1, TR6-1) | `src/transport_maps/cli.py:529` (`reindex` carries `modeDetail` forward), live `dist/index.json` | `reindex` carries `modeDetail` forward by design and warns only when it is *absent*; `check_dist` never reads the field. A pure-wording correction is unreachable without the 16-hour rebuild the orchestrator schedules. The source string is already correct | The orchestrator's next rebuild lands, or `reindex` is given a re-derive path for `modeDetail` (which is `U3`'s shape and would need its own cycle) |
 | AA13 | `check_dist.REQUIRED_EXTRAS` demands `borders.json`, `places.json` and `airports.json`, which **no CLI subcommand or script can produce**; they are referenced only from `tests/`. PR4-1's merged `COORD_DP = 4` is therefore unreachable and costs 241,909 gz bytes off every cold load | Medium / High (PR6-3; carried O6/E6, PR4-1) | `scripts/check_dist.py` `REQUIRED_EXTRAS`; no producer anywhere in `src/` or `scripts/` | Writing the missing generator is a new build stage, not a fix — it must decide provenance, licensing and a cache key, and it changes what a deploy publishes. Out of scope for a cycle the brief calls small | A cycle is budgeted for the generator, or the three files are removed from `REQUIRED_EXTRAS` and the page's dependence on them is re-examined |
 | AA16 | The colour gate measures every sea against `SPACE` (`#050609`), a constant the page paints nowhere; the ground behind the globe is `BG` (`#0a0b0d`). **Five of seventeen seas miss the project's own 0.05 floor against `BG`** | Medium / High (ARCH6-2) | `scripts/check_ramps.py`, `tests/web/test_ramps.py`, `web/app.js` `SPACE`/`BG` | Correcting the reference colour turns the gate red and forces a **palette change**, which CLAUDE.md places out of bounds: "Design policy (standing — do not revisit without being asked)" and "Band colours must be measurably separable … Measure it, do not eyeball it." The measurement is deferred, not the rule. The non-visible half — wiring `oceans()`/`ocean_problems()` into `check_ramps.py`'s `__main__`, which today reports nothing and exits 0 — lands this cycle as part of C6-21 | Owner accepts either the corrected floor with the five seas adjusted, or a documented exception |
-| AA17 | The rail line named for a hop is chosen by lowest `route_id` while the minutes are chosen by fastest service: **117,571 of 1,135,799 shipped rail rows (10.35 %)** name a line that did not set the time, 14,306 (1.26 %) a train of the wrong speed class | Medium / High (TR6-2) | `src/transport_maps/emit/rail_detail.py:56` vs `src/transport_maps/graph/rail.py:113` | The source fix is small but every shipped row is wrong until a rebuild republishes them, and the orchestrator owns rebuilds. Explicitly **not** `TR5-2`: that splice clears on the corrected rebuild, this does not — the selection rule itself is wrong | The rule is corrected in `emit/rail_detail.py` and the orchestrator's next rebuild republishes the rows |
 | AA18 | 91 of the globe's 595 departure dots carry a name that is not the city they depart from, and 47 origins carry more than one dot; a dotted "El Paso" label departs from Ciudad Juárez across an international border | Medium / High (TR6-3) | `data/origins.toml`, `dist/places.json`, `web/app.js` label layer | A data-curation change to the origin set, which is build input: the fix is choosing 553 names and coordinates, and the result only reaches a visitor through a rebuild | The origin set is re-curated and the orchestrator's next rebuild publishes it |
 | AA19 | The duplicate-name suffix resolves three of the four ambiguous pairs identically ("Suzhou China" / "Suzhou China"); `data/origins.toml` carries `country` for **0 of 553** origins although `expand_origins.py` has written it since `1000bd3` | Low / High (TR6-4) | `web/app.js` `cityCountry`, `data/origins.toml` | Same rebuild gate as AA18: the discriminating field is absent from the shipped data, so a code-only fix cannot resolve the pairs | `origins.toml` is regenerated with `country` populated and the next rebuild ships it |
 | AA28 | "air, rail, road and ferry" is asserted in eight public places and gated nowhere; `graph.ferry` is read by nothing and has been dropped from the served index | Low / High (CRIT6-5) | `web/index.html`, `web/llms.txt`, `src/transport_maps/emit/index.py` | The claim is **true of the current build** (verified to contain ferries), so this is missing enforcement rather than a false statement. Adding the gate means deciding what `graph.ferry` should mean in the index, which touches `reindex`'s contract | A cycle picks up the index-contract work (the same seat as AA34), or a rebuild drops ferries and the claim becomes false |
