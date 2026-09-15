@@ -63,6 +63,7 @@ import tomllib
 
 import pytest
 
+from tests.conftest import skip_without_dist
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -139,7 +140,7 @@ def _shipped_names() -> list[str]:
         # ahead of the checked-in list; fold it too rather than miss it.
         names += [n for n in shipped if n not in set(names)]
     if not names:
-        pytest.skip("neither data/origins.toml nor dist/index.json is present")
+        skip_without_dist("neither data/origins.toml nor dist/index.json is present")
     return names
 
 

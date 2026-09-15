@@ -77,35 +77,111 @@ page_gate() {
   # skip, and any new skip in this set is a check that silently stopped
   # running. `tee` keeps the run visible on the operator's screen while
   # leaving a copy to count the skips in.
-  local out rc=0
+  # Lint before the tests. `ruff check` is one of this repository's two gates
+  # and NOTHING invoked it: no CI, no pre-commit, and zero references in
+  # either deploy script. It was a gate by convention only, which is to say
+  # it was whatever the last person to run it by hand had left it as.
+  echo "  ruff check ."
+  if ! uv run ruff check . ; then
+    echo "  !! ruff check failed. Refusing."
+    exit 1
+  fi
+
+  local out rc=0 collected
   out="$(mktemp -t page_gate.XXXXXX)"
+  # The floor. Counting failures proves nothing FAILED; it does not prove
+  # anything RAN, and this stage has now twice been able to report success
+  # over an almost-empty run. So collect first and require that every test
+  # collected is accounted for below. Cheap: collection is under a second.
+  collected=$(uv run pytest -q -p no:cacheprovider --collect-only \
+    tests/test_licence_firewall.py tests/web/ tests/emit/test_water.py 2>/dev/null \
+    | grep -oE '[0-9]+ test(s)? collected' | grep -oE '^[0-9]+' || true)
   # `|| rc=$?` and not a bare pipeline: under `set -e` a failing pytest would
-  # abort the script here and never reach the skip check below, so the two
-  # refusals would not compose. pipefail is already set, so rc is pytest's
-  # status and not tee's.
-  uv run pytest -q -p no:cacheprovider \
+  # abort the script here and never reach the checks below, so the refusals
+  # would not compose. pipefail is already set, so rc is pytest's status and
+  # not tee's. `-rs` prints one line per skip WITH ITS REASON, which is what
+  # lets the two kinds of skip be told apart.
+  uv run pytest -q -rs -p no:cacheprovider \
     tests/test_licence_firewall.py tests/web/ tests/emit/test_water.py \
     2>&1 | tee "$out" || rc=$?
-  local skipped
-  # grep, not `sed -n 's/.*[^0-9]...'`: pytest writes "421 passed, 3 skipped"
-  # when something ran and "3 skipped in 0.12s" when NOTHING did, and the
-  # leading-digit form is exactly the all-skipped case this check exists for.
-  # `|| true` for the same reason the free-space check below carries one:
-  # grep exits 1 when nothing matches, which is the HEALTHY case here, and
-  # under `set -euo pipefail` that aborts the whole script silently. This
-  # script has already shipped that exact bug once.
-  skipped=$(grep -oE '[0-9]+ skipped' "$out" | tail -1 | cut -d' ' -f1 || true)
-  rm -f "$out"
   if [ "$rc" -ne 0 ]; then
+    rm -f "$out"
     echo "  !! page-asset gate failed (pytest exit $rc)"
     exit "$rc"
   fi
-  if [ -n "${skipped:-}" ] && [ "$skipped" -gt 0 ]; then
-    echo "  !! $skipped test(s) in the page gate SKIPPED rather than ran."
-    echo "     pytest exits 0 on a skip, so this stage would have reported"
-    echo "     success while checking less than it claims. Refusing."
+
+  # grep, not `sed -n 's/.*[^0-9]...'`: pytest writes "421 passed, 3 skipped"
+  # when something ran and "3 skipped in 0.12s" when NOTHING did, and the
+  # leading-digit form is exactly the all-skipped case this check exists for.
+  # `|| true` on every one of these for the same reason the free-space check
+  # below carries one: grep exits 1 when nothing matches, which is the
+  # HEALTHY case here, and under `set -euo pipefail` that aborts the whole
+  # script silently. This script has already shipped that exact bug once.
+  local n_skipped n_dist_skips n_passed other
+  count_of() { grep -oE "[0-9]+ $1" "$out" | tail -1 | grep -oE '^[0-9]+' || true; }
+  n_skipped=$(count_of skipped)
+  n_passed=$(count_of passed)
+  # pytest exits 0 on every one of these, and each means a test that did not
+  # run or did not run as itself. C15-2 closed `skipped` and left the rest:
+  # `3 passed, 421 deselected` sailed through, and pyproject.toml already
+  # carries `-m 'not network and not real_multi_band'`, so ONE `pytestmark`
+  # on tests/web/test_parses.py -- the file the paragraph above calls the
+  # reason this stage is worth having -- silently removed it from the gate.
+  for kind in deselected xfailed xpassed error errors; do
+    other=$(count_of "$kind")
+    if [ -n "${other:-}" ] && [ "$other" -gt 0 ]; then
+      echo "  !! $other test(s) in the page gate reported '$kind'."
+      echo "     pytest exits 0 on that, so this stage would have reported"
+      echo "     success while checking less than it claims. Refusing."
+      rm -f "$out"
+      exit 1
+    fi
+  done
+
+  # A skip because nothing is BUILT has not stopped checking anything --
+  # there is nothing to check, and tests/test_licence_firewall.py asserts
+  # that a skip is the correct answer for an unbuilt tree. A skip for any
+  # other reason (no node, a missing dependency, a condition someone added
+  # later) is a check that silently stopped running, which is the hole
+  # C15-2 closed and which stays closed.
+  #
+  # The two are told apart by the sentinel tests/conftest.py's
+  # skip_without_dist() puts in the reason, which `-rs` prints. Without this,
+  # C15-2's rule broke --page-only -- the one mode documented as not needing
+  # dist/ -- on every clone, because dist/ is gitignored.
+  # `-rs` groups identical skips as "SKIPPED [N] path: reason", so the count
+  # is the sum of the bracketed N, NOT the number of lines. Counting lines
+  # under-reports every grouped skip and refuses a --page-only run that
+  # should pass -- measured: 3 lines for 7 skipped tests.
+  n_dist_skips=$(grep -E '^SKIPPED \[[0-9]+\].*needs a built dist/' "$out" \
+    | grep -oE '^SKIPPED \[[0-9]+\]' | grep -oE '[0-9]+' \
+    | awk '{n += $1} END {print n + 0}' || true)
+  rm -f "$out"
+  : "${n_skipped:=0}" "${n_dist_skips:=0}" "${n_passed:=0}"
+  if [ "$n_skipped" -gt "$n_dist_skips" ]; then
+    echo "  !! $((n_skipped - n_dist_skips)) test(s) in the page gate SKIPPED"
+    echo "     for a reason other than an unbuilt dist/. pytest exits 0 on a"
+    echo "     skip, so this stage would have reported success while checking"
+    echo "     less than it claims. Refusing."
     exit 1
   fi
+  if [ "$n_dist_skips" -gt 0 ] && [ -f dist/index.json ]; then
+    echo "  !! $n_dist_skips test(s) skipped for an unbuilt dist/, but"
+    echo "     dist/index.json is present. Those tests had something to read"
+    echo "     and did not read it. Refusing."
+    exit 1
+  fi
+  if [ -n "${collected:-}" ] && [ "$((n_passed + n_dist_skips))" -ne "$collected" ]; then
+    echo "  !! the page gate collected $collected test(s) but only"
+    echo "     $n_passed passed and $n_dist_skips skipped for an unbuilt dist/."
+    echo "     $((collected - n_passed - n_dist_skips)) are unaccounted for. Refusing."
+    exit 1
+  fi
+  if [ -z "${collected:-}" ] || [ "$collected" -lt 1 ]; then
+    echo "  !! the page gate collected no tests at all. Refusing."
+    exit 1
+  fi
+  echo "  page gate: $n_passed passed, $n_dist_skips skipped for an unbuilt dist/, of $collected collected"
 }
 
 if [ "$MODE" = full ]; then

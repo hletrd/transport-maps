@@ -99,3 +99,36 @@ def check_ramps():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+#: The sentinel that lets `scripts/deploy_verify.sh` tell one kind of skip
+#: from another.
+#:
+#: Cycle 15's C15-2 found that `page_gate()` exited 0 when tests skipped, and
+#: closed it with "any skip is a failure". That was right, and it immediately
+#: broke `--page-only` -- the one deploy mode `deploy_verify.sh:17-19`
+#: documents as not needing `dist/` -- because the same cycle added four
+#: `dist/`-conditional skips to the gate's own file set. Measured with `dist/`
+#: absent: 21 passed / 0 skipped became 14 passed / 7 skipped, and `dist/` is
+#: gitignored, so that is every clone. It also contradicted
+#: `tests/test_licence_firewall.py`, which asserts that a skip is the CORRECT
+#: answer for an unbuilt tree.
+#:
+#: Both rules are right; they just need to be told apart. A test that skips
+#: because nothing is built has not stopped checking anything -- there is
+#: nothing to check. A test that skips for any other reason (no `node`, a
+#: missing dependency, a condition someone added later) is a check that
+#: silently stopped running, which is the hole C15-2 closed.
+#:
+#: So the reason string carries a sentinel, and the gate counts the two kinds
+#: separately. Changing this string means changing `page_gate()` too; the
+#: guard in `tests/test_deploy_script.py` fails if they drift apart.
+NEEDS_DIST = "needs a built dist/"
+
+
+def skip_without_dist(detail: str):
+    """Skip because the tree has no built `dist/`, in the form the gate reads.
+
+    Call it, do not raise it: `pytest.skip` raises, so this never returns.
+    """
+    pytest.skip(f"{NEEDS_DIST}: {detail}")

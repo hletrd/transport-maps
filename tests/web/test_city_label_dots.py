@@ -51,6 +51,7 @@ import subprocess
 
 import pytest
 
+from tests.conftest import skip_without_dist
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -248,7 +249,7 @@ def test_the_shipped_gazetteer_gives_each_city_one_button(node, tmp_path) -> Non
     dist = config.ROOT / "dist"
     places, index = dist / "places.json", dist / "index.json"
     if not (places.exists() and index.exists()):
-        pytest.skip("dist/ is not built here; nothing to measure against")
+        skip_without_dist("dist/ is not built here; nothing to measure against")
     rows = json.loads(places.read_text(encoding="utf-8"))["places"][:900]
     cities = json.loads(index.read_text(encoding="utf-8"))["origins"]
     got = _run(node, tmp_path, """

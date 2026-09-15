@@ -268,20 +268,55 @@ def _page_gate_source() -> str:
 
 
 def _run_page_gate(tmp, pytest_summary: str, pytest_rc: int = 0,
-                   with_node: bool = True):
+                   with_node: bool = True, collected: int | None = None,
+                   ruff_rc: int = 0, dist_present: bool = True):
     """Run the REAL page_gate with `uv` and `node` stubbed out.
 
-    A pattern assertion cannot see this defect: the whole bug was that pytest
-    exits 0 on a skip and the shell therefore carried on. Only the shell can
-    show that it now does not.
+    A pattern assertion cannot see these defects: the whole class is that
+    pytest exits 0 on a skip, a deselect, an xfail and an empty run, and the
+    shell therefore carried on. Only the shell can show that it now does not.
+
+    `page_gate` calls `uv` three times -- `ruff check`, `pytest
+    --collect-only`, then the real `pytest` -- so the stub has to tell them
+    apart. A stub that answered all three with the run summary made the
+    collected-count floor read the summary line as its collected count, which
+    is a way of passing this harness while the gate is broken.
+
+    `collected` defaults to the number of passes in the summary, so an
+    existing caller that only cares about the pass/skip arithmetic gets a
+    consistent pair without stating it twice.
+
+    `dist_present` writes a `dist/index.json` into the scratch cwd: the gate
+    refuses a "needs a built dist/" skip when dist/ IS built, because those
+    tests had something to read and did not read it.
     """
+    import re as _re
     import subprocess
     from pathlib import Path
 
+    if collected is None:
+        m = _re.search(r"(\d+) passed", pytest_summary)
+        skips = _re.findall(r"^SKIPPED \[(\d+)\]", pytest_summary, _re.M)
+        n_skipped = sum(int(n) for n in skips)
+        if not skips:
+            m2 = _re.search(r"(\d+) skipped", pytest_summary)
+            n_skipped = int(m2.group(1)) if m2 else 0
+        collected = (int(m.group(1)) if m else 0) + n_skipped
+
     bin_dir = Path(tmp) / "bin"
     bin_dir.mkdir(exist_ok=True)
+    work = Path(tmp) / "work"
+    (work / "dist").mkdir(parents=True, exist_ok=True)
+    if dist_present:
+        (work / "dist" / "index.json").write_text("{}")
     uv = bin_dir / "uv"
-    uv.write_text(f'#!/bin/sh\nprintf "%s\\n" "{pytest_summary}"\nexit {pytest_rc}\n')
+    uv.write_text(
+        "#!/bin/sh\n"
+        'case "$*" in\n'
+        f"  *'ruff check'*) exit {ruff_rc} ;;\n"
+        f'  *--collect-only*) echo "{collected} tests collected in 0.42s"; exit 0 ;;\n'
+        "esac\n"
+        f'printf "%s\\n" "{pytest_summary}"\nexit {pytest_rc}\n')
     uv.chmod(0o755)
     if with_node:
         node = bin_dir / "node"
@@ -289,7 +324,7 @@ def _run_page_gate(tmp, pytest_summary: str, pytest_rc: int = 0,
         node.chmod(0o755)
     # A PATH holding only the stubs, so a real `node` on the developer's
     # machine cannot make the node-missing case pass by accident.
-    script = (f'set -euo pipefail\nPATH="{bin_dir}:/usr/bin:/bin"\n'
+    script = (f'set -euo pipefail\nPATH="{bin_dir}:/usr/bin:/bin"\ncd "{work}"\n'
               f"{_page_gate_source()}\npage_gate\necho GATE_RETURNED_OK\n")
     return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
 
@@ -313,7 +348,7 @@ def test_the_page_gate_refuses_a_run_whose_tests_skipped(tmp_path):
         done = _run_page_gate(tmp_path, summary)
         assert done.returncode != 0, (
             f"the page gate accepted {summary!r}:\n{done.stdout}{done.stderr}")
-        assert "SKIPPED rather than ran" in done.stdout, done.stdout
+        assert "SKIPPED" in done.stdout, done.stdout
         assert "GATE_RETURNED_OK" not in done.stdout, (
             "the gate carried on past a skipped run")
 
@@ -349,4 +384,171 @@ def test_the_page_gate_still_fails_on_a_real_test_failure(tmp_path):
     done = _run_page_gate(tmp_path, "2 failed, 419 passed in 31.00s", pytest_rc=1)
     assert done.returncode != 0, done.stdout
     assert "page-asset gate failed" in done.stdout, done.stdout
+    assert "GATE_RETURNED_OK" not in done.stdout
+
+
+# --- C16-2 / C16-3: the holes cycle 15's skip refusal left ------------------
+#
+# C15-2 made a skip a failure, which was right and is kept. It left four
+# other ways for pytest to exit 0 having checked almost nothing, and it broke
+# the one deploy mode documented as not needing dist/.
+
+
+def test_the_page_gate_refuses_a_deselected_run(tmp_path):
+    """`skipped` is not the only word pytest prints for "did not run", and
+    `deselected` is the one no other guard in this gate can see.
+
+    Measured against the gate as cycle 15 left it, by lifting the real
+    `page_gate` out of the script and feeding it scripted summaries: all of
+    `3 passed, 421 deselected`, `431 passed, 19 xfailed`, `1 passed` and
+    `448 passed, 2 errors` were ACCEPTED, rc=0.
+
+    Reachable today and not hypothetical: `pyproject.toml` already carries
+    `-m 'not network and not real_multi_band'`, so a single
+    `pytestmark = pytest.mark.network` on `tests/web/test_parses.py` -- the
+    file `page_gate`'s own comment calls "why this stage is worth having at
+    all", and the only parse of `app.js` anywhere in the repository --
+    removes it from the deploy gate with no output an operator would notice.
+
+    THE COLLECTED COUNT IS THE POINT OF THIS TEST, and my first version of it
+    got it wrong. I stubbed `--collect-only` at 450 beside a summary of
+    `3 passed, 421 deselected`, deleted the deselect refusal to check the
+    test went red, and it stayed GREEN at 19 passed -- because the floor
+    caught it instead. That state cannot occur: measured,
+    `pytest -q --collect-only` APPLIES deselection and reports the reduced
+    number (`no tests collected (26 deselected)` for a `-k` that matches
+    nothing). So in the real defect `collected` is 3 too, the floor is
+    satisfied, and this loop is the only thing standing between a one-line
+    `pytestmark` and an unparsed `app.js` on the live site. The stub now says
+    3, and deleting the refusal reddens this test.
+    """
+    done = _run_page_gate(tmp_path, "3 passed, 421 deselected in 0.10s", collected=3)
+    assert done.returncode != 0, (
+        f"the page gate accepted a run with 421 deselected:"
+        f"\n{done.stdout}{done.stderr}")
+    assert "deselected" in done.stdout, done.stdout
+    assert "GATE_RETURNED_OK" not in done.stdout
+
+
+def test_the_page_gate_refuses_xfails_and_errors(tmp_path):
+    """The other two words, at the collected counts they really occur with.
+
+    `xfailed` and `errors` are run outcomes, not collection ones, so
+    `--collect-only` still reports the full number and the floor below
+    catches these as well. Both refusals are kept: the floor says "225 are
+    unaccounted for", which is true but does not tell the operator that the
+    reason is 19 xfails. Two guards, one of them legible.
+    """
+    for summary in ("431 passed, 19 xfailed in 30.00s",
+                    "448 passed, 2 errors in 9.00s"):
+        done = _run_page_gate(tmp_path, summary, collected=450)
+        assert done.returncode != 0, (
+            f"the page gate accepted {summary!r}:\n{done.stdout}{done.stderr}")
+        assert "GATE_RETURNED_OK" not in done.stdout, (
+            f"the gate carried on past {summary!r}")
+
+
+def test_the_page_gate_asserts_a_floor_on_how_much_ran(tmp_path):
+    """Counting failures proves nothing failed. It does not prove anything ran.
+
+    Two shapes: a run that collected 450 and passed 200 (225 vanished between
+    collection and the summary), and a run that collected nothing at all --
+    which `1 passed in 0.01s` above is the degenerate case of. Neither can be
+    caught by looking for a bad word in the output, because there is no bad
+    word: the output is entirely good news about a run that did not happen.
+    """
+    short = _run_page_gate(tmp_path, "200 passed in 5.00s", collected=450)
+    assert short.returncode != 0, short.stdout
+    assert "unaccounted for" in short.stdout, short.stdout
+
+    empty = _run_page_gate(tmp_path, "0 passed in 0.01s", collected=0)
+    assert empty.returncode != 0, empty.stdout
+    assert "collected no tests at all" in empty.stdout, empty.stdout
+
+
+_DIST_SKIPS = (
+    "SKIPPED [2] tests/web/test_origin_near.py:106: "
+    "needs a built dist/: dist/index.json is not built; no origins to scan\n"
+    "SKIPPED [1] tests/web/test_city_label_dots.py:251: "
+    "needs a built dist/: dist/ is not built here; nothing to measure against\n"
+    "SKIPPED [4] tests/test_licence_firewall.py:73: "
+    "needs a built dist/: no scannable files under dist; nothing built yet\n"
+    "443 passed, 7 skipped in 11.00s")
+
+
+def test_page_only_still_works_on_a_tree_that_has_no_dist(tmp_path):
+    """The regression C15-2 shipped, and the reason the skip rule needed a
+    sentinel rather than a blanket refusal.
+
+    `deploy_verify.sh`'s own header documents `--page-only` as "web/ only: no
+    dist gate" -- the mode for a page fix while a rebuild owns `dist/`, which
+    is exactly the situation this repository has been in for three cycles.
+    C15-1 and C15-3 then added four `dist/`-conditional skips to the gate's
+    own file set, joining the licence firewall's. Measured with `dist/`
+    hidden: 21 passed / 0 skipped became **14 passed / 7 skipped**. `dist/`
+    is gitignored, so that is every clone, and the refusal message never
+    mentioned `dist/`.
+
+    It also contradicted `tests/test_licence_firewall.py`, which asserts in
+    as many words that a skip is the CORRECT answer for an unbuilt tree.
+    """
+    done = _run_page_gate(tmp_path, _DIST_SKIPS, dist_present=False)
+    assert done.returncode == 0, (
+        f"--page-only refused on a tree with no dist/:\n{done.stdout}{done.stderr}")
+    assert "GATE_RETURNED_OK" in done.stdout, done.stdout
+
+
+def test_a_skip_that_is_not_about_dist_still_refuses(tmp_path):
+    """The half of C15-2 that must not be weakened while fixing the other half.
+
+    One non-sentinel skip mixed in among six sentinel ones, on a tree with no
+    `dist/`: still refused. Without this, "tell the two apart" would be
+    indistinguishable from "stop checking".
+    """
+    mixed = ("SKIPPED [6] tests/web/test_origin_near.py:106: "
+             "needs a built dist/: nothing built\n"
+             "SKIPPED [1] tests/web/test_vendor.py:9: node is not on PATH\n"
+             "443 passed, 7 skipped in 11.00s")
+    done = _run_page_gate(tmp_path, mixed, dist_present=False)
+    assert done.returncode != 0, done.stdout
+    assert "other than an unbuilt dist/" in done.stdout, done.stdout
+    assert "GATE_RETURNED_OK" not in done.stdout
+
+
+def test_a_dist_skip_refuses_when_dist_is_actually_built(tmp_path):
+    """The sentinel is not a way to opt out of the gate.
+
+    If `dist/index.json` is on disk and a test skipped saying it is not, the
+    test had something to read and did not read it. That is the C15-2 case
+    again wearing the sentinel, and it is refused.
+    """
+    done = _run_page_gate(tmp_path, _DIST_SKIPS, dist_present=True)
+    assert done.returncode != 0, done.stdout
+    assert "dist/index.json is present" in done.stdout, done.stdout
+
+
+def test_the_skip_sentinel_has_not_drifted_between_the_two_files():
+    """`page_gate` greps for a string `tests/conftest.py` writes. They are in
+    different languages and nothing else connects them, so if one is reworded
+    the gate silently counts zero sentinel skips and `--page-only` breaks
+    again -- the same failure, one indirection further away.
+    """
+    from tests.conftest import NEEDS_DIST
+    assert NEEDS_DIST in DEPLOY, (
+        f"tests/conftest.py's NEEDS_DIST is {NEEDS_DIST!r}, which "
+        f"deploy_verify.sh does not grep for")
+    assert "skip_without_dist" in (
+        ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
+
+
+def test_the_page_gate_runs_ruff(tmp_path):
+    """`ruff check` is one of this repository's two gates and NOTHING invoked
+    it -- no CI, no pre-commit hook, and zero references in either deploy
+    script. It was a gate by convention: whatever the last person to run it
+    by hand had left it as. A deploy is the moment it is worth knowing.
+    """
+    assert "ruff check" in DEPLOY, "the page gate does not run ruff"
+    done = _run_page_gate(tmp_path, "450 passed in 12.00s", ruff_rc=1)
+    assert done.returncode != 0, done.stdout
+    assert "ruff check failed" in done.stdout, done.stdout
     assert "GATE_RETURNED_OK" not in done.stdout

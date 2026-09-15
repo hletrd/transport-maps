@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import skip_without_dist
 from transport_maps import config
 
 FORBIDDEN = ("fr24", "flightradar", "flightaware", "aeroapi", "fa_flight_id",
@@ -70,7 +71,7 @@ def _check_no_provider_fingerprints(root: Path) -> None:
     files = [p for p in root.rglob("*") if p.is_file() and p.suffix in SCANNED_SUFFIXES
              and "vendor" not in p.parts]           # third-party bundles are not our output
     if not files:
-        pytest.skip(f"no scannable files under {root}; nothing built yet")
+        skip_without_dist(f"no scannable files under {root}; nothing built yet")
     assert len(files) > 0
 
     for path in files:

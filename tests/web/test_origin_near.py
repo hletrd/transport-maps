@@ -61,6 +61,7 @@ import subprocess
 
 import pytest
 
+from tests.conftest import skip_without_dist
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -103,14 +104,14 @@ def node() -> str:
 def _origins() -> list[dict]:
     index = DIST / "index.json"
     if not index.exists():
-        pytest.skip("dist/index.json is not built; no origins to scan")
+        skip_without_dist("dist/index.json is not built; no origins to scan")
     return json.loads(index.read_text(encoding="utf-8"))["origins"]
 
 
 def _places() -> list[list]:
     path = DIST / "places.json"
     if not path.exists():
-        pytest.skip("dist/places.json is not built; no gazetteer to scan")
+        skip_without_dist("dist/places.json is not built; no gazetteer to scan")
     return json.loads(path.read_text(encoding="utf-8"))["places"]
 
 
