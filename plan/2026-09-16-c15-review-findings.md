@@ -212,7 +212,7 @@ inferred.
       exercises the filter. Re-run the four-way mutation and confirm **RED**. Also declare
       the test's network dependence (an `integration`/`network` marker) — on a cold clone
       it would attempt a live fetch with nothing saying so.
-- [ ] **C15-5.3** `tests/emit/test_rail_detail.py` pins `_line_between`'s pricing against
+- [x] **C15-5.3** `tests/emit/test_rail_detail.py` pins `_line_between`'s pricing against
       `rail.ride_edges`. Re-run both mutations and confirm **RED**.
 - [ ] **C15-5.4** `tests/service/test_wire.py:111-123` —
       `test_an_enormous_query_is_refused_before_it_is_parsed` documents a `parse_qs` spy
@@ -736,3 +736,43 @@ RED. The fixture row is synthetic on purpose and the file says so alongside the
 measurement, rather than implying the data contains it.
 
 `tests/sources/` 171 passed, 3 deselected. `ruff check .` clean.
+
+### C15-5.3 — landed, after the first attempt was itself vacuous
+
+`emit/rail_detail._line_between` and `graph/rail.ride_edges` write the same
+formula twice — `stop_overhead_min + 60·km·detour_factor / speed_kmh` — once
+scalar, once vectorised. One sets the charge, the other picks the caption.
+Nothing compared them, and cycle 15 proved it: dropping `* cal.detour_factor`,
+and then dropping BOTH that and `stop_overhead_min`, left the file at **19
+passed, GREEN** both times.
+
+**The first guard I wrote was also vacuous, and the way it failed is the more
+seductive one.** It recomputed the formula in the test and compared that to
+`ride_edges`. But `_line_between` throws its computed minutes away — it returns
+only the winning route ids — so the comparison was test-arithmetic against
+graph-arithmetic, and mutating `rail_detail` changed neither side. All three
+mutations stayed **green** on it. Only the source-text assertion caught them,
+and that one *also* reddened for `60.0` → `60`, a semantically empty edit.
+
+The guard that shipped tests what `_line_between` actually returns: **which
+service wins.** Two services over one hop, at distances solved from the shipped
+calibration so that dropping a term flips the winner —
+
+| hop | correct winner | without `stop_overhead_min` | without `detour_factor` |
+|---|---|---|---|
+| 3.0 km | commuter (4.247 vs 6.116) | **high_speed** | commuter |
+| 6.5 km | high_speed (7.290 vs 7.661) | high_speed | **commuter** |
+
+Both distances are needed; either alone leaves the other term free. The winner
+is then checked against `ride_edges` rather than against a number written in
+the test.
+
+Mutations, re-run against the shipped guard:
+
+| Mutation | Was | Now |
+|---|---|---|
+| drop `* cal.detour_factor` | GREEN, 19 passed | **RED, 2 failed** |
+| drop `t.stop_overhead_min +` | (untested) | **RED, 2 failed** |
+| drop BOTH | GREEN, 19 passed | **RED, 2 failed** |
+| `/ t.speed_kmh` -> `/ 100.0` | (untested) | **RED, 5 failed** |
+| `60.0` -> `60` | — | **GREEN** — correct: identical in float arithmetic, and a guard that reddens for that trains people to ignore it |

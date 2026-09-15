@@ -452,3 +452,134 @@ def test_a_rail_table_that_reaches_the_sentinel_is_refused(monkeypatch, tmp_path
     with pytest.raises(ValueError, match="uint16 holds"):
         rail_detail.write_rail_detail(OneCell(), minutes, pred, tables,
                                       tmp_path / "x.rail.bin", tmp_path / "x.rail.json")
+
+
+# --- the duplicated pricing formula -----------------------------------------
+#
+# `emit/rail_detail._line_between` and `graph/rail.ride_edges` each compute
+#
+#     stop_overhead_min + 60 * km * detour_factor / speed_kmh
+#
+# once in scalar Python and once vectorised in polars. `ride_edges` sets the
+# TIME an edge costs; `_line_between` decides which service the caption NAMES,
+# by taking the minimum of the same quantity. If the two drift, the page prints
+# a service that is not the one the traveller was charged for -- which is AA17,
+# and the residual of it this cycle's tracer measured at 24.4% of directed hops.
+#
+# Nothing saw the drift. Cycle 15 mutated `_line_between` to drop
+# `* cal.detour_factor`, and then to drop BOTH `stop_overhead_min` and
+# `detour_factor`, and this file stayed at 19 passed, GREEN, both times: every
+# other test here compares captions to captions, so a formula wrong the same
+# way on every route still agrees with itself.
+#
+# THE FIRST ATTEMPT AT THIS GUARD WAS ALSO VACUOUS, and it is worth saying how,
+# because it is the more seductive mistake. It recomputed the formula in the
+# test and compared that to `ride_edges`. But the quantity `_line_between`
+# actually computes is thrown away -- it returns only the winning route ids --
+# so the comparison was test-arithmetic against graph-arithmetic, and a
+# mutation of `rail_detail` changed neither. All three mutations stayed green
+# on it.
+#
+# What `_line_between` DOES expose is which route won. So the fixtures below
+# are built as two services over one hop, at a distance chosen so that dropping
+# a term FLIPS THE WINNER. That is observable through the real return value,
+# and it is the property that matters anyway: the caption must name the service
+# the charge came from.
+#
+# MUTATIONS PERFORMED on `emit/rail_detail.py`'s pricing line, each run, with
+# the count this FILE returns:
+#
+#   drop `* cal.detour_factor`          -> RED, 2 failed   (was GREEN, 19 passed)
+#   drop `t.stop_overhead_min +`        -> RED, 2 failed
+#   drop BOTH                           -> RED, 2 failed   (was GREEN, 19 passed)
+#   `/ t.speed_kmh` -> `/ 100.0`        -> RED, 5 failed
+#   `60.0` -> `60`                      -> GREEN, 22 passed
+#
+# The last line is deliberate and is the reason this guard does not assert on
+# literals: `60` and `60.0` are identical in float arithmetic, and a check that
+# reddened for a semantically empty edit would teach the next reader to ignore
+# it. The first draft of the source-term test did exactly that.
+
+
+#: Two services over one station pair, at distances solved from the shipped
+#: calibration (high_speed 214.7 km/h + 5.11 min; commuter 73.8 km/h + 1.32 min;
+#: detour_factor 1.2). The crossover sits at 5.92 km with the real formula and
+#: 7.10 km without the detour factor, so:
+#:
+#:   3.0 km  correct -> commuter    ; no stop_overhead -> high_speed
+#:   6.5 km  correct -> high_speed  ; no detour_factor -> commuter
+#:
+#: Both distances are needed. One alone leaves the other term free.
+FLIP_DLAT_3KM = 0.026980      # 3.0000 km by graph.rail._haversine_km
+FLIP_DLAT_6_5KM = 0.058456    # 6.5000 km
+
+
+def _two_services(dlat):
+    """The same hop, run by a high-speed service and a commuter service."""
+    return routes([
+        stop(20, 0, 37.0, 127.0, "A", tier="high_speed", route_name="Express"),
+        stop(20, 1, 37.0 + dlat, 127.0, "B", tier="high_speed", route_name="Express"),
+        stop(21, 0, 37.0, 127.0, "A", tier="commuter", route_name="Stopper"),
+        stop(21, 1, 37.0 + dlat, 127.0, "B", tier="commuter", route_name="Stopper"),
+    ])
+
+
+def _winner(df, dlat):
+    """Which route id `_line_between` captions the hop with."""
+    key = (rail.station_key(37.0, 127.0), rail.station_key(37.0 + dlat, 127.0))
+    lines = rail_detail._line_between(df, CAL)
+    ids = lines[key]
+    assert len(ids) == 1, f"expected one winning service, got {ids}"
+    return ids[0]
+
+
+@pytest.mark.parametrize("dlat,expected,why", [
+    (FLIP_DLAT_3KM, 21,
+     "over 3 km the commuter's 1.32 min stop overhead beats the express's "
+     "5.11 min; without stop_overhead_min the express would win"),
+    (FLIP_DLAT_6_5KM, 20,
+     "over 6.5 km the express is ahead only because detour_factor 1.2 "
+     "inflates both distance terms; at factor 1.0 the commuter would win"),
+])
+def test_the_caption_names_the_service_the_graph_charges_least_for(dlat, expected, why):
+    """`_line_between`'s winner must be `ride_edges`' cheapest service.
+
+    Checked against `ride_edges` rather than against a number written here, so
+    the two implementations are compared with each other and not with the test.
+    """
+    df = _two_services(dlat)
+    assert _winner(df, dlat) == expected, why
+
+    # ...and the graph agrees that this is the cheaper one. ride_edges keeps
+    # the minimum over both services, so the winner's own price must equal it.
+    edges = rail.ride_edges(df, CAL)
+    assert len(edges) == 1
+    charged = float(edges["minutes"][0])
+    alone = rail.ride_edges(
+        df.filter(pl.col("route_id") == expected), CAL)
+    assert float(alone["minutes"][0]) == pytest.approx(charged, abs=1e-9), (
+        f"the captioned service ({expected}) is not the one the graph charged "
+        f"for: it costs {float(alone['minutes'][0])!r} against the edge's "
+        f"{charged!r}")
+
+
+def test_the_two_pricings_name_the_same_calibration_terms():
+    """The formula itself, side by side.
+
+    The flip tests above would still pass if BOTH implementations lost the
+    same term, because they would agree with each other. This reads the two
+    expressions and requires each to name every calibration term.
+
+    Deliberately NOT asserting on `60.0` or any other literal: changing it to
+    `60` is identical in float arithmetic, and a guard that reddens for a
+    semantically empty edit trains people to ignore it. The first draft did
+    exactly that.
+    """
+    import inspect
+    graph_src = inspect.getsource(rail.ride_edges)
+    emit_src = inspect.getsource(rail_detail._line_between)
+    for term in ("stop_overhead_min", "detour_factor", "speed_kmh"):
+        assert term in graph_src, f"graph/rail.ride_edges no longer uses {term}"
+        assert term in emit_src, (
+            f"emit/rail_detail._line_between no longer uses {term}; the caption "
+            "would be chosen by a different rule from the charge")
