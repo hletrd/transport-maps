@@ -63,6 +63,18 @@ def last_station_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray) ->
 PATH_LOOKBACK_HOPS = 8
 
 
+def _route_stop_counts(routes: pl.DataFrame) -> dict[int, int]:
+    """`route_id` -> how many stops the route calls at.
+
+    Used ONLY as the last tie-break in `pick_route`, among services that
+    already tie for fastest and that the traveller's own path could not
+    separate. See the note there for why that is a presentation choice and not
+    a second, competing definition of which train set the time.
+    """
+    counts = routes.group_by("route_id").len()
+    return {int(r): int(n) for r, n in zip(counts["route_id"], counts["len"])}
+
+
 def _route_labels(routes: pl.DataFrame) -> dict[int, tuple]:
     """`route_id` -> `(name, operator, ref)`.
 
@@ -184,7 +196,7 @@ def _walk_back_hops(idx, predecessors, node, first_station) -> list[tuple[str, s
     return hops
 
 
-def pick_route(hops: list[tuple[str, str]], lines: dict) -> int | None:
+def pick_route(hops: list[tuple[str, str]], lines: dict, stop_counts=None) -> int | None:
     """Which tied service the traveller rode, from their own sequence of hops.
 
     Scored by how many CONSECUTIVE hops back from the destination a candidate
@@ -193,10 +205,24 @@ def pick_route(hops: list[tuple[str, str]], lines: dict) -> int | None:
     genuinely interchangeable on time -- it can never name a slower train than
     the one the traveller was charged for, which is the property AA17 is about.
 
-    Ties that survive the whole walk fall to the lowest relation id, so the
-    output does not depend on dict ordering. That last resort is arbitrary and
-    is meant to be: by then the candidates agree on time and on every hop the
-    traveller took, and nothing in the data distinguishes them.
+    **The last resort, and why it is not the rule in disguise.** A single-hop
+    ride has no preceding hop to score with: board at 대전, alight at 동대구,
+    and both KTX services serve exactly that and nothing else of the journey.
+    Something has to choose, and it has to be deterministic or the same journey
+    captions differently between builds. Fewest stops wins, then lowest
+    relation id.
+
+    Choosing the service that makes the fewest calls is a PRESENTATION choice
+    among names that are equally true: `경부선 KTX: 서울 → 부산` describes the
+    corridor, `경부선 KTX: 서울 → 부산 (구포경유)` describes a variant of it,
+    and a reader on a 대전 -> 동대구 leg is told something useful by the first
+    and something irrelevant by the second. It is deliberately the LAST rule
+    rather than the first: used on its own it would be exactly the "reduce the
+    symptom while letting the label and the time diverge again" trap, because
+    the shortest service is not generally the fastest one. Applied only to
+    routes already tied for fastest AND already indistinguishable on the
+    traveller's path, it cannot move the named service away from the one that
+    set the time -- there is nothing left for it to move away from.
     """
     if not hops:
         return None
@@ -205,16 +231,19 @@ def pick_route(hops: list[tuple[str, str]], lines: dict) -> int | None:
         return None
     if len(candidates) == 1:
         return candidates[0]
-    best, best_depth = None, -1
-    for rid in sorted(candidates):
+    counts = stop_counts or {}
+    best, best_key = None, None
+    for rid in candidates:
         depth = 0
         for hop in hops[1:]:
             also = lines.get(hop)
             if not also or rid not in also:
                 break
             depth += 1
-        if depth > best_depth:
-            best, best_depth = rid, depth
+        # Deeper path coverage first; then fewest stops; then lowest id.
+        key = (-depth, counts.get(rid, 0), rid)
+        if best_key is None or key < best_key:
+            best, best_key = rid, key
     return best
 
 
@@ -233,7 +262,7 @@ def lookup_tables(routes: pl.DataFrame | None, cal=None) -> dict:
     tomllib read once rather than every forked worker.
     """
     if routes is None:
-        return {"lines": {}, "stop_names": {}, "route_label": {}}
+        return {"lines": {}, "stop_names": {}, "route_label": {}, "route_stops": {}}
     from transport_maps.graph.rail import load_rail_calibration, station_key
 
     stop_names: dict[str, str] = {}
@@ -243,6 +272,7 @@ def lookup_tables(routes: pl.DataFrame | None, cal=None) -> dict:
         stop_names.setdefault(station_key(lat, lon), nm or "")
     return {"lines": _line_between(routes, cal or load_rail_calibration()),
             "route_label": _route_labels(routes),
+            "route_stops": _route_stop_counts(routes),
             "stop_names": stop_names}
 
 
@@ -278,7 +308,7 @@ def write_rail_detail(idx, minutes: np.ndarray, predecessors: np.ndarray,
             # services can tie for fastest over one hop; the hop before it is
             # what says which of them this journey was on.
             hops = _walk_back_hops(idx, predecessors, node, first_station)
-            rid = pick_route(hops, lines)
+            rid = pick_route(hops, lines, tables.get("route_stops"))
             line, operator, ref = route_label.get(rid, ("", "", "")) if rid is not None \
                 else ("", "", "")
             key = (station, line, operator, ref)

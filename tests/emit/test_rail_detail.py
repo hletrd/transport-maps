@@ -46,7 +46,7 @@ def label_for(df, hops):
     the dict would test the storage instead.
     """
     lines = rail_detail._line_between(df, CAL)
-    rid = rail_detail.pick_route(hops, lines)
+    rid = rail_detail.pick_route(hops, lines, rail_detail._route_stop_counts(df))
     return rail_detail._route_labels(df).get(rid, ("", "", ""))
 
 
@@ -211,17 +211,48 @@ def test_a_hop_only_the_detour_runs_is_still_captioned_with_the_detour():
     assert label_for(df, [(station_key(*YEONGDEUNGPO), station_key(*SUWON))])[0] == KTX_SUWON
 
 
-def test_with_no_preceding_hop_a_tie_is_broken_by_the_lowest_relation_id():
-    """Boarding AT 대전 there is nothing behind to disambiguate with, and the
-    two candidates agree on time and on every hop the traveller took. The
-    fallback is arbitrary and must at least be DETERMINISTIC, or the same
-    journey captions differently between builds."""
+def test_a_single_hop_ride_names_the_corridor_not_a_detour_variant():
+    """Boarding AT 대전 there is no preceding hop to disambiguate with.
+
+    Both services run exactly that hop at exactly that speed, so either name
+    is true; the question is which is USEFUL. `경부선 KTX: 서울 → 부산`
+    describes the corridor, `(구포경유)` describes a variant of it, and a
+    reader on a 대전 -> 동대구 leg is told something irrelevant by the second.
+    Fewest stops wins. Relation id -- which is what decided this before, and
+    which put 11208904 ahead of 11214334 -- is only the tie-break under that.
+    """
     from transport_maps.graph.rail import station_key
 
     df = _ktx()
     hop = [(station_key(*DAEJEON), station_key(*DONGDAEGU))]
-    assert label_for(df, hop)[0] == KTX_GUPO          # 11208904 < 11214334
-    assert label_for(df, hop) == label_for(_ktx(), hop)
+    assert label_for(df, hop)[0] == KTX_DIRECT
+    # 11208904 is the LOWER id, so passing would be impossible if id still won.
+    lines = rail_detail._line_between(df, CAL)
+    assert min(lines[(hop[0])]) == 11208904
+
+
+def test_the_last_resort_tie_break_is_deterministic():
+    """Otherwise the same journey captions differently between builds, and a
+    diff of two `.rail.json` files stops meaning anything."""
+    from transport_maps.graph.rail import station_key
+
+    hop = [(station_key(*DAEJEON), station_key(*DONGDAEGU))]
+    assert label_for(_ktx(), hop) == label_for(_ktx(), hop)
+
+
+def test_fewest_stops_never_overrides_the_travellers_own_path():
+    """The order of the three rules matters and this pins it.
+
+    The 구포 variant has MORE stops, so if fewest-stops outranked path coverage
+    a traveller who actually rode it via 광명 would be told they were on the
+    direct train. Path coverage first, stops second, id last.
+    """
+    from transport_maps.graph.rail import station_key
+
+    df = _ktx()
+    hops = [(station_key(*DAEJEON), station_key(*DONGDAEGU)),
+            (station_key(*GWANGMYEONG), station_key(*DAEJEON))]
+    assert label_for(df, hops)[0] == KTX_GUPO
 
 
 def test_the_chosen_service_is_never_slower_than_the_one_that_set_the_time():
@@ -286,7 +317,7 @@ def test_the_walk_back_is_bounded(monkeypatch):
 def test_lookup_tables_are_plain_dicts_a_fork_can_use():
     from transport_maps.graph.rail import station_key
     t = rail_detail.lookup_tables(routes(LINE_ONE), CAL)
-    assert set(t) == {"lines", "stop_names", "route_label"}
+    assert set(t) == {"lines", "stop_names", "route_label", "route_stops"}
     assert all(isinstance(v, dict) for v in t.values())
     assert t["stop_names"][station_key(37.0, 127.0)] == "A"
     # The hop table holds route IDS and the labels are held once per route:
@@ -295,7 +326,7 @@ def test_lookup_tables_are_plain_dicts_a_fork_can_use():
     assert all(isinstance(v, tuple) and all(isinstance(r, int) for r in v)
                for v in t["lines"].values())
     assert rail_detail.lookup_tables(None) == {"lines": {}, "stop_names": {},
-                                               "route_label": {}}
+                                               "route_label": {}, "route_stops": {}}
 
 
 def test_write_rail_detail_never_touches_polars(monkeypatch, tmp_path):

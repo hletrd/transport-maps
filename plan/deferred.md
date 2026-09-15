@@ -64,12 +64,25 @@ of hops in the network. Both describe the same defect — the row-level number i
 weighted by how often each hop ends a journey and needs a build to measure,
 which is why the hop-level one is quoted for the fix.
 
-A note for whoever reads this next: an independent tie-break such as "fewest
-stops" or "highest service class" would have made the owner's symptom go away
-while leaving the label and the time free to diverge again. The property that
-actually holds now is narrower and checkable — **the named service is never
-slower than the one the traveller was charged for** — and
-`tests/emit/test_rail_detail.py` asserts it directly rather than by implication.
+Three rules, in this order: deepest coverage of the traveller's own path, then
+fewest stops, then lowest relation id. The second and third only ever run among
+services already tied for fastest AND already indistinguishable on the path —
+a single-hop ride, where both KTX trains serve exactly that hop and nothing
+else of the journey, so something has to choose and it has to be deterministic.
+Fewest stops is a **presentation** choice among names that are equally true:
+`경부선 KTX: 서울 → 부산` describes the corridor and `(구포경유)` describes a
+variant of it, and a reader on a 대전 → 동대구 leg is told something irrelevant
+by the second.
+
+A note for whoever reads this next: used as the PRIMARY rule, "fewest stops" or
+"highest service class" would have made the owner's symptom go away while
+leaving the label and the time free to diverge again — the shortest service is
+not generally the fastest one. Used last, it cannot move the named service away
+from the one that set the time, because by then there is nothing left for it to
+move away from. The property that actually holds is narrower and checkable —
+**the named service is never slower than the one the traveller was charged
+for** — and `tests/emit/test_rail_detail.py` asserts it directly rather than by
+implication, along with the ordering of the three rules in both directions.
 
 ## Cycle 9: six rows whose exit criterion had already fired
 
