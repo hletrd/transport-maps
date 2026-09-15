@@ -150,6 +150,17 @@ body{
   overflow:hidden;-webkit-font-smoothing:antialiased;
 }
 #map{position:fixed;inset:0}
+  /* The globe is focusable (it is the keyboard path to panning and zooming),
+     and with no rule of its own it wore the USER AGENT's 1 px ring -- drawn on
+     the viewport edge, because #map is `inset:0`. At 390x844 that put 440 px
+     of focus indicator behind the bottom sheet, where it indicates nothing.
+     Inset by 3 px in the page's own accent so the ring is visible, is
+     attributable to the map, and cannot be occluded by the sheet or the rail.
+     WCAG 2.2 SC 2.4.11 (focus not obscured) and 2.4.13 (focus appearance). */
+  #map:focus{outline:none}
+  #map:focus-visible,#map canvas:focus-visible{
+    outline:3px solid var(--accent);outline-offset:-3px;border-radius:0;
+  }
 .maplibregl-ctrl-attrib,.maplibregl-ctrl-logo,.maplibregl-ctrl-bottom-right{display:none!important}
 
 /* ---- panels ---- */

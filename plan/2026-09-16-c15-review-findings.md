@@ -169,21 +169,21 @@ set: a trace showing >16 ms frames.
 ### C15-4 — The page's error surface is invisible to a screen reader and points the wrong way
 **From AGG15-38, AGG15-39, AGG15-40, AGG15-45, AGG15-46 · Severity Medium-High**
 
-- [ ] **C15-4.1** `#tiletrouble` is a status message in **no live region**
+- [x] **C15-4.1** `#tiletrouble` is a status message in **no live region**
       (`web/app.js:713-731,1324`): a screen reader hears "Travel times from Seoul are
       ready" while the globe is blank. WCAG 2.2 SC 4.1.3. Move it into the
       already-connected `role="status"` region.
-- [ ] **C15-4.2** "The travel times below are still correct" renders **91 px under**
+- [x] **C15-4.2** "The travel times below are still correct" renders **91 px under**
       "Travel times unavailable", and "below" points at the **colour key** at every
       viewport (`web/app.js:713-731`). Fix the copy to name what it means.
-- [ ] **C15-4.3** Six per-origin fetches turn an HTTP error status into `null` and return
+- [x] **C15-4.3** Six per-origin fetches turn an HTTP error status into `null` and return
       in **total silence** (`web/app.js:1877,1924-1925,1993,1997,2001`). This is the
       remaining silent-blank-page path behind the two incidents CLAUDE.md records. Route
       them through `noteTileTrouble()` so a failure is at least legible.
-- [ ] **C15-4.4** Cycle 14's D15 is **half-fixed**: the folded sheet still opens a
+- [x] **C15-4.4** Cycle 14's D15 is **half-fixed**: the folded sheet still opens a
       `display:none` panel and **now strands focus on `<body>`**
       (`web/app.js:3992-4004`, `web/index.html:709`).
-- [ ] **C15-4.5** The globe wears the **1 px UA focus ring on the viewport edge**, 440 px
+- [x] **C15-4.5** The globe wears the **1 px UA focus ring on the viewport edge**, 440 px
       of it behind the sheet at 390×844. Add `canvas:focus-visible` (and the same for the
       links at `web/index.html:611-612`).
 - [ ] **C15-4.6** Verify each in the browser at all four viewports. 4.1 and 4.4 need an
@@ -620,3 +620,53 @@ dependency instead.
 per frame) stays DEF15-2 — cycle 9 deferred the same code as DEF9-22 for the
 same reason, and the designer re-measured CLS 0.033 / FCP 112 ms with no jank
 this cycle.
+
+### C15-4 — landed (4.6 pending the browser pass at the end of the cycle)
+
+- **4.1** `noteTileTrouble` now `announce()`s into the `role="status"` region.
+  It already latched on `tileTroubleFor`, so it cannot repeat into the live
+  region; `#tiletrouble` itself is deliberately NOT given `aria-live`, or the
+  failure would be read out twice, and a test pins that.
+- **4.2** The notice no longer says "below". It said "The travel times below
+  are still correct" and "below" was the colour key at every viewport. No
+  positional word survives in either branch — the water branch already read
+  correctly, so the two now match.
+- **4.3** Nine fetches (not six — the review counted the per-origin ones; the
+  same shape is on `borders.json`, `places.json` and `airports.json` too) went
+  through a new `okOr(r, what)`. Behaviour is deliberately unchanged, because
+  these are progressive extras and an old origin is EXPECTED to 404; what
+  changed is that the status now reaches the console with the file's name.
+- **4.4** `unfoldSheet()` now runs BEFORE `openRoutePanel()` at both call
+  sites. The folded sheet puts `#route` at `display:none`, so the old order set
+  `open` on a hidden element. Both sites, because half-fixing one is how cycle
+  14's D15 came back half-fixed.
+- **4.5** `#map:focus-visible` draws a 3 px inset accent ring. `#map` is
+  `position:fixed; inset:0`, so the UA's 1 px ring was on the viewport edge —
+  440 px of it behind the sheet at 390x844.
+
+`tests/web/test_failure_is_legible.py` is new: 12 tests, `okOr` RUN in node
+against Response-shaped objects rather than read.
+
+Mutations, measured:
+
+| Mutation | Result |
+|---|---|
+| `okOr` returns `r` unconditionally | **RED**, 6 failed |
+| `okOr` drops the `console.warn` | **RED**, 2 failed (the other half stays green — the point of having both) |
+| delete `announce(say)` | **GREEN at first**, then **RED** — see below |
+| put "times below are still correct" back | **RED**, 1 failed |
+
+**One mutation came back green and that is worth recording.** `assert
+"announce(" in note` was matching the COMMENT inside `noteTileTrouble`, which
+quotes *"announce()'s own words"*. Deleting the real call left the test
+passing. Caught by mutating rather than by reading — which is the entire
+argument of CLAUDE.md's testing rule — and fixed by stripping comments before
+the check. The same strip was already needed for the "below" test, for the
+same reason.
+
+`tests/web/` + `tests/test_deploy_script.py`: 434 passed. `ruff check .` clean.
+
+**Deferred as planned:** DEF15-35 (`aria-selected` on 553 option rows) and
+DEF15-36 (search typeable before its listener) both touch surfaces this task
+and C15-1 already changed; landing a sixth ARIA change here would make none of
+them individually verifiable in the browser.

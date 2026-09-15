@@ -719,6 +719,26 @@ map.on("error", (e) => {
 // The message also has to say which layer failed. Both the band tiles and the
 // coastline arrive as .pmtiles, and "the globe is blank" is wrong when it is
 // the water that is missing and the bands are fine.
+//: A response that is not ok, turned into `null` and SAID OUT LOUD.
+//:
+//: Nine fetches were written `(r) => (r.ok ? r.json() : null)` and each one
+//: turned an HTTP error status into a silent `null`: the following `.then`
+//: returns early and nothing is logged anywhere. The `.catch` beside some of
+//: them only fires on a NETWORK error, never on a 404 or a 500, so a server
+//: serving 404 for every per-origin extra produced a page missing its
+//: itinerary, its arrival airports and its mode breakdown with an empty
+//: console. CLAUDE.md records two live incidents of exactly that shape --
+//: "with no console error visible after the fact".
+//:
+//: Behaviour is deliberately unchanged: these files are progressive extras and
+//: an origin built before they existed is EXPECTED to 404, so this must not
+//: become a user-facing error. It makes the failure legible, which is the part
+//: that was missing.
+function okOr(r, what) {
+  if (r.ok) return r;
+  console.warn(`${what}: HTTP ${r.status} ${r.statusText || ""}`.trim(), r.url);
+  return null;
+}
 let tileTroubleFor = null;
 function noteTileTrouble(msg, sourceId) {
   const el = document.getElementById("tiletrouble");
@@ -729,12 +749,26 @@ function noteTileTrouble(msg, sourceId) {
   const key = (water ? "water:" : "bands:") + (active?.slug || "");
   if (tileTroubleFor === key) return;      // do not restate the same failure
   tileTroubleFor = key;
-  el.textContent = water
+  // "The travel times BELOW are still correct" pointed at the colour key at
+  // every one of the four viewports -- #tiletrouble sits above the legend, and
+  // the readout it means is elsewhere. A positional word in a message that
+  // moves with the layout is a promise the layout does not keep, so there is
+  // no positional word now. The water branch already read correctly.
+  const detail = " (" + msg.slice(0, 120) + ")";
+  const say = water
     ? "The coastline could not be loaded, so the map has no shoreline. The "
-      + "bands and the travel times are unaffected. (" + msg.slice(0, 120) + ")"
-    : "The shaded bands could not be loaded, so the globe is blank. The travel "
-      + "times below are still correct. (" + msg.slice(0, 120) + ")";
+      + "bands and the travel times are unaffected."
+    : "The shaded bands could not be loaded, so the globe is blank. The "
+      + "travel times themselves are unaffected.";
+  el.textContent = say + detail;
   el.hidden = false;
+  // #tiletrouble is a plain <p>: it is VISIBLE, and it was announced to
+  // nobody. A screen-reader user heard "Travel times from Seoul are ready"
+  // -- announce()'s own words, from the same load -- while the globe was
+  // blank, and never heard why. WCAG 2.2 SC 4.1.3. The status region is the
+  // one channel that carries it, and noteTileTrouble already latches on
+  // `tileTroubleFor`, so this cannot repeat itself into the live region.
+  announce(say);
 }
 function clearTileTrouble() {
   tileTroubleFor = null;
@@ -857,7 +891,7 @@ map.addLayer({ id: "pin-dot", type: "circle", source: "pin",
            "circle-stroke-color": "#0a0b0d", "circle-stroke-width": 1.5 } });
 
 // International boundaries, drawn above the bands and below the labels.
-fetch("./borders.json").then((r) => (r.ok ? r.json() : null)).then((g) => {
+fetch("./borders.json").then((r) => (okOr(r, "borders.json") ? r.json() : null)).then((g) => {
   if (!g) return;
   map.addSource("borders", { type: "geojson", data: g });
   // Appended on top: this fetch resolves AFTER paintOrigin has added the
@@ -1373,7 +1407,7 @@ originMarker.on("drag", originDragMove);
 originMarker.on("dragend", originDragEnd);
 
 fetch("./places.json")
-  .then((r) => (r.ok ? r.json() : null))
+  .then((r) => (okOr(r, "places.json") ? r.json() : null))
   .then((p) => {
     if (!p) return;
     // Flat typed arrays: 34,000 objects would be re-read on every pointer move.
@@ -1883,7 +1917,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     loadReadingParents().then((cells) => {
       if (!cells || !current()) return null;
       return get(`./origins/${o.slug}${meta.readingUrlSuffix}`)
-        .then((r) => (r.ok ? r.arrayBuffer() : null))
+        .then((r) => (okOr(r, `${o.slug}${meta.readingUrlSuffix}`) ? r.arrayBuffer() : null))
         .then((b) => {
           if (!b || !current()) return;
           // Same refusal the other five arrays get.
@@ -1930,8 +1964,10 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // Station naming exists only in builds whose index.json says so; asking an
   // older build for it was two 404s per origin switch.
   if (meta.railDetail) Promise.all([
-    get(`./origins/${o.slug}.rail.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)),
-    get(`./origins/${o.slug}.rail.json`).then((r) => (r.ok ? r.json() : null)),
+    get(`./origins/${o.slug}.rail.bin`)
+      .then((r) => (okOr(r, `${o.slug}.rail.bin`) ? r.arrayBuffer() : null)),
+    get(`./origins/${o.slug}.rail.json`)
+      .then((r) => (okOr(r, `${o.slug}.rail.json`) ? r.json() : null)),
   ]).then(([b, j]) => {
     if (!current() || !b || !j) return;
     // T13 hardened {slug}.json's shape and stopped one file short of its
@@ -1999,15 +2035,15 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // The leg breakdown is a progressive extra: an origin built before these
   // files existed still shows times, just without the itinerary.
   get(`./origins/${o.slug}.modes.bin`)
-    .then((r) => (r.ok ? r.arrayBuffer() : null))
+    .then((r) => (okOr(r, `${o.slug}.modes.bin`) ? r.arrayBuffer() : null))
     .then((b) => { if (!current() || !b) return; origin.modes = checked(b, 2 * MODE_NAMES.length, `${o.slug}.modes.bin`); settle(); })
     .catch((err) => { if (current() && !sig.aborted) console.warn("mode breakdown unavailable:", err.message); });
   get(`./origins/${o.slug}.air.bin`)
-    .then((r) => (r.ok ? r.arrayBuffer() : null))
+    .then((r) => (okOr(r, `${o.slug}.air.bin`) ? r.arrayBuffer() : null))
     .then((b) => { if (!current() || !b) return; origin.air = checked(b, 2, `${o.slug}.air.bin`); settle(); })
     .catch((err) => { if (current() && !sig.aborted) console.warn("arrival airports unavailable:", err.message); });
   get(`./origins/${o.slug}.json`)
-    .then((r) => (r.ok ? r.json() : null))
+    .then((r) => (okOr(r, `${o.slug}.json`) ? r.json() : null))
     .then((j) => {
       if (!current() || !j) return;
       // {slug}.json is the one per-origin file no length check can cover: the
@@ -3130,8 +3166,11 @@ function commitDestination(lat, lon, label, { geocoded = false } = {}) {
   pinB = (t === null || (t != null && t >= MAX_MINUTES))
     ? null
     : { lat, lon, label, geocoded };
-  openRoutePanel();
+  // Unfold FIRST. `.rail.folded > :not(.sheet-toggle):not(.reading)`
+  // puts #route at display:none, so opening it before the unfold set
+  // `open` on a hidden element and left focus on <body>.
   unfoldSheet();
+  openRoutePanel();
   announceReading(lat, lon, t, label);   // after the reveal: see #status, below
   renderPins();
   renderLegs();
@@ -3244,8 +3283,11 @@ function setDestination(lat, lng, point) {
   const p = nearestPlace(lat, lng);
   if (lastFrom && (lastFrom.lat !== lat || lastFrom.lon !== lng)) lastFrom = null;
   pinB = { lat, lon: lng, label: placeLead(p) ?? fmtCoord(lat, lng), geocoded: false };
-  openRoutePanel();
+  // Unfold FIRST. `.rail.folded > :not(.sheet-toggle):not(.reading)`
+  // puts #route at display:none, so opening it before the unfold set
+  // `open` on a hidden element and left focus on <body>.
   unfoldSheet();
+  openRoutePanel();
   announceReading(lat, lng, t);
   renderPins();
   renderLegs();
@@ -3500,7 +3542,7 @@ for (const c of cities) {
 }
 
 fetch("./airports.json")
-  .then((r) => (r.ok ? r.json() : null))
+  .then((r) => (okOr(r, "airports.json") ? r.json() : null))
   .then((a) => {
     if (!a) return;
     airports = a.airports.map((row) => Object.assign(row, { key: fold(row[1]) }));

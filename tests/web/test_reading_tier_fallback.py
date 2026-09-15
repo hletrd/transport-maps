@@ -146,10 +146,28 @@ def test_the_parent_fetch_does_not_go_through_the_fatal_path():
 def test_the_per_origin_reading_array_was_always_fetched_this_way():
     """The correct shape already existed twenty lines away, which is what made
     the defect a slip rather than a design: the per-origin `.r6.bin` is fetched
-    with `get(...)` and an explicit `r.ok` test. Pinned so the two halves of
-    the tier cannot drift apart again."""
-    assert 'get(`./origins/${o.slug}${meta.readingUrlSuffix}`)' in APP
-    assert ".then((r) => (r.ok ? r.arrayBuffer() : null))" in APP
+    with `get(...)`, its response is tested, and a failure DEGRADES TO null
+    instead of reaching fatal(). Pinned so the two halves of the tier cannot
+    drift apart again.
+
+    Stated as the property rather than as the literal source line. This
+    assertion used to be `".then((r) => (r.ok ? r.arrayBuffer() : null))" in
+    APP`, and cycle 15 turned that exact text into `okOr(r, ...)` -- a helper
+    that logs the status and returns null, which is the same degrade with the
+    silence removed. The old assertion went red for a change that satisfied
+    everything the test exists to protect, which is the "assert on a string in
+    app.js rather than on behaviour" habit this suite has been warned about.
+    """
+    fetch_at = APP.index('get(`./origins/${o.slug}${meta.readingUrlSuffix}`)')
+    # The response handler immediately following that fetch.
+    handler = APP[fetch_at:fetch_at + 400]
+    assert "? r.arrayBuffer() : null" in handler, (
+        "the per-origin reading fetch no longer degrades a bad response to "
+        f"null; a missing .r6.bin would blank the page again:\n{handler[:300]}")
+    for sink in ("fatal(", "fetchOk("):
+        assert sink not in handler, (
+            f"the per-origin reading fetch reaches {sink}, so a missing "
+            ".r6.bin is fatal to the page instead of falling back")
 
 
 @pytest.mark.parametrize("name,body", [
