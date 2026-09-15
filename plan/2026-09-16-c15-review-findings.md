@@ -266,8 +266,8 @@ their default `*` allowlist. That is the one advertising surface **CSP structura
 reach**, while `web/index.html:1135` states the page has no advertising. The page's own
 privacy claim should be enforced by the header, not only asserted in prose.
 
-- [ ] **C15-7.1** Add the four to the `Permissions-Policy` `()` deny list.
-- [ ] **C15-7.2** Assert the header in `tests/web/test_attribution_and_privacy.py` so the
+- [x] **C15-7.1** Add the four to the `Permissions-Policy` `()` deny list.
+- [x] **C15-7.2** Assert the header in `tests/web/test_attribution_and_privacy.py` so the
       claim and the header cannot drift apart.
 
 ---
@@ -670,3 +670,30 @@ same reason.
 DEF15-36 (search typeable before its listener) both touch surfaces this task
 and C15-1 already changed; landing a sixth ARIA change here would make none of
 them individually verifiable in the browser.
+
+### C15-7 — landed
+
+`Permissions-Policy` now denies `browsing-topics`, `attribution-reporting`,
+`join-ad-interest-group` and `run-ad-auction` with the empty allowlist `()`.
+
+Better motivated than the review knew. The CSP in the same file **does** allow
+Google Analytics (`googletagmanager.com`, `google-analytics.com`), and its own
+comment says "Google signals / ads linking would need
+`https://*.g.doubleclick.net` and `https://*.google.com` in
+`connect-src`/`img-src`" — those hosts are deliberately withheld. So the
+deployment had already decided against advertising at the network layer, and
+`index.html:1146` states it in prose ("no accounts, no sign-in and no
+advertising"). The four Privacy Sandbox APIs are the one advertising surface
+**CSP structurally cannot reach** — they are browser capabilities, not fetches
+— and all four default to an allowlist of `*`. The header now makes the page's
+claim true rather than merely asserted.
+
+Three tests in `tests/web/test_csp.py`. Mutations:
+
+| Mutation | Result |
+|---|---|
+| drop `browsing-topics=()` | **RED**, naming the missing feature |
+| `geolocation=(self)` -> `geolocation=()` (positive control) | **RED** — a deny-everything header must not satisfy the guard |
+
+The second is the one that matters: without it, "deny every feature" would pass
+the first test and silently break the "use my location" button.
