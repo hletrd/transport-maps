@@ -1,6 +1,6 @@
 # Cycle 12 — what the eleven review lanes found
 
-Companion to `2026-09-14-c12-requested-features.md`. That file holds the three
+Companion to `archive/2026-09-14-c12-requested-features.md`. That file holds the three
 tasks the owner named; this one holds everything else the review raised, each
 either scheduled with a target cycle or deferred with a citation, an unchanged
 severity and confidence, a reason and the exit criterion that reopens it.

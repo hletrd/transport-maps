@@ -39,9 +39,7 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 |---|---|---|
 | `2026-09-14-c13-solver-service.md` | Cycle 13: the F2 on-demand solver service — the design, the measured footprint, and the graph-free half that was built (C13-F2.1…C13-F2.12) | cycle 13: current; design done, nothing resident started |
 | `2026-09-14-c13-review-findings.md` | Cycle 13: all 250 raw findings from the eleven lanes, indexed with citations, scheduled or deferred (C13-1…C13-11) | cycle 13: current |
-| `2026-09-14-c12-requested-features.md` | Cycle 12: the three tasks the owner named — a real test for `esc()`, draggable start and end markers, and the ETOPS decision (F1…F3) | cycle 12 done; all three landed |
 | `2026-09-14-c12-review-findings.md` | Cycle 12: everything else the eleven review lanes found, scheduled or deferred (C12-1…C12-11) | cycle 12: current |
-| `2026-09-13-c11-design-slop.md` | The owner's design pass: "remove ai slops from overall designs". Prose, type scale, three false statements, and the gate that keeps the design policy enforced | cycle 11 done; all ten tasks landed |
 | `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | cycle 2 done; tasks still open, carried forward |
 | `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | cycle 2 done; tasks still open, carried forward |
 | `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); open tasks carried forward |
@@ -57,6 +55,8 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `archive/2026-09-10-c5-page-defects-and-ui.md` | Cycle 5 (V1…V29): every task done or recorded, each with the mutation that proved it | archived (cycle 6) |
 | `archive/2026-09-11-c6-page-defects-privacy-and-licence.md` | Cycle 6 (C6-1…C6-21): all 21 done | archived |
 | `archive/2026-09-12-c7-resolution-6-readings.md` | Cycle 7 (C7-1…C7-18): all 18 done | archived (cycle 9) |
+| `archive/2026-09-14-c12-requested-features.md` | Cycle 12: the three tasks the owner named — a real test for `esc()`, draggable start and end markers, and the ETOPS decision (F1…F3) | archived (cycle 15); all three landed |
+| `archive/2026-09-13-c11-design-slop.md` | The owner's design pass: "remove ai slops from overall designs". Prose, type scale, three false statements, and the gate that keeps the design policy enforced | archived (cycle 15); all ten tasks landed |
 | `archive/2026-09-13-c8-ferry-wait-legend-url.md` | Cycle 8 (T1.1…T5.5, 38 tasks): 36 done. T5.3 was ticked and half-done (fixed in cycle 9); T2.7 was ticked and not done (carried as M8-14 in `deferred.md`). Both corrections are in the file. | archived (cycle 9) |
 
 The five cycle-2 plans do not move to `archive/` yet: tasks across them are

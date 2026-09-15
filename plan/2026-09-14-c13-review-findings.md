@@ -338,13 +338,13 @@ committed.
 | V13-5 | `plan/archive/2026-09-10-c4-page-deploy-and-licence.md:175` | MEDIUM | High | · c4 U9 — the re-benchmark the tick required never happened, and the code says so |
 | V13-6 | `plan/archive/2026-09-10-c4-page-deploy-and-licence.md:443` | LOW | High | · c4 U27 — one of the two named assertions landed |
 | V13-7 | `plan/2026-09-14-c12-review-findings.md:42` | MEDIUM | High | · c12 C12-1c — the "red before the fix" test never reads origins.toml, and its mutation certificate is false |
-| V13-8 | `plan/2026-09-14-c12-requested-features.md:50` | MEDIUM | High | · c12 F1.3 — the `esc()` sink inventory is blind to 3 of the 6 live sinks |
+| V13-8 | `plan/archive/2026-09-14-c12-requested-features.md:50` | MEDIUM | High | · c12 F1.3 — the `esc()` sink inventory is blind to 3 of the 6 live sinks |
 | V13-9 | `plan/2026-09-14-c12-review-findings.md:75-77` | LOW | High | · c12 C12-3a — "deletes code rather than adding it" is false; neither thing was deleted |
-| V13-10 | `plan/2026-09-13-c11-design-slop.md:97` | LOW | High | · c11 — "four `<p>` to two" shipped as three, paired differently |
+| V13-10 | `plan/archive/2026-09-13-c11-design-slop.md:97` | LOW | High | · c11 — "four `<p>` to two" shipped as three, paired differently |
 | V13-11 | `plan/2026-09-10-c2-web-ui-detail.md:181-184` | LOW | High | · c2 N24 — ticked inside N23's box, never done |
 | V13-12 | `plan/2026-09-10-c2-web-ui-detail.md:146-148` | LOW | High | · c2 N10/D4 — `aria-activedescendant` was ticked and has never existed |
-| V13-13 | `plan/2026-09-14-c12-requested-features.md:105` | LOW | High | · c12 F2.1 — "live feedback in `#where`" goes to `#snapped` |
-| V13-14 | `plan/2026-09-14-c12-requested-features.md:112` | LOW | Medium | · c12 F2.5 — keyboard "equivalence" is overstated for the new destination handle |
+| V13-13 | `plan/archive/2026-09-14-c12-requested-features.md:105` | LOW | High | · c12 F2.1 — "live feedback in `#where`" goes to `#snapped` |
+| V13-14 | `plan/archive/2026-09-14-c12-requested-features.md:112` | LOW | Medium | · c12 F2.5 — keyboard "equivalence" is overstated for the new destination handle |
 | V13-15 | `plan/2026-09-13-c10-requested-features.md:39` | MEDIUM | High | · F1's own stated precondition was not honoured before F1 shipped |
 | V13-16 | `plan/2026-09-13-c10-requested-features.md:1` | LOW | High | · `plan/2026-09-13-c10-requested-features.md:1` — "PLANNED, NOT BUILT" is stale in three of four |
 | V13-17 | `plan/README.md` | LOW | High | · `plan/README.md` miscounts cycle 8 and contradicts itself on A3–A8 |

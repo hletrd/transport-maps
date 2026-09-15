@@ -675,7 +675,7 @@ with a cycle, as C10-7, C10-8, C10-9 and C10-12. They are not deferred.
 
 Cycle 11's subject was the owner's request — "and please remove ai slops from
 overall designs". Ten findings were scheduled and landed
-(`plan/2026-09-13-c11-design-slop.md`). The eleven-lane review raised far more
+(`plan/archive/2026-09-13-c11-design-slop.md`). The eleven-lane review raised far more
 than a design cycle can carry, and the rest is here. Every row keeps the
 reviewer's own severity and confidence.
 
