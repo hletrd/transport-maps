@@ -87,10 +87,25 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;co
    hash since cycle 2.</p>
 
 <h2>Data</h2>
+<!-- The fragment is #credits, the paragraph, and not #key, the panel that
+     contains it. The two are not interchangeable. Scrolling to a fragment runs
+     the ancestor revealing algorithm on the target, and its details clause
+     fires only when the node being walked "is slotted into the second slot of
+     a details element which does not have an open attribute" -- it then opens
+     that node's PARENT. A target that IS the <details> is slotted into nothing,
+     so nothing is revealed: #key has no open attribute, app.js has no hash
+     handling at all (`grep -n hash web/app.js` is empty), and its one anchor
+     listener only fires on clicks within the map document, never on arrival
+     from this one. Measured in Chromium on the real markup: ...#key leaves
+     key.open false, ...#credits leaves it true with the paragraph on screen.
+     So a fragment pointed here must name an element INSIDE the panel.
+     tests/web/test_attribution_and_privacy.py enforces that for every link
+     this directory aims at the map.
+     https://html.spec.whatwg.org/multipage/interaction.html#ancestor-revealing-algorithm -->
 <p>The travel times, coastlines and place names come from nine open data
    sources, each credited with its licence in
    <a href="../../index.json">index.json</a> and under
-   <a href="../../#key">Sources and method</a> on the map itself.</p>
+   <a href="../../#credits">Sources and method</a> on the map itself.</p>
 
 <a class="back" href="../../">Back to the map</a>
 </main>

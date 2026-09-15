@@ -420,3 +420,197 @@ def test_the_privacy_text_says_the_address_is_kept_out() -> None:
         "the privacy section does not distinguish a gazetteer place name, which "
         "does go into the address bar, from a geocoded street address, which "
         "does not")
+
+
+# --- C16-6: the compliance page's pointer at the data credits ---------------
+#
+# The licence page under web/vendor/licences/ is the one document a visitor
+# reaches when they want to know who the data belongs to, and it ends by
+# pointing back at the map's own source list. Cycle 15 aimed that pointer at
+# `../../#key` and verified only that the id exists. It does -- and following
+# the link still shows no credits, because `#key` IS the folded panel.
+#
+# HTML's ancestor revealing algorithm, which scrolling to a fragment runs on
+# the target, walks the target and its ancestors and appends a <details> to
+# the reveal list only when the node it is looking at "is slotted into the
+# second slot of a details element which does not have an open attribute" --
+# and what it appends is that node's PARENT. A target that IS the <details> is
+# slotted into nothing, so the algorithm reveals nothing. Nor is there a
+# fallback: `<details id="key">` has no `open` attribute, `grep -n hash
+# web/app.js` returns nothing at all, and app.js's one anchor handler is a
+# click listener, which a cross-document arrival never fires.
+#
+# Measured in Chromium against this page's own markup, not inferred:
+# `...#key`     -> document.getElementById("key").open === false
+# `...#credits` -> .open === true, and #credits has a layout box.
+# (A prose summary of the spec asserted the opposite -- that running the
+# algorithm on a closed <details> opens it. The quoted steps and the browser
+# both say otherwise. Hence the measurement.)
+#
+# https://html.spec.whatwg.org/multipage/interaction.html#ancestor-revealing-algorithm
+
+LICENCES = config.ROOT / "web" / "vendor" / "licences"
+
+_VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+         "meta", "source", "track", "wbr"}
+
+
+def _hidden_state(a: dict[str, str | None]) -> str | None:
+    """The `hidden` attribute's state, or None when the attribute is absent.
+
+    Of the two states only Hidden Until Found is revealed by the algorithm.
+    The presence test is on the KEY and never on the value: HTMLParser hands a
+    bare boolean `hidden` back as `("hidden", None)`, so an `is not None` test
+    on the value silently passes every plainly hidden element -- which is what
+    the first draft of this class did, and a synthetic `<div hidden>` case
+    caught it.
+    """
+    if "hidden" not in a:
+        return None
+    return "until-found" if (a["hidden"] or "").strip().lower() == "until-found" else "hidden"
+
+
+class _Reachability(HTMLParser):
+    """For every id in a document, whether a fragment aimed at it is shown.
+
+    Models the two clauses of the ancestor revealing algorithm rather than
+    guessing at them:
+
+    * a closed `<details>` STRICTLY ABOVE the target, reached through its body
+      slot, is opened -- so being inside one is fine;
+    * the target's own `hidden` attribute, or an ancestor's, is undone only in
+      the `until-found` state;
+    * and the case this section exists for: when the target itself is the
+      closed `<details>`, it is slotted into nothing, so nothing opens.
+
+    An id inside a `<summary>` sits in the first slot and so triggers no
+    reveal, but a summary renders while its panel is folded, so it is shown
+    either way and needs no special case here.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[tuple[str, dict[str, str | None]]] = []
+        # id -> (tag, list of reasons it would still not be shown)
+        self.ids: dict[str, tuple[str, list[str]]] = {}
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if a.get("id") and a["id"] not in self.ids:
+            hidden = [
+                f"<{t} hidden> is not in the Hidden Until Found state, so the "
+                f"algorithm does not reveal it"
+                for t, x in [(tag, a), *self.stack]
+                if _hidden_state(x) == "hidden"
+            ]
+            if tag == "details" and "open" not in a:
+                hidden.append(
+                    "the target IS a <details> with no open attribute, and the "
+                    "ancestor revealing algorithm opens only a details the "
+                    "target is slotted INTO, never the target itself")
+            self.ids[a["id"]] = (tag, hidden)
+        if tag not in _VOID:
+            self.stack.append((tag, a))
+
+    def handle_endtag(self, tag):
+        if tag in _VOID:
+            return
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i][0] == tag:
+                del self.stack[i:]
+                return
+
+
+class _Links(HTMLParser):
+    """Every `href` in a document, in source order."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.hrefs: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "a" and a.get("href"):
+            self.hrefs.append(a["href"])
+
+
+def _cross_document_fragments() -> list[tuple[str, str, str]]:
+    """(licence file, href, fragment) for every href in web/vendor/licences/
+    that carries a fragment and resolves to a DIFFERENT document."""
+    out: list[tuple[str, str, str]] = []
+    for path in sorted(LICENCES.rglob("*.html")):
+        p = _Links()
+        p.feed(path.read_text(encoding="utf-8"))
+        for href in p.hrefs:
+            if "#" not in href or href.startswith(("http:", "https:", "mailto:")):
+                continue
+            target, _, frag = href.partition("#")
+            if not frag or not target:      # same-document fragment
+                continue
+            dest = (path.parent / target).resolve()
+            if dest.is_dir():
+                dest = dest / "index.html"
+            out.append((path.name, href, frag))
+            assert dest.is_file(), f"{path.name}: {href!r} resolves to nothing at {dest}"
+            assert dest == (config.ROOT / "web" / "index.html").resolve(), (
+                f"{path.name}: {href!r} aims at {dest}, which this gate does not model")
+    return out
+
+
+def test_the_licence_page_points_at_a_fragment_the_browser_will_reveal():
+    """A pointer at the data credits that lands on a folded panel is no pointer.
+
+    MUTATION PERFORMED, with the result as measured -- not as estimated.
+
+    1. Restore cycle 15's target, `<a href="../../#key">`, in
+       web/vendor/licences/index.html -- the id exists, which is all the
+       cycle-15 ledger checked, so the old gate stayed green on it:
+       **1 failed, 19 passed.** The failure names the href and the reason:
+       "lands on <details id='key'> and the visitor still sees nothing".
+
+    The mutation did not come back green.
+    """
+    links = _cross_document_fragments()
+    assert links, (
+        "no cross-document fragment link found under web/vendor/licences/ -- "
+        "this gate would pass vacuously; check the parse, not the page")
+
+    r = _Reachability()
+    r.feed(HTML)
+    for name, href, frag in links:
+        assert frag in r.ids, (
+            f"{name}: {href!r} names #{frag}, which is not an id in web/index.html")
+        tag, blockers = r.ids[frag]
+        assert not blockers, (
+            f"{name}: {href!r} lands on <{tag} id={frag!r}> and the visitor "
+            f"still sees nothing -- {'; '.join(blockers)}")
+
+
+def test_the_credited_fragment_is_the_source_list_and_not_merely_reachable():
+    """Reachable is not the same as right: #credits has to be the element the
+    page fills with the data sources, inside the panel the link names.
+
+    MUTATIONS PERFORMED, with the results as measured.
+
+    1. Drop the id from `<p class="src" id="credits">`: **red** -- and the
+       gate above goes red with it, since the fragment then names nothing.
+    2. Move #credits out of the panel, onto a <p> in .keys: **red** here,
+       GREEN above. That is the point of having two: the fragment stays
+       reachable while the link text, "Sources and method", starts lying.
+    3. Rename the `$("credits")` lookup in app.js: **red**. The paragraph is
+       empty in the markup, so without this the gate would accept an id on a
+       <p> that nothing ever fills.
+
+    No mutation came back green.
+    """
+    assert 'id="credits"' in HTML, "the credits paragraph is gone from index.html"
+    panel = HTML[HTML.index('<details class="panel" id="key">'):]
+    panel = panel[:panel.index("</details>")]
+    assert 'id="credits"' in panel, (
+        "#credits left the Sources and method panel; the licence page's link "
+        "text names that panel")
+    assert re.search(r'\$\(\s*"credits"\s*\)', APP), (
+        "nothing in app.js writes the credits paragraph any more")

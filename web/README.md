@@ -62,7 +62,7 @@ in the same commit.
 | licences/fflate.LICENSE.txt | `0a1df3a083d0c010560aa342e87959c8c1070e6fd54545741f083f22d0c8b551` |
 | licences/h3-js.LICENSE.txt | `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |
 | licences/h3-js.NOTICE.txt | `a265b8d138fa9064bbe12c1e9d6785705bdc91a3655b241b1fd01a7a0ead6663` |
-| licences/index.html | `71cfadd8ad2712ab632ce8af89988895d8c776544f43e8abdd0cdce69bb34c45` |
+| licences/index.html | `679b99d8f16f457605f7a874b49064dedb519f98bd52818d84508ea9c77c354f` |
 | licences/maplibre-gl.LICENSE.txt | `ee5fc05a0677eaf69601d2c7db0d9ecd6cc27c3abc1d0733bc9ed34707cf8ef2` |
 | licences/pmtiles.LICENSE.txt | `0371c38f338835f7fc13ed71176f3d92144e22c8b736a31cced57adbbeb647b3` |
 
