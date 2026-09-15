@@ -526,3 +526,57 @@ def test_a_missing_web_tree_is_reported_not_silently_empty(check_dist, tmp_path)
     in deploy_verify.sh would have skipped the page gate in silence."""
     problems = check_dist.check_copy(tmp_path / "no-such-tree")
     assert problems, "a missing web/ tree reported no problems at all"
+
+
+# --- C16-7.1: the water gate was real and nothing guarded it ---------------
+#
+# CLAUDE.md names `dist/water.pmtiles` a standing deploy invariant: it is
+# static, `build-all` never regenerates it, and without it the page shows NO
+# error -- the shore just goes back to being hex-shaped one cell out to sea.
+# It says `deploy_verify.sh` refuses without it and `browser_verify.sh` asks
+# the map whether water actually rendered. Both refusals work. Neither was
+# tested: cycle 16's verifier lane neutered each in turn and measured
+#
+#   water.pmtiles missing-refusal removed  -> test_check_dist.py  48 passed
+#   the three JSON extras dropped          -> test_check_dist.py  48 passed
+#   browser_verify.sh's water block deleted-> test_deploy_script.py 12 passed
+#
+# A warning for whoever revisits this: deleting the WHOLE `REQUIRED_EXTRAS`
+# loop does go red, but only through an unrelated gzip-metadata test. Anyone
+# who tries that mutation first will wrongly conclude the guard exists. The
+# guard has to be per-file, which is what this is.
+
+
+@pytest.mark.parametrize("extra", ["places.json", "airports.json",
+                                   "borders.json", "water.pmtiles"])
+def test_each_required_extra_is_refused_when_missing(check_dist, tmp_path, extra):
+    """One case per file, because a guard over the tuple passes when one
+    member is dropped from it.
+
+    `water.pmtiles` is the one CLAUDE.md singles out, and it is also the one
+    whose absence is invisible on the page, so it is the one most likely to
+    be quietly removed from the list by someone whose build cannot produce
+    it. Parametrised over all four so the list cannot shrink silently.
+    """
+    d = _good_dist(tmp_path)
+    assert check_dist.check_dist(d, [{"slug": "seoul"}]) == [], (
+        "the fixture is not a good dist/; this case would pass for the wrong "
+        "reason")
+    (d / extra).unlink()
+    bad = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any(extra in b for b in bad), (
+        f"check_dist accepted a dist/ with {extra} missing; it reported {bad}")
+
+
+def test_the_required_extras_list_still_names_water(check_dist):
+    """The list itself, pinned. Dropping `water.pmtiles` from
+    `REQUIRED_EXTRAS` makes every test above vacuous at once -- the
+    parametrised case would still pass, because it deletes the file and asks
+    whether anything complains, and nothing would.
+    """
+    assert "water.pmtiles" in check_dist.REQUIRED_EXTRAS, (
+        "REQUIRED_EXTRAS no longer names water.pmtiles, which CLAUDE.md makes "
+        "a standing deploy invariant: without it the page shows no error and "
+        "the shore silently goes back to being hex-shaped")
+    for name in ("places.json", "airports.json", "borders.json"):
+        assert name in check_dist.REQUIRED_EXTRAS, f"{name} left REQUIRED_EXTRAS"

@@ -552,3 +552,28 @@ def test_the_page_gate_runs_ruff(tmp_path):
     assert done.returncode != 0, done.stdout
     assert "ruff check failed" in done.stdout, done.stdout
     assert "GATE_RETURNED_OK" not in done.stdout
+
+
+def test_the_browser_stage_still_asks_whether_water_rendered():
+    """CLAUDE.md makes this a standing deploy rule, in as many words:
+    "`dist/water.pmtiles` is static and not produced by `build-all`. Without
+    it the page shows no error -- the shore just goes back to being
+    hex-shaped one cell out to sea. `deploy_verify.sh` refuses to deploy
+    without it and `browser_verify.sh` asks the map whether water features
+    actually rendered."
+
+    Both refusals work. Neither was tested: cycle 16's verifier lane deleted
+    `browser_verify.sh`'s water block and `tests/test_deploy_script.py` stayed
+    at 12 passed. This is the half CLAUDE.md assigns to the browser stage --
+    a header-valid but tile-empty archive passes `check_dist`'s header parse
+    and only a rendered-feature count can see it.
+    """
+    assert 'getLayer("water")' in BROWSER, (
+        "browser_verify.sh no longer asks the map for the water layer")
+    assert 'queryRenderedFeatures({layers:["water"]})' in BROWSER, (
+        "browser_verify.sh no longer counts rendered water features, so a "
+        "header-valid but tile-empty water.pmtiles would pass every gate")
+    assert re.search(r'waterFeatures":\[1-9\]', BROWSER), (
+        "the water check no longer refuses a zero feature count")
+    assert "water layer rendered nothing" in BROWSER, (
+        "the water failure no longer sets fail=1 with a message")
