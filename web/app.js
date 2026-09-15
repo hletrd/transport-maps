@@ -3383,7 +3383,25 @@ $("copy-link").addEventListener("click", async (e) => {
 // ---- city and airport list ----
 // Accents are folded on both sides, so "Sao Paulo", "Zurich" and "Bogota"
 // match the cities spelt São Paulo, Zürich and Bogotá.
-const fold = (s) => String(s).normalize("NFD").replace(/\p{M}/gu, "").replace(/ı/g, "i").toLowerCase();
+//
+// Punctuation is folded for the same reason, and the apostrophe is why this
+// grew: the 553 shipped names carry BOTH U+0027 (Xi'an, Huai'an, N'Djamena)
+// and U+2019 (Tai’an, Lu’an), so which spelling a searcher had to type to find
+// a city was decided per city, by whoever entered it. Typing the straight
+// quote every keyboard emits found Xi'an and returned nothing for Lu'an.
+//
+// Apostrophes and dots are DROPPED rather than mapped to a space, so "Luan"
+// finds Lu’an and "Washington DC" finds "Washington, D.C.". Hyphens become a
+// space, so "Port au Prince" and "Port-au-Prince" each find the other. Runs of
+// space then collapse, because the ranking step below tests word boundaries
+// with `(" " + key).includes(" " + f)` and a double space would defeat it.
+// The quote family is written as escapes rather than as the characters
+// themselves: they are near-indistinguishable in a monospaced editor, and a
+// wrong one here is a silent miss rather than an error.
+const FOLD_DROP = /['\u2018\u2019\u02BC\u02BB\u0060\u00B4.]/g;
+const FOLD_SPACE = /[-\u2010-\u2015_,]+/g;
+const fold = (s) => String(s).normalize("NFD").replace(/\p{M}/gu, "").replace(/ı/g, "i")
+  .replace(FOLD_DROP, "").replace(FOLD_SPACE, " ").replace(/\s+/g, " ").trim().toLowerCase();
 const cities = meta.origins.slice().sort((a, b) => a.name.localeCompare(b.name));
 for (const c of cities) c.key = fold(c.name);
 const bySlug = new Map(cities.map((c) => [c.slug, c]));

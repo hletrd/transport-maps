@@ -65,18 +65,18 @@ above `fold()` advertises exactly this class of forgiveness ("so 'Sao Paulo', 'Z
 'Bogota' match São Paulo, Zürich and Bogotá") and then does not deliver it for the one
 punctuation mark that actually varies by keyboard.
 
-- [ ] **C15-1.1** Extend `fold()` to drop the apostrophe family (U+0027, U+2019, U+02BC,
+- [x] **C15-1.1** Extend `fold()` to drop the apostrophe family (U+0027, U+2019, U+02BC,
       U+2018, U+0060, U+00B4) entirely rather than normalising between them, so `Luan`,
       `Lu'an` and `Lu’an` all collapse to one key. Dropping beats mapping: it also makes
       the name findable by someone who omits the mark.
-- [ ] **C15-1.2** Drop `.`, `,` and collapse runs of whitespace, which is what
+- [x] **C15-1.2** Drop `.`, `,` and collapse runs of whitespace, which is what
       `Washington DC` → `Washington, D.C.` needs. Keep `-` folded to a space rather than
       deleted, so `Port-au-Prince` still matches `Port au Prince` both ways.
-- [ ] **C15-1.3** A test over the **shipped** `index.json` origin names: for every origin
+- [x] **C15-1.3** A test over the **shipped** `index.json` origin names: for every origin
       whose name contains a character in the dropped set, assert that the ASCII-typed form
       finds it. This is the guard that would have caught the defect — the current tests
       assert on names that happen to be clean.
-- [ ] **C15-1.4** Mutate and confirm RED: revert `fold()` to its current body and the new
+- [x] **C15-1.4** Mutate and confirm RED: revert `fold()` to its current body and the new
       test must fail. Record the result in the test file.
 
 **Explicitly NOT in scope:** searching a city in its own script (서울, 東京, Москва,
@@ -89,8 +89,21 @@ on a zero-hit search **silently converts the departure request into a destinatio
 (`web/app.js:3429`, `web/index.html:933`). A search that found nothing must say so rather
 than doing something else.
 
-- [ ] **C15-1.5** Zero-hit Enter announces "No departure city called …" instead of
-      re-targeting. The string already exists for the `?from=` failure path.
+- [~] **C15-1.5 — NOT DONE, and the finding is wrong.** UX15-2's second half
+      reads the address-search fallback as an accident. It is not. `app.js`'s
+      handler is commented "Enter picks the first match: a city departs, an
+      airport becomes the destination; **with no local match it searches the
+      address**", and the empty-state row the user is looking at while they
+      press Enter says so in as many words: *"No departure city or airport
+      matches “…”. Press Enter or “Search address” to look it up."* The
+      behaviour is designed, announced, and covered by `browser_verify.sh`,
+      which types and presses Enter in one tick.
+
+      What was actually wrong is upstream and is fixed by C15-1.1–1.4: the
+      fallback was firing on queries that should have matched a city. With the
+      fold corrected, `Lu'an` finds Lu’an instead of being sent to Nominatim.
+      Changing the fallback as the review proposed would have removed a working
+      feature to treat a symptom. Recorded rather than silently dropped.
 
 ### C15-2 — `deploy_verify.sh`'s page gate exits 0 on 19 skipped test files
 **From AGG15-6 (VER15-10) · Severity High · Confidence High · PROVEN**
@@ -474,3 +487,31 @@ forty-four judgements.
 
 **Planned.** Nothing in §2 is implemented yet. Progress is recorded against each
 checkbox as it lands, with the mutation evidence CLAUDE.md requires.
+
+---
+
+## 7. Progress
+
+### C15-1 — landed
+
+`web/app.js` `fold()` now drops the apostrophe family (U+0027, U+2018, U+2019,
+U+02BB, U+02BC, U+0060, U+00B4) and `.`, folds hyphens/dashes/underscore/comma
+to a space, collapses space runs and trims. `tests/web/test_search_fold.py` is
+new: 8 tests, driving the real `fold()` in node over the **553 shipped names in
+`dist/index.json`**, asserting searchability rather than the fold's output so
+the test cannot drift with the code.
+
+Mutations run, results as measured:
+
+| Mutation | Result |
+|---|---|
+| `fold()` reverted to its pre-cycle-15 body | **5 failed, 3 passed.** 2 of 553 names unfindable as typed (`Tai’an`, `Lu’an`) |
+| Only the `FOLD_SPACE` replacement dropped | **3 failed, 5 passed** |
+
+Neither came back green. The as-typed test finds only the two U+2019 cities
+because each name is typed in its own keyboard form; the cities unreachable the
+*other* way (typing `Lu'an`, or `Xi’an` for the straight-quote `Xi'an`) are what
+`test_the_two_apostrophes_are_one_key` catches. Both tests are needed; neither
+alone sees the whole defect.
+
+`tests/web/` 415 passed. `ruff check .` clean.
