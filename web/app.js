@@ -1594,6 +1594,7 @@ function renderDepartureInto() {
   const reach = $("depart-reach");
   if (!t || !t.length) {
     reach.replaceChildren();
+    $("depart-basis").textContent = "";
     $("depart-note").textContent = origin.failed
       ? "Travel times for this city are unavailable."
       : "Reading the travel times…";
@@ -1623,10 +1624,15 @@ function renderDepartureInto() {
   // standing rule wherever a figure is presented, and this card presents three
   // travel-time figures. It carried no such statement, so a reader could take
   // "within 12 hours" for flying time.
+  // Split in two, and the order is the point. The three figures used to be
+  // printed above this sentence, so a reader met "34.2%" before anything said
+  // what it was a share OF. The basis now sits above the list; only the
+  // footnote -- which is about the map, not about any one row -- stays below.
+  $("depart-basis").textContent =
+    "Share of charted land outside Antarctica reachable door to door — ground "
+    + "access, check-in and border control included:";
   $("depart-note").textContent =
-    "Share of charted land outside Antarctica reachable in that time, door to "
-    + `door — ground access, check-in and border control included. ${pct(unreached)} `
-    + "is reachable from nowhere.";
+    `${pct(unreached)} of that land is reachable from nowhere.`;
 }
 
 // ?from= carried the departure and nothing else, so the interesting half of a
@@ -3693,6 +3699,11 @@ function render(filter = "") {
   const airportRows = apHits.map((a) => {
     const b = document.createElement("button");
     b.type = "button"; b.setAttribute("role", "option"); b.tabIndex = -1;
+    // Never the selected departure: picking an airport sets the DESTINATION.
+    // Stated rather than omitted, because a listbox whose options are
+    // silent about selection reads as "selected" to some AT and as nothing
+    // to others.
+    b.setAttribute("aria-selected", "false");
     b.dataset.airport = a[0];
     const name = document.createElement("span");
     const code = document.createElement("b"); code.textContent = a[0];
@@ -3710,7 +3721,16 @@ function render(filter = "") {
     const b = document.createElement("button");
     b.type = "button"; b.setAttribute("role", "option"); b.tabIndex = -1;
     b.dataset.slug = c.slug;
+    // aria-current AND aria-selected, and they are not redundant. An element
+    // with role="option" inside a role="listbox" carries its selected state
+    // in aria-selected; that is the property a screen reader announces as
+    // "selected", and the 553 rows had none of it. Selection was carried
+    // only by the word "departing" in the row's own text, which is content,
+    // not state -- SC 4.1.2. aria-current stays because it is the truthful
+    // answer to a different question: which row is the page's current
+    // context, as opposed to which row this listbox has selected.
     b.setAttribute("aria-current", String(active?.slug === c.slug));
+    b.setAttribute("aria-selected", String(active?.slug === c.slug));
     const name = document.createElement("span");
     name.textContent = c.name;
     // Four origin names in the 553-origin set belong to two cities each
@@ -3943,6 +3963,7 @@ async function searchAddress(q) {
     li.setAttribute("role", "none");
     const b = document.createElement("button");
     b.type = "button"; b.setAttribute("role", "option"); b.tabIndex = -1;
+    b.setAttribute("aria-selected", "false");   // an address is a destination
     b.dataset.geo = `${h.lat},${h.lon}`;
     b.dataset.label = h.display_name;
     const name = document.createElement("span");

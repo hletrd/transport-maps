@@ -50,7 +50,7 @@
       ],
       "conditionsOfAccess": "A derivative of mixed-licence open data: ODbL 1.0 (OpenStreetMap, adsb.lol), CC BY-SA 4.0 (Wikipedia), CC BY 4.0 (GeoNames, HydroLAKES), CC0 (Wikidata, GRIP4) and public-domain (OurAirports, Natural Earth) sources. Each source's attribution and share-alike terms apply to the data derived from it; credits are listed in index.json and on the page.",
       "isAccessibleForFree": true,
-      "dateModified": "2026-09-10"
+      "dateModified": "2026-09-16"
     },
     {
       "@type": "WebApplication",
@@ -363,9 +363,17 @@ body.crowded .depart-card{display:none}
   border:1px solid var(--text-3)}
 
 /* Route summary, under the legend. Appears only once a destination is set. */
+/* scroll-padding-bottom, because .leg.total below is `position:sticky;
+   bottom:0`: a sticky element is painted over the scroll box's own content,
+   and the browser's scroll-into-view for a focused row does not know that.
+   Tabbing down the itinerary put focus 100% under the total -- measured 5 of
+   5 elementFromPoint samples at 1280x800 AND at 844x390, which is a WCAG 2.2
+   SC 2.4.11 (focus not obscured) failure, not a nicety. The value is the
+   total's own box: 1px border + 5px margin + 6px padding + one --t-lbl line,
+   rounded up. */
 .legs{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;
-  max-height:34vh;overflow-y:auto;scrollbar-width:thin;
-  scrollbar-color:var(--line-2) transparent}
+  max-height:34vh;overflow-y:auto;scroll-padding-bottom:34px;
+  scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
 .legs h2{margin:0 0 7px;font-size:var(--t-ui);font-weight:500;
   color:var(--text-3)}
 .leg{display:flex;gap:9px;align-items:baseline;padding:3px 0;font-size:var(--t-lbl)}
@@ -819,6 +827,15 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 <section class="depart-card" id="depart" aria-labelledby="depart-h" hidden>
   <h2 id="depart-h">Departing <b id="depart-city"></b></h2>
   <p class="sub" id="depart-where"></p>
+  <!-- The basis goes ABOVE the figures. The card printed three bare
+       percentages and only then, underneath, the sentence saying what they
+       are a share OF -- so "34.2%" was read with no denominator, and a
+       reader could take it for a share of countries, of population, or of
+       the globe including sea. A number is not information until its
+       denominator is; the denominator now arrives first. The one figure
+       that is genuinely a footnote, the share reachable from nowhere at
+       all, stays below. -->
+  <p class="note" id="depart-basis"></p>
   <dl class="reach" id="depart-reach"></dl>
   <p class="note" id="depart-note"></p>
 </section>
