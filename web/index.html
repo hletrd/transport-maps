@@ -1076,6 +1076,22 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          certain on the map. Long-haul flying also varies by about an hour on
          winds alone, which a distance-only model cannot represent. Treat
          anything over 10,000 km as approximate.</p>
+      <p><b>Rail.</b> Running time comes from one of six service tiers, 74 km/h
+         for a commuter service up to 215 km/h for a high-speed one, with a
+         separate 20 km/h tier for heritage and tourist lines, all fitted
+         against journey times recorded in OpenStreetMap. A route&rsquo;s tier
+         is read from its own <code>service</code> tag where it carries one —
+         about three in four do; the rest fall to a general-purpose default,
+         which will be too slow for an express and too fast for a stopping
+         service. The largest error this model is known to make is on the
+         Tohoku Shinkansen, where it returns about 10 hours against a published
+         3 h 10. Two causes, and neither is speed: the OpenStreetMap relation
+         lists 21 station calls where the fastest train makes about six, and
+         the per-stop allowance for the other fifteen dominates the journey;
+         and the tag that marks the line as high-speed sits on the individual
+         track segments rather than on the route, so the route reads as
+         ordinary. Long-distance express services on all-stations relations are
+         over-stated for the same reason, anywhere in the world.</p>
       <p>Flight frequency is a gravity model fitted to two anchor routes, not
          a timetable. Rail legs carry no waiting time at all. A ferry is
          charged half the interval between sailings, taken from the route&rsquo;s

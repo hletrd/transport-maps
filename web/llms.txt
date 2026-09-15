@@ -29,8 +29,16 @@ timetable where it carries one and otherwise from a headway fitted to eight
 published crossings -- on top of the sailing and the terminal time. Rail legs
 carry no wait: they are charged running time, a per-stop allowance, and 20
 minutes for reaching the platform and leaving the arrival station. Running
-time comes from one of six service tiers, read off each route's own
-OpenStreetMap `service` tag and fitted against 2,338 OSM `duration` tags.
+time comes from one of six service tiers, 74 km/h for a commuter service up
+to 215 km/h for a high-speed one, plus a separate 20 km/h tier for heritage
+and tourist lines, fitted against OSM `duration` tags. A route's tier is
+read from its own OpenStreetMap `service` tag WHERE IT CARRIES ONE: about a
+quarter of route relations do not, and those fall to a general-purpose
+default. The model's largest known error is the Tohoku Shinkansen at about
+10 h against a published 3 h 10, and speed is not the cause -- the relation
+lists 21 station calls where the fastest train makes about six, and the
+`highspeed` tag sits on the track segments rather than on the route. Express
+services running on all-stations relations are over-stated the same way.
 
 ## How it is computed
 

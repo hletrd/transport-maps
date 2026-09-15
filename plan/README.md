@@ -1,7 +1,15 @@
 # Plans
 
 Implementation plans derived from the multi-agent reviews in `.context/reviews/`
-(cycle 11: per-agent files plus `_aggregate.md`, with per-agent IDs `UX11-n`,
+(cycle 15: per-agent files plus `_aggregate.md`, with per-agent IDs `CR15-n`,
+`PR15-n`, `SEC15-n`, `CRIT15-n`, `VER15-n`, `TE15-n`, `TR15-n`, `ARCH15-n`,
+`DBG15-n`, `DOC15-n`, `UX15-n`, merged clusters `AGG15-1…AGG15-77`, scheduled
+tasks `C15-1…C15-7` and deferrals `DEF15-1…DEF15-61`; cycle 14: per-agent files
+plus `_aggregate.md` with 223 findings clustered `CL-A…CL-O` and tasks
+`C14-R1…C14-R11`; cycle 13: per-agent IDs `-13` with clusters `C13-n` and
+`V13-n`, plus the solver-service tasks `C13-F2.1…C13-F2.12`; cycle 12:
+per-agent IDs `-12` with clusters `C12-n` and the owner's tasks `F1…F3`;
+cycle 11: per-agent files plus `_aggregate.md`, with per-agent IDs `UX11-n`,
 `CR11-n`, `PR11-n`, `SEC11-n`, `CRIT11-n`, `TE11-n`, `ARCH11-n`, `DOC11-n`,
 `DBG11-n`, `VER11-n` and scheduled clusters `C11-n`; cycle 6: per-agent files plus `_aggregate.md` with merged clusters AA1…AA47 and
 per-agent IDs CR6-n, PR6-n, SEC6-n, CRIT6-n, VER6-n, TE6-n, TR6-n, ARCH6-n,

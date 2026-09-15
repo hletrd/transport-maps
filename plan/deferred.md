@@ -27,6 +27,30 @@ rebuilds; no writes under `dist/`/`data/`).
 |---|---|---|---|---|---|---|
 | M8-14 | The legend's trailing build-date line overshoots the landscape rail at 844×390 by **19 px**. Cycle 8's plan ticks T2.7 as fixing this and its own progress section records the 19 px and carries the item forward — the file both closes and re-opens it. Improved from 36 px, not closed. | `web/index.html`, the `@media (max-width:860px) and (orientation:landscape)` block | LOW | High | Closing the last 19 px means re-tuning that block's margins, and cycle 9 already changed the same block (the folded sheet now keeps `#time`). Two margin changes in one cycle to a layout whose only verification is a browser pass would make neither attributable. The rail scrolls and every guarantee CLAUDE.md names — strip, ticks, keys, caption, credit — measures visible at all four viewports. | A page cycle that has not otherwise touched the landscape rail; measure the overshoot before and after |
 
+### AB41, cycle 15: the sweep is deferred a third time, and said so plainly
+
+Cycle 15's documentation lane raised this again (`DOC15-9`): the sweep's
+trigger has now fired twice without the sweep happening, and the edits made in
+between have invalidated some of the sweep's own citations — `AA41`'s example,
+`graph/rail.py:113`, no longer resolves to the code it was quoting.
+
+It is **not run this cycle either**, and the reason is bounded scope rather
+than merit. A re-anchoring pass touches every citation in a 700-line ledger
+whose line numbers move again with each of this cycle's seven `web/app.js` and
+five test-file changes, so a sweep run now would be stale before the cycle
+ended. Running it *after* a cycle's code changes have settled is the only
+ordering in which it stays true.
+
+The example citation in the AB41 row above is deliberately **left as it is**:
+the row quotes it as evidence of the problem, and re-pointing it would delete
+the evidence while leaving the problem.
+
+Severity unchanged at Medium. **Exit criterion, tightened so it cannot slip a
+fourth time: the first cycle that makes no change under `web/` or `tests/`
+runs the sweep as its first task, before anything else.** Recording the count
+here — three deferrals — so the next cycle inherits the number rather than the
+impression.
+
 ## Cycle 14: AA17 closed, by the owner reporting it on the live site
 
 | ID | Exit criterion, and what fired it | Now |
@@ -98,7 +122,7 @@ work; one is restated.
 | DOC5-8 | "The owner revises `CLAUDE.md`, **or** `check_ramps.py` is next edited." Both fired (`0d5d745`, `8733564`). | **Half closed.** `check_ramps.py`'s docstring no longer hard-codes 37 — it now says the count comes from `BAND_EDGES_MIN` and why the literal must not be written there. The `CLAUDE.md:22` half stays open: that file is the owner's standing policy and this run treats it as binding input, not working material. Exit criterion for the remaining half: the owner revises it. |
 | AA37 | "The docstring is rewritten next time that file is touched for a real reason." `tests/web/test_boot_behaviour.py` was touched at `c5efaf3`, nine minutes after the row was written, and again this cycle. | **Closed.** Both docstrings named a `cities > 0` condition `boot.js` has not had since the watchdog moved to the `appReady` flag. Corrected, and both directions of the pair re-proved by mutation: making the check unconditional reddens one test, deleting it reddens the other. |
 | CR5-7 | "Cycle 6, or the next time either module is edited." Cycles 6, 7 and 8 all completed and neither was removed. | **Closed.** `contour/bands._polygonal` and `graph/refine.base_parent` are deleted; neither had a caller anywhere in `src/`, `tests/` or `scripts/`. The `app.js:1672` third of the row was already gone. |
-| AB41 | "The next cycle runs a citation re-anchoring pass over the whole file." Cycle 8 completed and ran none; cycle 9's audit found **24 of 24** sampled `web/app.js` citations missing, not the 5 of 7 the row claims, and `AA17` citing `graph/rail.py:113` in a 107-line file. | **Restated, not closed**, with its severity unchanged at Medium. See the note below. |
+| AB41 | "The next cycle runs a citation re-anchoring pass over the whole file." Cycle 8 completed and ran none; cycle 9's audit found **24 of 24** sampled `web/app.js` citations missing, not the 5 of 7 the row claims, and `AA17` citing `graph/rail.py:113` in a 107-line file. | **Restated, not closed**, with its severity unchanged at Medium. See the note below. **Cycle 15: restated a third time and still not run** — see the dated note directly below this table. |
 
 ### AB41: why the re-anchoring pass is still not the fix
 

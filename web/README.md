@@ -58,9 +58,19 @@ in the same commit.
 | ibm-plex-sans-latin-500-normal.woff2 | `0717336fb31fcdcde4b8deb3675bb4a0f7f6d484864afcd6751ac29975962203` |
 | ibm-plex-sans-latin-600-normal.woff2 | `8960851d691c054ed38e259bdcf1a6190d157b4203ed5bb32c632a863fb8ec2f` |
 | OFL.txt | `7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da` |
+| licences/README.md | `8c1826ebbd28d7ebb77dcc11c114f831492637cbdffebc9c729de19ea4f95054` |
+| licences/fflate.LICENSE.txt | `0a1df3a083d0c010560aa342e87959c8c1070e6fd54545741f083f22d0c8b551` |
+| licences/h3-js.LICENSE.txt | `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |
+| licences/h3-js.NOTICE.txt | `a265b8d138fa9064bbe12c1e9d6785705bdc91a3655b241b1fd01a7a0ead6663` |
+| licences/index.html | `71cfadd8ad2712ab632ce8af89988895d8c776544f43e8abdd0cdce69bb34c45` |
+| licences/maplibre-gl.LICENSE.txt | `ee5fc05a0677eaf69601d2c7db0d9ecd6cc27c3abc1d0733bc9ed34707cf8ef2` |
+| licences/pmtiles.LICENSE.txt | `0371c38f338835f7fc13ed71176f3d92144e22c8b736a31cced57adbbeb647b3` |
 
-Every file in `vendor/` appears above; `tests/web/test_vendor.py` enumerates the
-directory rather than a hard-coded list, so a newly vendored file fails the gate
+Every file in `vendor/` appears above, including the licence texts under
+`vendor/licences/`; `tests/web/test_vendor.py` walks the tree RECURSIVELY
+rather than reading a hard-coded list (it used `iterdir()` until cycle 15,
+which could not see the subdirectory at all while this sentence claimed it
+could), so a newly vendored file fails the gate
 until its hash is recorded here. The three font faces are served
 `immutable, max-age=31536000` and are named by family, subset and weight, not by
 content, so a swapped face would be cached for a year with no other signal.

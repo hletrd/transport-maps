@@ -19,7 +19,7 @@ def _readme_hashes() -> dict[str, str]:
     text = (WEB / "README.md").read_text(encoding="utf-8")
     found = {}
     for line in text.splitlines():
-        m = re.match(r"\| ([\w.-]+) \| `([0-9a-f]{64})`", line)
+        m = re.match(r"\| ([\w./-]+) \| `([0-9a-f]{64})`", line)
         if m:
             found[m.group(1)] = m.group(2)
     return found
@@ -34,9 +34,26 @@ def test_every_vendored_file_matches_the_hash_the_readme_records():
     too, silently. Deriving the set from the directory makes that impossible.
     """
     recorded = _readme_hashes()
-    expected = {p.name for p in (WEB / "vendor").iterdir() if p.is_file()}
-    assert expected <= set(recorded), (
-        f"vendored but not pinned in web/README.md: {sorted(expected - set(recorded))}")
+    # rglob, not iterdir: the seven files under vendor/licences/ -- the
+    # licence TEXTS this page's compliance rests on -- were invisible to a
+    # non-recursive walk, while web/README.md claimed "every file in
+    # vendor/ appears above". Recorded by path relative to vendor/.
+    expected = {p.relative_to(WEB / "vendor").as_posix()
+                for p in (WEB / "vendor").rglob("*") if p.is_file()}
+    # BOTH directions. `expected <= recorded` alone cannot see the test
+    # NARROWING: reverting this walk from rglob to iterdir drops the seven
+    # licence texts from `expected` and a subset check stays green, which is
+    # exactly how web/README.md came to claim "every file in vendor/ appears
+    # above" while seven of them were unpinned. Equality also catches a row
+    # left behind for a file that has been deleted.
+    assert expected == set(recorded), (
+        "web/README.md and web/vendor/ disagree.\n"
+        f"  vendored but not pinned: {sorted(expected - set(recorded))}\n"
+        f"  pinned but not vendored: {sorted(set(recorded) - expected)}")
+    assert any("/" in name for name in expected), (
+        "no file under a vendor/ SUBDIRECTORY is in the walk, so it is not "
+        "recursive -- vendor/licences/ holds the licence texts this page's "
+        "compliance rests on")
     for name in expected:
         actual = hashlib.sha256((WEB / "vendor" / name).read_bytes()).hexdigest()
         assert actual == recorded[name], f"{name}: on disk {actual[:12]}…, README {recorded[name][:12]}…"

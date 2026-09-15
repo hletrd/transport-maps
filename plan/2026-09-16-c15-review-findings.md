@@ -229,31 +229,31 @@ inferred.
 ### C15-6 — Documentation that ships and is wrong
 **From AGG15-5 (page half), AGG15-62, AGG15-63, AGG15-64, AGG15-70 · Severity Medium**
 
-- [ ] **C15-6.1** The page's "Sources and method" panel (`web/index.html:1038,1069`) was
+- [x] **C15-6.1** The page's "Sources and method" panel (`web/index.html:1038,1069`) was
       never updated for the new rail model; `web/llms.txt` was. The two now contradict each
       other on the live site. Update the panel. **Page-side, so it ships this cycle**
       — unlike the `index.json.modeDetail.rail` half, which is build-baked (deferred as
       **DEF15-3**).
-- [ ] **C15-6.2** Two claims in that same copy are false as written and must be corrected
+- [x] **C15-6.2** Two claims in that same copy are false as written and must be corrected
       wherever they appear: "six service tiers from each route's own OSM `service` tag" is
       **false for 26.7% of relations** (the tag is absent and they fold to a default), and
       "six service tiers, 74–215 km/h" **excludes `tourism` at 20.1 km/h**, which the model
       applies.
-- [ ] **C15-6.3** Rail's largest documented error reaches no reader, while air's and
+- [x] **C15-6.3** Rail's largest documented error reaches no reader, while air's and
       ferry's are tabulated on the page — and rail's is now the largest of the three (the
       Shinkansen 10.4 h against a published 3.1 h). Add it, with the arithmetic already
       written in `calibration.toml`. This is CLAUDE.md's "prefer a documented, reproducible
       error over a hidden one" applied to the one mode that hides it.
-- [ ] **C15-6.4** `plan/README.md` indexes **none** of cycle 14's three plans and its
+- [x] **C15-6.4** `plan/README.md` indexes **none** of cycle 14's three plans and its
       status column is a cycle behind; three ID ranges are understated. Bring it to HEAD
       and add this file.
-- [ ] **C15-6.5** `web/vendor/licences/index.html:93` links the data credits through
+- [x] **C15-6.5** `web/vendor/licences/index.html:93` links the data credits through
       `#sources`; **no such `id` exists** in `web/index.html`. A dead link on a shipped
       compliance page.
-- [ ] **C15-6.6** `web/README.md:62-66` "Every file in `vendor/` appears above" is false —
+- [x] **C15-6.6** `web/README.md:62-66` "Every file in `vendor/` appears above" is false —
       `iterdir()` cannot see the seven files under `vendor/licences/`
       (`tests/web/test_vendor.py:38`). Fix the claim and the test's reach together.
-- [ ] **C15-6.7** `plan/deferred.md`: the ledger sweep's trigger **fired twice and the
+- [~] **C15-6.7** `plan/deferred.md`: the ledger sweep's trigger **fired twice and the
       sweep did not happen**, and the edit **invalidated the sweep's own citations**
       (AB41's `graph/rail.py:113` now resolves to unrelated code). Re-point the citations.
 
@@ -813,3 +813,53 @@ project writes, no sink is visitor-controlled today, and the finding is
 recorded rather than dropped. Exit criterion: the next cycle with test-harness
 budget, landed together with DEF15-26 (the untested ramp maths), which touches
 the same file's slicing machinery.
+
+### C15-6 — landed, except 6.7
+
+**6.1–6.3, the rail prose.** A new paragraph in "What this does not know" on
+the page gives the service-tier model AND the Shinkansen error with its two
+causes — 21 station calls against the fastest train's six, and `highspeed` on
+the track segments rather than the route. Air's and ferry's errors were already
+tabulated there; rail's now is, which is what CLAUDE.md's "prefer a documented,
+reproducible error over a hidden one" asks for.
+
+**One review finding was wrong and is not implemented as written.** DOC15-13
+reported that "six service tiers, 74–215 km/h" wrongly excludes `tourism` at
+20.1 km/h. `emit/index.py:165-168` already carries the reason: *"at 20 km/h it
+is a heritage railway, not the slow end of scheduled service, and quoting it
+would misdescribe the model to a reader planning a journey."* That is a
+considered decision, not an oversight. All three surfaces now say the same
+thing — 74 to 215 for scheduled service, **plus a separate 20 km/h tier for
+heritage and tourist lines** — so the range is complete without implying a
+scheduled train runs at 20 km/h.
+
+**The real correction** is DOC15-4's: "six service tiers **from each route's own
+OSM `service` tag**" is false for about a quarter of relations, which fall to a
+default. Fixed in `web/index.html` and `web/llms.txt` (both ship this cycle) and
+in `emit/index.py` (build-baked — DEF15-3 — so the served `index.json` still
+carries the old sentence until a rebuild; **this is not live and is not claimed
+to be**).
+
+**6.5** `web/vendor/licences/index.html:93` linked `#sources`; no such id
+exists. The panel is `id="key"`.
+
+**6.6** `web/README.md`'s "Every file in `vendor/` appears above" was false —
+`iterdir()` cannot see `vendor/licences/`. The walk is `rglob` now and the
+seven licence texts are pinned by hash. The assertion is also **bidirectional**:
+`expected <= recorded` could not see the test NARROWING, which is precisely how
+the false claim survived. Mutations: revert `rglob`→`iterdir` → **RED** (was
+green under the subset check); append one byte to `fflate.LICENSE.txt` →
+**RED**.
+
+**6.7 — NOT DONE, deliberately, and recorded in `plan/deferred.md` with a
+tightened exit criterion.** The `deferred.md` citation re-anchoring sweep
+(AB41) has now been deferred **three** cycles running. It is not run here
+because a sweep over a 700-line ledger of line-number citations would be stale
+before this cycle ended — seven `web/app.js` edits and five test-file rewrites
+land in it. The ledger now carries a dated note saying so, the count of three,
+and an exit criterion that cannot slip the same way again: *the first cycle
+that makes no change under `web/` or `tests/` runs the sweep as its first
+task.* AB41's own example citation is deliberately left stale, because the row
+quotes it as evidence.
+
+`tests/web/` + `tests/emit/test_index.py`: 456 passed. `ruff check .` clean.

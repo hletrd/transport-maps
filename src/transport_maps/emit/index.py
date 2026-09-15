@@ -178,7 +178,9 @@ def mode_detail() -> dict[str, str]:
         # minutes where the journey actually pays 20 (`boarding_min` on the way
         # in plus `alighting_min` on the way out).
         "rail": "Scheduled trains from OpenStreetMap route relations, stop to stop. "
-                f"Six service tiers from each route's own OSM `service` tag, "
+                f"Six service tiers, read from each route's own OSM `service` tag "
+                f"where it carries one (about a quarter of relations do not, and "
+                f"fall to a general-purpose default), "
                 f"{tier_lo.speed_kmh:.0f} km/h for a commuter train up to "
                 f"{tier_hi.speed_kmh:.0f} km/h for a high-speed one, over the straight-line "
                 f"distance between stops times {rc.detour_factor:.1f} for curves, plus a "
