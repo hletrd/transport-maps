@@ -320,7 +320,8 @@ All ten tasks done. Commits `d3e7f4a` (plans), `e7a90c7` (the model), `15870ac`
   regress against is gone, the six tiers are declared FITTED with n, residuals,
   bootstrap CIs and holdout, and the 74% European skew is tabulated by region.
 - [x] **C14-R5** — the caption resolves by minimum leg minutes, the same
-  tie-break `ride_edges` uses.
+  tie-break `ride_edges` uses. **This was not sufficient and the owner found
+  why** — see C14-R11 below.
 - [x] **C14-R6** — forward and reverse captions are kept separately; an
   opposite-direction name is a documented fallback for a one-way relation, not
   the default.
@@ -336,6 +337,32 @@ All ten tasks done. Commits `d3e7f4a` (plans), `e7a90c7` (the model), `15870ac`
   `SCHEMA` and not to the fixture.
 - [x] **C14-R10** — the tooltip and `llms.txt` say 20 minutes, name six tiers
   instead of two speeds, and no longer claim the train follows the track.
+
+- [x] **C14-R11 — AA17, reported live by the owner.** `47215f9`. *"KTX 는 왜
+  자꾸 구포경유만 뜨지?"* Picking the minimum-minutes route (C14-R5) left the
+  owner's case untouched, because the two KTX relations TIE exactly: same
+  `high_speed` tier, same two stations, identical minutes, so `minutes < best`
+  is false and the tie fell to the lower relation id as before. **33.82% of
+  hops (40,579 of 119,973) carry such a tie.** Ties are now kept and broken by
+  the traveller's own chain — the service that also runs the preceding hops is
+  the one this journey was on. Measured over 119,973 directed hops, the share
+  captioned with a strictly slower service than the one charged for:
+
+  | rule | named a slower service | wrong speed class |
+  |---|---|---|
+  | old, lowest relation id | 5,168 (4.31%) | 3,647 |
+  | minimum minutes only (C14-R5) | 0 | 0 |
+  | **tied-fastest + path (C14-R11)** | **0** | **0** |
+
+  C14-R5 already took the AA17 metric to zero; C14-R11 is what makes the
+  remaining 33.82% of ties choose a *useful* name rather than an arbitrary one.
+  The candidate set is still only the tied-fastest routes, so the AA17 property
+  — the named service is never slower than the one charged for — is preserved
+  by construction and asserted directly.
+
+  AA17 is closed in `plan/deferred.md`. The ledger's own figure is 10.35% of
+  shipped ROWS; the figures here are the share of hops in the network, which is
+  measurable without a build. Both describe the same defect.
 
 ### Mutations run, and what they proved
 
