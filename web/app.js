@@ -3617,8 +3617,42 @@ function render(filter = "") {
   // rebuild's 1,464 origins -- about 6,600 DOM nodes, per keystroke. Same cap,
   // same slice; `matched` is already alphabetical, so the 60 are stable rather
   // than whichever the filter happened to reach first.
+  // Ranked, not alphabetical. Cycle 15 dropped the apostrophe family from
+  // fold() -- correctly; it fixed a real defect -- and that made "xi'an" fold
+  // to "xian", which is a substring of "feng-XIAN-g". The list was alphabetical
+  // and Enter clicks row 1, so typing the exact, correctly spelled name of a
+  // city of 13 million departed from a district of Shanghai. Cycle 15's own
+  // verification recorded "Xi'an -> 4 hits" as a pass: it counted hits and
+  // never asked which was first.
+  //
+  // Same four tiers the airport ranker twenty lines below already uses, on the
+  // same reasoning: an exact match, then a name the query starts, then a word
+  // inside the name, then any substring. `c.key` is the NAME alone and
+  // `c.skey` adds the country, so the tiers test `key` -- otherwise "japan"
+  // would rank Osaka as an exact match against its country half.
+  //
+  // Ranked ONCE into a temporary and sorted on the stored rank, for the reason
+  // the airport path records: calling the ranker from inside the comparator
+  // runs it O(n log n) times, which measured 4.5x slower there.
+  //
+  // Ties break alphabetically -- `matched` is already in that order and the
+  // sort is stable, so within a rank the list a visitor scans is unchanged.
+  // index.json ships no population or traffic column, so there is nothing
+  // else honest to break a tie on and none is invented.
+  const rankCity = (c) => {
+    if (c.key === f) return 0;
+    if (c.key.startsWith(f)) return 1;
+    return (" " + c.key).includes(" " + f) ? 2 : 3;
+  };
   const { hits, capped } = f
-    ? { hits: matched.slice(0, UNFILTERED_CAP), capped: matched.length > UNFILTERED_CAP }
+    ? {
+        hits: matched
+          .map((c) => ({ c, r: rankCity(c) }))
+          .sort((a, b) => a.r - b.r)
+          .slice(0, UNFILTERED_CAP)
+          .map((e) => e.c),
+        capped: matched.length > UNFILTERED_CAP,
+      }
     : capCities(matched);
   const list = document.createDocumentFragment();
   const row = (b) => { const li = document.createElement("li"); li.setAttribute("role", "none"); li.append(b); return li; };

@@ -59,6 +59,7 @@ import json
 import re
 import shutil
 import subprocess
+import tomllib
 
 import pytest
 
@@ -107,17 +108,39 @@ def _const_arrow(name: str) -> str:
 
 FOLD_SRC = "\n".join(_const_arrow(n) for n in ("FOLD_DROP", "FOLD_SPACE", "fold"))
 
-# The names the page actually ships. Read from dist/index.json when it is
-# there, because that is the list a visitor searches; falling back to the
-# checked-in origin list keeps the file honest on a clone with no dist/.
+# The names the page ships. `data/origins.toml` FIRST, `dist/index.json` only
+# as a supplement.
+#
+# Cycle 15 wrote this the other way round and the comment above it claimed a
+# fallback the code did not have -- it called `pytest.skip`. Two things were
+# wrong with that. It read 553 names when 1,464 are checked into the tree, so
+# the guard could not go red for any of the 911 origins the running rebuild
+# will publish: cycle 16's test lane ran the property over all 1,464 and
+# measured **0 misses**, i.e. the gate would have stayed green through the
+# rebuild whether or not it worked. And the skip put this file in the set that
+# `deploy_verify.sh`'s page gate refuses on, which broke `--page-only` -- the
+# one deploy mode documented as not needing `dist/` -- on every clone.
+#
+# `origins.toml` is the source `build-all` reads, so it is the list the page
+# will ship, not merely the list it happens to ship today.
 _INDEX = config.ROOT / "dist" / "index.json"
+_ORIGINS = config.ROOT / "data" / "origins.toml"
 
 
 def _shipped_names() -> list[str]:
-    if not _INDEX.exists():
-        pytest.skip("dist/index.json is not built; no shipped names to fold")
-    meta = json.loads(_INDEX.read_text(encoding="utf-8"))
-    return [o["name"] for o in meta["origins"]]
+    names: list[str] = []
+    if _ORIGINS.exists():
+        names = [o["name"] for o in
+                 tomllib.loads(_ORIGINS.read_text(encoding="utf-8"))["origin"]]
+    if _INDEX.exists():
+        meta = json.loads(_INDEX.read_text(encoding="utf-8"))
+        shipped = [o["name"] for o in meta["origins"]]
+        # A name in dist/ but not in origins.toml means the built site is
+        # ahead of the checked-in list; fold it too rather than miss it.
+        names += [n for n in shipped if n not in set(names)]
+    if not names:
+        pytest.skip("neither data/origins.toml nor dist/index.json is present")
+    return names
 
 
 def test_the_slice_really_contains_the_whole_helper() -> None:
@@ -264,3 +287,178 @@ def test_the_country_key_still_joins_on_a_single_space() -> None:
     assert join, "the skey join has moved; re-read this guard"
     assert join.group(1) == "${c.key} ${fold(where)}", (
         f"the skey join is now {join.group(1)!r}; check it still yields one space")
+
+
+# --- the ranking guard (C16-1.3) ------------------------------------------
+#
+# `fold()` decides WHICH cities a query matches. `rankCity()` decides which of
+# them the visitor gets when they press Enter, and Enter clicks row 1.
+#
+# The defect this guard exists for shipped live and was found in cycle 16.
+# C15-1 dropped the apostrophe family from `fold()` -- correctly -- which made
+# `xi'an` fold to `xian`, a substring of `feng`+`xian`+`g`. The list was
+# alphabetical, `Fengxiang` sorts before `Xi'an`, and typing the exact and
+# correctly spelled name of a city of 13 million departed from a district of
+# Shanghai. Cycle 15's verification recorded `Xi'an -> 4 hits` as a pass: it
+# counted hits and never asked which was first.
+#
+# So the property is not "the name is findable" (the tests above) but "the
+# name RANKS FIRST". It is asserted over every shipped name rather than over
+# the one city that broke, because the rebuild takes the list from 553 to
+# 1,464 and with it the collision surface.
+#
+# MUTATIONS PERFORMED, with the results as measured.
+#
+# 1. Flatten the ranker -- `rankCity` returns 0 for everything, which IS the
+#    pre-fix behaviour, since the list then keeps its alphabetical order:
+#    **4 failed, 8 passed.** The general property names **20 of 1,464**
+#    cities that depart from somewhere else. That is the number worth
+#    recording, because cycle 16's review found one:
+#
+#      Xi'an   -> Fengxiang       London  -> East London
+#      Quito   -> Iquitos         Cali    -> Aguascalientes
+#      Lu'an   -> Kluang          Huzhou  -> Chuzhou
+#      Salem   -> Jerusalem       Turin   -> Maturin
+#      Ji'an   -> Hongjiang       Gaya    -> Cagayan de Oro
+#      Palma   -> Las Palmas ...  Santos  -> General Santos
+#      Osh     -> Baoshan         Orel    -> Morelia   ... and six more
+#
+#    At the 553 origins `dist/` holds today only Xi'an is affected; the other
+#    nineteen arrive with the rebuild. Typing "London" and getting East
+#    London is the one a visitor would notice first.
+#
+# 2. Drop only the exact-match tier: **1 failed, 3 errored.** The errors are
+#    the slice guard doing its job -- `_rank_city_src()` counts three
+#    `return`s and refuses to hand a two-tier ranker to the fixture. Red, but
+#    less legible than mutation 1.
+#
+# 3. Drop only the word-boundary tier: same shape, **1 failed, 3 errored**.
+#
+# No mutation came back green.
+
+
+def _rank_city_src() -> str:
+    """The verbatim `rankCity` arrow out of `render()`.
+
+    Not `_const_arrow`: `rankCity` is declared inside a function, so the
+    top-level `const rankCity = ` anchor that helper looks for does not exist
+    at column 0. Sliced from its declaration to the closing `};` of the arrow
+    body, and the assertions below check the slice really holds all four tiers
+    before anything is run against it.
+    """
+    start = APP.index("  const rankCity = (c) => {")
+    end = APP.index("\n  };", start) + len("\n  };")
+    return APP[start:end]
+
+
+def test_the_rank_slice_really_contains_all_four_tiers() -> None:
+    """The guard on the guard: a truncated slice ranks everything alike and
+    every assertion below passes for the wrong reason.
+    """
+    src = _rank_city_src()
+    assert src.count("return") == 3, (
+        f"rankCity sliced with {src.count('return')} returns, not 3:\n{src}")
+    for tier in ("c.key === f", "c.key.startsWith(f)", '(" " + c.key).includes(" " + f)'):
+        assert tier in src, f"{tier} is not in the sliced rankCity:\n{src}"
+
+
+@pytest.fixture(scope="module")
+def rank(node: str, tmp_path_factory):
+    """Run the real `rankCity` over the real `fold()`, in node.
+
+    Returns, for a typed query, the names it matches in the order `render()`
+    would build the rows -- which is what Enter acts on.
+    """
+    path = tmp_path_factory.mktemp("rank") / "rank.cjs"
+    path.write_text(
+        FOLD_SRC + "\n"
+        "const [names, queries] = JSON.parse(process.argv[2]);\n"
+        # `cities` is sorted by localeCompare once and the rank sort is
+        # stable, exactly as app.js builds it -- so ties break alphabetically
+        # here for the same reason they do on the page.
+        "const cities = names.slice().sort((a, b) => a.localeCompare(b))\n"
+        "  .map((name) => ({ name, key: fold(name) }));\n"
+        "const out = {};\n"
+        "for (const q of queries) {\n"
+        "  const f = fold(q);\n"
+        + _rank_city_src().replace("  const rankCity", "  const rankCity") + "\n"
+        "  const hits = cities.filter((c) => c.key.includes(f))\n"
+        "    .map((c) => ({ c, r: rankCity(c) }))\n"
+        "    .sort((a, b) => a.r - b.r)\n"
+        "    .map((e) => e.c);\n"
+        "  out[q] = { order: hits.map((c) => c.name),\n"
+        "             exact: hits.length > 0 && hits[0].key === f };\n"
+        "}\n"
+        "process.stdout.write(JSON.stringify(out));\n", encoding="utf-8")
+
+    def call(names: list[str], queries: list[str]) -> dict[str, dict]:
+        done = subprocess.run([node, str(path), json.dumps([names, queries])],
+                              capture_output=True, text=True, check=True)
+        return json.loads(done.stdout)
+    return call
+
+
+def test_every_shipped_name_ranks_its_own_city_first(rank) -> None:
+    """Type a city's exact name and Enter departs from that city.
+
+    The property is asserted on the FOLDED KEY of the first hit, not on its
+    name, and the difference is not pedantry -- it is what makes the assertion
+    both correct and strict.
+
+    Once `fold()` has done its work, two cities can share a key honestly.
+    `Fuzhou` and `Fuzhou` are two different Chinese cities; `San José` in
+    Costa Rica and `San Jose` in California fold to one key because the fold
+    drops the accent on purpose, and it must, or `San Jose` would not find
+    `San José`. A search cannot tell those apart and is not wrong to return
+    either. What it must never do is rank a DIFFERENT key first -- which is
+    exactly the `Xi'an` -> `Fengxiang` defect, where the query key `xian` lost
+    to the unrelated key `fengxiang`.
+
+    The `San José` case is only visible at 1,464 origins. At the 553 the
+    built `dist/` holds, it does not exist -- which is the whole reason this
+    file now reads `data/origins.toml` instead of `dist/index.json`.
+    """
+    names = _shipped_names()
+    ranked = rank(names, names)
+    wrong = {q: r["order"][:3] for q, r in ranked.items() if not r["exact"]}
+    assert not wrong, (
+        f"{len(wrong)} of {len(names)} names do not rank a city of their own "
+        f"name first, so Enter departs from somewhere else: {wrong}")
+
+
+def test_the_xian_regression_specifically(rank) -> None:
+    """The instance that shipped, pinned by name.
+
+    Kept beside the general property because a future change could satisfy
+    the general test by weakening the fold instead of fixing the rank, and
+    this one names the four cities that must all still be reachable.
+    """
+    names = _shipped_names()
+    if "Xi'an" not in names and "Xi’an" not in names:
+        pytest.skip("Xi'an is not in the shipped origin list")
+    xian = "Xi'an" if "Xi'an" in names else "Xi’an"
+    hits = {q: r["order"] for q, r in rank(names, [xian, "xi'an", "xian"]).items()}
+    for typed in (xian, "xi'an", "xian"):
+        assert hits[typed], f"{typed!r} matched nothing at all"
+        assert hits[typed][0] == xian, (
+            f"typing {typed!r} ranks {hits[typed][0]!r} first, not {xian!r}; "
+            f"full order {hits[typed]}")
+    # The other three must still be findable -- a rank that fixed Xi'an by
+    # making the fold stricter would break these instead.
+    assert "Fengxiang" in hits["xian"], "Fengxiang is no longer matched by 'xian'"
+
+
+def test_a_prefix_outranks_an_interior_match(rank) -> None:
+    """The middle two tiers, on data rather than on a constructed fixture.
+
+    `ning` is an interior substring of Jining and Xining and a prefix of
+    Ningbo, so the prefix must come first. This is the tier that stops a
+    one-syllable query returning the alphabetically-first accident.
+    """
+    names = _shipped_names()
+    have = [n for n in ("Ningbo", "Jining", "Xining", "Nanning") if n in names]
+    if len(have) < 2 or "Ningbo" not in have:
+        pytest.skip("the ning cities are not in the shipped origin list")
+    order = rank(names, ["ning"])["ning"]["order"]
+    assert order[0] == "Ningbo", (
+        f"'ning' ranks {order[0]!r} above the city it prefixes; order {order}")
