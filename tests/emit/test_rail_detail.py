@@ -37,6 +37,19 @@ LINE_ONE = [stop(1, 0, 37.0, 127.0, "A", route_name="Line One",
                  operator="Korail", ref="101")]
 
 
+def label_for(df, hops):
+    """The (name, operator, ref) the writer would print for a hop sequence.
+
+    `hops` is nearest-the-destination first, the order `_walk_back_hops`
+    produces. Going through `pick_route` rather than reading `_line_between`
+    directly is deliberate: the selection is the thing under test, and reading
+    the dict would test the storage instead.
+    """
+    lines = rail_detail._line_between(df, CAL)
+    rid = rail_detail.pick_route(hops, lines)
+    return rail_detail._route_labels(df).get(rid, ("", "", ""))
+
+
 class Idx:
     """Two cells, one airport (dep+arr), two stations: cells 0,1; air 2,3; stations 4,5."""
     cells: ClassVar[list[str]] = ["8630e08ffffffff", "8630e087fffffff"]
@@ -69,10 +82,9 @@ def test_the_caption_names_the_service_the_edge_was_PRICED_from():
                  stop(1, 1, 37.1, 127.1, "B", "commuter", "Line One"),
                  stop(2, 0, 37.0, 127.0, "A", "high_speed", "Line Two"),
                  stop(2, 1, 37.1, 127.1, "B", "high_speed", "Line Two")])
-    lines = rail_detail._line_between(df, CAL)
     a, b = station_key(37.0, 127.0), station_key(37.1, 127.1)
-    assert lines[(a, b)][0] == "Line Two"
-    assert lines[(b, a)][0] == "Line Two"
+    assert label_for(df, [(a, b)])[0] == "Line Two"
+    assert label_for(df, [(b, a)])[0] == "Line Two"
 
 
 def test_the_reverse_direction_is_not_captioned_with_the_forward_service():
@@ -89,10 +101,9 @@ def test_the_reverse_direction_is_not_captioned_with_the_forward_service():
                  stop(1, 1, 37.1, 127.1, "Busan", "high_speed", "KTX: Seoul -> Busan"),
                  stop(2, 0, 37.1, 127.1, "Busan", "high_speed", "KTX: Busan -> Seoul"),
                  stop(2, 1, 37.0, 127.0, "Seoul", "high_speed", "KTX: Busan -> Seoul")])
-    lines = rail_detail._line_between(df, CAL)
     a, b = station_key(37.0, 127.0), station_key(37.1, 127.1)
-    assert lines[(a, b)][0] == "KTX: Seoul -> Busan"
-    assert lines[(b, a)][0] == "KTX: Busan -> Seoul"
+    assert label_for(df, [(a, b)])[0] == "KTX: Seoul -> Busan"
+    assert label_for(df, [(b, a)])[0] == "KTX: Busan -> Seoul"
 
 
 def test_a_one_way_relation_still_captions_the_ride_back():
@@ -104,9 +115,8 @@ def test_a_one_way_relation_still_captions_the_ride_back():
 
     df = routes([stop(1, 0, 37.0, 127.0, "A", "regional", "Only Direction"),
                  stop(1, 1, 37.1, 127.1, "B", "regional", "Only Direction")])
-    lines = rail_detail._line_between(df, CAL)
     a, b = station_key(37.0, 127.0), station_key(37.1, 127.1)
-    assert lines[(a, b)][0] == lines[(b, a)][0] == "Only Direction"
+    assert label_for(df, [(a, b)])[0] == label_for(df, [(b, a)])[0] == "Only Direction"
 
 
 def test_the_operator_and_ref_travel_with_the_line_they_belong_to():
@@ -118,18 +128,174 @@ def test_the_operator_and_ref_travel_with_the_line_they_belong_to():
                  stop(1, 1, 37.1, 127.1, "B", "commuter", "Slow", "Metro Co", "S1"),
                  stop(2, 0, 37.0, 127.0, "A", "high_speed", "Fast", "Rail Co", "X9"),
                  stop(2, 1, 37.1, 127.1, "B", "high_speed", "Fast", "Rail Co", "X9")])
-    lines = rail_detail._line_between(df, CAL)
     a, b = station_key(37.0, 127.0), station_key(37.1, 127.1)
-    assert lines[(a, b)] == ("Fast", "Rail Co", "X9")
+    assert label_for(df, [(a, b)]) == ("Fast", "Rail Co", "X9")
+
+
+# The owner's report, with the real relation ids, stop sequences and
+# coordinates out of `data/cache/osm/asia-rail.osm.pbf`. Three KTX services run
+# Seoul -> Busan; all three are `service=high_speed, highspeed=yes` and operated
+# by 한국철도공사, so nothing about the SERVICE distinguishes them. The detour
+# variants carry a lower relation id than the direct train, which is why the
+# lowest-id rule showed "(구포경유)" on a hop the direct train also runs.
+SEOUL = (37.5547, 126.9707)
+GWANGMYEONG = (37.4160, 126.8846)
+YEONGDEUNGPO = (37.5157, 126.9077)
+SUWON = (37.2659, 127.0003)
+DAEJEON = (36.3320, 127.4344)
+DONGDAEGU = (35.8797, 128.6285)
+MIRYANG = (35.4939, 128.7481)
+GUPO = (35.2114, 128.9906)
+BUSAN = (35.1150, 129.0403)
+
+KTX_DIRECT = "경부선 KTX: 서울 → 부산"
+KTX_GUPO = "경부선 KTX: 서울 → 부산 (구포경유)"
+KTX_SUWON = "경부선 KTX: 서울 → 부산 (수원경유)"
+
+
+def _ktx():
+    """The three real services, each built with its real stop sequence."""
+    rows = []
+    for rid, name, seq in (
+        (10882384, KTX_SUWON, [SEOUL, YEONGDEUNGPO, SUWON, DAEJEON, BUSAN]),
+        (11208904, KTX_GUPO,
+         [SEOUL, GWANGMYEONG, DAEJEON, DONGDAEGU, MIRYANG, GUPO, BUSAN]),
+        (11214334, KTX_DIRECT, [SEOUL, DAEJEON, DONGDAEGU, BUSAN]),
+    ):
+        for i, (la, lo) in enumerate(seq):
+            rows.append(stop(rid, i, la, lo, "", "high_speed", name,
+                             "한국철도공사", ""))
+    return routes(rows)
+
+
+def test_the_gupo_detour_no_longer_captions_the_direct_ktx(  # noqa: N802
+):
+    """The owner's report: "KTX 는 왜 자꾸 구포경유만 뜨지?"
+
+    대전 -> 동대구 is the ONE hop relation 11208904 (seven stops, via 구포) and
+    relation 11214334 (four stops, direct) share. Both are `high_speed` over
+    the same two stations, so they cost the same minutes to the hundredth and
+    neither is "the faster service"; the old rule broke the tie on relation id
+    and 11208904 is the lower. A traveller riding 서울 -> 대전 -> 동대구 was
+    therefore told they were on the 구포 detour.
+
+    The hop BEFORE it settles it. The direct train runs 서울 -> 대전; the 구포
+    variant calls at 광명 in between and so has no such hop at all.
+    """
+    from transport_maps.graph.rail import station_key
+
+    df = _ktx()
+    seoul, daejeon, dongdaegu = (station_key(*SEOUL), station_key(*DAEJEON),
+                                 station_key(*DONGDAEGU))
+
+    # Both services really do tie on the shared hop -- if they did not, this
+    # test would be passing for the wrong reason.
+    lines = rail_detail._line_between(df, CAL)
+    assert sorted(lines[(daejeon, dongdaegu)]) == [11208904, 11214334]
+
+    # Riding the direct train: the previous hop names it.
+    assert label_for(df, [(daejeon, dongdaegu), (seoul, daejeon)])[0] == KTX_DIRECT
+    # Riding the 구포 variant, whose previous hop is 광명 -> 대전.
+    gwangmyeong = station_key(*GWANGMYEONG)
+    assert label_for(df, [(daejeon, dongdaegu), (gwangmyeong, daejeon)])[0] == KTX_GUPO
+
+
+def test_a_hop_only_the_detour_runs_is_still_captioned_with_the_detour():
+    """The fix must not simply prefer the shortest service. 밀양 -> 구포 is run
+    by the 구포 variant and nothing else, and naming anything else there would
+    be the same defect pointing the other way."""
+    from transport_maps.graph.rail import station_key
+
+    df = _ktx()
+    assert label_for(df, [(station_key(*MIRYANG), station_key(*GUPO))])[0] == KTX_GUPO
+    assert label_for(df, [(station_key(*YEONGDEUNGPO), station_key(*SUWON))])[0] == KTX_SUWON
+
+
+def test_with_no_preceding_hop_a_tie_is_broken_by_the_lowest_relation_id():
+    """Boarding AT 대전 there is nothing behind to disambiguate with, and the
+    two candidates agree on time and on every hop the traveller took. The
+    fallback is arbitrary and must at least be DETERMINISTIC, or the same
+    journey captions differently between builds."""
+    from transport_maps.graph.rail import station_key
+
+    df = _ktx()
+    hop = [(station_key(*DAEJEON), station_key(*DONGDAEGU))]
+    assert label_for(df, hop)[0] == KTX_GUPO          # 11208904 < 11214334
+    assert label_for(df, hop) == label_for(_ktx(), hop)
+
+
+def test_the_chosen_service_is_never_slower_than_the_one_that_set_the_time():
+    """The property AA17 is about, asserted directly rather than implied.
+
+    `pick_route` only ever chooses among routes that TIE for fastest over the
+    final hop, so a path-based tie-break can change which name is shown but can
+    never name a train slower than the one the traveller was charged for.
+    """
+    from transport_maps.graph.rail import station_key
+
+    # A genuinely slower service sharing the whole route with a faster one.
+    df = routes([stop(1, 0, 37.0, 127.0, "A", "commuter", "Slow stopper"),
+                 stop(1, 1, 37.5, 127.5, "B", "commuter", "Slow stopper"),
+                 stop(1, 2, 38.0, 128.0, "C", "commuter", "Slow stopper"),
+                 stop(2, 0, 37.0, 127.0, "A", "high_speed", "Express"),
+                 stop(2, 1, 37.5, 127.5, "B", "high_speed", "Express"),
+                 stop(2, 2, 38.0, 128.0, "C", "high_speed", "Express")])
+    b, c = station_key(37.5, 127.5), station_key(38.0, 128.0)
+    a = station_key(37.0, 127.0)
+    lines = rail_detail._line_between(df, CAL)
+    assert lines[(b, c)] == (2,), "the slow service must not be a candidate at all"
+    # Even with the slow service covering every preceding hop, it cannot win.
+    assert label_for(df, [(b, c), (a, b)])[0] == "Express"
+
+
+def test_walk_back_hops_reads_the_travellers_own_chain():
+    """`_walk_back_hops` is what turns a predecessor array into the hop
+    sequence `pick_route` scores, and nothing exercised it: every other test
+    here hands the hops in directly, so `PATH_LOOKBACK_HOPS` could be set to 1
+    with the whole file green. Found by mutation, which is why it is here.
+    """
+    class Idx:
+        n_cells = 2
+        airports: ClassVar[list[str]] = ["AAA"]
+        stations = ("s0", "s1", "s2", "s3")
+
+    idx = Idx()
+    first = idx.n_cells + 2 * len(idx.airports)      # 4
+    # cell 0 <- s3 <- s2 <- s1 <- s0, and s0's predecessor is a CELL.
+    pred = np.array([-9999, -9999, -9999, -9999, 0, 4, 5, 6])
+    hops = rail_detail._walk_back_hops(idx, pred, 7, first)
+    assert hops == [("s2", "s3"), ("s1", "s2"), ("s0", "s1")], (
+        "hops must run nearest-the-destination first and stop at the cell")
+
+
+def test_the_walk_back_is_bounded(monkeypatch):
+    """A pathological chain must not make the writer walk the whole network:
+    this runs once per hover parent, ~90,740 times per origin."""
+    class Idx:
+        n_cells = 1
+        airports: ClassVar[list[str]] = []
+        stations = tuple(f"s{i}" for i in range(50))
+
+    idx = Idx()
+    first = 1
+    pred = np.array([-9999] + [max(i - 1, 0) for i in range(50)])
+    monkeypatch.setattr(rail_detail, "PATH_LOOKBACK_HOPS", 3)
+    assert len(rail_detail._walk_back_hops(idx, pred, 40, first)) == 3
 
 
 def test_lookup_tables_are_plain_dicts_a_fork_can_use():
     from transport_maps.graph.rail import station_key
     t = rail_detail.lookup_tables(routes(LINE_ONE), CAL)
-    assert set(t) == {"lines", "stop_names"}
-    assert isinstance(t["lines"], dict) and isinstance(t["stop_names"], dict)
+    assert set(t) == {"lines", "stop_names", "route_label"}
+    assert all(isinstance(v, dict) for v in t.values())
     assert t["stop_names"][station_key(37.0, 127.0)] == "A"
-    assert rail_detail.lookup_tables(None) == {"lines": {}, "stop_names": {}}
+    # The hop table holds route IDS and the labels are held once per route:
+    # 16,781 routes against 147,332 directed pairs, so this is also the
+    # smaller structure to inherit across a fork.
+    assert all(isinstance(v, tuple) and all(isinstance(r, int) for r in v)
+               for v in t["lines"].values())
+    assert rail_detail.lookup_tables(None) == {"lines": {}, "stop_names": {},
+                                               "route_label": {}}
 
 
 def test_write_rail_detail_never_touches_polars(monkeypatch, tmp_path):
