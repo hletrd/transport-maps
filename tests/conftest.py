@@ -10,6 +10,14 @@ Two things every test gets without asking:
   the real cache: they build the full node index from the cached universe.
 * `scripts/check_ramps.py` importable as a fixture, instead of every test
   file mutating `sys.path` for the session.
+
+And one thing a test must ASK for, `hermetic_build`, because it cannot be
+given to everyone: see its docstring. In short, `config.BUILD` is deliberately
+NOT redirected -- most of the suite reads the real built artifacts and would
+have to rebuild them -- but any test whose subject WRITES a derived table into
+`config.BUILD` reads its own warm output instead of running the code, and
+passes no matter what the code says. `tests/sources/test_airports.py` was
+exactly that: a four-way mutation of the filter left it at 4 passed.
 """
 
 import importlib.util
@@ -46,6 +54,42 @@ def _hermetic_cache(request, monkeypatch, scratch_cache):
     if request.node.get_closest_marker("integration"):
         return
     monkeypatch.setattr(config, "CACHE", scratch_cache)
+
+
+@pytest.fixture
+def hermetic_build(monkeypatch, tmp_path):
+    """Redirect `config.BUILD` at a scratch directory for one test.
+
+    Opt-in, and NOT autouse, which is the whole point. `config.CACHE` can be
+    redirected for everyone because the fast tests need only two seed archives
+    from it. `config.BUILD` cannot: it holds the stamped land cells, the
+    airports table and the road grid, and most of the suite reads them rather
+    than building them. Redirecting it globally would turn a twenty-minute
+    suite into a rebuild.
+
+    So the hazard is real and has to be opted out of, one test at a time.
+    Every `sources/` builder follows the same shape --
+
+        out = _table_cache_path()
+        if out.exists():
+            return pl.read_parquet(out)
+        ...actually build it...
+
+    -- so a test that calls the builder without this fixture reads whatever
+    the last real build left behind and never executes a line of the filter it
+    claims to test. Cycle 15 proved it: mutating four separate things in
+    `sources/airports.py` at once (`== "yes"` -> `!= "no"`, deleting the
+    3-character IATA filter, `keep="first"` -> `"last"`, deleting `.sort`)
+    left `tests/sources/test_airports.py` at **4 passed, GREEN**.
+
+    Use this in any test whose subject writes into `config.BUILD`, and pair it
+    with a stubbed download so the test neither fetches nor depends on a warm
+    cache.
+    """
+    scratch = tmp_path / "build"
+    scratch.mkdir()
+    monkeypatch.setattr(config, "BUILD", scratch)
+    return scratch
 
 
 @pytest.fixture(scope="session")

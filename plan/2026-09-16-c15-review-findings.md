@@ -203,12 +203,12 @@ inferred.
 | `emit/rail_detail.py:165-166`: drop **both** `stop_overhead_min` and `detour_factor` | `tests/emit/test_rail_detail.py` | **19 passed, GREEN** |
 | `service/wire.py`: move the `MAX_QUERY_CHARS` check **below** `parse_qs` | `tests/service/test_wire.py` | **39 passed, GREEN** |
 
-- [ ] **C15-5.1** **Root cause first.** `tests/conftest.py:44-48` makes `config.CACHE`
+- [x] **C15-5.1** **Root cause first.** `tests/conftest.py:44-48` makes `config.CACHE`
       hermetic but **never `config.BUILD`**, so any test whose subject writes a derived
       artifact to `data/build/` silently reads whatever the last real build left there.
       Make `config.BUILD` hermetic too. This is what made the airports test vacuous, and
       it is a class, not an instance.
-- [ ] **C15-5.2** `tests/sources/test_airports.py` builds its own fixture and actually
+- [x] **C15-5.2** `tests/sources/test_airports.py` builds its own fixture and actually
       exercises the filter. Re-run the four-way mutation and confirm **RED**. Also declare
       the test's network dependence (an `integration`/`network` marker) — on a cold clone
       it would attempt a live fetch with nothing saying so.
@@ -697,3 +697,42 @@ Three tests in `tests/web/test_csp.py`. Mutations:
 
 The second is the one that matters: without it, "deny every feature" would pass
 the first test and silently break the "use my location" button.
+
+### C15-5.1 / C15-5.2 — landed
+
+**Root cause.** `tests/conftest.py` gained `hermetic_build`, an **opt-in**
+fixture redirecting `config.BUILD` at a scratch directory. Deliberately not
+autouse: `config.BUILD` holds the stamped land cells, the airports table and
+the road grid, and most of the suite reads them rather than building them —
+redirecting globally would turn a 20-minute suite into a rebuild. The hazard is
+documented at the top of the file so the next builder test opts out knowingly.
+
+**The instance.** `tests/sources/test_airports.py` now builds a synthetic
+OurAirports CSV covering every branch and runs the real builder with
+`_download` stubbed. It touches no network and no warm artifact. The four
+real-data tests are kept — they are how "ICN is at 37.46" stays true — and
+marked `integration`, which is what they always were; `integration` is IN the
+gate, so nothing leaves the suite.
+
+13 tests, up from 4. Mutations, all run:
+
+| Mutation | Before | After |
+|---|---|---|
+| delete `str.len_chars() == 3` | (untested) | **RED**, 3 failed |
+| `keep="first"` -> `"last"` | (untested) | **RED**, 2 failed |
+| delete `.sort("iata")` | (untested) | **RED**, 2 failed |
+| delete `.drop_nulls(["lat","lon"])` | (untested) | **RED**, 3 failed |
+| **all four of the original four at once** | **GREEN, 4 passed** | **RED**, 4 failed |
+
+**One mutation is recorded green, with its reason.** `== "yes"` -> `!= "no"`
+was green, and correctly so: the real column's domain was **measured** — `no`
+81,692 rows, `yes` 4,334, no blanks — so the two spellings select identically
+on shipped data, and a null behaves alike under polars either way. It is not a
+behaviour change, and no honest test can go red for one that is not. What is
+now pinned is the property that makes the difference matter if OurAirports ever
+adds a third value: membership is positive, so an unrecognised value is
+excluded until somebody decides what it means. Under that test, `!= "no"` is
+RED. The fixture row is synthetic on purpose and the file says so alongside the
+measurement, rather than implying the data contains it.
+
+`tests/sources/` 171 passed, 3 deselected. `ruff check .` clean.
