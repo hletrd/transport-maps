@@ -346,11 +346,26 @@ def test_the_match_count_announced_is_the_true_one_not_the_capped_one():
     announce -> red.
     """
     body = _function("render")
-    m = re.search(r"if \(f\) \{\s*const n = ([a-zA-Z.]+) \+ apHits\.length;", body)
-    assert m, "the announce block moved"
-    assert m.group(1) == "matched.length", (
-        f"the live region announces {m.group(1)}, which is the capped view, "
-        "not the number of cities that actually matched")
+    # Sliced rather than matched against one expression's exact shape: C17-5
+    # split the single `n` into a city count and an airport count so the
+    # announcement could name what it was counting, and the old regex went
+    # red for a rename. The invariant is what it always was -- the capped
+    # view must not reach the live region -- and it is now asserted over the
+    # whole block, which the regex was not.
+    at = body.index("  if (f) {\n")
+    block = body[at:body.index("\n  }", at)]
+    # Comments stripped before asserting. The first version of this check went
+    # red against correct code because the comment explaining the invariant
+    # said "not hits.length" -- prose satisfying, or here defeating, an
+    # assertion about code. The repo has the mirror of this bug too: a guard
+    # whose window shrank enough to pass when a comment was deleted with it.
+    block = re.sub(r"//[^\n]*", "", block)
+    assert "announce(" in block, "the announce block moved"
+    assert "matched.length" in block, (
+        "the live region no longer counts the cities that actually matched")
+    assert "hits.length" not in block, (
+        "the live region announces hits.length, which is the capped view, not "
+        "the number of cities that actually matched")
 
 
 def test_the_empty_state_tests_the_true_match_set():

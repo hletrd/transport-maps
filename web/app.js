@@ -3846,9 +3846,15 @@ function render(filter = "") {
     li.className = "listmore"; li.setAttribute("role", "none");
     // "Type to search all of them" is not advice anyone can act on while they
     // are already typing, so the filtered list says what to do instead.
+    // "matches" named three different populations at once. Query "de" put 72
+    // option rows on screen (60 cities plus 12 airports), captioned them
+    // "first 60 of 72 matches" -- cities only -- and announced "84 matches" to
+    // the live region, which counts both. Three numbers, one word. Each line
+    // below now names the population it is counting.
     li.textContent = f
-      ? `Showing the first ${hits.length} of ${fmtCount(matched.length)} matches `
-        + `for \u201C${filter.trim()}\u201D. Keep typing to narrow it.`
+      ? `Showing the first ${hits.length} of ${fmtCount(matched.length)} `
+        + `matching departure cities for \u201C${filter.trim()}\u201D. `
+        + "Keep typing to narrow it."
       : active
         ? `Showing ${hits.length} of ${fmtCount(matched.length)} departure cities, `
           + `the quickest to reach from ${active.name}. Type to search all of them.`
@@ -3869,9 +3875,16 @@ function render(filter = "") {
   // matched nothing". Announced only when a filter is active, so the
   // once-per-origin rebuild in settle() stays silent.
   if (f) {
-    const n = matched.length + apHits.length;
-    announce(n
-      ? `${n} match${n === 1 ? "" : "es"} for “${filter.trim()}”.`
+    // Counted separately and named, for the reason the footer above records:
+    // one word covering cities and airports produced a number that matched
+    // neither the caption nor the visible row count. Still matched.length and
+    // not hits.length -- the cap must never reach the announcement.
+    const nc = matched.length, na = apHits.length;
+    const said = [];
+    if (nc) said.push(`${fmtCount(nc)} departure cit${nc === 1 ? "y" : "ies"}`);
+    if (na) said.push(`${na} airport${na === 1 ? "" : "s"}`);
+    announce(said.length
+      ? `${said.join(" and ")} match${nc + na === 1 ? "es" : ""} “${filter.trim()}”.`
       : `No match for “${filter.trim()}”. Press Enter or Search address to look it up.`);
   }
   const cap = $("listcap");
