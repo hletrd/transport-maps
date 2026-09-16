@@ -4171,7 +4171,14 @@ $("results").addEventListener("keydown", (e) => {
   e.preventDefault();
   const next = e.key === "ArrowDown" ? items[Math.min(i + 1, items.length - 1)] : (i === 0 ? $("q") : items[i - 1]);
   for (const it of items) it.tabIndex = -1;
-  if (next !== $("q")) next.tabIndex = 0;
+  // A roving tabindex has to keep exactly ONE stop, including when focus
+  // leaves the list. ArrowUp from the first row moves focus to #q, and the
+  // reset above had already cleared every row -- so the list was left with no
+  // tab stop at all, and Tab from the search box jumped the whole thing and
+  // landed on "Search address". One keystroke, and 60 rows became unreachable
+  // by Tab. The row focus is leaving keeps the stop, which is where a visitor
+  // returning with Tab expects to land.
+  (next === $("q") ? items[i] : next).tabIndex = 0;
   next.focus();
 });
 $("find-address").addEventListener("click", () => searchAddress($("q").value.trim()));
