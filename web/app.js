@@ -3751,7 +3751,19 @@ function render(filter = "") {
     b.append(name, coord);
     return row(b);
   });
-  const codeFirst = f.length === 3 && apHits.some((a) => a[0].toLowerCase() === f);
+  // ...unless the query is a departure city's whole name. Six cities are
+  // spelled exactly like a live IATA code -- Aba, Hue, Ibb, Jos, Ufa, Van --
+  // so typing the city's complete name put an unrelated airport at the top of
+  // the list, and Enter set it as the DESTINATION instead of departing from
+  // the city you had just named. `Aba` + Enter went to Abakan, Russia.
+  //
+  // hits[0] is the test because rankCity gives an exact key match rank 0 and
+  // the sort is stable, so an exact match is always first and always inside
+  // the cap -- no second scan of 1,464 rows per keystroke. The jfk-in-one-
+  // keystroke behaviour this rule exists for is untouched: no departure city
+  // is called JFK.
+  const codeFirst = f.length === 3 && hits[0]?.key !== f
+    && apHits.some((a) => a[0].toLowerCase() === f);
   if (codeFirst) list.append(...airportRows);
 
   for (const c of hits) {
