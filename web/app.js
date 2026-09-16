@@ -1419,7 +1419,7 @@ fetch("./places.json")
     // The departure block names the city's region and country from the
     // gazetteer, which usually lands after the first paint.
     renderDeparture();
-    // ...and so does the departure LIST, for the four names shared by two
+    // ...and so does the departure LIST, for the thirteen names shared by two
     // cities each. render() has one data-driven call site, in settle(), which
     // fires when {slug}.bin arrives -- 181 KB against this file's 1.8 MB, so
     // the list is almost always built before the gazetteer that would tell
@@ -1833,9 +1833,9 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // departing from -- the highlighted one, aria-current="true", the obvious
   // thing to click to "go back to Seoul" -- removed and re-added the bands
   // layer, aborted and re-issued about 700 KB of fetches, blanked the
-  // itinerary, announced a no-op, rebuilt 553 rows, and (keepZoom defaults to
-  // false) flew the camera back to the world view, discarding the region the
-  // visitor was reading.
+  // itinerary, announced a no-op, rebuilt the whole list, and (keepZoom
+  // defaults to false) flew the camera back to the world view, discarding the
+  // region the visitor was reading.
   //
   // The guard belongs here rather than at the fifth call site, so a sixth
   // cannot reintroduce it. A failed origin is still retryable: that is the one
@@ -1906,7 +1906,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     // The city list carries a door-to-door time per row now, so it is stale
     // until the arrays land -- and stale again on every origin switch. Once
     // per arrival, not once per settle: settle() runs five times an origin,
-    // and rebuilding 553 rows five times is four rebuilds nobody sees.
+    // and rebuilding the list five times is four rebuilds nobody sees.
     if (origin.times && listTimesFor !== origin.times) {
       listTimesFor = origin.times;
       render($("q").value);
@@ -2064,7 +2064,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
       renderPins();
       renderLegs();
       renderDeparture();
-      // ...and the 553-row city list, which settle() rebuilds only when
+      // ...and the city list, which settle() rebuilds only when
       // origin.times arrives -- so on the failure path it never rebuilt at
       // all. It kept the PREVIOUS city's times under the new city's caption,
       // marked the new departure as a destination with a travel time to the
@@ -3656,10 +3656,11 @@ function render(filter = "") {
   // Before the arrays land there is nothing to rank by, so it stays
   // alphabetical; the list is rebuilt when they do.
   // The filtered branch used to return EVERY match uncapped while the resting
-  // list kept 60: one character builds 553 rows today and ~1,097 at the
-  // rebuild's 1,464 origins -- about 6,600 DOM nodes, per keystroke. Same cap,
-  // same slice; `matched` is already alphabetical, so the 60 are stable rather
-  // than whichever the filter happened to reach first.
+  // list kept 60: one character built 553 rows when this was written and
+  // builds ~1,097 against the shipped roster of 1,464 -- about 6,600 DOM
+  // nodes, per keystroke. Same cap, same slice; `matched` is already
+  // alphabetical, so the 60 are stable rather than whichever the filter
+  // happened to reach first.
   // Ranked, not alphabetical. Cycle 15 dropped the apostrophe family from
   // fold() -- correctly; it fixed a real defect -- and that made "xi'an" fold
   // to "xian", which is a substring of "feng-XIAN-g". The list was alphabetical
@@ -3797,10 +3798,16 @@ function render(filter = "") {
     // nobody arrives with. The page could not say how long it takes to reach a
     // named city at all: typing "London" and pressing Enter DEPARTS from
     // London, because cities are departures only. The figure costs a lookup
-    // per row from an array already in memory. Measured at 4.5 ms for all of
-    // them when the site had 157 origins; it has 553 now, and the benchmark
-    // has not been re-run at that size -- so read the 4.5 ms as the figure
-    // for a list 3.5x smaller than today's, not as a current measurement.
+    // per row from an array already in memory.
+    //
+    // The note that stood here quoted 4.5 ms "for all of them" at 157 origins
+    // and warned the roster had grown to 553. It was stale in its PREMISE as
+    // well as its number: this loop is capped at UNFILTERED_CAP rows and no
+    // longer scales with the roster at all. Re-measured at 1,464 origins --
+    // one lookup() 1.73-2.10 us, this loop 0.112 ms for its 60 rows. The scan
+    // that DOES cost 1,464 lookups moved into capCities() above, measured at
+    // 2.28 ms coarse and 4.33 ms with the reading tier; a whole resting
+    // render() is 11.1-11.4 ms live. Quote those, not the 4.5.
     const val = document.createElement("span");
     val.className = "rowtime";
     if (active?.slug === c.slug) {
