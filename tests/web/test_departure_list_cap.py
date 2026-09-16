@@ -221,6 +221,99 @@ def test_unreachable_cities_do_not_crowd_out_reachable_ones(cap):
 
 # ------------------------------------------------------------ the footer ---
 
+def _render_slice(start: str, end: str) -> str:
+    """A region of `render()` cut at its own boundaries.
+
+    Slicing `render()` rather than a named function is deliberate: the filtered
+    branch has no name to import, which is exactly why it went unguarded.
+    """
+    body = APP[APP.index("function render(filter"):]
+    body = body[:body.index("\n}\n") + 2]
+    return body[body.index(start):body.index(end)]
+
+
+@pytest.fixture(scope="module")
+def filtered(node: str, tmp_path_factory):
+    """The FILTERED branch of the list, run for real.
+
+    `capCities` -- which the seven tests above exercise -- is the branch taken
+    when the box is EMPTY. The branch taken while you type is a separate
+    expression inside `render()` with its own `.slice(0, UNFILTERED_CAP)`, and
+    nothing ran it: deleting that slice left every test in this file green
+    while typing "a" built 1,097 rows, about 6,600 DOM nodes, per keystroke --
+    the regression this file's docstring says the cap exists to prevent.
+    """
+    ranking = _render_slice("  const rankCity =", "  const list = document")
+    src = (re.search(r"const UNFILTERED_CAP = \d+;", APP).group(0) + "\n"
+           + APP[APP.index("const FOLD_DROP ="):APP.index("const cities =")]
+           + "const inp = JSON.parse(process.argv[2]);\n"
+           + "const cities = inp.cities;\n"
+           + "for (const c of cities) c.key = fold(c.name);\n"
+           + "const f = fold(inp.query);\n"
+           + "const matched = f ? cities.filter((c) => (c.skey ?? c.key).includes(f)) : cities;\n"
+           # capCities is the other branch; it must exist for the ternary to
+           # parse, and a stub would let the filtered branch quietly fall
+           # through to it, so it is the real one.
+           + "let active = null;\nconst MAX_MINUTES = 65534;\n"
+           + "function lookup() { return undefined; }\n"
+           + _function("capCities") + "\n"
+           + ranking
+           + "process.stdout.write(JSON.stringify({rows: hits.length,"
+             " capped, matched: matched.length,"
+             " names: hits.slice(0, 5).map((c) => c.name)}));\n")
+    path = tmp_path_factory.mktemp("filt") / "filt.cjs"
+    path.write_text(src, encoding="utf-8")
+
+    def call(query: str, cities=None):
+        payload = {"query": query, "cities": cities if cities is not None else _real_cities()}
+        done = subprocess.run([node, str(path), json.dumps(payload)],
+                              capture_output=True, text=True)
+        assert done.returncode == 0, done.stderr
+        return json.loads(done.stdout)
+    return call
+
+
+def test_a_search_that_matches_almost_everything_is_capped_too(filtered):
+    """"a" matches 1,097 of the real names. Uncapped, that is about 6,600 DOM
+    nodes rebuilt on one keystroke.
+
+    Mutation performed and reverted: delete `.slice(0, UNFILTERED_CAP)` from
+    the `f ?` branch -> red here, green everywhere else in this file.
+    """
+    got = filtered("a")
+    assert got["matched"] > CAP * 5, (
+        f'"a" matches only {got["matched"]} of the real names; this test is no '
+        "longer exercising a list long enough to need a cap")
+    assert got["rows"] == CAP, (
+        f'a search matching {got["matched"]} cities built {got["rows"]} rows')
+    assert got["capped"] is True
+
+
+def test_a_search_narrow_enough_to_fit_is_not_capped(filtered):
+    """The cap must not be a floor, and `capped` must not be stuck true: a
+    footer reading "showing the first 3 of 3 matches" is its own defect."""
+    got = filtered("reykjav")
+    assert got["rows"] == got["matched"] <= CAP, got
+    assert got["capped"] is False, got
+
+
+def test_the_filtered_cap_keeps_the_best_matches_not_the_first_ones(filtered):
+    """A cap applied before the ranking would keep whatever the alphabet
+    reached first. `lon` must still put London at the top of its 60."""
+    got = filtered("lon")
+    assert got["matched"] > 1, got
+    assert got["names"][0] == "London", got
+
+
+def test_both_branches_read_the_same_cap(filtered, cap):
+    """Two literals would drift. The resting list and the searched list have
+    to agree on how many rows a phone gets."""
+    assert ".slice(0, UNFILTERED_CAP)" in _render_slice(
+        "  const rankCity =", "  const list = document"), (
+        "the filtered branch no longer reads UNFILTERED_CAP")
+    assert filtered("a")["rows"] == len(cap(_real_cities())["names"]) == CAP
+
+
 def test_the_footer_names_the_true_total_and_is_not_a_literal():
     """A capped list that does not say so has silently lost 1,404 cities.
     The count must come from the data: this page has shipped a hardcoded city
