@@ -567,6 +567,63 @@ echo "$TAP" | grep -q '"folded":false' || { echo "  !! a tap left the sheet fold
 echo "$TAP" | grep -q '"announced":true' || { echo "  !! a tap wrote no reading to the live region, so the click committed nothing"; fail=1; }
 echo "$TAP" | grep -q '"timeOnScreen":true' || { echo "  !! the reading a tap produced is off screen"; fail=1; }
 echo "$TAP" | grep -q '"legendOnScreen":true' || { echo "  !! the legend went off screen after a tap"; fail=1; }
+
+# Phones and tablets: OPENING THE DEPARTURE PANEL must not take the legend with
+# it. CLAUDE.md: "The legend is always visible."
+#
+# The rail's toggle handler brings a panel that just opened into the scrolling
+# sheet, and scrollIntoView({block:"nearest"}) on an element TALLER than the
+# sheet aligns its bottom -- so one tap on "Departure", the one panel you must
+# open to use the site, scrolled .legend from 138.5 visible pixels to 0 at
+# 844x390, 202.1 to 0 at 390x844 and 174.2 to 0 at 820x1180. The same failure
+# is capped for .legs and suppressed for #route; #departure had neither guard
+# and nothing measured it, which is why it shipped.
+#
+# Measured before AND after the click rather than "is it on screen now": at
+# 844x390 the strip is only ~5 px tall and already sits at the edge of the
+# sheet, so an absolute assertion would be about the resting layout rather than
+# about what the click did.
+for spec in "844 390 landscape" "390 844 mobile" "820 1180 tablet"; do
+  w=${spec%% *}; rest=${spec#* }; h=${rest%% *}; name=${rest#* }
+  agent-browser set viewport $w $h >/dev/null 2>&1; sleep 2
+  OPENED=$(agent-browser eval '(()=>{const d=document.getElementById("departure");
+    const rail=document.querySelector(".rail");
+    if(!rail||!d.closest(".rail"))return JSON.stringify({skip:"rail is not the scrolling sheet"});
+    const vis=s=>{const e=document.querySelector(s);if(!e)return -1;
+      const b=e.getBoundingClientRect(),v=rail.getBoundingClientRect();
+      return Math.round(Math.max(0,Math.min(b.bottom,v.bottom)-Math.max(b.top,v.top)))};
+    d.open=false;
+    return new Promise(res=>setTimeout(()=>{
+      const was={legend:vis(".legend"),tints:vis("#tints"),top:Math.round(rail.scrollTop)};
+      d.querySelector("summary").click();
+      setTimeout(()=>res(JSON.stringify({was,now:{legend:vis(".legend"),tints:vis("#tints"),
+        top:Math.round(rail.scrollTop)},open:d.open})),900);},300))})()' 2>&1 | tail -1 | tr -d '\\')
+  echo "  opening Departure at $name: $OPENED"
+  case "$OPENED" in *'"skip"'*) continue;; esac
+  echo "$OPENED" | grep -q '"open":true' || { echo "  !! the Departure panel did not open at $name, so this check proves nothing"; fail=1; continue; }
+  # The panel really is taller than the sheet at these widths; if it stops
+  # being so the check is no longer exercising the failure it guards.
+  python3 - "$OPENED" <<'PYCHK' || fail=1
+import json, sys
+d = json.loads(sys.argv[1])
+was, now = d["was"], d["now"]
+ok = True
+if was["legend"] <= 0:
+    print(f"  !! the legend was already off screen BEFORE opening Departure "
+          f"({was}); this check cannot see a regression")
+    ok = False
+if now["legend"] < was["legend"]:
+    print(f"  !! opening Departure cut the legend from {was['legend']} px to "
+          f"{now['legend']} px -- CLAUDE.md: the legend is always visible")
+    ok = False
+if now["tints"] < was["tints"]:
+    print(f"  !! opening Departure cut the band strip from {was['tints']} px "
+          f"to {now['tints']} px")
+    ok = False
+sys.exit(0 if ok else 1)
+PYCHK
+done
+agent-browser set viewport 1280 800 >/dev/null 2>&1; sleep 2
 # Last, deliberately: this fires two real map errors through the map's own
 # error channel, and app.js console.errors each one. Run before the console
 # check above and the probe fails the gate with the errors it exists to

@@ -4219,7 +4219,39 @@ for (const d of document.querySelectorAll(".rail details.panel")) {
     if (!rail) return;
     const box = d.getBoundingClientRect(), view = rail.getBoundingClientRect();
     if (box.bottom <= view.bottom && box.top >= view.top) return;
-    d.scrollIntoView({ block: "nearest", behavior: REDUCED_MOTION.matches ? "auto" : "smooth" });
+    // How far scrollIntoView({block:"nearest"}) would move it: up to bring the
+    // top in, otherwise the SMALLER of bringing the bottom up and the top down.
+    let delta = box.top < view.top
+      ? box.top - view.top
+      : Math.min(box.bottom - view.bottom, box.top - view.top);
+    // ...and then clamped, because the legend must not leave with it.
+    // CLAUDE.md: "The legend is always visible."
+    //
+    // #departure holding a 60-row #results is taller than the phone rail, and
+    // scrollIntoView on an over-tall element aligns its BOTTOM -- which is the
+    // failure this repository already documents for .legs (index.html quotes
+    // the same rule over `.legs{max-height:30vh}`) and already guards for
+    // #route (openRoutePanel sets noScroll on the small layout). #departure is
+    // the taller panel and the only one you must open to use the site, and it
+    // had neither guard: one tap took .legend from 138.5 visible pixels to 0
+    // at 844x390, 202.1 to 0 at 390x844 and 174.2 to 0 at 820x1180 -- no ramp,
+    // no ticks, no door-to-door caption, while choosing among 1,464 cities.
+    //
+    // A clamp rather than a suppression: where there is room to bring the
+    // panel up without evicting the legend the scroll still happens, and where
+    // there is not it stops short instead of trading one rule for the other.
+    // On the desktop .reading is not inside the rail and the rail does not
+    // scroll, so querySelector returns null and nothing here changes.
+    const legend = rail.querySelector(".legend");
+    if (legend && delta > 0) {
+      const lb = legend.getBoundingClientRect();
+      const visible = Math.max(0, Math.min(lb.bottom, view.bottom) - Math.max(lb.top, view.top));
+      // Scrolling down by n leaves lb.bottom - n - view.top of the legend on
+      // screen, so this is the largest n that shows no less than shows now.
+      delta = Math.min(delta, Math.max(0, lb.bottom - view.top - visible));
+    }
+    if (!delta) return;
+    rail.scrollBy({ top: delta, behavior: REDUCED_MOTION.matches ? "auto" : "smooth" });
   });
 }
 
