@@ -24,11 +24,19 @@ refuses to ship an inconsistent build:
    `--delete`, the rest of `web/` (everything but `web/README.md`) on top — so
    `index.html`, `app.js`, `boot.js`, `llms.txt` and `vendor/` sit beside
    `index.json`, `hover_cells.bin` and `origins/`;
-4. runs the page-asset gate over what it has just assembled: the licence
-   firewall (on `web/` as well as `dist/`), the vendored-bundle hash pins, the
-   CSP inline-script hash, and the attribution and privacy obligations. This
-   runs in BOTH modes — `--page-only` publishes `web/` and nothing else, so
-   before it did, that path shipped ungated;
+4. runs the page-asset gate over what it has just assembled. It runs in BOTH
+   modes — `--page-only` publishes `web/` and nothing else, so before it did,
+   that path shipped ungated. The gate refuses on **nine** conditions, not the
+   four this list carried until cycle 17: the licence firewall (on `web/` as
+   well as `dist/`), the vendored-bundle hash pins, the CSP inline-script hash,
+   and the attribution and privacy obligations — plus, since `c2d11f5`, a
+   repo-wide `uv run ruff check .`, any test reporting `deselected`, `xfailed`,
+   `xpassed` or `error` (pytest exits 0 on all four, so the stage would
+   otherwise report success while checking less than it claims), a **floor on
+   the passed count**, and any skip whose reason does not carry the
+   `needs a built dist/` sentinel — a skip because nothing is built has stopped
+   checking nothing, a skip for any other reason is a check that silently
+   stopped running;
 5. checks free space on the server before moving a byte -- `df -Pk` over the
    connection rsync is about to use, against the measured payload plus 30 %.
    `--delay-updates` stages the new set beside the old one, and running out

@@ -145,18 +145,18 @@ Scanning all 553 shipped names for "the exact name does not rank first", `Xi'an`
 genuine case (the other four are same-name duplicate cities). The rebuild takes the list to
 1,464 and the collision surface with it.
 
-- [ ] **C16-1.1** Give the city path a ranker with the same shape as `rankAirport`: exact
+- [x] **C16-1.1** Give the city path a ranker with the same shape as `rankAirport`: exact
       folded key first, then prefix, then word-boundary (`(" " + key).includes(" " + f)` —
       the test the comment at `:3490` already says the ranking step performs), then any
       substring. Rank **once** into a temporary and sort on the stored rank, exactly as the
       airport path does; the comment at `:3640` records why (O(n log n) evaluations cost
       4.5× there).
-- [ ] **C16-1.2** Break ties within a rank the way the list already implies: alphabetical.
+- [x] **C16-1.2** Break ties within a rank the way the list already implies: alphabetical.
       Do not invent a popularity signal — `index.json` ships none.
-- [ ] **C16-1.3** A test over the **shipped** origin names asserting the general property,
+- [x] **C16-1.3** A test over the **shipped** origin names asserting the general property,
       not the instance: for every origin name, folding that exact name and ranking must put
       that origin first. This is the guard cycle 15 lacked.
-- [ ] **C16-1.4** Mutate and confirm RED: remove the ranker, and C16-1.3 must fail naming
+- [x] **C16-1.4** Mutate and confirm RED: remove the ranker, and C16-1.3 must fail naming
       `Xi'an`. Record the result.
 
 **Explicitly NOT in scope:** DEF15-36 (search typeable before listeners exist). Cycle 15
@@ -179,11 +179,11 @@ mode for "a page fix while a rebuild owns dist/", which is precisely this cycle'
 It also contradicts `tests/test_licence_firewall.py:118-123`, which asserts that a skip is
 the *correct* answer for an unbuilt tree.
 
-- [ ] **C16-2.1** Distinguish the two kinds of skip. A skip whose reason is "no built
+- [x] **C16-2.1** Distinguish the two kinds of skip. A skip whose reason is "no built
       `dist/`" is expected in `--page-only` and must not refuse; any other skip must still
       refuse, because that is the hole C15-2 correctly closed. Use pytest's own machinery
       (`-rs` short summary, or a marker) rather than parsing prose.
-- [ ] **C16-2.2** Mutate and confirm RED both ways: a non-`dist/` skip must still refuse,
+- [x] **C16-2.2** Mutate and confirm RED both ways: a non-`dist/` skip must still refuse,
       and a `--page-only` run on a tree with no `dist/` must succeed. Two mutations, both
       recorded.
 
@@ -213,14 +213,14 @@ the deploy gate silently. Confirmed with a real pytest run: `1 passed, 2 deselec
 exit 0. A `tests/web/` that collects nothing also exits 0, because the other two paths
 collect.
 
-- [ ] **C16-3.1** Refuse on `deselected`, `xfailed`, `xpassed` and `error` as well as
+- [x] **C16-3.1** Refuse on `deselected`, `xfailed`, `xpassed` and `error` as well as
       `skipped`.
-- [ ] **C16-3.2** Assert a **floor on the passed count**. The gate currently proves that
+- [x] **C16-3.2** Assert a **floor on the passed count**. The gate currently proves that
       nothing failed; it must prove that something ran. Derive the floor from the collected
       count rather than hard-coding a number that drifts.
-- [ ] **C16-3.3** Mutate and confirm RED: add a `pytestmark` that deselects
+- [x] **C16-3.3** Mutate and confirm RED: add a `pytestmark` that deselects
       `tests/web/test_parses.py` and the gate must refuse. Revert immediately.
-- [ ] **C16-3.4** While in this function: **nothing in the repo runs `ruff`** — no CI, no
+- [x] **C16-3.4** While in this function: **nothing in the repo runs `ruff`** — no CI, no
       pre-commit, zero references in either deploy script (VER16-5). The configured `select`
       is adequate (the four correctness rules it omits fire on nothing at HEAD); the gap is
       that it is never invoked. One line in `page_gate()`.
@@ -254,11 +254,11 @@ So the allowance does not dominate anything, and the second cause the paragraph 
 `calibration.toml:256-257` never claims domination; the paragraph misreads its own citation,
 and `calibration.toml`'s own "if it were tiered high_speed **5.3 h**" contradicts it.
 
-- [ ] **C16-4.1** Rewrite the paragraph to say what the arithmetic says: the dominant cause
+- [x] **C16-4.1** Rewrite the paragraph to say what the arithmetic says: the dominant cause
       is that the relations carry no `service` tag, so all three price at the default tier;
       the stop count is a second, smaller contributor. Give the two shares.
-- [ ] **C16-4.2** Make the same correction in `web/llms.txt`, which carries the same claim.
-- [ ] **C16-4.3** A test pinning the shipped prose against `calibration.toml`'s figures, so
+- [x] **C16-4.2** Make the same correction in `web/llms.txt`, which carries the same claim.
+- [x] **C16-4.3** A test pinning the shipped prose against `calibration.toml`'s figures, so
       the next person to retune the rail block is told the copy has gone stale. `check_dist`
       already reads page copy for exactly one thing (a hard-coded city count); this is the
       second.
@@ -269,19 +269,19 @@ and `calibration.toml`'s own "if it were tiered high_speed **5.3 h**" contradict
 Grouped because they are one pass over `web/index.html` and its ARIA, and because three of
 the four are cycle-15 deferrals whose exit criterion fired when cycle 15 shipped.
 
-- [ ] **C16-5.1** (AGG16-5, UX16-2, **MED-HIGH**, **WCAG 2.2 SC 2.4.11 hard failure**) Tab
+- [x] **C16-5.1** (AGG16-5, UX16-2, **MED-HIGH**, **WCAG 2.2 SC 2.4.11 hard failure**) Tab
       in the itinerary lands focus **100% under** the sticky `.leg.total` — 5 of 5
       `elementFromPoint` samples, at 1280×800 *and* 844×390. `.legs` is a scroll box with no
       `scroll-padding-bottom`. One declaration. **Mutation:** remove it and the focus probe
       must go red.
-- [ ] **C16-5.2** (AGG16-9, DEF15-35 **FIRED**, MEDIUM) 553 `role="option"` rows carry no
+- [x] **C16-5.2** (AGG16-9, DEF15-35 **FIRED**, MEDIUM) 553 `role="option"` rows carry no
       `aria-selected`; selection is carried by the word "departing" (SC 4.1.2). Its exit
       criterion was "the next page cycle, immediately after C15-1 and C15-4 have been
       browser-verified" — both were, in cycle 15 §8.
-- [ ] **C16-5.3** (AGG16-10, DEF15-37 **FIRED**, MEDIUM) `web/index.html:822-823` — three
+- [x] **C16-5.3** (AGG16-10, DEF15-37 **FIRED**, MEDIUM) `web/index.html:822-823` — three
       bare percentages precede the sentence that defines them. Exit criterion was "with the
       next page-copy pass, after C15-6"; this is that pass (C16-4).
-- [ ] **C16-5.4** (AGG16-11, DEF15-58 **FIRED**, LOW) `web/sitemap.xml:4` `lastmod` and the
+- [x] **C16-5.4** (AGG16-11, DEF15-58 **FIRED**, LOW) `web/sitemap.xml:4` `lastmod` and the
       JSON-LD `dateModified` both still say 2026-09-10 against a page changed 2026-09-16.
       Exit criterion was "the next page-copy pass, with DEF15-37". `sitemap.xml` is the one
       deployed file no test opens — add the assertion at the same time, or the date goes
@@ -298,10 +298,10 @@ useless for a cross-document arrival — and `grep -n hash web/app.js` returns n
 
 A visitor following the compliance page's pointer to the data credits still sees none.
 
-- [ ] **C16-6.1** Point at `../../#credits`, which is *inside* `#key` and therefore has an
+- [x] **C16-6.1** Point at `../../#credits`, which is *inside* `#key` and therefore has an
       ancestor `details` for the algorithm to open. (Verify the id before relying on it —
       that is the mistake this task exists to correct.)
-- [ ] **C16-6.2** A test in `tests/web/test_attribution_and_privacy.py`, which already
+- [x] **C16-6.2** A test in `tests/web/test_attribution_and_privacy.py`, which already
       parses `index.html`: every cross-document fragment link from `web/vendor/licences/`
       must name an id that is either outside a closed `<details>` or inside one. **Mutation:**
       point it back at `#key` and the test must go red.
@@ -311,7 +311,7 @@ A visitor following the compliance page's pointer to the data credits still sees
 
 CLAUDE.md: "A test that passes when the code is deliberately broken is worse than none."
 
-- [ ] **C16-7.1** (AGG16-8, **DEF15-20 FIRED**, VER16-3) Three mutations, each proven:
+- [x] **C16-7.1** (AGG16-8, **DEF15-20 FIRED**, VER16-3) Three mutations, each proven:
       neutering `check_dist`'s `water.pmtiles` refusal → `test_check_dist.py` **48 passed**;
       dropping the three JSON extras from `REQUIRED_EXTRAS` → **48 passed**; deleting
       `browser_verify.sh`'s water block → `test_deploy_script.py` **12 passed**. CLAUDE.md
@@ -319,19 +319,19 @@ CLAUDE.md: "A test that passes when the code is deliberately broken is worse tha
       **Correction for whoever implements this:** deleting the *whole* `REQUIRED_EXTRAS`
       loop *does* go red, but only via an unrelated gzip-metadata test. Anyone who tries
       that mutation first will wrongly conclude the guard exists.
-- [ ] **C16-7.2** (AGG16-13, ARCH16-2) `tests/emit/test_build_identity.py:74-79`:
+- [x] **C16-7.2** (AGG16-13, ARCH16-2) `tests/emit/test_build_identity.py:74-79`:
       `called = {n for n in STAMPED if f"config.{n}" in body}` is a subset of `STAMPED` by
       construction, so `assert called == set(STAMPED)` restates the loop above it. A
       `config.X` added to `params_hash` with no table row stays green. The failure message
       prints the symmetric difference **labelled backwards**. The pattern was then copied to
       `tests/sources/test_cache_provenance.py`'s 34-row `STAMPED` **without even the
       one-directional half**. Fix both; mutate both.
-- [ ] **C16-7.3** (AGG16-14, TE16-3) `tests/web/test_search_fold.py:118` reads
+- [x] **C16-7.3** (AGG16-14, TE16-3) `tests/web/test_search_fold.py:118` reads
       `dist/index.json` (553 names) when `data/origins.toml` (1,464, checked in) is
       available, and its comment claims a fallback the code lacks. Run over all 1,464: **0
       misses** — so the guard will not go red when the build finishes. Read the checked-in
       file. This also removes one of C16-2's `dist/`-conditional skips.
-- [ ] **C16-7.4** (AGG16-15, CR16-3) `tests/web/test_module_scope_order.py:144-152`
+- [x] **C16-7.4** (AGG16-15, CR16-3) `tests/web/test_module_scope_order.py:144-152`
       truncates a listener registration at the first newline, so `web/app.js`'s one
       multi-line pre-await listener — `map.on("error", …)`, the only one that fires *during*
       the 20-second load window — contributes **zero** seeds. Replaying the test's own
@@ -370,14 +370,14 @@ Two smaller ledger defects found alongside it, both real:
   (M8-14 still at `deferred.md:28`, AB53 unchanged, SEC-8(a) uncorrected), and both of §3's
   citations are 24 lines stale.
 
-- [ ] **C16-8.1** Correct `plan/README.md` to describe the rule the repo actually follows —
+- [x] **C16-8.1** Correct `plan/README.md` to describe the rule the repo actually follows —
       a per-cycle findings file is a fourth, legitimate disposition — and say where each
       cycle's deferrals live, so the next brief points its lanes at the right file.
-- [ ] **C16-8.2** Give `SEC15-1` a real ID and a real row, at its original severity. Correct
+- [x] **C16-8.2** Give `SEC15-1` a real ID and a real row, at its original severity. Correct
       its rationale: the content is not same-origin-authored.
-- [ ] **C16-8.3** Perform cycle 15 §3's three unperformed ledger actions, or record
+- [x] **C16-8.3** Perform cycle 15 §3's three unperformed ledger actions, or record
       explicitly that they were not performed and why. Do not re-tick them.
-- [ ] **C16-8.4** Correct `plan/deferred.md:670`: "`blob:` is redundant in `script-src`" is
+- [x] **C16-8.4** Correct `plan/deferred.md:670`: "`blob:` is redundant in `script-src`" is
       **wrong** — Safari does not implement `worker-src`, so the one-token deletion would
       break MapLibre there. A CSP change made on that row would have broken the site in
       Safari.
@@ -436,7 +436,7 @@ deferral.** Deferred work stays bound by repo policy when picked up.
 
 | DEF16-23 | **`esc()`'s sink inventory cannot follow a value through a helper hop**, so `describe()` and `mode()` are invisible to it and three `esc()` calls can be deleted with the guard staying green. Carried out of cycle 15 as **"DEF15-61a"** -- an ID that appears in **no deferral table**, is absent from `plan/deferred.md`, and **collides with the unrelated DEF15-61**. This row replaces it | `tests/web/test_esc.py:300-350`; `web/app.js` `describe()`, `mode()`; `emit/places.py:64-65` | MEDIUM | Med-High | Cycle 15's stated reason was bounded scope (a fifth test-harness change beside four others), which is sound and applies again this cycle -- C16-7 already makes four changes to the suite's guards. **But cycle 15's rationale also called the path "same-origin content this project writes", and that is false:** `emit/places.py:64-65` writes GeoNames' community-edited `name`/`region`/`country` **verbatim**, and those are exactly what the two unpinned `esc()` calls in `describe()` guard. The severity is unchanged; the reason for deferring is bounded scope alone, not the absence of third-party content | The cycle after C16-7 lands, with DEF15-26 (the untested ramp maths), which touches the same file's slicing machinery |
 
-| DEF16-24 | **`browser_verify.sh` cannot see the error surface cycle 15 built.** Its console check greps `/error|exception/i`; C15-4's nine `okOr` calls print `"places.json: HTTP 404 Not Found"` and five siblings pass `err.message` (a string), so **14 lines are invisible to it**. The one line it does catch works only because it happens to pass an Error *object*. `agent-browser errors` is never read anywhere in the repository | `scripts/browser_verify.sh:431`; `web/app.js` `okOr` sites | MED-HIGH | High | **Scheduled in §3's table and then not given a task — recorded here rather than dropped, which is the rule.** This cycle has already made two independent changes to the deploy gate (C16-2/C16-3's `page_gate` rewrite, and the `ruff check` it now runs) and one to `browser_verify.sh`'s guard set (C16-7.1). DEF16-2's reasoning applies to itself: three independent edits to the deploy path in one cycle would make none of them attributable, and this one changes what can stop a deploy | The cycle after C16-2/C16-3 have shipped and been browser-verified — the same criterion as DEF16-2, and they should land together as one pass over what the browser stage can see |
+| DEF16-24 | **`browser_verify.sh` cannot see the error surface cycle 15 built.** Its console check greps `/error\|exception/i`; C15-4's nine `okOr` calls print `"places.json: HTTP 404 Not Found"` and five siblings pass `err.message` (a string), so **14 lines are invisible to it**. The one line it does catch works only because it happens to pass an Error *object*. `agent-browser errors` is never read anywhere in the repository | `scripts/browser_verify.sh:431`; `web/app.js` `okOr` sites | MED-HIGH | High | **Scheduled in §3's table and then not given a task — recorded here rather than dropped, which is the rule.** This cycle has already made two independent changes to the deploy gate (C16-2/C16-3's `page_gate` rewrite, and the `ruff check` it now runs) and one to `browser_verify.sh`'s guard set (C16-7.1). DEF16-2's reasoning applies to itself: three independent edits to the deploy path in one cycle would make none of them attributable, and this one changes what can stop a deploy | The cycle after C16-2/C16-3 have shipped and been browser-verified — the same criterion as DEF16-2, and they should land together as one pass over what the browser stage can see |
 
 ### Re-deferred from cycle 15, unchanged, exit criterion re-stated
 
