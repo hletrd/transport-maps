@@ -277,7 +277,12 @@ def test_searching_matches_the_country_as_well_as_the_name():
     body = _function("render")
     assert "c.skey ?? c.key" in body, (
         "the filter matches the city name only")
-    keys = APP[APP.index("for (const c of cities) {"):]
+    # Anchored on `c.skey`, not on `for (const c of cities) {`: the page has
+    # more than one loop over `cities` now (C17-1 added the disambiguation
+    # grouping above this one), and the first match was the wrong block.
+    # Widened rather than relaxed -- the assertion below is unchanged.
+    at = APP.index("c.skey =")
+    keys = APP[APP.rindex("for (const c of cities) {", 0, at):]
     keys = keys[:keys.index("\n}") + 2]
     assert "countryName(c.country)" in keys, (
         "the search key carries the ISO-2 code but not the country's name")

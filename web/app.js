@@ -1426,7 +1426,10 @@ fetch("./places.json")
     // "Suzhou" from "Suzhou". Rebuild once, here, and only when there is
     // something to disambiguate: with no duplicate names nothing in a row
     // depends on `places` at all.
-    if (ambiguousNames().size) render($("q").value);
+    // The labels were resolved before the gazetteer arrived, so the escalated
+    // groups fell back to country alone; drop the memo and resolve them again.
+    _disambig = null;
+    if (disambigMap().size) render($("q").value);
     // Labels, so a zoomed view says roughly where it is. DOM markers rather
     // than a symbol layer: MapLibre text needs a glyph server, which the CSP
     // blocks, and markers render in the page's own typeface. The gazetteer is
@@ -1750,21 +1753,55 @@ let listTimesFor = null;
 // before the map exists, with a blank page and (as this repository has
 // twice shipped) nothing useful in the console afterwards. Written that
 // way first; caught by opening the page.
-let _ambiguous = null;
-function ambiguousNames() {
-  if (_ambiguous) return _ambiguous;
-  const seen = new Set();
-  _ambiguous = new Set();
-  for (const c of cities) (seen.has(c.name) ? _ambiguous : seen).add(c.name);
-  return _ambiguous;
+// Grouped by the FOLDED key rather than the display name. `San José` (Costa
+// Rica) and `San Jose` (California) are two names and one search key: they
+// fold together, rank identically, and land at adjacent rows -- so by name
+// they looked unambiguous and got no label, which is the one pair where the
+// list gives a visitor nothing at all to choose by.
+//
+// The label is resolved per GROUP and escalated per group, not globally.
+// Country alone separates seven of the thirteen; the other six are China
+// against China (Changsha, Changzhi, Fuzhou, Puyang, Suzhou, Taizhou --
+// three of them the very pairs this feature was written for) and rendered two
+// byte-identical rows. Only those groups fall through to the gazetteer's
+// admin-1 region, so the seven that already work still read "Barcelona Spain"
+// rather than acquiring a "Catalonia" nobody needed.
+//
+// Memoised: the old code called nearestPlace(), a 34,135-row scan, once per
+// ambiguous row per render. It now runs once per colliding row per roster.
+let _disambig = null;
+function disambigMap() {
+  if (_disambig) return _disambig;
+  const groups = new Map();
+  for (const c of cities) {
+    let g = groups.get(c.key);
+    if (!g) groups.set(c.key, (g = []));
+    g.push(c);
+  }
+  _disambig = new Map();
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const coarse = g.map(cityCountry);
+    // Escalate only when the coarse label fails to tell the group apart. An
+    // empty string counts as a collision: two unlabelled rows are the defect.
+    const collide = new Set(coarse).size < g.length;
+    g.forEach((c, i) => {
+      let label = coarse[i];
+      const region = collide && places ? nearestPlace(c.lat, c.lon)?.region : "";
+      if (region) label = label ? `${region}, ${label}` : region;
+      if (label) _disambig.set(c.slug, label);
+    });
+  }
+  return _disambig;
 }
+// "" when the name stands alone, so every call site can append it unguarded.
+const disambigLabel = (c) => disambigMap().get(c.slug) ?? "";
 // "slower than from Suzhou" is useless when you have just switched between
 // the two cities called Suzhou; say which one.
 function lastFromLabel() {
   if (!lastFrom) return "";
-  if (!ambiguousNames().has(lastFrom.name)) return lastFrom.name;
   const c = bySlug.get(lastFrom.slug);
-  const where = c && cityCountry(c);
+  const where = c && disambigLabel(c);
   return where ? `${lastFrom.name} (${where})` : lastFrom.name;
 }
 // index.json carries `country` only for origins whose row in origins.toml has
@@ -3733,19 +3770,16 @@ function render(filter = "") {
     b.setAttribute("aria-selected", String(active?.slug === c.slug));
     const name = document.createElement("span");
     name.textContent = c.name;
-    // Four origin names in the 553-origin set belong to two cities each
-    // (Hyderabad, Suzhou, Fuzhou, Taizhou), and the list sorts by name, so
-    // each pair arrives as two adjacent identical rows with nothing to choose
-    // between them. index.json carries `country` when origins.toml has it;
-    // otherwise the gazetteer already loaded answers it.
-    if (ambiguousNames().has(c.name)) {
-      const where = cityCountry(c);
-      if (where) {
-        const q = document.createElement("i");
-        q.className = "disambig";
-        q.textContent = ` ${where}`;
-        name.append(q);
-      }
+    // Thirteen origin names in the 1,464-origin set belong to two cities each,
+    // and the list sorts by name, so every pair arrives as two adjacent rows
+    // with nothing to choose between them. disambigMap() resolves what to add;
+    // see its comment for why country alone is not enough for six of them.
+    const where = disambigLabel(c);
+    if (where) {
+      const q = document.createElement("i");
+      q.className = "disambig";
+      q.textContent = ` ${where}`;
+      name.append(q);
     }
     // Was a latitude and a longitude to one decimal, which answers a question
     // nobody arrives with. The page could not say how long it takes to reach a
@@ -3771,11 +3805,21 @@ function render(filter = "") {
       // London -- on a row that DEPARTS from London when activated. The
       // accessible name has to carry both halves; the title cannot, because
       // touch has no hover.
+      // ...and it has to carry the disambiguator too. Built from c.name alone,
+      // the label discarded the ` China` the row had just been given, so seven
+      // of the thirteen pairs were distinguishable by eye and none of the
+      // thirteen by ear -- the listbox announced "Suzhou" twice either way.
+      const said = where ? `${c.name}, ${where}` : c.name;
+      // The city you are departing FROM can be an ambiguous name too, and
+      // "15 h from Suzhou" does not say which Suzhou.
+      const from = active
+        ? (disambigLabel(active) ? `${active.name}, ${disambigLabel(active)}` : active.name)
+        : "here";
       b.setAttribute("aria-label", val.textContent
-        ? `${c.name}. ${val.textContent === "no route" ? "No route" : val.textContent}`
+        ? `${said}. ${val.textContent === "no route" ? "No route" : val.textContent}`
           + `${val.textContent === "no route" ? "" : " to get there"}`
-          + ` from ${active?.name ?? "here"}, door to door. Choose to depart from ${c.name}.`
-        : `${c.name}. Choose to depart from ${c.name}.`);
+          + ` from ${from}, door to door. Choose to depart from ${said}.`
+        : `${said}. Choose to depart from ${said}.`);
     }
     b.append(name, val);
     list.append(row(b));
