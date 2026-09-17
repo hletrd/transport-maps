@@ -605,7 +605,14 @@ for spec in "844 390 landscape" "390 844 mobile" "820 1180 tablet"; do
   # being so the check is no longer exercising the failure it guards.
   python3 - "$OPENED" <<'PYCHK' || fail=1
 import json, sys
-d = json.loads(sys.argv[1])
+# agent-browser returns the page's JSON *string* wrapped in quotes, and the
+# caller's `tr -d '\\'` has already removed the escapes, so what arrives is
+# `"{"was":...}"`. json.loads stops at char 3 on that. Strip one layer of
+# quoting before parsing; parse unquoted input unchanged.
+raw = sys.argv[1].strip()
+if len(raw) > 1 and raw[0] == '"' and raw[-1] == '"':
+    raw = raw[1:-1]
+d = json.loads(raw)
 was, now = d["was"], d["now"]
 ok = True
 if was["legend"] <= 0:
