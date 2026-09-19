@@ -130,3 +130,30 @@ formulation; it is that the input does not contain the fact.
 - **Note:** Oresund measured 2 components BEFORE any rule. That bridge is
   already missing from the model — a separate, pre-existing gap, not caused by
   anything here.
+
+---
+
+# Appendix: the KTX label residue (separate defect, recorded here to keep it alive)
+
+Verified against the LIVE `seoul.rail.json` after the rail-tier build deployed
+2026-09-19. The systematic AA17 defect is fixed -- labels now follow the service
+the leg was priced from -- but one case remains:
+
+| station | label shipped | correct? |
+|---|---|---|
+| 동대구 | `경부선 KTX: 서울 → 부산` | yes, the plain corridor |
+| 밀양 | `경부선 KTX: 서울 → 부산 (구포경유)` | yes, only that route serves it |
+| 구포 | `경부선 KTX: 서울 → 부산 (구포경유)` | yes by definition |
+| **부산** | `경부선 KTX: 서울 → 부산 (수원경유)` | **no** -- a detour variant where the plain corridor also serves the station |
+
+Cycle 17's `619d804` ("name the corridor, not a detour variant, on a single-hop
+ride") addressed this shape but does not cover the destination station here.
+
+- Severity LOW, confidence High. The label is a real service that does reach
+  부산, so the figure is not wrong; the naming is just less useful than the plain
+  corridor the owner asked for ("그냥 경부선 호남선은 왜 안떠?").
+- Exit criterion: for a station served by both a plain corridor relation and a
+  `(...경유)` variant at equal cost, the plain one is named. Verify on the live
+  `seoul.rail.json` that 부산 reads `경부선 KTX: 서울 → 부산`.
+- Needs no rebuild if fixed in `emit/rail_detail.py` alone AND re-emitted; but
+  re-emitting per-origin rail files is a build step, so it rides the next build.
