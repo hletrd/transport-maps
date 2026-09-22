@@ -20,6 +20,7 @@ ferry-only, and the right number was never one.
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 from collections import deque
 
@@ -42,11 +43,18 @@ CASES = [
     ("Shodoshima         (ferry only)",           (34.490, 134.250), (34.330, 134.050), False),
     # Mainland control: nothing between them but land.
     ("control  Paris -> Brussels",                (48.857, 2.352), (50.850, 4.352), True),
-    # Reported, not judged.
+    # Reported, not judged. Measured 2026-09-22, identical before and after
+    # the rule, so none of these is its doing:
+    #   Messina        joined -- narrower than a cell (limit 1)
+    #   Oresund        joined -- but NOT by the bridge: within 0.2 deg of it the
+    #                  two are cut; the join is 40 km north, across the ~4 km
+    #                  Helsingor-Helsingborg narrows, ferry only (limit 1)
+    #   Great Belt     cut    -- the bridge spans a water cell (limit 2)
+    #   Confederation  cut    -- likewise
     ("Messina strait     (narrower than a cell)", (38.190, 15.550), (38.110, 15.650), None),
     ("Oresund            Copenhagen -> Malmo",    (55.676, 12.568), (55.605, 13.003), None),
     ("Great Belt         Zealand -> Funen",       (55.350, 11.100), (55.330, 10.800), None),
-    ("Confederation Br.  PEI -> New Brunswick",   (46.240, -63.780), (46.170, -63.910), None),
+    ("Confederation Br.  PEI -> New Brunswick",   (46.230, -63.500), (46.100, -64.300), None),
 ]
 
 # How far past the two endpoints the search may wander, in degrees. A land
@@ -99,10 +107,17 @@ def main() -> int:
               "below would only report the old behaviour. Run scripts/osm_fixed_links.sh.")
         return 2
     print(f"  {len(idx.severed) // 2:,} adjacent cell pairs severed across open water\n")
+    # The same index with nothing severed: the graph as it was. Without this
+    # column a "cut" cannot say whether the rule made it or it always was --
+    # the Great Belt looked like a regression until it was measured cut both ways.
+    before = dataclasses.replace(idx, severed=frozenset())
+    print(f"  {'case':44} {'before':>8}  {'after':<28}")
     wrong = 0
     for name, a, b, expect in CASES:
         got = _joined(idx, a, b)
+        was = _joined(before, a, b)
         shown = got if isinstance(got, str) else ("joined" if got else "cut")
+        was_shown = was if isinstance(was, str) else ("joined" if was else "cut")
         if expect is None or isinstance(got, str):
             verdict = "report" if expect is None else "!! could not judge"
             wrong += isinstance(got, str) and expect is not None
@@ -111,7 +126,8 @@ def main() -> int:
         else:
             verdict = f"!! WRONG, expected {'joined' if expect else 'cut'}"
             wrong += 1
-        print(f"  {name:44} {shown:28} {verdict}")
+        changed = "  (changed by the rule)" if was != got else ""
+        print(f"  {name:44} {was_shown:>8}  {shown:28} {verdict}{changed}")
     print(f"\n  {wrong} case(s) wrong" if wrong else "\n  every judged case as expected")
     return 1 if wrong else 0
 
