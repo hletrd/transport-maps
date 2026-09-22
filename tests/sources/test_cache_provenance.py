@@ -168,6 +168,7 @@ def test_land_cells_reads_the_stamped_path(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "path_fn",
     [roads._grid_cache_path, airports._table_cache_path, lambda: landmask._cells_cache_path(5),
+     lambda: landmask._landmasses_cache_path(5),
      lambda: fixed_links._cache_path("north-america", "0123abcd")],
 )
 def test_every_stamped_path_carries_a_hash(path_fn):
@@ -275,6 +276,13 @@ STAMPED = [
     (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), routes._network_cache_path),
     (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), routes._network_cache_path),
     (wikidata, "RESOLVER_VERSION", 999, routes._network_cache_path),
+    # The landmass ids are computed over the land universe, so anything that
+    # moves `land_cells` must move them too. They reach the key through
+    # `_cells_cache_path(res).name`, a call the AST reader rightly drops as
+    # "how the key is computed" -- so this row is what proves the dependency.
+    (landmask, "LAND_URL", "https://example.invalid/land2.zip", lambda: landmask._landmasses_cache_path(6)),
+    (landmask, "ANTARCTICA_LANDMASS", -2, lambda: landmask._landmasses_cache_path(6)),
+    (landmask, "LANDMASS_VERSION", 999, lambda: landmask._landmasses_cache_path(6)),
     (fixed_links, "_ABSENT", frozenset({"no", "none"}), lambda: fixed_links._cache_path("asia", "k")),
     (fixed_links, "_NOT_BUILT", frozenset({"proposed"}), lambda: fixed_links._cache_path("asia", "k")),
     (fixed_links, "KEEP_RES", 8, lambda: fixed_links._cache_path("asia", "k")),
@@ -315,6 +323,7 @@ _COVERED_BY_TABLE = {
     "osm._ferry_cache_path",
     "osm._rail_cache_path",
     "routes._network_cache_path",
+    "landmask._landmasses_cache_path",
     "fixed_links._params_key",
 }
 #: Stamping functions deliberately outside it, each with the reason. A new

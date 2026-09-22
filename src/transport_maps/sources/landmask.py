@@ -180,6 +180,65 @@ def _cells_cache_path(res: int):
     return config.BUILD / f"land_cells_r{res}_{stamp}.parquet"
 
 
+# Landmass id shared by every Antarctic part. _land_parts cuts Antarctica into
+# WEDGE_COUNT longitude wedges so H3 can polyfill it; the wedges are one
+# continent, and numbering them apart would sever it along every wedge seam.
+# Wedges are cut from parts routed by `bounds[3] <= ANTARCTICA_MAX_LAT`, and an
+# intersection cannot extend past its input, so the same test finds every
+# wedge; each non-Antarctic part's northern bound is strictly above it.
+ANTARCTICA_LANDMASS = -1
+# Bumped when the landmass assignment changes shape.
+LANDMASS_VERSION = 1
+
+
+def _landmasses_cache_path(res: int):
+    """Stamped with the land universe it was computed over, so a change to
+    anything that governs `land_cells` -- the land, ice or lake source, the
+    Antarctic handling, the polyfill -- also misses here, and with the two
+    constants that govern the assignment itself.
+
+    A path helper rather than a key built inline, so the provenance table can
+    mutation-test it; `countries.cell_country` builds its key inline and is a
+    recorded gap for exactly that reason.
+    """
+    stamp = _params_hash(_cells_cache_path(res).name, ANTARCTICA_LANDMASS, LANDMASS_VERSION)
+    return config.BUILD / f"land_landmasses_r{res}_{stamp}.parquet"
+
+
+def land_cell_landmasses(res: int) -> list[tuple[int, ...]]:
+    """For each cell of `land_cells(res)`, in that order, the land parts its
+    hexagon touches.
+
+    Computed by the SAME polyfill as land_cells -- h3's overlap fill, part by
+    part -- so "touches part p" means exactly what made the cell land. Most
+    cells touch one part. A cell straddling a strait narrower than itself
+    touches both shores and so joins them: that is the resolution limit of
+    graph/landmass, not an error in this function. The South Pole cells that
+    _pole_cells adds by id touch no part and map to (), which graph/landmass
+    reads as "never sever" -- they carry no evidence of water either way.
+    """
+    config.ensure_dirs()
+    cells = land_cells(res)
+    out = _landmasses_cache_path(res)
+    if out.exists():
+        return [tuple(p) for p in pl.read_parquet(out)["parts"].to_list()]
+
+    pos = {c: i for i, c in enumerate(cells)}
+    parts: list[set[int]] = [set() for _ in cells]
+    for pid, poly in enumerate(_land_parts()):
+        landmass = ANTARCTICA_LANDMASS if poly.bounds[3] <= ANTARCTICA_MAX_LAT else pid
+        shape = h3.geo_to_h3shape(poly)
+        for c in h3.h3shape_to_cells_experimental(shape, res, contain="overlap"):
+            i = pos.get(c)
+            if i is not None:
+                parts[i].add(landmass)
+    rows = [sorted(p) for p in parts]
+    _atomic_write(out, lambda tmp: pl.DataFrame(
+        {"cell": cells, "parts": rows},
+        schema={"cell": pl.Utf8, "parts": pl.List(pl.Int32)}).write_parquet(tmp))
+    return [tuple(p) for p in rows]
+
+
 def land_cells(res: int) -> list[str]:
     """H3 cells at `res` overlapping land. Cached to parquet.
 
