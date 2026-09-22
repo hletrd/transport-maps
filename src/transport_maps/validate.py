@@ -181,10 +181,14 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
     from transport_maps.graph import ground, transfers
     from transport_maps.sources import countries
 
-    # The gate must charge what hex_edges charges. Two things it did not know
-    # about: a crossing between immigration zones, and a closed border, across
+    # The gate must charge what hex_edges charges. Three things it did not know
+    # about: a crossing between immigration zones; a closed border, across
     # which there is no edge at all -- so a neighbour can legitimately be far
-    # slower to reach and the invariant simply does not apply.
+    # slower to reach and the invariant simply does not apply; and, the same
+    # way, open water between two islands with no bridge or tunnel
+    # (graph/landmass, `idx.severed`). The first build to sever them died here
+    # on its first origin: Tinian-side cells were rightly far later than their
+    # Saipan-side neighbours, with no edge between them to break the invariant.
     # Callers running under fork pass these in; loading them here would call
     # polars and pyogrio from a forked child, which deadlocks.
     if country is None:
@@ -192,6 +196,7 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
     if zone is None:
         zone = [transfers.immigration_zone(countries.iso2(c)) if c else "" for c in country]
     crossing = ground._land_border_min()
+    severed = getattr(idx, "severed", frozenset())
 
     stride = 997  # sample; a full sweep is O(n * 7) and this gate runs per origin
     for pos in range(0, idx.n_cells, stride):
@@ -207,6 +212,8 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
             if q is None or not np.isfinite(minutes[q]):
                 continue
             if countries.is_closed(country[pos], country[q]):
+                continue
+            if (pos, q) in severed:
                 continue
             distance = ground.haversine_km(
                 origin_latlng, np.array([h3.cell_to_latlng(neighbour)])

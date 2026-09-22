@@ -137,6 +137,24 @@ def test_consistent_neighbour_time_is_accepted():
     validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx))
 
 
+def test_a_severed_pair_is_exempt_like_a_closed_border():
+    """Open water with no bridge between two islands means no ground edge, so
+    the far island can rightly be much later than its neighbour across it.
+
+    The first build to sever Saipan from Tinian died on its first origin here:
+    the gate still assumed every pair of grid neighbours was joined. Same cells
+    and same times as `test_inconsistent_neighbour_time_is_rejected`, which is
+    the control -- that one must raise and this one must not.
+    """
+    cell, neighbour = _adjacent_pair()
+    idx = _TwoCellIdx(cell, neighbour)
+    idx.severed = frozenset({(0, 1), (1, 0)})
+    minutes = np.array([0.0, 1e6])
+
+    # must not raise
+    validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx))
+
+
 # --- Graph connectivity gate (I3) --------------------------------------------
 #
 # The spec calls for a gate on "a disconnected component containing a
