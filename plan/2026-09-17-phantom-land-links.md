@@ -116,6 +116,117 @@ fixed by either signal independently.
 four windows, shared boundary, ferry presence). The failure is not in the
 formulation; it is that the input does not contain the fact.
 
+## Implemented (2026-09-21): landmass identity + OSM fixed links
+
+The rule that works, with no threshold anywhere:
+
+> Two adjacent land cells are **severed** when their base cells' hexagons touch
+> no land part in common AND no bridge or tunnel passes from one into the other.
+
+Validated before implementation on real extracts, by named crossings:
+
+| case | result | wanted |
+|---|---|---|
+| Great Seto Bridge, Honshu -> Shikoku | joined | joined |
+| Akashi-Kaikyo, Kobe -> Awaji | joined | joined |
+| Naruto Bridge, Awaji -> Shikoku | joined | joined |
+| Shodoshima (ferry only) | cut | cut |
+| Saipan -> Tinian (the owner's report) | cut | cut |
+
+**A correction to the method above.** The rejection tables earlier in this file
+score Japan against "one connected component". That target was never verified:
+it is what the defective graph produced, and most Seto Inland Sea islands are
+ferry-only, so the right answer was never one. The earlier rejections of the
+midpoint rules for "splitting Japan" were judged against it and may have been
+unfair to them. The conclusion stands on the named-crossing table instead.
+
+| file | what |
+|---|---|
+| `sources/fixed_links.py` | bridge/tunnel ways carrying a highway or railway, C++-filtered (`KeyFilter`, `IdFilter`); kept only if they span >1 FINE_RES cell; per-region parquet keyed on parser constants AND source extract; returns None unless ALL seven regions are covered, settled before anything is parsed |
+| `sources/landmask.py` | `land_cell_landmasses`: the parts each land cell touches, by the same polyfill as `land_cells`; Antarctic wedges share one id; pole cells map to `()` (never severed) |
+| `graph/landmass.py` | `linked_pairs`, `severed_pairs` |
+| `graph/nodes.py` | `NodeIndex.severed`, empty unless fixed-link data is complete -- optional like rail |
+| `graph/refine.py` | `ground_joined(idx, u, v)`: the one definition of "joined" |
+| `graph/ground.py` | `hex_edges` builds no road across a severed pair |
+| `graph/build.py` | the ferry dedupe uses `ground_joined`, so a severed strait KEEPS its real ferry |
+| `emit/modes.py` | a hop across a severed pair is booked as ferry, not road |
+| `scripts/check_fixed_links.py` | the named crossings against the real built index |
+
+Tests: `tests/sources/test_fixed_links.py` (15), `tests/graph/test_landmass.py`
+(15). Seventeen mutations were run, each confirmed RED. One test was found
+vacuous and rewritten: the antimeridian guard's first test looked up only the
+two end cells, so with the guard deleted the long-way-round samples all missed
+the lookup, the chain broke on its own, and the test stayed green.
+
+### Stated limits (not defects of this change)
+
+- **A strait narrower than a cell stays joined.** Parts are judged per base
+  cell and carried down to fine children, so a base cell straddling a strait
+  touches both shores. Messina (~3 km) is the known case. Severity MEDIUM,
+  confidence High. Exit criterion: parts judged per FINE_RES cell in split
+  regions, re-validated on the named crossings.
+- **A bridge that spans a water cell adds no edge.** It links two cells that
+  were never neighbours, so there was no road to protect and this change adds
+  none. Oresund measured 2 components before any rule. This is a PRE-EXISTING
+  gap, not one this change opens: long bridges and tunnels have never been in
+  the ground graph. Severity MEDIUM, confidence High. Exit criterion: fixed
+  links whose consecutive graph cells are non-adjacent become explicit ground
+  edges, costed at the link's own length and road class; re-check Oresund,
+  Great Belt and Confederation Bridge in `scripts/check_fixed_links.py`, which
+  already reports them.
+
+### First real parse, and a corrupted extract (2026-09-21)
+
+| region | links kept | time | peak RSS |
+|---|---|---|---|
+| australia-oceania | 2,728 (2,263 highway, 465 railway) | 6 s | 2.2 GB |
+| asia | 192,183 (144,523 highway, 47,660 railway) | 81 s | 6.3 GB |
+
+The C++ filters (`KeyFilter`, `IdFilter`) made the parse ~30-40x faster than
+the pure-Python probe (Oceania 234 s -> 6 s; Asia 41 min -> 81 s). On the
+cached Oceania links: zero in the Saipan Channel, 23 at the Auckland Harbour
+Bridge (the Northern Motorway it carries, and the City Rail Link tunnels).
+
+**Europe failed to decompress, and the cause was the download script.**
+Geofabrik rebuilds `<region>-latest` daily. The script re-resolved `-latest` on
+every restart and resumed the old `.part` from wherever it now pointed, so the
+reboot-and-restart sequence appended one day's bytes onto another's. Measured by
+comparing each extract's PBF header date with the exact size of that day's
+dated file:
+
+| extract | header | on disk vs that day's file |
+|---|---|---|
+| australia-oceania | 2026-09-16 | exact |
+| asia | 2026-09-16 | exact |
+| **europe** | **2026-09-18** | **9.9 MB longer: a splice** |
+| north-america | 2026-09-20 | exact |
+| south-america | 2026-09-20 | exact |
+
+The first fix pinned the redirect target, and was itself wrong: for europe,
+`-latest` redirects to a MIRROR path that is also named `europe-latest`, so it
+pinned nothing. Nor would the size check have caught it -- a splice ends with
+the last day's bytes, so its total length is exactly that of the `-latest` file
+at the end. The fix that holds: the script reads the day from
+`<region>-updates/state.txt`, pins `download.geofabrik.de/<region>-<YYMMDD>.osm.pbf`
+(a name that never changes) beside the `.part`, resumes only that URL, and
+finalises only when the size equals that dated file's length. A `.part` with no
+recorded source is refused rather than resumed.
+
+The spliced file was moved aside, not deleted: `data/cache/osm/europe.osm.pbf.spliced`
+(35,015,204,476 B), plus a few MB of `.moving-latest` partials. Removing them is
+the owner's call. `scripts/osm_rail.sh` resumes the same unsafe way; there a
+splice fails loudly in `osmium tags-filter` rather than silently, so it is
+recorded here and not changed.
+
+### Not yet done
+
+- The extracts for north-america, south-america, africa and central-america
+  are still downloading. Until all seven are present `NodeIndex.severed` is
+  empty and every build is exactly as before -- by design, not by accident.
+- `scripts/check_fixed_links.py` has not been run against the real index for
+  the same reason. The table above was measured with the probe scripts.
+- No rebuild has carried this.
+
 ## Status
 
 - **Severity: MEDIUM-HIGH, confidence High.** User-visible and wrong; the number
