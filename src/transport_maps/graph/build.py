@@ -342,8 +342,11 @@ def _ferry_edges(idx: NodeIndex, links, cal,
         # road time PLUS the sailing rather than the cheaper of the two.
         # "Joins" is judged the way ground.hex_edges joins cells: a fine cell
         # and the unsplit base cell beyond its ring are adjacent too, which a
-        # same-resolution grid_disk test can never see.
-        if refine.ground_adjacent(idx.cells[u], idx.cells[v]):
+        # same-resolution grid_disk test can never see -- and a pair open
+        # water severs is NOT joined, so its ferry is the only way across and
+        # is kept. Judged by adjacency alone, Saipan-Tinian's phantom road was
+        # the reason a real crossing there would have been thrown away.
+        if refine.ground_joined(idx, u, v):
             dropped["duplicates a ground edge"] = dropped.get("duplicates a ground edge", 0) + 1
             continue
         # A sailing into a sealed country is no more open than a road.

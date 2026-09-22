@@ -68,6 +68,12 @@ class NodeIndex:
     base_index: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
     fine: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool))
     _split: frozenset = frozenset()
+    # Ordered (u, v) cell-position pairs that are adjacent on the grid but lie
+    # on different landmasses with no bridge or tunnel between (graph/landmass).
+    # Like rail, optional: empty means the fixed-link extracts were absent and
+    # adjacent land cells are joined across water as they always were -- a
+    # valid build, but `severed` says which one a caller got.
+    severed: frozenset = frozenset()
     _station_pos: dict[str, int] = field(default_factory=dict)
     _station_cell: dict[str, int] = field(default_factory=dict)
 
@@ -263,7 +269,32 @@ def build_index(rail_routes=None) -> NodeIndex:
         logger.info("%d rail station(s) indexed, %d dropped for want of a land cell",
                     len(station_keys), dropped_stations)
 
+    severed = _severed(base_cells, split_set, cell_pos, cell_at)
+
     return NodeIndex(cells, codes, cell_pos, airport_pos, airport_cell, tuple(dropped),
                      tuple(station_keys), _station_pos=station_pos, _station_cell=station_cell,
                      base_cells=base_cells, base_index=base_index, fine=fine,
-                     _split=frozenset(split_set))
+                     _split=frozenset(split_set), severed=severed)
+
+
+def _severed(base_cells, split_set, cell_pos, cell_at) -> frozenset:
+    """The adjacent cell pairs open water separates, or () without fixed-link data.
+
+    Severing reads the ABSENCE of a bridge as evidence of water, so it is only
+    sound with every region's links present; `fixed_links.fixed_links` returns
+    None otherwise, and the grid then stays joined exactly as it was.
+    """
+    from transport_maps.sources import fixed_links
+
+    from . import landmass
+
+    links = fixed_links.fixed_links()
+    if links is None:
+        return frozenset()
+    linked = landmass.linked_pairs(links, lambda lat, lon: cell_pos.get(cell_at(lat, lon)))
+    severed = landmass.severed_pairs(
+        base_cells, landmask.land_cell_landmasses(config.SOLVE_RES),
+        split_set, cell_pos, linked)
+    logger.info("%d fixed link(s) join %d adjacent cell pair(s); %d pair(s) severed "
+                "across open water", len(links), len(linked) // 2, len(severed) // 2)
+    return severed

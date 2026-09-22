@@ -16,7 +16,7 @@ import h3
 import numpy as np
 
 from transport_maps import _io, config
-from transport_maps.graph.refine import ground_adjacent
+from transport_maps.graph.refine import ground_joined
 
 # Order of the uint16 channels in the emitted file. Road is split by grade
 # because "road" covers both a motorway and a dirt track, which is exactly the
@@ -36,10 +36,11 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
     Accumulated down the shortest-path tree in one pass ordered by distance, so
     every node's predecessor is already resolved. The mode of an edge is read
     off the node kinds it joins; the one ambiguous case is cell -> cell, which
-    is road when the ground network joins the cells (refine.ground_adjacent,
+    is road when the ground network joins the cells (refine.ground_joined,
     the same test graph/build uses to drop a ferry that would duplicate a
     ground edge) and a ferry when it does not, since only a crossing can join
-    two cells the ground network keeps apart.
+    two cells the ground network keeps apart -- including two neighbours that
+    open water severs (graph/landmass).
     """
     n_cells = idx.n_cells
     n_air = len(idx.airports)
@@ -67,7 +68,7 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
         prev_stn, node_stn = prev >= first_stn, node >= first_stn
 
         if prev_cell and node_cell:
-            if ground_adjacent(idx.cells[prev], idx.cells[node]):
+            if ground_joined(idx, prev, node):
                 acc[node][ROAD_CHANNEL[int(cell_class[node])]] += cost
             else:
                 acc[node][1] += cost          # only a crossing joins distant cells

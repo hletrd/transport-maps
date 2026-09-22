@@ -77,3 +77,17 @@ def ground_adjacent(a: str, b: str) -> bool:
         return h3.are_neighbor_cells(a, b)
     fine, base = (a, b) if ra > rb else (b, a)
     return any(h3.cell_to_parent(n, min(ra, rb)) == base for n in h3.grid_ring(fine, 1))
+
+
+def ground_joined(idx, u: int, v: int) -> bool:
+    """Whether ground.hex_edges joins graph cells u and v: grid adjacency less
+    the pairs open water separates (graph/landmass, `NodeIndex.severed`).
+
+    `build._ferry_edges` drops a ferry that duplicates a ground edge and
+    `emit/modes` books a cell-to-cell hop as road or ferry. Both must mean the
+    same "joined" as hex_edges. Judged by adjacency alone, a severed strait
+    would keep losing its real ferry as a "duplicate" of a road that no longer
+    exists, and a sailing across it would be booked as road.
+    """
+    return ((u, v) not in getattr(idx, "severed", ())
+            and ground_adjacent(idx.cells[u], idx.cells[v]))

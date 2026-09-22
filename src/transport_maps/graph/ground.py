@@ -102,14 +102,21 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     extra = np.zeros(cap, dtype=np.float64)
     m = 0
     blocked = 0
+    severed_edges = 0
     crossings = 0
     fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
     fine = fine_attr if len(fine_attr) == len(idx.cells) else np.zeros(len(idx.cells), dtype=bool)
+    # Neighbours with open water between them and no bridge or tunnel
+    # (graph/landmass). Empty when the fixed-link extracts are absent.
+    severed = getattr(idx, "severed", frozenset())
 
     def add(u: int, v: int) -> None:
-        nonlocal blocked, crossings, m
+        nonlocal blocked, severed_edges, crossings, m
         if countries.is_closed(country[u], country[v]):
             blocked += 1
+            return
+        if (u, v) in severed:
+            severed_edges += 1
             return
         if m >= cap:
             raise RuntimeError(
@@ -142,6 +149,9 @@ def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     rows, cols, extra = rows[:m], cols[:m], extra[:m]
     if blocked:
         logger.info("%d ground edge(s) cut at closed land borders", blocked)
+    if severed_edges:
+        logger.info("%d ground edge(s) cut across open water with no bridge or tunnel",
+                    severed_edges)
     if crossings:
         logger.info("%d ground edge(s) charged %.0f min for a border crossing",
                     crossings, crossing_min)
