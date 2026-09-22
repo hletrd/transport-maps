@@ -162,18 +162,51 @@ the lookup, the chain broke on its own, and the test stayed green.
 
 - **A strait narrower than a cell stays joined.** Parts are judged per base
   cell and carried down to fine children, so a base cell straddling a strait
-  touches both shores. Messina (~3 km) is the known case. Severity MEDIUM,
+  touches both shores. Messina (~3 km) is the known case, and the
+  Helsingor-Helsingborg narrows (~4 km, ferry only) are why the graph joins
+  Zealand to Sweden at all -- see the Oresund correction below. Severity MEDIUM,
   confidence High. Exit criterion: parts judged per FINE_RES cell in split
   regions, re-validated on the named crossings.
 - **A bridge that spans a water cell adds no edge.** It links two cells that
   were never neighbours, so there was no road to protect and this change adds
-  none. Oresund measured 2 components before any rule. This is a PRE-EXISTING
-  gap, not one this change opens: long bridges and tunnels have never been in
+  none. Measured cut before AND after this rule: the Great Belt, the
+  Confederation Bridge, and the Oresund Bridge within 0.2 deg of it. This is a
+  PRE-EXISTING gap, not one this change opens: long bridges and tunnels have never been in
   the ground graph. Severity MEDIUM, confidence High. Exit criterion: fixed
   links whose consecutive graph cells are non-adjacent become explicit ground
   edges, costed at the link's own length and road class; re-check Oresund,
   Great Belt and Confederation Bridge in `scripts/check_fixed_links.py`, which
   already reports them.
+
+### Result on the real index (2026-09-22)
+
+`scripts/check_fixed_links.py` against the index built from all seven verified
+extracts: **22,121 adjacent cell pairs severed** worldwide, every judged case as
+expected, 67 s once the caches exist. Each case was also run with `severed`
+cleared, which is what says whether the rule did it:
+
+| case | before | after |
+|---|---|---|
+| Great Seto, Akashi-Kaikyo, Naruto, Bosphorus, Kanmon, Geoga | joined | joined |
+| **Saipan -> Tinian** (the owner's report) | joined | **cut** |
+| **Shodoshima** (ferry only) | joined | **cut** |
+| Paris -> Brussels (control) | joined | joined |
+| Messina | joined | joined |
+| Oresund | joined | joined |
+| Great Belt | cut | cut |
+| Confederation Bridge | cut | cut |
+
+Exactly two cases changed, and both are the fix. No bridge was cut by it. The
+Great Belt looked like a possible regression until the before column showed it
+was always cut.
+
+**Why one test run took 67 minutes.** `integration` tests are part of the gate
+here and build the real index from the real cache. The first one to run after
+the seventh extract arrived paid the one-time cost: the five uncached regions
+parsed 17:18-17:35, and the landmass ids for ~4 million cells were written at
+18:10. Both are cached now. It was not the network share, which was the first
+guess. It also means the integration tests passed with severing active on real
+data.
 
 ### First real parse, and a corrupted extract (2026-09-21)
 
@@ -220,12 +253,11 @@ recorded here and not changed.
 
 ### Not yet done
 
-- The extracts for north-america, south-america, africa and central-america
-  are still downloading. Until all seven are present `NodeIndex.severed` is
-  empty and every build is exactly as before -- by design, not by accident.
-- `scripts/check_fixed_links.py` has not been run against the real index for
-  the same reason. The table above was measured with the probe scripts.
-- No rebuild has carried this.
+- ~~The other four extracts are downloading~~ -- done 2026-09-22; all seven
+  verified against their dated files' exact lengths.
+- ~~`scripts/check_fixed_links.py` not yet run~~ -- run; see the result above.
+- **No rebuild has carried this.** The fix reaches the site only through a full
+  `build-all`.
 
 ## Status
 
@@ -238,9 +270,11 @@ recorded here and not changed.
 - **Exit criterion:** a fixed-link source exists and, on the four labelled boxes
   above, scores Saipan+Tinian 2, Messina 2, Oresund unchanged, Honshu/Shikoku 1.
   Only then rebuild.
-- **Note:** Oresund measured 2 components BEFORE any rule. That bridge is
-  already missing from the model — a separate, pre-existing gap, not caused by
-  anything here.
+- **Note, corrected 2026-09-22:** "Oresund measured 2 components" came from a
+  box that stopped short of Helsingor. Copenhagen and Malmo ARE joined in the
+  graph, before and after this rule, but not by the bridge: within 0.2 deg of it
+  they are cut. The join is 40 km north, across the ~4 km Helsingor-Helsingborg
+  narrows, which only ferries cross -- a phantom of the narrow-strait limit.
 
 ---
 

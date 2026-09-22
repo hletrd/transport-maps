@@ -23,10 +23,13 @@ Limits, stated rather than hidden:
 
   * Parts are judged per BASE cell and carried down to its fine children, so a
     base cell straddling a strait touches both shores and joins them. A strait
-    narrower than a cell -- Messina is about 3 km -- stays joined, as before.
+    narrower than a cell stays joined, as before: Messina (~3 km), and the
+    Helsingor-Helsingborg narrows (~4 km), which only ferries cross -- that is
+    what joins Zealand to Sweden in the graph.
   * A bridge whose span crosses a water cell links two cells that were never
     neighbours. It cannot protect an edge that does not exist and this module
-    adds none, so such crossings have no road link either way (Oresund).
+    adds none. Measured cut before and after this rule: the Great Belt, the
+    Confederation Bridge, and the Oresund Bridge within its own area.
 """
 
 from __future__ import annotations
