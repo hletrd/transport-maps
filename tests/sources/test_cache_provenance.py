@@ -54,6 +54,7 @@ from transport_maps import config
 from transport_maps.sources import (
     airports,
     countries,
+    fixed_links,
     landmask,
     osm,
     roads,
@@ -166,7 +167,8 @@ def test_land_cells_reads_the_stamped_path(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize(
     "path_fn",
-    [roads._grid_cache_path, airports._table_cache_path, lambda: landmask._cells_cache_path(5)],
+    [roads._grid_cache_path, airports._table_cache_path, lambda: landmask._cells_cache_path(5),
+     lambda: fixed_links._cache_path("north-america", "0123abcd")],
 )
 def test_every_stamped_path_carries_a_hash(path_fn):
     """A stamp silently dropped from the f-string would leave the old bare
@@ -273,6 +275,11 @@ STAMPED = [
     (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), routes._network_cache_path),
     (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), routes._network_cache_path),
     (wikidata, "RESOLVER_VERSION", 999, routes._network_cache_path),
+    (fixed_links, "_ABSENT", frozenset({"no", "none"}), lambda: fixed_links._cache_path("asia", "k")),
+    (fixed_links, "_NOT_BUILT", frozenset({"proposed"}), lambda: fixed_links._cache_path("asia", "k")),
+    (fixed_links, "KEEP_RES", 8, lambda: fixed_links._cache_path("asia", "k")),
+    (fixed_links, "SCHEMA", {"way_id": pl.Int64}, lambda: fixed_links._cache_path("asia", "k")),
+    (fixed_links, "FIXED_LINK_PARSER_VERSION", 999, lambda: fixed_links._cache_path("asia", "k")),
 ]
 
 
@@ -308,6 +315,7 @@ _COVERED_BY_TABLE = {
     "osm._ferry_cache_path",
     "osm._rail_cache_path",
     "routes._network_cache_path",
+    "fixed_links._params_key",
 }
 #: Stamping functions deliberately outside it, each with the reason. A new
 #: entry here is a decision someone has to write down, not a silent omission.
@@ -319,6 +327,11 @@ _NOT_IN_THIS_TABLE = {
     # cell-list half of that key, and it does so by re-typing the key
     # construction rather than calling the code.
     "countries.cell_country": "key built inline; no path helper to parametrise",
+    # The INPUT half of the fixed-link key: the extract's own name, size and
+    # mtime, and no module constant at all -- there is no row to write.
+    # `tests/sources/test_fixed_links.py::test_a_newer_download_is_a_cache_miss`
+    # pins it instead, and goes red when the source key is ignored.
+    "fixed_links._source_key": "hashes the extract's name/size/mtime, no constant",
 }
 
 
