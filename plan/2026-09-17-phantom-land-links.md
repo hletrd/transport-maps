@@ -251,6 +251,42 @@ the owner's call. `scripts/osm_rail.sh` resumes the same unsafe way; there a
 splice fails loudly in `osmium tags-filter` rather than silently, so it is
 recorded here and not changed.
 
+### Measured on the shipped artifacts (rebuild25, Seoul), and one thing it does NOT fix
+
+Seoul's newly built files against the live ones, read out of the reading tier
+(res-6 per cell), which is what the bands are drawn from:
+
+| cell | live | rebuilt | change |
+|---|---|---|---|
+| Saipan, airport side | 7 h 48 | 7 h 48 | 0 |
+| Saipan, south tip | 7 h 48 | 7 h 48 | 0 |
+| Tinian north | 7 h 54 | **9 h 42** | **+108 min** |
+| Tinian centre | 7 h 56 | 9 h 36 | +100 min |
+| Tinian south | 8 h 10 | 9 h 39 | +89 min |
+
+Tinian was 6 minutes past Saipan -- the phantom drive. It is now ~1 h 50 past
+it: the SPN->TIQ flight plus airport time at both ends. Saipan is untouched.
+
+**The hover readout over Tinian still shows Saipan's answer.** At HOVER_RES 4 a
+cell is ~22 km across and Saipan and Tinian share ONE (`844f4b5ffffffff`). Its
+centre child is water, so `hover._representative_children` falls back to the
+FASTEST child, which is on Saipan because Saipan has the airport. Measured:
+that cell reads 460 min (7 h 40) in both the live and the rebuilt array, +0.
+
+So after this rebuild the BAND over Tinian is correct and visibly darker than
+Saipan, while hovering it reports a neighbouring island's journey. That is a
+display-resolution limit, not a modelling one, and it predates this change:
+any res-4 cell holding two islands has always reported the faster.
+
+- Severity LOW-MEDIUM, confidence High (measured). It is the owner's original
+  complaint only in part: the model no longer claims a highway, but the number
+  under the cursor is still Saipan's.
+- Exit criterion: for a hover cell whose children span more than one landmass,
+  the page resolves the reading tier (res 6, already shipped, already fetched
+  on origin switch) at the cursor instead of the hover array -- no new artifact
+  and no rebuild. Verify that hovering Tinian reads ~9 h 40 while Saipan reads
+  ~7 h 48.
+
 ### Not yet done
 
 - ~~The other four extracts are downloading~~ -- done 2026-09-22; all seven
