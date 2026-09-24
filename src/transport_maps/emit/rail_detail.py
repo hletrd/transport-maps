@@ -18,6 +18,7 @@ why for each. The cost is +19.9 KB gzipped per origin against `.r6.bin`'s
 from __future__ import annotations
 
 import json
+import re
 from itertools import pairwise
 from pathlib import Path
 
@@ -276,6 +277,52 @@ def lookup_tables(routes: pl.DataFrame | None, cal=None) -> dict:
             "stop_names": stop_names}
 
 
+def boarded_within(idx, predecessors, hops, first_station) -> bool:
+    """Whether `hops` reaches back to where the traveller boarded.
+
+    `_walk_back_hops` stops at PATH_LOOKBACK_HOPS; a ride longer than that is
+    traced only in part, and a station missing from a PART of the path says
+    nothing about whether the train called there.
+    """
+    if not hops:
+        return False
+    if len(hops) < PATH_LOOKBACK_HOPS:
+        return True
+    boarding = idx.station_index(hops[-1][0])
+    return int(predecessors[boarding]) < first_station
+
+
+# "(수원경유)" / "(via Suwon)": a qualifier naming where a variant of a line
+# calls. Anchored at the END of the name, where OSM puts it.
+_VIA = (re.compile(r"\s*\(([^()]*?)\s*경유\)\s*$"), re.compile(r"\s*\(via ([^()]+)\)\s*$", re.I))
+
+
+def drop_false_via(line: str, path_stations: set[str], complete: bool) -> str:
+    """The line's name without a "via X" qualifier the traveller never passed.
+
+    The owner's case, traced on a real Seoul solve: the path into 부산 rides
+    서울역 -> 대전 on the plain KTX and then 대전 -> 부산 as ONE hop, which only
+    `경부선 KTX: 서울 → 부산 (수원경유)` has -- OSM's relation for it lists no
+    stop at 동대구, so its hop is non-stop and the fastest. Naming that service
+    for the leg is AA17's rule and stays; saying "via 수원" to someone whose
+    path never went near 수원 is simply false for THIS journey. The corridor
+    name is what is true, so that is what is printed.
+
+    Only when the path was traced to the boarding station (`complete`):
+    otherwise X may be on the untraced part and the qualifier may be right.
+    """
+    if not complete:
+        return line
+    for pattern in _VIA:
+        m = pattern.search(line)
+        if m:
+            vias = [v.strip() for v in re.split(r"[,·/]", m.group(1)) if v.strip()]
+            if vias and not all(v in path_stations for v in vias):
+                return line[:m.start()].rstrip()
+            return line
+    return line
+
+
 def write_rail_detail(idx, minutes: np.ndarray, predecessors: np.ndarray,
                       tables: dict | None, out_bin: Path, out_json: Path) -> None:
     """`.rail.bin`: uint16 per hover cell into `.rail.json`'s station table.
@@ -311,6 +358,9 @@ def write_rail_detail(idx, minutes: np.ndarray, predecessors: np.ndarray,
             rid = pick_route(hops, lines, tables.get("route_stops"))
             line, operator, ref = route_label.get(rid, ("", "", "")) if rid is not None \
                 else ("", "", "")
+            passed = {stop_names.get(s, "") for hop in hops for s in hop}
+            line = drop_false_via(line, passed,
+                                  boarded_within(idx, predecessors, hops, first_station))
             key = (station, line, operator, ref)
             if key not in index:
                 if operator and operator not in op_index:

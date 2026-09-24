@@ -583,3 +583,62 @@ def test_the_two_pricings_name_the_same_calibration_terms():
         assert term in emit_src, (
             f"emit/rail_detail._line_between no longer uses {term}; the caption "
             "would be chosen by a different rule from the charge")
+
+
+# ---- a "via X" qualifier the traveller never passed ---------------------------
+
+@pytest.mark.parametrize("line,passed,complete,want", [
+    # The owner's case, from a real Seoul solve: 서울역 -> 대전 -> 부산.
+    ("경부선 KTX: 서울 → 부산 (수원경유)", {"서울역", "대전", "부산"}, True, "경부선 KTX: 서울 → 부산"),
+    # The path DID pass 구포: the qualifier is true and stays.
+    ("경부선 KTX: 서울 → 부산 (구포경유)", {"대전", "밀양", "구포", "부산"}, True,
+     "경부선 KTX: 서울 → 부산 (구포경유)"),
+    # Traced only in part: 수원 may be on the untraced part, so nothing is dropped.
+    ("경부선 KTX: 서울 → 부산 (수원경유)", {"대전", "부산"}, False, "경부선 KTX: 서울 → 부산 (수원경유)"),
+    ("Express (via Reading)", {"London", "Bristol"}, True, "Express"),
+    ("Express (via Reading)", {"London", "Reading", "Bristol"}, True, "Express (via Reading)"),
+    ("경부선 KTX: 서울 → 부산", {"대전"}, True, "경부선 KTX: 서울 → 부산"),
+])
+def test_a_via_qualifier_is_kept_only_when_the_path_passed_it(line, passed, complete, want):
+    assert rail_detail.drop_false_via(line, passed, complete) == want
+
+
+class _Stations:
+    """Mirrors NodeIndex: station_index is the station's NODE id, stations
+    being laid out after the cells and airports (first station = `first`)."""
+
+    def __init__(self, names, first=100):
+        self.stations = names
+        self.first = first
+
+    def station_index(self, name):
+        return self.first + self.stations.index(name)
+
+
+def test_a_path_is_complete_only_when_traced_back_to_where_the_traveller_boarded():
+    first = 100
+    idx = _Stations(["s0", "s1", "s2"])
+    pred = np.full(first + 3, -9999)
+    pred[first + 0] = 5          # s0 was entered from a cell: boarding
+    short = [("s1", "s2"), ("s0", "s1")]
+    assert rail_detail.boarded_within(idx, pred, short, first)
+    long_ = [("a", "b")] * rail_detail.PATH_LOOKBACK_HOPS
+    idx2 = _Stations(["a", "b"])
+    pred2 = np.full(first + 2, -9999)
+    pred2[first + 0] = first + 1  # "a" was reached by rail: the ride goes on
+    assert not rail_detail.boarded_within(idx2, pred2, long_, first)
+    pred2[first + 0] = 7          # ...unless "a" is where it began
+    assert rail_detail.boarded_within(idx2, pred2, long_, first)
+    assert not rail_detail.boarded_within(idx, pred, [], first)
+
+
+def test_the_written_caption_drops_a_via_the_ride_never_passed(tmp_path):
+    """The rule is worth nothing if the writer does not apply it. Found by
+    mutation: removing the call left every other test in this file green."""
+    doc, _ = _one_cell_reached_by_rail([
+        stop(1, 0, 37.50, 127.00, "Seoul Station", "high_speed",
+             "KTX: Seoul -> Busan (via Suwon)", "Korail", "101"),
+        stop(1, 1, 37.55, 127.05, "Gupo", "high_speed",
+             "KTX: Seoul -> Busan (via Suwon)", "Korail", "101"),
+    ], tmp_path, "via")
+    assert doc["stations"][0][1] == "KTX: Seoul -> Busan"
