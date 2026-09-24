@@ -74,6 +74,10 @@ class NodeIndex:
     # adjacent land cells are joined across water as they always were -- a
     # valid build, but `severed` says which one a caller got.
     severed: frozenset = frozenset()
+    # (u, v) -> minutes for road bridges and tunnels whose span crosses a water
+    # cell, joining cells that are NOT grid neighbours (graph/landmass). Both
+    # directions present. Empty, like `severed`, without fixed-link data.
+    spans: dict = field(default_factory=dict)
     _station_pos: dict[str, int] = field(default_factory=dict)
     _station_cell: dict[str, int] = field(default_factory=dict)
 
@@ -269,16 +273,17 @@ def build_index(rail_routes=None) -> NodeIndex:
         logger.info("%d rail station(s) indexed, %d dropped for want of a land cell",
                     len(station_keys), dropped_stations)
 
-    severed = _severed(base_cells, split_set, cell_pos, cell_at)
+    severed, spans = _severed(base_cells, split_set, cell_pos, cell_at)
 
     return NodeIndex(cells, codes, cell_pos, airport_pos, airport_cell, tuple(dropped),
                      tuple(station_keys), _station_pos=station_pos, _station_cell=station_cell,
                      base_cells=base_cells, base_index=base_index, fine=fine,
-                     _split=frozenset(split_set), severed=severed)
+                     _split=frozenset(split_set), severed=severed, spans=spans)
 
 
-def _severed(base_cells, split_set, cell_pos, cell_at) -> frozenset:
-    """The adjacent cell pairs open water separates, or () without fixed-link data.
+def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict]:
+    """The adjacent cell pairs open water separates, and the road links that
+    span a water cell -- or (frozenset(), {}) without fixed-link data.
 
     Severing reads the ABSENCE of a bridge as evidence of water, so it is only
     sound with every region's links present; `fixed_links.fixed_links` returns
@@ -286,15 +291,23 @@ def _severed(base_cells, split_set, cell_pos, cell_at) -> frozenset:
     """
     from transport_maps.sources import fixed_links
 
-    from . import landmass
+    from . import ground, landmass
 
     links = fixed_links.fixed_links()
     if links is None:
-        return frozenset()
-    linked = landmass.linked_pairs(links, lambda lat, lon: cell_pos.get(cell_at(lat, lon)))
-    severed = landmass.severed_pairs(
-        base_cells, landmask.land_cell_landmasses(config.SOLVE_RES),
-        split_set, cell_pos, linked)
+        return frozenset(), {}
+    at = lambda lat, lon: cell_pos.get(cell_at(lat, lon))  # noqa: E731
+    linked = landmass.linked_pairs(links, at)
+    base_parts = landmask.land_cell_landmasses(config.SOLVE_RES)
+    fine_parts = landmass.fine_cell_parts(base_cells, base_parts, split_set,
+                                          landmask._land_parts())
+    severed = landmass.severed_pairs(base_cells, base_parts, split_set, cell_pos, linked,
+                                     fine_parts=fine_parts)
+    spans = landmass.spanning_links(links, at, ground.SPEED_BY_ROAD_CLASS_KMH)
     logger.info("%d fixed link(s) join %d adjacent cell pair(s); %d pair(s) severed "
-                "across open water", len(links), len(linked) // 2, len(severed) // 2)
-    return severed
+                "across open water (%d fine cells of %d straddling base cells judged "
+                "one by one); %d road span(s) over water added",
+                len(links), len(linked) // 2, len(severed) // 2, len(fine_parts),
+                len({h3.cell_to_parent(c, config.SOLVE_RES) for c in fine_parts}),
+                len(spans) // 2)
+    return severed, spans

@@ -54,6 +54,7 @@ def test_the_parse_keeps_long_links_and_drops_everything_that_cannot_join_cells(
     rows = fl._links(pbf)
     assert [r["way_id"] for r in rows] == [10]
     assert rows[0]["kind"] == "highway" and rows[0]["name"] == "Long"
+    assert rows[0]["highway"] == "primary", "the road class is what a span over water is costed at"
     assert rows[0]["lat"] == [LONG_A[0], LONG_B[0]]
 
 
@@ -66,7 +67,8 @@ def test_a_way_whose_nodes_are_missing_from_the_extract_is_dropped(tmp_path):
 
 
 def _cache_region(region, source_key="k"):
-    df = pl.DataFrame([{"way_id": hash(region) % 10_000, "kind": "highway", "name": region,
+    df = pl.DataFrame([{"way_id": hash(region) % 10_000, "kind": "highway", "highway": "primary",
+                        "name": region,
                         "lat": [0.0, 0.1], "lon": [0.0, 0.1]}], schema=fl.SCHEMA)
     df.write_parquet(fl._cache_path(region, source_key))
 

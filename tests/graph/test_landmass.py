@@ -94,7 +94,7 @@ def test_a_bridge_protects_only_the_cells_it_actually_passes_between():
 
 
 def _links(*spans):
-    return pl.DataFrame([{"way_id": i, "kind": "highway", "name": "",
+    return pl.DataFrame([{"way_id": i, "kind": "highway", "highway": "primary", "name": "",
                           "lat": [p[0] for p in s], "lon": [p[1] for p in s]}
                          for i, s in enumerate(spans)], schema=fixed_links.SCHEMA)
 
@@ -226,3 +226,191 @@ def test_antarctic_wedges_are_one_landmass_and_the_pole_cell_is_a_wildcard(monke
 def _no_real_fixed_links(monkeypatch):
     """Nothing here may reach the real extracts, whatever the cache holds."""
     monkeypatch.setattr(fixed_links, "_links", lambda path: pytest.fail(f"parsed {path}"))
+
+
+# ---- B2: a base cell straddling a strait, judged child by child --------------
+
+def _straddle_fixture():
+    """A split base cell A, half of it on landmass 1 (west) and half on 2 (east).
+
+    Two land parts are built as boxes meeting a gap along A's centre meridian,
+    so some of A's seven children touch only the west box, some only the east,
+    and the centre one -- which the gap runs through -- touches neither.
+    """
+    la, lo = h3.cell_to_latlng(A)
+    west = shapely.box(lo - 1.0, la - 1.0, lo - 0.004, la + 1.0)
+    east = shapely.box(lo + 0.004, la - 1.0, lo + 1.0, la + 1.0)
+    polygons = {1: west, 2: east}
+    return polygons
+
+
+def test_a_straddling_cells_children_are_assigned_to_their_own_shore():
+    polygons = _straddle_fixture()
+    got = landmass.fine_cell_parts([A], [(1, 2)], {A}, polygons)
+    kids = h3.cell_to_children(A, config.FINE_RES)
+    assert set(got) == set(kids)
+    lo = h3.cell_to_latlng(A)[1]
+    for k in kids:
+        if k == h3.cell_to_center_child(A, config.FINE_RES):
+            continue
+        klo = h3.cell_to_latlng(k)[1]
+        want = 1 if klo < lo else 2
+        assert want in got[k], (k, klo, got[k])
+
+
+def test_a_water_child_takes_the_nearest_shore_not_both():
+    """Left inheriting both shores it would be a free bridge across the strait."""
+    la, lo = h3.cell_to_latlng(A)
+    # The gap is now wide enough that the centre child touches neither box.
+    polygons = {1: shapely.box(lo - 1.0, la - 1.0, lo - 0.02, la + 1.0),
+                2: shapely.box(lo + 0.03, la - 1.0, lo + 1.0, la + 1.0)}
+    centre = h3.cell_to_center_child(A, config.FINE_RES)
+    got = landmass.fine_cell_parts([A], [(1, 2)], {A}, polygons)
+    assert got[centre] == (1,), "nearer to the west shore, so west -- and only west"
+
+
+def test_siblings_on_opposite_shores_are_severed_from_each_other():
+    polygons = _straddle_fixture()
+    fine = landmass.fine_cell_parts([A], [(1, 2)], {A}, polygons)
+    kids = h3.cell_to_children(A, config.FINE_RES)
+    pos = {c: i for i, c in enumerate(kids)}
+    out = landmass.severed_pairs([A], [(1, 2)], {A}, pos, set(), fine_parts=fine)
+    cross = [(a, b) for a in kids for b in kids
+             if a != b and h3.are_neighbor_cells(a, b) and not set(fine[a]) & set(fine[b])]
+    assert cross, "fixture: some adjacent siblings must sit on opposite shores"
+    for a, b in cross:
+        assert (pos[a], pos[b]) in out
+    same = [(a, b) for a in kids for b in kids
+            if a != b and h3.are_neighbor_cells(a, b) and set(fine[a]) & set(fine[b])]
+    for a, b in same:
+        assert (pos[a], pos[b]) not in out, "siblings on one shore stay joined"
+
+
+def test_without_child_parts_a_straddler_still_joins_both_shores():
+    """The control: the previous behaviour, and the limit this closes."""
+    kids = h3.cell_to_children(A, config.FINE_RES)
+    pos = {c: i for i, c in enumerate(kids)}
+    assert not landmass.severed_pairs([A], [(1, 2)], {A}, pos, set())
+
+
+# ---- B3: road links whose span crosses a water cell ---------------------------
+
+FAR = next(c for c in h3.grid_ring(A, 2))
+
+
+def _span_links(highway, kind="highway", far=FAR):
+    return pl.DataFrame([{"way_id": 1, "kind": kind, "highway": highway, "name": "",
+                          "lat": [h3.cell_to_latlng(A)[0], h3.cell_to_latlng(far)[0]],
+                          "lon": [h3.cell_to_latlng(A)[1], h3.cell_to_latlng(far)[1]]}],
+                        schema=fixed_links.SCHEMA)
+
+
+def test_a_road_bridge_over_a_water_cell_becomes_an_edge_costed_at_its_class():
+    speeds = ground.SPEED_BY_ROAD_CLASS_KMH
+    got = landmass.spanning_links(_span_links("motorway"), _at([A, FAR]), speeds)
+    assert set(got) == {(0, 1), (1, 0)}
+    km = landmass._haversine_km(*h3.cell_to_latlng(A), *h3.cell_to_latlng(FAR))
+    # Charged from where the link leaves A to where it enters FAR, so at most
+    # the whole centre-to-centre length and at least most of it.
+    assert 60 * 0.5 * km / speeds[1] < got[(0, 1)] <= 60 * km / speeds[1] + 1e-9
+
+
+@pytest.mark.parametrize("highway,kind", [("footway", "highway"), ("cycleway", "highway"),
+                                          ("", "railway")])
+def test_footbridges_and_railways_do_not_become_road_spans(highway, kind):
+    got = landmass.spanning_links(_span_links(highway, kind), _at([A, FAR]),
+                                  ground.SPEED_BY_ROAD_CLASS_KMH)
+    assert got == {}
+
+
+def test_a_span_longer_than_any_real_crossing_is_refused(monkeypatch):
+    monkeypatch.setattr(landmass, "MAX_SPAN_KM", 1.0)
+    got = landmass.spanning_links(_span_links("motorway"), _at([A, FAR]),
+                                  ground.SPEED_BY_ROAD_CLASS_KMH)
+    assert got == {}
+
+
+def _index_spans(cells, spans):
+    return NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, (), spans=spans)
+
+
+def test_a_span_is_joined_and_becomes_a_graph_edge(monkeypatch):
+    idx = _index_spans([A, FAR], {(0, 1): 9.0, (1, 0): 9.0})
+    assert refine.ground_joined(idx, 0, 1)
+    assert not refine.ground_joined(_index_spans([A, FAR], {}), 0, 1), "control"
+    monkeypatch.setattr(build, "_border_rules",
+                        lambda _idx: (np.array(["DNK", "DNK"]), np.array(["S", "S"]), 45.0,
+                                      lambda a, b: False))
+    r, c, d = build._span_edges(idx)
+    assert set(zip(r.tolist(), c.tolist())) == {(0, 1), (1, 0)} and d.tolist() == [9.0, 9.0]
+
+
+def test_a_span_across_a_closed_border_is_cut_and_a_zone_change_charged(monkeypatch):
+    idx = _index_spans([A, FAR], {(0, 1): 9.0, (1, 0): 9.0})
+    monkeypatch.setattr(build, "_border_rules",
+                        lambda _idx: (np.array(["KOR", "PRK"]), np.array(["K", "P"]), 45.0,
+                                      lambda a, b: {a, b} == {"KOR", "PRK"}))
+    r, _, _ = build._span_edges(idx)
+    assert len(r) == 0
+    monkeypatch.setattr(build, "_border_rules",
+                        lambda _idx: (np.array(["DNK", "SWE"]), np.array(["S", "X"]), 45.0,
+                                      lambda a, b: False))
+    _, _, d = build._span_edges(idx)
+    assert d.tolist() == [54.0, 54.0]
+
+
+def test_a_hop_along_a_span_is_booked_as_road_not_ferry():
+    class Idx:
+        n_cells = 2
+        airports: ClassVar[list[str]] = []
+        stations = ()
+        cells: ClassVar[list[str]] = [A, FAR]
+        spans: ClassVar[dict] = {(0, 1): 9.0, (1, 0): 9.0}
+
+    acc = modes.mode_minutes_per_node(Idx(), np.array([0.0, 9.0]), np.array([-9999, 0]),
+                                      cell_class=np.array([1, 1]))
+    assert acc[1][modes.CHANNELS.index("highway")] == 9.0
+    assert acc[1][modes.CHANNELS.index("ferry")] == 0.0
+
+
+def test_a_straddlers_children_are_judged_against_a_neighbour_that_shares_one_of_its_parts():
+    """The shortcut that dismisses any base pair sharing a part must NOT apply
+    when either base is a refined straddler.
+
+    A straddles parts 1 and 2; its western neighbour W is on part 2 alone. The
+    base pair shares part 2, so the old shortcut skipped it -- and A's western
+    children, on part 1, stayed joined to W across the strait. Found by
+    mutation: with only a single base cell in the fixture, reverting to the old
+    shortcut left every test green.
+    """
+    polygons = _straddle_fixture()
+    lo = h3.cell_to_latlng(A)[1]
+    west = min((c for c in h3.grid_ring(A, 1)), key=lambda c: h3.cell_to_latlng(c)[1])
+    fine = landmass.fine_cell_parts([A], [(1, 2)], {A}, polygons)
+    kids = h3.cell_to_children(A, config.FINE_RES)
+    cells = kids + [west]
+    pos = {c: i for i, c in enumerate(cells)}
+    out = landmass.severed_pairs([A, west], [(1, 2), (2,)], {A}, pos, set(), fine_parts=fine)
+    facing = [k for k in kids if refine.ground_adjacent(k, west) and fine[k] == (1,)]
+    assert facing, "fixture: some western child must be on part 1 and touch W"
+    assert h3.cell_to_latlng(west)[1] < lo
+    for k in facing:
+        assert (pos[k], pos[west]) in out
+
+
+def test_build_graph_includes_the_span_edges(monkeypatch):
+    """_span_edges being right is worth nothing if build_graph never calls it.
+
+    Every other part is stubbed to nothing, so the only edges in the matrix are
+    the ones the spans produce.
+    """
+    empty = (np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros(0))
+    monkeypatch.setattr(ground, "hex_edges", lambda _idx: empty)
+    for name in ("_air_edges", "_access_edges", "_transfer_edges"):
+        monkeypatch.setattr(build, name, lambda *a, **k: empty)
+    monkeypatch.setattr(build, "_border_rules",
+                        lambda _idx: (np.array(["DNK", "DNK"]), np.array(["S", "S"]), 45.0,
+                                      lambda a, b: False))
+    idx = _index_spans([A, FAR], {(0, 1): 9.0, (1, 0): 9.0})
+    csr = build.build_graph(idx)
+    assert csr[0, 1] == 9.0 and csr[1, 0] == 9.0

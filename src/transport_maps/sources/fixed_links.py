@@ -54,12 +54,14 @@ _NOT_BUILT = frozenset({"proposed", "construction", "abandoned", "disused",
 # it cannot join two graph cells. Most of the world's bridges are like that.
 KEEP_RES = config.FINE_RES
 
-SCHEMA = {"way_id": pl.Int64, "kind": pl.Utf8, "name": pl.Utf8,
+SCHEMA = {"way_id": pl.Int64, "kind": pl.Utf8, "highway": pl.Utf8, "name": pl.Utf8,
           "lat": pl.List(pl.Float64), "lon": pl.List(pl.Float64)}
 
 # Bumped when the parse changes shape, so a parquet written by old code is a
 # MISS and not a silently reused wrong answer.
-FIXED_LINK_PARSER_VERSION = 1
+# 2: the `highway` value is kept, so graph/landmass can cost a link that spans
+#    open water at its road class, and refuse a footbridge as a road.
+FIXED_LINK_PARSER_VERSION = 2
 
 
 def carries_traffic(tags) -> str | None:
@@ -88,7 +90,7 @@ def _links(path: pathlib.Path) -> list[dict]:
     A pure-Python pass over the 15 GB Asia extract took 41 minutes, almost all
     of it in callbacks for objects that were then thrown away.
     """
-    ways: dict[int, tuple[list[int], str, str]] = {}
+    ways: dict[int, tuple[list[int], str, str, str]] = {}
     wanted: set[int] = set()
     fp = osmium.FileProcessor(str(path), osmium.osm.WAY).with_filter(
         osmium.filter.KeyFilter("bridge", "tunnel"))
@@ -99,7 +101,7 @@ def _links(path: pathlib.Path) -> list[dict]:
         refs = [n.ref for n in way.nodes]
         if len(refs) < 2:
             continue
-        ways[way.id] = (refs, kind, way.tags.get("name") or "")
+        ways[way.id] = (refs, kind, way.tags.get("highway") or "", way.tags.get("name") or "")
         wanted.update(refs)
 
     coords: dict[int, tuple[float, float]] = {}
@@ -111,13 +113,13 @@ def _links(path: pathlib.Path) -> list[dict]:
                 coords[node.id] = (node.location.lat, node.location.lon)
 
     rows = []
-    for way_id, (refs, kind, name) in ways.items():
+    for way_id, (refs, kind, highway, name) in ways.items():
         pts = [coords[r] for r in refs if r in coords]
         if len(pts) < 2:
             continue
         if len({h3.latlng_to_cell(lat, lon, KEEP_RES) for lat, lon in pts}) < 2:
             continue
-        rows.append({"way_id": way_id, "kind": kind, "name": name,
+        rows.append({"way_id": way_id, "kind": kind, "highway": highway, "name": name,
                      "lat": [p[0] for p in pts], "lon": [p[1] for p in pts]})
     return rows
 

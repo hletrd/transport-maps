@@ -80,8 +80,10 @@ def ground_adjacent(a: str, b: str) -> bool:
 
 
 def ground_joined(idx, u: int, v: int) -> bool:
-    """Whether ground.hex_edges joins graph cells u and v: grid adjacency less
-    the pairs open water separates (graph/landmass, `NodeIndex.severed`).
+    """Whether the ground network joins graph cells u and v: grid adjacency
+    less the pairs open water separates (`NodeIndex.severed`), plus the road
+    bridges and tunnels that span a water cell (`NodeIndex.spans`), which join
+    cells that are not grid neighbours at all.
 
     `build._ferry_edges` drops a ferry that duplicates a ground edge and
     `emit/modes` books a cell-to-cell hop as road or ferry. Both must mean the
@@ -89,5 +91,7 @@ def ground_joined(idx, u: int, v: int) -> bool:
     would keep losing its real ferry as a "duplicate" of a road that no longer
     exists, and a sailing across it would be booked as road.
     """
+    if (u, v) in (getattr(idx, "spans", None) or {}):
+        return True
     return ((u, v) not in getattr(idx, "severed", ())
             and ground_adjacent(idx.cells[u], idx.cells[v]))

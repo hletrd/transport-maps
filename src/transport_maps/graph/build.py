@@ -228,6 +228,30 @@ def _border_rules(idx: NodeIndex):
     return country, zone, ground._land_border_min(), countries.is_closed
 
 
+def _span_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Road bridges and tunnels long enough to cross a water cell (graph/landmass).
+
+    Their two ends were never grid neighbours, so hex_edges had no edge for
+    them and the Great Belt, the Oresund Bridge and the Confederation Bridge
+    did not exist in the graph. The same two border rules as every other
+    surface edge: a closed pair is cut, a change of immigration zone charged.
+    """
+    spans = getattr(idx, "spans", None) or {}
+    if not spans:
+        empty = np.zeros(0, dtype=np.int64)
+        return empty, empty, np.zeros(0, dtype=np.float64)
+    country, zone, crossing, is_closed = _border_rules(idx)
+    rows, cols, mins = [], [], []
+    for (u, v), minutes in sorted(spans.items()):
+        if is_closed(country[u], country[v]):
+            continue
+        rows.append(u)
+        cols.append(v)
+        mins.append(minutes + (crossing if zone[u] and zone[v] and zone[u] != zone[v] else 0.0))
+    return (np.asarray(rows, dtype=np.int64), np.asarray(cols, dtype=np.int64),
+            np.asarray(mins, dtype=np.float64))
+
+
 def _rail_edges(idx: NodeIndex, routes, cal) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Station-to-station rides, plus the cell edges that board and alight.
 
@@ -418,6 +442,7 @@ def build_graph(
 
     parts = [
         ground.hex_edges(idx),
+        _span_edges(idx),
         _air_edges(idx, rejected_air_pairs, unknown_airport_pairs),
         _access_edges(idx),
         _transfer_edges(idx),
