@@ -292,8 +292,10 @@ any res-4 cell holding two islands has always reported the faster.
 - ~~The other four extracts are downloading~~ -- done 2026-09-22; all seven
   verified against their dated files' exact lengths.
 - ~~`scripts/check_fixed_links.py` not yet run~~ -- run; see the result above.
-- **No rebuild has carried this.** The fix reaches the site only through a full
-  `build-all`.
+- ~~No rebuild has carried this~~ -- rebuild25 (1,464/1,464, 0 errors, exit
+  09-24 10:04) deployed 2026-09-24, ALL CHECKS PASSED, 0 console errors, four
+  viewports. Read back from the LIVE seoul.r6.bin: Saipan 7 h 48, Tinian north
+  9 h 42, Tinian centre 9 h 36. The hover-readout limit above still applies.
 
 ## Status
 
