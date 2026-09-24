@@ -414,3 +414,123 @@ def test_build_graph_includes_the_span_edges(monkeypatch):
     idx = _index_spans([A, FAR], {(0, 1): 9.0, (1, 0): 9.0})
     csr = build.build_graph(idx)
     assert csr[0, 1] == 9.0 and csr[1, 0] == 9.0
+
+
+def test_a_crossing_split_into_ways_that_meet_over_water_is_one_span():
+    """OSM splits a long crossing into deck, tunnel and viaduct ways that share
+    a node OVER THE WATER. Taken way by way none runs land to land, and the
+    first version found no span for the Great Belt, the Oresund, the
+    Confederation Bridge or the Busan-Geoje link -- measured on the real index,
+    not caught by the single-way fixtures above."""
+    a, far = h3.cell_to_latlng(A), h3.cell_to_latlng(FAR)
+    mid = ((a[0] + far[0]) / 2, (a[1] + far[1]) / 2)
+    links = pl.DataFrame([
+        {"way_id": 1, "kind": "highway", "highway": "motorway", "name": "deck",
+         "lat": [a[0], mid[0]], "lon": [a[1], mid[1]]},
+        {"way_id": 2, "kind": "highway", "highway": "primary", "name": "tunnel",
+         "lat": [mid[0], far[0]], "lon": [mid[1], far[1]]},
+    ], schema=fixed_links.SCHEMA)
+    speeds = ground.SPEED_BY_ROAD_CLASS_KMH
+    got = landmass.spanning_links(links, _at([A, FAR]), speeds)
+    assert set(got) == {(0, 1), (1, 0)}
+    # Each half costed at its own class: slower than all-motorway, faster than all-primary.
+    km = landmass._haversine_km(*a, *far)
+    assert 60 * km / speeds[1] * 0.5 < got[(0, 1)] < 60 * km / speeds[2]
+
+
+def test_two_ways_meeting_on_land_are_not_a_span():
+    """A shared node on land joins nothing across water."""
+    a, b = h3.cell_to_latlng(A), h3.cell_to_latlng(B)
+    links = pl.DataFrame([
+        {"way_id": 1, "kind": "highway", "highway": "motorway", "name": "",
+         "lat": [a[0], b[0]], "lon": [a[1], b[1]]},
+    ], schema=fixed_links.SCHEMA)
+    assert landmass.spanning_links(links, _at([A, B]), ground.SPEED_BY_ROAD_CLASS_KMH) == {}
+
+
+def test_a_coastal_node_does_not_turn_its_land_neighbour_into_a_span():
+    """A node on the shore touching water on one side (a pier, a way ending in
+    the sea) and another land cell on the other: the step onto land is not a
+    crossing. Found by mutation -- the land-only fixture above never starts a
+    search, so dropping this guard left it green."""
+    a, b, far = h3.cell_to_latlng(A), h3.cell_to_latlng(B), h3.cell_to_latlng(FAR)
+    seaward = ((a[0] + far[0]) / 2, (a[1] + far[1]) / 2)
+    links = pl.DataFrame([
+        {"way_id": 1, "kind": "highway", "highway": "motorway", "name": "",
+         "lat": [a[0], b[0]], "lon": [a[1], b[1]]},
+        {"way_id": 2, "kind": "highway", "highway": "motorway", "name": "pier",
+         "lat": [a[0], seaward[0]], "lon": [a[1], seaward[1]]},
+    ], schema=fixed_links.SCHEMA)
+    assert landmass.spanning_links(links, _at([A, B]), ground.SPEED_BY_ROAD_CLASS_KMH) == {}
+
+
+def test_a_span_between_grid_neighbours_is_a_protected_adjacency_not_an_edge():
+    """As an edge it would duplicate the ground edge between them, and
+    build_graph refuses a duplicate pair -- the build would stop at the graph."""
+    cells = [A, B, FAR]
+    spans, linked = landmass.split_spans({(0, 1): 5.0, (1, 0): 5.0, (0, 2): 9.0, (2, 0): 9.0},
+                                         set(), cells)
+    assert spans == {(0, 2): 9.0, (2, 0): 9.0}
+    assert linked == {(0, 1), (1, 0)}
+
+
+# ---- dead ends over water: islets and short shores the land mask lacks ------
+
+def _way(wid, highway, pts):
+    return {"way_id": wid, "kind": "highway", "highway": highway, "name": "",
+            "lat": [p[0] for p in pts], "lon": [p[1] for p in pts]}
+
+
+def _between(p, q, t):
+    return (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
+
+
+FAR3 = next(c for c in h3.grid_ring(A, 3))
+
+
+def test_two_major_road_dead_ends_near_each_other_are_one_crossing_over_an_islet():
+    """Sprogo, the Great Belt's midpoint island, is not on the land mask and its
+    road is not a bridge: the East and West Bridges each dead-end over "water",
+    3.2 km apart, and the crossing did not exist."""
+    a, far = h3.cell_to_latlng(A), h3.cell_to_latlng(FAR3)
+    e1, e2 = _between(a, far, 0.45), _between(a, far, 0.55)      # the islet
+    links = pl.DataFrame([_way(1, "motorway", [a, e1]), _way(2, "motorway", [e2, far])],
+                         schema=fixed_links.SCHEMA)
+    assert landmass._haversine_km(*e1, *e2) < landmass.MAX_ISLET_KM, "fixture"
+    got = landmass.spanning_links(links, _at([A, FAR3]), ground.SPEED_BY_ROAD_CLASS_KMH)
+    assert set(got) == {(0, 1), (1, 0)}
+
+
+FAR6 = next(c for c in h3.grid_ring(A, 6))
+
+
+@pytest.mark.parametrize("highway,gap,far_cell", [("service", 0.1, FAR3), ("motorway", 0.6, FAR6)],
+                         ids=["a-service-road-is-never-continued", "too-far-apart"])
+def test_dead_ends_that_are_not_one_crossing_stay_apart(highway, gap, far_cell):
+    """Both ends genuinely out over the water. The first "too far apart"
+    fixture put them inside the land cells, so neither was a dead end at all
+    and removing the distance cap stayed green."""
+    a, far = h3.cell_to_latlng(A), h3.cell_to_latlng(far_cell)
+    lo_, hi_ = 0.5 - gap / 2, 0.5 + gap / 2
+    ends = (_between(a, far, lo_), _between(a, far, hi_))
+    links = pl.DataFrame([_way(1, highway, [a, ends[0]]), _way(2, highway, [ends[1], far])],
+                         schema=fixed_links.SCHEMA)
+    at = _at([A, far_cell])
+    assert at(*ends[0]) is None and at(*ends[1]) is None, "fixture: both ends over water"
+    if highway == "motorway":
+        assert landmass._haversine_km(*ends[0], *ends[1]) > landmass.MAX_ISLET_KM, "fixture"
+    got = landmass.spanning_links(links, at, ground.SPEED_BY_ROAD_CLASS_KMH)
+    assert got == {}
+
+
+def test_a_major_road_dead_end_one_cell_short_of_shore_makes_landfall():
+    """The Confederation Bridge's New Brunswick end falls in a cell the coarse
+    coast calls water, one ring short of land."""
+    a, far = h3.cell_to_latlng(A), h3.cell_to_latlng(FAR)
+    ring = h3.grid_ring(FAR, 1)
+    shore = next(c for c in ring if not h3.are_neighbor_cells(c, A) and c != A)
+    # The bridge runs from A to FAR, and FAR itself is NOT land -- only `shore`,
+    # a neighbour of FAR, is.
+    links = pl.DataFrame([_way(1, "trunk", [a, far])], schema=fixed_links.SCHEMA)
+    got = landmass.spanning_links(links, _at([A, shore]), ground.SPEED_BY_ROAD_CLASS_KMH)
+    assert set(got) == {(0, 1), (1, 0)}

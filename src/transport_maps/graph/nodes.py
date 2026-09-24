@@ -298,12 +298,14 @@ def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict]
         return frozenset(), {}
     at = lambda lat, lon: cell_pos.get(cell_at(lat, lon))  # noqa: E731
     linked = landmass.linked_pairs(links, at)
+    spans, linked = landmass.split_spans(
+        landmass.spanning_links(links, at, ground.SPEED_BY_ROAD_CLASS_KMH), linked,
+        cells=list(cell_pos))
     base_parts = landmask.land_cell_landmasses(config.SOLVE_RES)
     fine_parts = landmass.fine_cell_parts(base_cells, base_parts, split_set,
                                           landmask._land_parts())
     severed = landmass.severed_pairs(base_cells, base_parts, split_set, cell_pos, linked,
                                      fine_parts=fine_parts)
-    spans = landmass.spanning_links(links, at, ground.SPEED_BY_ROAD_CLASS_KMH)
     logger.info("%d fixed link(s) join %d adjacent cell pair(s); %d pair(s) severed "
                 "across open water (%d fine cells of %d straddling base cells judged "
                 "one by one); %d road span(s) over water added",

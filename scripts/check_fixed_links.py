@@ -37,24 +37,26 @@ CASES = [
     ("Naruto Bridge      Awaji -> Shikoku",       (34.243, 134.654), (34.222, 134.644), True),
     ("Bosphorus          Europe -> Asia",         (41.030, 28.980), (41.020, 29.030), True),
     ("Kanmon             Honshu -> Kyushu",       (33.960, 130.960), (33.900, 130.900), True),
-    ("Geoga Bridge       Busan -> Geoje",         (35.080, 128.830), (34.990, 128.660), True),
+    # Geoje endpoint at Gohyeon, the island's town. The first one, (34.990,
+    # 128.660), sat in a base cell straddling Geoje and Chilcheondo -- a
+    # different island -- and once such cells were judged child by child the
+    # point was on Chilcheondo's side of that strait.
+    ("Geoga Bridge       Busan -> Geoje",         (35.080, 128.830), (34.885, 128.622), True),
     # Crossings only a ferry or an aircraft makes.
     ("Saipan -> Tinian   (the owner's report)",   (15.150, 145.730), (15.000, 145.630), False),
     ("Shodoshima         (ferry only)",           (34.490, 134.250), (34.330, 134.050), False),
     # Mainland control: nothing between them but land.
     ("control  Paris -> Brussels",                (48.857, 2.352), (50.850, 4.352), True),
-    # Reported, not judged. Measured 2026-09-22, identical before and after
-    # the rule, so none of these is its doing:
-    #   Messina        joined -- narrower than a cell (limit 1)
-    #   Oresund        joined -- but NOT by the bridge: within 0.2 deg of it the
-    #                  two are cut; the join is 40 km north, across the ~4 km
-    #                  Helsingor-Helsingborg narrows, ferry only (limit 1)
-    #   Great Belt     cut    -- the bridge spans a water cell (limit 2)
-    #   Confederation  cut    -- likewise
-    ("Messina strait     (narrower than a cell)", (38.190, 15.550), (38.110, 15.650), None),
-    ("Oresund            Copenhagen -> Malmo",    (55.676, 12.568), (55.605, 13.003), None),
-    ("Great Belt         Zealand -> Funen",       (55.350, 11.100), (55.330, 10.800), None),
-    ("Confederation Br.  PEI -> New Brunswick",   (46.230, -63.500), (46.100, -64.300), None),
+    # Straits narrower than a cell, resolved child by child (graph/landmass
+    # fine_cell_parts) -- joined only by ferry before; measured cut 2026-09-25.
+    ("Messina strait     (ferry only)",           (38.190, 15.550), (38.110, 15.650), False),
+    # Bridges whose span crosses a water cell (spanning_links, stitched across
+    # ways and continued over islets the mask lacks) -- all three were cut
+    # before; measured joined 2026-09-25. Oresund was joined before too, but
+    # by the Helsingor narrows, not the bridge.
+    ("Oresund Bridge     Copenhagen -> Malmo",    (55.676, 12.568), (55.605, 13.003), True),
+    ("Great Belt         Zealand -> Funen",       (55.350, 11.100), (55.330, 10.800), True),
+    ("Confederation Br.  PEI -> New Brunswick",   (46.230, -63.500), (46.100, -64.300), True),
 ]
 
 # How far past the two endpoints the search may wander, in degrees. A land
@@ -76,11 +78,23 @@ def _joined(idx, a, b) -> bool | str:
         return (lat0 - MARGIN_DEG <= la <= lat1 + MARGIN_DEG
                 and lon0 - MARGIN_DEG <= lo <= lon1 + MARGIN_DEG)
 
+    # Spans are road bridges and tunnels joining cells that are NOT grid
+    # neighbours (graph/landmass.spanning_links). Walking grid rings alone,
+    # this search could never cross one, and reported the Great Belt cut
+    # whatever the graph said.
+    span_to: dict[int, list[int]] = {}
+    for s_from, s_to in getattr(idx, "spans", {}) or {}:
+        span_to.setdefault(s_from, []).append(s_to)
+
     seen, queue = {u}, deque([u])
     while queue:
         p = queue.popleft()
         if p == v:
             return True
+        for q in span_to.get(p, ()):
+            if q not in seen and inside(q):
+                seen.add(q)
+                queue.append(q)
         cell = idx.cells[p]
         for n in h3.grid_ring(cell, 1):
             q = idx.try_cell_index(n)
@@ -107,10 +121,10 @@ def main() -> int:
               "below would only report the old behaviour. Run scripts/osm_fixed_links.sh.")
         return 2
     print(f"  {len(idx.severed) // 2:,} adjacent cell pairs severed across open water\n")
-    # The same index with nothing severed: the graph as it was. Without this
+    # The same index with nothing severed and no spans: the graph as it was. Without this
     # column a "cut" cannot say whether the rule made it or it always was --
     # the Great Belt looked like a regression until it was measured cut both ways.
-    before = dataclasses.replace(idx, severed=frozenset())
+    before = dataclasses.replace(idx, severed=frozenset(), spans={})
     print(f"  {'case':44} {'before':>8}  {'after':<28}")
     wrong = 0
     for name, a, b, expect in CASES:

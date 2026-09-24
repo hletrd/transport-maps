@@ -207,6 +207,38 @@ SPAN_ROAD_CLASS = {
 # is about 55 km including its tunnel. A "span" longer than this is a mapping
 # error or two unrelated land cells, not a bridge.
 MAX_SPAN_KM = 60.0
+# A fixed link that dead-ends over "water" has, in fact, landed on land the
+# land mask does not have: OSM tags only the bridge and tunnel sections, and
+# Natural Earth's 1:10M coast omits islets such as Sprogo (Great Belt) and
+# Peberholm (Oresund) and runs a cell short of shore at Cape Jourimain
+# (Confederation Bridge). Only major roads (GRIP classes 1-3) are continued this
+# way, so a pier or a ferry ramp -- service roads -- never is.
+ISLET_MAX_CLASS = 3
+# Two such dead ends this close are the two halves of one crossing, joined by
+# the at-grade road across the islet: Sprogo's gap is 3.2 km, Peberholm's ~3.5.
+MAX_ISLET_KM = 5.0
+
+
+def split_spans(spans: dict[tuple[int, int], float], linked: set[tuple[int, int]],
+                cells: list[str]) -> tuple[dict[tuple[int, int], float], set[tuple[int, int]]]:
+    """Spans between grid NEIGHBOURS are protected adjacencies, not edges.
+
+    A bridge can dip through a water cell between two cells that are grid
+    neighbours. As an edge it would duplicate the ground edge hex_edges already
+    builds between them, and build_graph refuses a duplicate (row, col) pair --
+    the whole build would stop at the graph. What such a crossing really says
+    is "these neighbours ARE joined by land", which is what `linked` means: it
+    keeps the pair from being severed. Only spans between non-neighbours
+    remain edges of their own.
+    """
+    kept: dict[tuple[int, int], float] = {}
+    linked = set(linked)
+    for (u, v), minutes in spans.items():
+        if ground_adjacent(cells[u], cells[v]):
+            linked.add((u, v))
+        else:
+            kept[(u, v)] = minutes
+    return kept, linked
 
 
 def spanning_links(links: pl.DataFrame,
@@ -218,35 +250,144 @@ def spanning_links(links: pl.DataFrame,
     long enough to cross a water cell joins two cells that were never
     neighbours, so hex_edges had no edge to keep and the crossing did not exist
     -- the Great Belt, the Oresund Bridge and the Confederation Bridge were all
-    cut before any severing. This returns the land cell where each such span
-    leaves land and the one where it arrives, costed along the link itself at
-    its road class. Railway links are not returned: trains already cross on the
-    rail graph.
+    cut before any severing. This finds, for every such crossing, the land cell
+    where it leaves land and the one where it arrives, costed along the link at
+    each piece's own road class. Railway links are not returned: trains
+    already cross on the rail graph.
+
+    **Ways are stitched, not taken one at a time.** OSM splits a long crossing
+    into several ways -- the bridge deck, a tunnel, the approach viaducts --
+    that meet end to end OVER THE WATER, sharing a node there. Judged way by
+    way, none of them runs from land to land, and the first version of this
+    found no span at all for the Great Belt, the Oresund, the Confederation
+    Bridge or the Busan-Geoje link. Every sample becomes a vertex (a way's own
+    nodes keyed by coordinate, so ways sharing a node share the vertex), and a
+    crossing is a path through water vertices between two land vertices.
     """
-    out: dict[tuple[int, int], float] = {}
-    for kind, highway, lats, lons in zip(links["kind"].to_list(), links["highway"].to_list(),
-                                          links["lat"].to_list(), links["lon"].to_list()):
+    import heapq
+
+    Vertex = tuple
+    cell_of: dict[Vertex, int | None] = {}
+    adj: dict[Vertex, list[tuple[Vertex, float, float]]] = {}
+    # For the dead-end rules: where each way's end node is, and the slowest
+    # class that ends there (a major road only if every way there is one).
+    end_at: dict[Vertex, tuple[float, float]] = {}
+    end_class: dict[Vertex, int] = {}
+
+    def vertex(key: Vertex, lat: float, lon: float) -> Vertex:
+        if key not in cell_of:
+            cell_of[key] = cell_index_at(lat, lon)
+        return key
+
+    def join(a: Vertex, b: Vertex, km: float, minutes: float) -> None:
+        adj.setdefault(a, []).append((b, km, minutes))
+        adj.setdefault(b, []).append((a, km, minutes))
+
+    for way_id, kind, highway, lats, lons in zip(
+            links["way_id"].to_list(), links["kind"].to_list(), links["highway"].to_list(),
+            links["lat"].to_list(), links["lon"].to_list()):
         cls = SPAN_ROAD_CLASS.get(highway) if kind == "highway" else None
         if cls is None:
             continue
         speed = float(speed_kmh_by_class[cls])
-        last, last_km, km, gap = None, 0.0, 0.0, False
-        for (la1, lo1), (la2, lo2) in zip(zip(lats, lons), zip(lats[1:], lons[1:])):
+        for s, ((la1, lo1), (la2, lo2)) in enumerate(zip(zip(lats, lons), zip(lats[1:], lons[1:]))):
             if abs(lo2 - lo1) > 180.0:
-                last, gap = None, False
                 continue
             seg = _haversine_km(la1, lo1, la2, lo2)
             n = max(1, math.ceil(seg / LINK_STEP_KM))
-            for k, t in enumerate(np.linspace(0.0, 1.0, n + 1)):
-                here = cell_index_at(la1 + (la2 - la1) * t, lo1 + (lo2 - lo1) * t)
-                at_km = km + seg * t
-                if here is None:
-                    gap = gap or last is not None
+            prev = vertex(("n", round(la1, 7), round(lo1, 7)), la1, lo1)
+            if s == 0:
+                end_at[prev] = (la1, lo1)
+                end_class[prev] = max(end_class.get(prev, 0), cls)
+            for k in range(1, n + 1):
+                t = k / n
+                if k == n:
+                    here = vertex(("n", round(la2, 7), round(lo2, 7)), la2, lo2)
+                    if s == len(lats) - 2:
+                        end_at[here] = (la2, lo2)
+                        end_class[here] = max(end_class.get(here, 0), cls)
+                else:
+                    la, lo = la1 + (la2 - la1) * t, lo1 + (lo2 - lo1) * t
+                    here = vertex(("s", way_id, s, k), la, lo)
+                step = seg / n
+                join(prev, here, step, 60.0 * step / speed)
+                prev = here
+
+    _continue_dead_ends(cell_of, adj, end_at, end_class, cell_index_at, speed_kmh_by_class,
+                        join)
+
+    out: dict[tuple[int, int], float] = {}
+    # From every land vertex that touches water, walk through water only.
+    for start, start_cell in cell_of.items():
+        if start_cell is None or not any(cell_of[w] is None for w, _, _ in adj.get(start, ())):
+            continue
+        best = {start: 0.0}
+        heap = [(0.0, 0.0, start)]
+        while heap:
+            minutes, km, v = heapq.heappop(heap)
+            if minutes > best.get(v, math.inf):
+                continue
+            for w, step_km, step_min in adj.get(v, ()):
+                nkm, nmin = km + step_km, minutes + step_min
+                if nkm > MAX_SPAN_KM or nmin >= best.get(w, math.inf):
                     continue
-                if gap and last is not None and here != last and at_km - last_km <= MAX_SPAN_KM:
-                    minutes = 60.0 * (at_km - last_km) / speed
-                    for pair in ((last, here), (here, last)):
-                        out[pair] = min(out.get(pair, math.inf), minutes)
-                last, last_km, gap = here, at_km, False
-            km += seg
+                best[w] = nmin
+                target = cell_of[w]
+                if target is None:
+                    heapq.heappush(heap, (nmin, nkm, w))
+                elif target != start_cell and v != start:
+                    # Arrived on land after crossing water: a span. (`v !=
+                    # start` is belt and braces: a direct land-to-land step is
+                    # what linked_pairs records, and split_spans would turn
+                    # such a pair into a protected adjacency anyway -- dropping
+                    # it was measured an equivalent mutation.)
+                    for pair in ((start_cell, target), (target, start_cell)):
+                        out[pair] = min(out.get(pair, math.inf), nmin)
     return out
+
+
+def _continue_dead_ends(cell_of, adj, end_at, end_class, cell_index_at, speed_kmh_by_class,
+                        join) -> None:
+    """Continue major-road fixed links that dead-end over water (ISLET_MAX_CLASS).
+
+    Landfall: a dead end joins the nearest land cell in the ring around it.
+    Islet: two dead ends within MAX_ISLET_KM join each other. Both are costed
+    as straight lines at the slower class of the two ends.
+    """
+    import h3
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    # `cell_of[v] is None`: an end on land needs nothing continued. Dropping
+    # the test was measured an equivalent mutation -- a land end's extra edge
+    # reaches only land, and the search never walks land to land -- so it is
+    # kept for what it says rather than for anything a test can see.
+    dead = [v for v, (la, lo) in end_at.items()
+            if cell_of[v] is None and len(adj.get(v, ())) == 1
+            and end_class.get(v, 99) <= ISLET_MAX_CLASS]
+    for v in dead:
+        la, lo = end_at[v]
+        best = None
+        for n in h3.grid_ring(h3.latlng_to_cell(la, lo, config.SOLVE_RES), 1):
+            c = cell_index_at(*h3.cell_to_latlng(n))
+            if c is None:
+                continue
+            km = _haversine_km(la, lo, *h3.cell_to_latlng(n))
+            if best is None or km < best[1]:
+                best = (c, km)
+        if best is not None:
+            land = ("land", best[0])
+            cell_of.setdefault(land, best[0])
+            speed = float(speed_kmh_by_class[end_class[v]])
+            join(v, land, best[1], 60.0 * best[1] / speed)
+    if len(dead) < 2:
+        return
+    ll = np.radians(np.array([end_at[v] for v in dead]))
+    xyz = np.column_stack([np.cos(ll[:, 0]) * np.cos(ll[:, 1]),
+                           np.cos(ll[:, 0]) * np.sin(ll[:, 1]), np.sin(ll[:, 0])])
+    chord = 2 * math.sin(MAX_ISLET_KM / 6371.0088 / 2)
+    for i, j in cKDTree(xyz).query_pairs(chord):
+        a, b = dead[i], dead[j]
+        km = _haversine_km(*end_at[a], *end_at[b])
+        speed = float(speed_kmh_by_class[max(end_class[a], end_class[b])])
+        join(a, b, km, 60.0 * km / speed)
