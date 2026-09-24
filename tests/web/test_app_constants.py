@@ -111,7 +111,11 @@ def test_every_index_json_key_the_page_reads_is_written(tmp_path):
     out = tmp_path / "index.json"
     # Every optional argument is passed, so the payload this compares against
     # is the FULL one. Leaving reading_parent_count out would have let the
-    # page read a key write_index can emit and the test never see it.
+    # page read a key write_index can emit and the test never see it. The same
+    # for the keys that depend on files: overrideUrlSuffix is written only when
+    # every origin has its .over.bin, so the one origin here gets one.
+    (tmp_path / "origins").mkdir()
+    (tmp_path / "origins" / "s.over.bin").write_bytes(b"")
     index.write_index([{"slug": "s", "name": "S", "lat": 0.0, "lon": 0.0}], out,
                       hover_cell_count=1, reading_parent_count=1,
                       graph={"rail": True, "ferry": True}, identity=index.build_identity())

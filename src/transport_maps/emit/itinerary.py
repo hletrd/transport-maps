@@ -46,7 +46,9 @@ def arrival_airport_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray)
     return last
 
 
-def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path) -> None:
+def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path, *,
+                    parents: list[str] | None = None, rep: dict[int, int] | None = None,
+                    last: np.ndarray | None = None) -> None:
     """One uint16 airport ordinal per hover cell, in `hover_cells` order.
 
     The ordinal identifies the SAME solver cell the hover time came from
@@ -55,15 +57,19 @@ def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Pat
     different child would caption the number with a route that did not
     produce it.
     """
-    parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
+    if parents is None:
+        parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
 
-    last = arrival_airport_per_node(idx, minutes, predecessors)
+    if last is None:
+        last = arrival_airport_per_node(idx, minutes, predecessors)
     first_arrival = idx.n_cells + len(idx.airports)
 
     from .hover import _representative_children
 
     chosen = np.full(len(parents), NO_AIRPORT, dtype=np.int64)
-    for p, pos in _representative_children(idx, parents, minutes[: idx.n_cells]).items():
+    if rep is None:
+        rep = _representative_children(idx, parents, minutes[: idx.n_cells])
+    for p, pos in rep.items():
         node = last[pos]
         chosen[p] = NO_AIRPORT if node < 0 else node - first_arrival
 

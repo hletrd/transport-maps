@@ -173,3 +173,22 @@ def test_index_json_advertises_only_complete_variants(tmp_path):
     index.write_index(origins, tmp_path / "index.json", modes_detail={})
     got = json.loads((tmp_path / "index.json").read_text())["variants"]
     assert got == [{"exclude": "ferry", "path": "v/no-ferry/", "maxZoom": variants.VARIANT_MAX_ZOOM}]
+
+
+def test_index_json_advertises_the_override_only_when_every_origin_has_one(tmp_path):
+    from transport_maps.emit import index
+
+    origins = [{"slug": s, "name": s, "lat": 0.0, "lon": 0.0} for s in ("a", "b")]
+    (tmp_path / "origins").mkdir()
+    (tmp_path / "origins" / "a.over.bin").write_bytes(b"")
+    index.write_index(origins, tmp_path / "index.json", modes_detail={})
+    assert "overrideUrlSuffix" not in json.loads((tmp_path / "index.json").read_text())
+    (tmp_path / "origins" / "b.over.bin").write_bytes(b"")
+    index.write_index(origins, tmp_path / "index.json", modes_detail={})
+    assert json.loads((tmp_path / "index.json").read_text())["overrideUrlSuffix"] == ".over.bin"
+
+
+def test_a_variant_writes_no_override(monkeypatch, tmp_path):
+    """The override refers to reading-tier slots; a variant ships no reading tier."""
+    written, _ = _run_variant(monkeypatch, tmp_path, "air")
+    assert not [p for p in written if p.name.endswith(".over.bin")]

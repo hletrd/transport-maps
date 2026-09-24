@@ -134,19 +134,27 @@ def _stub_pipeline(monkeypatch, written, coverages):
         written.append(out)
 
     monkeypatch.setattr(cli.tiles, "write_pmtiles", lambda fc, out, **kw: _fake_write(out))
-    monkeypatch.setattr(cli.hover, "write_hover", lambda idx, minutes, out: _fake_write(out))
+    monkeypatch.setattr(cli.hover, "write_hover", lambda idx, minutes, out, **kw: _fake_write(out))
+    # The per-origin products every writer now shares (cli._solve_one): on a
+    # one-cell fake index they are stand-ins, like the arrays above.
+    monkeypatch.setattr(cli.hover, "hover_groups", lambda idx, parents: None)
+    monkeypatch.setattr(cli.hover, "base_hover_index", lambda idx, parents: np.zeros(1, np.int64))
+    monkeypatch.setattr(cli.hover, "representative_array", lambda groups, minutes: np.zeros(1, np.int64))
+    monkeypatch.setattr(cli.itinerary, "arrival_airport_per_node", lambda idx, m, p: np.full(1, -1))
+    monkeypatch.setattr(cli.modes, "mode_minutes_per_node", lambda idx, m, p, **kw: np.zeros((1, 6)))
+    monkeypatch.setattr(cli.override, "write_override", lambda *a: _fake_write(a[-1]))
     monkeypatch.setattr(
         cli.routes_json, "write_routes", lambda idx, minutes, pred, out: _fake_write(out)
     )
     monkeypatch.setattr(
-        cli.itinerary, "write_itinerary", lambda idx, minutes, pred, out: _fake_write(out)
+        cli.itinerary, "write_itinerary", lambda idx, minutes, pred, out, **kw: _fake_write(out)
     )
     monkeypatch.setattr(
         cli.modes, "write_modes", lambda idx, minutes, pred, out, **kw: _fake_write(out)
     )
     monkeypatch.setattr(
         cli.rail_detail, "write_rail_detail",
-        lambda idx, minutes, pred, routes, out_bin, out_json: (_fake_write(out_bin), _fake_write(out_json))
+        lambda idx, minutes, pred, routes, out_bin, out_json, **kw: (_fake_write(out_bin), _fake_write(out_json))
     )
 
 
@@ -168,7 +176,7 @@ def test_index_json_is_not_written_when_an_origin_aborts_partway(monkeypatch, tm
         cli._build_all()
 
     assert index_calls == []  # never reached: aborted before the write
-    assert len(written) == 7  # "first"'s pmtiles/hover/routes/air/modes/rail.bin/rail.json
+    assert len(written) == 8  # "first"'s pmtiles/hover/over/routes/air/modes/rail.bin/rail.json
 
 
 def test_index_json_is_written_once_every_origin_succeeds(monkeypatch, tmp_path):
@@ -188,7 +196,7 @@ def test_index_json_is_written_once_every_origin_succeeds(monkeypatch, tmp_path)
 
     assert len(index_calls) == 1
     assert [o["slug"] for o in index_calls[0]] == ["first", "second"]
-    assert len(written) == 14  # both origins' seven files each
+    assert len(written) == 16  # both origins' eight files each (the .over.bin included)
 
 
 def test_a_limited_build_does_not_rewrite_index_json(monkeypatch, tmp_path):
@@ -343,7 +351,7 @@ def test_only_builds_the_named_origins_through_the_same_path_and_never_publishes
     cli._build_all(only=["second"])
     assert wrote_index == [], "a partial build rewrote index.json"
     assert {p.name.split(".")[0] for p in written} == {"second"}
-    assert len(written) == 7
+    assert len(written) == 8  # one origin's eight files, the .over.bin included
 
     with pytest.raises(SystemExit, match="not in origins.toml"):
         cli._build_all(only=["nowhere"])

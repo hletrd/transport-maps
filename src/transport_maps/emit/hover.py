@@ -100,7 +100,62 @@ def hover_cells(idx) -> list[str]:
     return sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
 
 
-def _representative_children(idx, parents: list[str], cell_minutes: np.ndarray) -> dict[int, int]:
+@dataclass(frozen=True)
+class HoverGroups:
+    """Which res-4 hover parent every solver cell belongs to, and each
+    parent's centre cell -- the half of `_representative_children` that does
+    not depend on the origin, so a build computes it ONCE.
+
+    It used to be recomputed from scratch four times per origin (hover,
+    itinerary, modes, rail detail), each a Python loop over 13.8 million cells
+    calling h3 on every one.
+    """
+
+    parent_of_cell: np.ndarray   # (n_cells,) index into `parents`
+    centre: np.ndarray           # (n_parents,) centre cell's position, or -1
+
+
+def hover_groups(idx, parents: list[str]) -> HoverGroups:
+    position = {cell: i for i, cell in enumerate(parents)}
+    cell_pos = {c: i for i, c in enumerate(idx.cells)}
+    parent_of_cell = np.fromiter(
+        (position[h3.cell_to_parent(cell, config.HOVER_RES)] for cell in idx.cells),
+        dtype=np.int64, count=len(idx.cells))
+    centre = np.full(len(parents), -1, dtype=np.int64)
+    for p, parent in enumerate(parents):
+        pos = cell_pos.get(h3.cell_to_center_child(parent, config.SOLVE_RES))
+        if pos is None:
+            # The base cell at the centre was split: take its own centre child.
+            pos = cell_pos.get(h3.cell_to_center_child(parent, config.FINE_RES))
+        if pos is not None:
+            centre[p] = pos
+    return HoverGroups(parent_of_cell, centre)
+
+
+def base_hover_index(idx, parents: list[str]) -> np.ndarray:
+    """(n_base_cells,) each base cell's position in `parents`, or -1."""
+    position = {cell: i for i, cell in enumerate(parents)}
+    base = getattr(idx, "base_cells", None) or idx.cells
+    return np.fromiter((position.get(h3.cell_to_parent(c, config.HOVER_RES), -1) for c in base),
+                       dtype=np.int64, count=len(base))
+
+
+def representative_array(groups: HoverGroups, cell_minutes: np.ndarray) -> np.ndarray:
+    """(n_parents,) the solver cell each parent reports: its centre where that
+    is on land, else its fastest child, ties to the lowest position -- exactly
+    `_representative_children`, vectorised."""
+    n = len(groups.parent_of_cell)
+    order = np.lexsort((np.arange(n), np.asarray(cell_minutes[:n], dtype=float),
+                        groups.parent_of_cell))
+    first = np.ones(n, dtype=bool)
+    first[1:] = groups.parent_of_cell[order[1:]] != groups.parent_of_cell[order[:-1]]
+    fastest = np.full(len(groups.centre), -1, dtype=np.int64)
+    fastest[groups.parent_of_cell[order[first]]] = order[first]
+    return np.where(groups.centre >= 0, groups.centre, fastest)
+
+
+def _representative_children(idx, parents: list[str], cell_minutes: np.ndarray,
+                             groups: HoverGroups | None = None) -> dict[int, int]:
     """For each res-4 parent, the solver cell the readout should report.
 
     The CENTRE child where it is on land, else the fastest child. Taking the
@@ -108,7 +163,19 @@ def _representative_children(idx, parents: list[str], cell_minutes: np.ndarray) 
     which read South Korean times ten kilometres inside North Korea and put
     Johor Bahru at 21 minutes from Singapore by borrowing the Singapore side
     of the strait. The centre child is what a pointer at that spot means.
+
+    Pass `groups` (hover_groups, built once per build) to skip recomputing the
+    origin-independent half; the answer is identical either way.
     """
+    if groups is not None:
+        rep = representative_array(groups, cell_minutes)
+        return {p: int(pos) for p, pos in enumerate(rep) if pos >= 0}
+    return _representative_children_slow(idx, parents, cell_minutes)
+
+
+def _representative_children_slow(idx, parents: list[str], cell_minutes: np.ndarray) -> dict[int, int]:
+    """The original loop, kept as the oracle the vectorised form is tested
+    against (tests/emit/test_hover_groups.py)."""
     position = {cell: i for i, cell in enumerate(parents)}
     cell_pos = {c: i for i, c in enumerate(idx.cells)}
     picked: dict[int, int] = {}
@@ -135,11 +202,14 @@ def _encode(values: np.ndarray) -> np.ndarray:
     ).astype("<u2")
 
 
-def write_hover(idx, cell_minutes: np.ndarray, out: Path) -> None:
-    parents = hover_cells(idx)
+def write_hover(idx, cell_minutes: np.ndarray, out: Path, *,
+                parents: list[str] | None = None, rep: dict[int, int] | None = None) -> None:
+    """`parents` and `rep` let a build pass what it computed once per origin
+    (cli._solve_one); without them they are derived here, identically."""
+    parents = parents if parents is not None else hover_cells(idx)
 
     best = np.full(len(parents), np.inf, dtype=np.float64)
-    picked = _representative_children(idx, parents, cell_minutes)
+    picked = rep if rep is not None else _representative_children(idx, parents, cell_minutes)
     for p, pos in picked.items():
         best[p] = cell_minutes[pos]
 

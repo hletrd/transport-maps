@@ -28,6 +28,7 @@ from transport_maps.emit import (
     index,
     itinerary,
     modes,
+    override,
     rail_detail,
     routes_json,
     tiles,
@@ -321,16 +322,31 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     out.mkdir(parents=True, exist_ok=True)
     tiles.write_pmtiles(fc, out / f"{slug}.pmtiles", workers=shared.get("workers"),
                         max_zoom=variants.VARIANT_MAX_ZOOM if slim else tiles.MAX_ZOOM)
-    hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
+    # Computed ONCE per origin and handed to every writer below. Each used to
+    # derive its own -- the representative child four times over, each a
+    # Python loop over 13.8 million cells -- and the override needs all three.
+    parents = shared["hover_parents"]
+    rep_arr = hover.representative_array(shared["hover_groups"], minutes[: idx.n_cells])
+    rep = {p: int(v) for p, v in enumerate(rep_arr) if v >= 0}
+    last = itinerary.arrival_airport_per_node(idx, minutes, predecessors)
+    acc = modes.mode_minutes_per_node(idx, minutes, predecessors, cell_class=shared["cell_class"])
+
+    hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin", parents=parents, rep=rep)
     if not slim:
         hover.write_reading(idx, minutes[: idx.n_cells], out / f"{slug}.r6.bin",
                             layout=shared["reading"])
+        # The route behind the fine reading wherever it differs from the
+        # coarse cell's -- only where there IS a fine reading to go with it.
+        override.write_override(idx, last, acc, rep_arr, shared["base_hover"],
+                                shared["reading"], out / f"{slug}.over.bin")
     routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
-    itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
+    itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin",
+                              parents=parents, rep=rep, last=last)
     modes.write_modes(idx, minutes, predecessors, out / f"{slug}.modes.bin",
-                      cell_class=shared["cell_class"])
+                      cell_class=shared["cell_class"], parents=parents, rep=rep, acc=acc)
     rail_detail.write_rail_detail(idx, minutes, predecessors, shared.get("rail_tables"),
-                                  out / f"{slug}.rail.bin", out / f"{slug}.rail.json")
+                                  out / f"{slug}.rail.bin", out / f"{slug}.rail.json",
+                                  parents=parents, rep=rep)
 
     size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
     return f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}"
@@ -463,6 +479,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     cell_class = ground.cell_class(idx)
     # The render grid (land + sea fringe, neighbour table) is the same for
     # every origin; computed once here, inherited copy-on-write.
+    hover_parents = hover.hover_cells(idx)
     shared = {"country": country, "zone": zone, "cell_class": cell_class,
               # Base-grid rings for the zoom <= 6 levels, raw adjacency of the
               # native (mixed-resolution) cells for the finest level.
@@ -477,6 +494,12 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
               # cannot change between origins.
               "reading": hover.reading_layout(idx),
               "variant": exclude,
+              # The origin-independent half of the hover representative, and
+              # each base cell's hover parent (for the override): once here,
+              # not once per writer per origin.
+              "hover_parents": hover_parents,
+              "hover_groups": hover.hover_groups(idx, hover_parents),
+              "base_hover": hover.base_hover_index(idx, hover_parents),
               "out_root": variants.variant_dir(config.DIST, exclude)}
 
     # hover_cells.bin depends only on the graph, not on any origin, so it is

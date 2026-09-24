@@ -324,12 +324,15 @@ def drop_false_via(line: str, path_stations: set[str], complete: bool) -> str:
 
 
 def write_rail_detail(idx, minutes: np.ndarray, predecessors: np.ndarray,
-                      tables: dict | None, out_bin: Path, out_json: Path) -> None:
+                      tables: dict | None, out_bin: Path, out_json: Path, *,
+                      parents: list[str] | None = None,
+                      rep: dict[int, int] | None = None) -> None:
     """`.rail.bin`: uint16 per hover cell into `.rail.json`'s station table.
     `tables` is `lookup_tables(routes)`; None or empty means no rail."""
     from .hover import _representative_children
 
-    parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
+    if parents is None:
+        parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
     chosen = np.full(len(parents), NO_RAIL, dtype=np.int64)
     table: list[list] = []
     # Operator names repeat across nearly every row -- one railway runs hundreds
@@ -346,7 +349,9 @@ def write_rail_detail(idx, minutes: np.ndarray, predecessors: np.ndarray,
         lines, stop_names = tables["lines"], tables["stop_names"]
         route_label = tables.get("route_label") or {}
         index: dict[tuple, int] = {}
-        for p, pos in _representative_children(idx, parents, minutes[: idx.n_cells]).items():
+        if rep is None:
+            rep = _representative_children(idx, parents, minutes[: idx.n_cells])
+        for p, pos in rep.items():
             node = int(last[pos])
             if node < 0:
                 continue

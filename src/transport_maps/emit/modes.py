@@ -82,20 +82,26 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
 
 
 def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path,
-                cell_class: np.ndarray | None = None) -> None:
+                cell_class: np.ndarray | None = None, *,
+                parents: list[str] | None = None, rep: dict[int, int] | None = None,
+                acc: np.ndarray | None = None) -> None:
     """One uint16 channel per mode per hover cell, in `hover_cells` order.
 
     Taken from the same solver cell the hover time came from
     (hover._representative_children), so the breakdown describes the journey
     the number refers to rather than a different one.
     """
-    parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
+    if parents is None:
+        parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})
 
-    acc = mode_minutes_per_node(idx, minutes, predecessors, cell_class=cell_class)
+    if acc is None:
+        acc = mode_minutes_per_node(idx, minutes, predecessors, cell_class=cell_class)
     from .hover import _representative_children
 
     picked = np.zeros((len(parents), len(CHANNELS)), dtype=np.float64)
-    for p, pos in _representative_children(idx, parents, minutes[: idx.n_cells]).items():
+    if rep is None:
+        rep = _representative_children(idx, parents, minutes[: idx.n_cells])
+    for p, pos in rep.items():
         picked[p] = acc[pos]
 
     encoded = np.clip(np.nan_to_num(picked, posinf=0.0), 0, MAX_MINUTES).astype("<u2")

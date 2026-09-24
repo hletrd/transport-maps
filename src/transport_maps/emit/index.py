@@ -370,6 +370,12 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
             for o in origins
         ],
     }
+    # The route behind the fine reading (emit/override.py), advertised only
+    # when EVERY origin has it: a dist/ from before the override existed has
+    # none, and the page must not fetch a 404 per origin switch for it.
+    origins_dir = Path(out).parent / "origins"
+    if origins and all((origins_dir / f"{o['slug']}.over.bin").exists() for o in origins):
+        payload["overrideUrlSuffix"] = ".over.bin"
     # Exclusion variants ("avoid flights" and the rest) complete for EVERY
     # origin listed above, and only those: offering one built for fewer cities
     # would load bands for some and 404 for the rest (transport_maps.variants).
