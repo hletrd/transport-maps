@@ -294,6 +294,19 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
                                f"are not at resolution {want_res}")
 
     widths = {".bin": 2, ".air.bin": 2, ".modes.bin": 2 * n_channels}
+    # Every exclusion variant index.json offers must hold every listed origin's
+    # files, at the full set's widths: choosing one that does not would load
+    # bands for some cities and 404 for the rest (transport_maps.variants).
+    for v in idx.get("variants") or []:
+        vdir = dist / v.get("path", "") / "origins"
+        for o in listed:
+            for suffix in (".pmtiles", ".json", *widths):
+                p = vdir / f"{o['slug']}{suffix}"
+                if not p.exists():
+                    bad.append(f"variant no-{v.get('exclude')}: {p.name} missing")
+                elif suffix in widths and p.stat().st_size != n_cells * widths[suffix]:
+                    bad.append(f"variant no-{v.get('exclude')}: {p.name} has "
+                               f"{p.stat().st_size // widths[suffix]} entries, expected {n_cells}")
     n_nodes: dict[int, list[str]] = {}
     rail_advertised = bool(idx.get("railDetail"))
     for o in listed:
@@ -330,6 +343,17 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
                     bad.append(f"{s}.rail.json has no stations list (the page indexes it)")
             except (OSError, ValueError):
                 bad.append(f"{s}.rail.json is unreadable")
+        # The fine-cell route (emit/override.py): advertised means present for
+        # every origin, and whole 4+2+2*channels-byte entries -- the page
+        # refuses anything else, which would silently lose the route detail.
+        if idx.get("overrideUrlSuffix"):
+            over = base.with_name(s + idx["overrideUrlSuffix"])
+            entry = 4 + 2 + 2 * n_channels
+            if not over.exists():
+                bad.append(f"{s}{idx['overrideUrlSuffix']} missing although index.json advertises it")
+            elif over.stat().st_size % entry:
+                bad.append(f"{s}{idx['overrideUrlSuffix']} is {over.stat().st_size} bytes, "
+                           f"not whole {entry}-byte entries")
         routes = base.with_name(s + ".json")
         if not routes.exists():
             bad.append(f"{s}.json missing (the route panel walks it)")

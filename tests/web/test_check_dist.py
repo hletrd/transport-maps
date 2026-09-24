@@ -580,3 +580,36 @@ def test_the_required_extras_list_still_names_water(check_dist):
         "the shore silently goes back to being hex-shaped")
     for name in ("places.json", "airports.json", "borders.json"):
         assert name in check_dist.REQUIRED_EXTRAS, f"{name} left REQUIRED_EXTRAS"
+
+
+def _advertise(d, **extra):
+    idx = json.loads((d / "index.json").read_text())
+    idx.update(extra)
+    (d / "index.json").write_text(json.dumps(idx))
+
+
+def test_an_advertised_override_must_exist_and_be_whole_entries(check_dist, tmp_path):
+    d = _good_dist(tmp_path)
+    _advertise(d, overrideUrlSuffix=".over.bin")
+    assert any("seoul.over.bin missing" in m for m in check_dist.check_dist(d))
+    entry = 4 + 2 + 2 * len(CHANNELS)
+    (d / "origins" / "seoul.over.bin").write_bytes(b"\0" * (entry * 3 - 1))
+    assert any("not whole" in m for m in check_dist.check_dist(d))
+    (d / "origins" / "seoul.over.bin").write_bytes(b"\0" * entry * 3)
+    assert check_dist.check_dist(d) == []
+
+
+def test_an_offered_variant_must_hold_every_origins_files(check_dist, tmp_path):
+    d = _good_dist(tmp_path)
+    _advertise(d, variants=[{"exclude": "air", "path": "v/no-air/", "maxZoom": 6}])
+    assert any("variant no-air: seoul.pmtiles missing" in m for m in check_dist.check_dist(d))
+    vo = d / "v" / "no-air" / "origins"
+    vo.mkdir(parents=True)
+    for suffix in (".bin", ".air.bin"):
+        (vo / f"seoul{suffix}").write_bytes(b"\0" * 2 * N_CELLS)
+    (vo / "seoul.modes.bin").write_bytes(b"\0" * 2 * len(CHANNELS) * (N_CELLS - 1))
+    (vo / "seoul.json").write_text("{}")
+    _pmtiles(vo / "seoul.pmtiles")
+    assert any("seoul.modes.bin has" in m for m in check_dist.check_dist(d))
+    (vo / "seoul.modes.bin").write_bytes(b"\0" * 2 * len(CHANNELS) * N_CELLS)
+    assert check_dist.check_dist(d) == []
