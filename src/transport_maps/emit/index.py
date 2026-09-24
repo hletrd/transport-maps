@@ -370,6 +370,15 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
             for o in origins
         ],
     }
+    # Exclusion variants ("avoid flights" and the rest) complete for EVERY
+    # origin listed above, and only those: offering one built for fewer cities
+    # would load bands for some and 404 for the rest (transport_maps.variants).
+    from transport_maps import variants
+
+    payload["variants"] = [
+        {"exclude": mode, "path": f"v/no-{mode}/", "maxZoom": variants.VARIANT_MAX_ZOOM}
+        for mode in variants.complete_variants(Path(out).parent,
+                                               [o["slug"] for o in origins])]
     if hover_cell_count is not None:
         payload["hoverCellCount"] = int(hover_cell_count)
     if reading_parent_count is not None:

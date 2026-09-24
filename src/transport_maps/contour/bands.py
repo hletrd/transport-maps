@@ -287,10 +287,17 @@ def _fill_rings(minutes: np.ndarray, nb: np.ndarray, ring: np.ndarray) -> None:
         minutes[sel] = np.where(nbs >= 0, minutes[np.maximum(nbs, 0)], np.inf).min(axis=1)
 
 
-def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=None) -> dict:
+def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=None,
+                            skip_native: bool = False) -> dict:
     """GeoJSON FeatureCollection: one feature per occupied band per level of
     detail (see LODS), each level in ascending band order with unreachable
     land last.
+
+    `skip_native` drops the zoom-7+ level, the mixed-resolution one. It is
+    three quarters of every archive (Seoul: 22.1 of 29.4 MB at z7-z8), and the
+    exclusion variants ("avoid flights" and the rest) are built without it so
+    three of them fit on the web host beside the full set; the page enlarges
+    their zoom-6 tiles instead.
 
     `grid` is `contour.grid.universe(idx.base_cells)` and `native` is
     `contour.grid.native_edges(idx)`; the build computes both once in the
@@ -325,7 +332,8 @@ def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=Non
     features: list[dict] = []
     for lod in LODS:
         if lod["kind"] == "native":
-            features += _native_features(lod, idx, band, native)
+            if not skip_native:
+                features += _native_features(lod, idx, band, native)
         elif lod["kind"] == "base":
             features += _base_features(lod, cells6_arr, nb6, ring6, base_band)
         else:

@@ -118,7 +118,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
         cli.validate, "check_monotonic_ground", lambda idx, minutes, speeds, **kw: None
     )
     monkeypatch.setattr(cli.bands, "band_feature_collection",
-                        lambda idx, minutes, grid=None, native=None: {"features": []})
+                        lambda idx, minutes, grid=None, native=None, **kw: {"features": []})
     monkeypatch.setattr(cli.grid, "native_edges",
                         lambda idx: (np.zeros(0, np.int32), np.zeros(0, np.int32), np.ones(1, bool)))
     monkeypatch.setattr(cli.validate, "check_bands_cover", lambda *a, **k: None)

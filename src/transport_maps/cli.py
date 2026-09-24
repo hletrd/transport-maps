@@ -21,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
-from transport_maps import _io, config, validate
+from transport_maps import _io, config, validate, variants
 from transport_maps.contour import bands, grid
 from transport_maps.emit import (
     hover,
@@ -293,23 +293,38 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
         raise GateFailure(f"{slug}: {exc}") from exc
     minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
 
+    variant = shared.get("variant")
     coverage = validate.check_coverage(minutes, idx)
-    if coverage < validate.MIN_COVERAGE:
+    # An exclusion variant has no coverage floor to speak of: without flights
+    # Honolulu reaches Hawaii and nothing else, correctly. What it must still
+    # do is reach SOMETHING -- a solve that reached no land at all is broken
+    # whichever modes it was allowed.
+    floor = validate.MIN_COVERAGE if variant is None else 0.0
+    if coverage < floor or (variant is not None and coverage == 0.0):
         raise GateFailure(
-            f"{slug}: coverage {coverage:.1%} below {validate.MIN_COVERAGE:.0%}"
+            f"{slug}: coverage {coverage:.1%} below {floor:.0%}"
+            + (f" in the no-{variant} variant" if variant else "")
         )
     validate.check_monotonic_ground(idx, minutes, speeds,
                                     country=shared["country"], zone=shared["zone"])
 
+    # The variants are built without the zoom-7+ level and without the res-6
+    # reading tier: 36 of every origin's 38.6 MB, and three full sets would
+    # not fit on the web host beside the real one (variants.py).
+    slim = variant is not None
     fc = bands.band_feature_collection(idx, minutes[: idx.n_cells],
-                                       grid=shared["grid"], native=shared["native"])
-    validate.check_bands_cover(idx, shared["grid"], shared["native"], fc)
+                                       grid=shared["grid"], native=shared["native"],
+                                       skip_native=slim)
+    validate.check_bands_cover(idx, shared["grid"], shared["native"], fc, skip_native=slim)
 
-    out = config.DIST / "origins"
-    tiles.write_pmtiles(fc, out / f"{slug}.pmtiles", workers=shared.get("workers"))
+    out = shared.get("out_root", config.DIST) / "origins"
+    out.mkdir(parents=True, exist_ok=True)
+    tiles.write_pmtiles(fc, out / f"{slug}.pmtiles", workers=shared.get("workers"),
+                        max_zoom=variants.VARIANT_MAX_ZOOM if slim else tiles.MAX_ZOOM)
     hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin")
-    hover.write_reading(idx, minutes[: idx.n_cells], out / f"{slug}.r6.bin",
-                        layout=shared["reading"])
+    if not slim:
+        hover.write_reading(idx, minutes[: idx.n_cells], out / f"{slug}.r6.bin",
+                            layout=shared["reading"])
     routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
     itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin")
     modes.write_modes(idx, minutes, predecessors, out / f"{slug}.modes.bin",
@@ -366,7 +381,8 @@ def _load_ferries():
     return links
 
 
-def _build_all(limit: int | None = None, only: list[str] | None = None) -> None:
+def _build_all(limit: int | None = None, only: list[str] | None = None,
+               exclude: str | None = None) -> None:
     """Build the graph once, then solve, validate and emit every origin.
 
     Aborts on the first failing gate -- a partially written dist/ is worse
@@ -385,12 +401,13 @@ def _build_all(limit: int | None = None, only: list[str] | None = None) -> None:
                 "%d other build-all process(es) are running on this machine (pids %s); "
                 "if they are orphans of a killed build, reap them -- they hold graph memory",
                 len(others), ", ".join(map(str, others)))
-        _build_all_locked(limit, only)
+        _build_all_locked(limit, only, exclude)
     finally:
         lock.unlink(missing_ok=True)
 
 
-def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
+def _build_all_locked(limit: int | None, only: list[str] | None = None,
+                      exclude: str | None = None) -> None:
     started = datetime.now(UTC)
     # Sampled here, not at the end. index.json is written as the last statement
     # of this function, and build_identity()/mode_detail() read the git head,
@@ -424,11 +441,15 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
         _preflight_origins(idx, origins)
     except GateFailure as exc:
         raise SystemExit(str(exc)) from exc
-    csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links)
+    csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links,
+                            exclude=exclude)
     # Graph-level gate: runs once, before any origin is solved, because a
     # disconnected airport is a property of the network rather than of a
-    # particular origin -- and per-origin coverage cannot see it.
-    validate.check_airport_connectivity(idx, csr)
+    # particular origin -- and per-origin coverage cannot see it. Without
+    # flights every airport off the largest landmass is "disconnected" by
+    # design, so the no-air variant is the one graph it cannot judge.
+    if exclude != "air":
+        validate.check_airport_connectivity(idx, csr)
     # Computed once and reused by check_monotonic_ground below: the ground
     # speed grid does not change between origins, and re-deriving it per
     # origin cost ~4.8s x every origin (553 today) for the same value.
@@ -454,18 +475,24 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
               # and inherited copy-on-write by the pool: per origin it would be
               # 4,091,715 cells of index arithmetic x 553, for an answer that
               # cannot change between origins.
-              "reading": hover.reading_layout(idx)}
+              "reading": hover.reading_layout(idx),
+              "variant": exclude,
+              "out_root": variants.variant_dir(config.DIST, exclude)}
 
     # hover_cells.bin depends only on the graph, not on any origin, so it is
     # safe to write eagerly. index.json is different: it lists the origins the
     # frontend expects to find files for, so it must wait until every origin
     # below has actually succeeded -- writing it first would leave it naming
     # origins whose per-origin files an aborted run never produced.
-    index.write_hover_cells(idx, config.DIST / "hover_cells.bin")
+    # A variant shares these with the full set -- same cells, same order --
+    # and must not rewrite files the live full set is being served from.
+    if exclude is None:
+        index.write_hover_cells(idx, config.DIST / "hover_cells.bin")
     # Same reasoning: the block ordering depends only on the graph, and it is
     # ONE file for all 553 origins rather than one per origin, because the set
     # of res-3 parents holding land does not vary with the departure city.
-    index.write_reading_parents(idx, config.DIST / "reading_parents.bin")
+    if exclude is None:
+        index.write_reading_parents(idx, config.DIST / "reading_parents.bin")
 
     print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}")
 
@@ -507,11 +534,18 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None) -> None:
     # `origins` can be empty (`--limit 0`), and a LOG LINE must never be able
     # to fail a build that has already succeeded -- which an IndexError here
     # would do, at the last statement before index.json is written.
-    if origins:
+    if origins and exclude is None:
         _log_reading_cost(config.DIST / "origins" / f"{origins[0]['slug']}.r6.bin")
 
     if partial:
         print("partial build (--limit / --only): index.json left untouched")
+        return
+    if exclude is not None:
+        # Never index.json: that describes the full set. The marker is what
+        # `reindex` reads to decide the variant is complete enough to offer.
+        variants.write_marker(variants.variant_dir(config.DIST, exclude), exclude,
+                              [o["slug"] for o in origins], identity)
+        print(f"variant no-{exclude} complete: {len(origins)} origins")
         return
     index.write_index(origins, config.DIST / "index.json",
                       hover_cell_count=len(hover.hover_cells(idx)),
@@ -770,6 +804,13 @@ def main() -> None:
              "index.json is left untouched, so the site does not advertise them)",
     )
     build_all.add_argument(
+        "--exclude",
+        choices=variants.EXCLUDABLE,
+        default=None,
+        help="build the exclusion variant that never uses this mode, into "
+             "dist/v/no-<mode>/ (no zoom-7+ tiles, no res-6 reading tier)",
+    )
+    build_all.add_argument(
         "--only",
         type=_slug_list,
         default=None,
@@ -791,7 +832,7 @@ def main() -> None:
     config.ensure_dirs()
 
     if args.command == "build-all":
-        _build_all(limit=args.limit, only=args.only)
+        _build_all(limit=args.limit, only=args.only, exclude=args.exclude)
     elif args.command == "reindex":
         _reindex()
 

@@ -61,7 +61,8 @@ COVER_SAMPLE_CELLS = 20_000
 
 
 def check_bands_cover(idx, grid, native, feature_collection: dict,
-                      samples: int = COVER_SAMPLE_CELLS, seed: int = 0) -> None:
+                      samples: int = COVER_SAMPLE_CELLS, seed: int = 0,
+                      skip_native: bool = False) -> None:
     """Every interior hex vertex must lie inside at least one emitted band,
     at every level of detail.
 
@@ -78,6 +79,11 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
     _rows, _cols, complete = native
     for i, lod in enumerate(bands.LODS):
         if lod["kind"] == "native":
+            # A variant built without this level (bands.band_feature_collection
+            # skip_native) has nothing here to check -- and must not be judged
+            # as though its missing level were a hole.
+            if skip_native:
+                continue
             cells = list(idx.cells)
             interior = np.flatnonzero(complete)
         else:

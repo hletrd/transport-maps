@@ -70,7 +70,8 @@ def _threads(workers: int | None) -> dict[str, str]:
     return {"TIPPECANOE_MAX_THREADS": str(max(1, cores // workers))}
 
 
-def write_pmtiles(feature_collection: dict, out: Path, *, workers: int | None = None) -> None:
+def write_pmtiles(feature_collection: dict, out: Path, *, workers: int | None = None,
+                  max_zoom: int = MAX_ZOOM) -> None:
     if shutil.which("tippecanoe") is None:
         raise RuntimeError("tippecanoe not on PATH; run: brew install tippecanoe")
 
@@ -91,7 +92,7 @@ def write_pmtiles(feature_collection: dict, out: Path, *, workers: int | None = 
             "tippecanoe",
             "-o", staged.name, "--force",
             "-l", LAYER, "-n", out.stem, "-N", f"{out.stem} travel-time bands",
-            "-Z", str(MIN_ZOOM), "-z", str(MAX_ZOOM),
+            "-Z", str(MIN_ZOOM), "-z", str(max_zoom),
             # Tippecanoe simplifies in TILE space, so its tolerance scales with
             # zoom and cannot pull a rounded corner back onto a hex vertex the
             # way a fixed degree tolerance does. This is the right knob for

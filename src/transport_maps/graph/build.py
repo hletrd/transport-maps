@@ -426,15 +426,24 @@ def build_graph(
     unknown_airport_pairs: list[tuple[str, str]] | None = None,
     rail_routes=None,
     ferry_links=None,
+    exclude: str | None = None,
 ) -> sp.csr_matrix:
     """Assemble the graph. Pass a list as `rejected_air_pairs` to have it filled
     with the (src, dst, km) triples `is_geographically_plausible` dropped, and
     one as `unknown_airport_pairs` for those naming an airport the node index
     does not hold.
+
+    `exclude` ("air", "ferry" or "rail") builds the graph of an exclusion
+    variant (transport_maps.variants): that mode's edges are simply absent, so
+    every route found is one that never uses it. Nothing else changes -- the
+    same nodes, the same ground, the same calibration -- so a variant differs
+    from the full map only where the excluded mode had been the fastest.
     """
+    if exclude is not None and exclude not in ("air", "ferry", "rail"):
+        raise ValueError(f"cannot exclude {exclude!r}")
     # Checked before any edge is assembled: this is a caller mistake, and
     # discovering it after several minutes of graph building helps nobody.
-    if idx.has_rail and rail_routes is None:
+    if idx.has_rail and rail_routes is None and exclude != "rail":
         raise ValueError(
             "the node index holds stations but no rail_routes frame was passed; "
             "the station nodes would sit unreachable in the graph"
@@ -443,13 +452,14 @@ def build_graph(
     parts = [
         ground.hex_edges(idx),
         _span_edges(idx),
-        _air_edges(idx, rejected_air_pairs, unknown_airport_pairs),
-        _access_edges(idx),
-        _transfer_edges(idx),
     ]
-    if idx.has_rail:
+    if exclude != "air":
+        parts += [_air_edges(idx, rejected_air_pairs, unknown_airport_pairs),
+                  _access_edges(idx),
+                  _transfer_edges(idx)]
+    if idx.has_rail and exclude != "rail":
         parts.append(_rail_edges(idx, rail_routes, rail.load_rail_calibration()))
-    if ferry_links is not None and len(ferry_links):
+    if ferry_links is not None and len(ferry_links) and exclude != "ferry":
         parts.append(_ferry_edges(idx, ferry_links, ferry.load_ferry_calibration()))
     rows = np.concatenate([p[0] for p in parts])
     cols = np.concatenate([p[1] for p in parts])
