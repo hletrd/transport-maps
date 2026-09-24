@@ -148,6 +148,16 @@ def write_reading_parents(idx, out: Path) -> None:
     hover.write_reading_parents(idx, out)
 
 
+def carry_on_saving() -> dict[str, float]:
+    """calibration.toml [carry_on], for the page. Read, never re-typed."""
+    import tomllib
+
+    with open(config.ROOT / "calibration.toml", "rb") as fh:
+        raw = tomllib.load(fh)["carry_on"]
+    return {"departureMin": float(raw["departure_saving_min"]),
+            "arrivalMin": float(raw["arrival_saving_min"])}
+
+
 def mode_detail() -> dict[str, str]:
     """One sentence per surface mode, with the calibrated speeds it uses.
 
@@ -330,6 +340,10 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
         # The page asks for {slug}.rail.bin/.rail.json only when this is true,
         # so an older build is not two 404s per origin switch.
         "railDetail": bool(rail_detail),
+        # Carry-on only: airport minutes a traveller without a checked bag does
+        # not spend, from calibration.toml [carry_on] with its provenance. The
+        # page applies them to the journey on screen, never to the bands.
+        "carryOn": carry_on_saving(),
         "hoverCellsUrl": "hover_cells.bin",
         # --- the reading tier ------------------------------------------------
         # The resolution of the number the page PRINTS, which is the base band

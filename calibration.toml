@@ -106,6 +106,33 @@ large = 30.0
 medium = 22.0
 small = 15.0
 
+# Carry-on only: the airport time a traveller with no checked bag does not
+# spend. NOT applied by the graph -- every map and band assumes a checked bag.
+# The page subtracts it from the journey on screen when the visitor asks for
+# carry-on only, and says that the map underneath still assumes a bag.
+#
+# Published-figure defaults, not fitted; each is derived from ONE source:
+#
+#   departure_saving_min = 15. IATA Global Passenger Survey 2024 (press release
+#     2024-10-30): 70% of passengers want to reach the gate within 30 minutes
+#     with only a carry-on; 74% expect no longer than 45 minutes with a checked
+#     bag. The difference between the two thresholds is taken as the bag-drop
+#     share. They are EXPECTATIONS, not measured times, and are labelled so.
+#     Charged once, at the first departure airport: a bag is checked through a
+#     connection, so connections save nothing.
+#   arrival_saving_min = 10. India's BCAS directive to airlines, February 2024:
+#     first bag on the belt within 10 minutes of engine shutdown, last within
+#     30. A carry-on traveller can leave as the first bags appear (10); a
+#     traveller with a bag waits, on average, for the midpoint (20). Charged
+#     once, at the final arrival airport. One regulator's standard, applied
+#     worldwide: a documented, reproducible error rather than a hidden one.
+#
+# Neither is split by airport size: neither source is, and inventing a split
+# would be exactly the silent tuning this file exists to prevent.
+[carry_on]
+departure_saving_min = 15.0
+arrival_saving_min = 10.0
+
 # Emigration on departure plus immigration on arrival, charged ONCE on a flight
 # edge and only when it leaves the departure airport's immigration zone.
 # Schengen counts as a single zone: an Amsterdam-Milan flight crosses a national
