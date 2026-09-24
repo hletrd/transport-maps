@@ -1013,6 +1013,20 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
         <label for="show-places">Name the place under the cursor</label>
         <input type="checkbox" id="show-places" checked>
       </div>
+      <!-- Hidden until index.json publishes the figures (meta.carryOn). -->
+      <div class="rampwrap" id="carry-wrap" hidden>
+        <div class="row">
+          <label for="carry-on">Carry-on only, no checked bag</label>
+          <input type="checkbox" id="carry-on">
+        </div>
+        <p class="hint" id="carry-note"></p>
+      </div>
+      <!-- Hidden until index.json lists a complete exclusion variant. -->
+      <div class="rampwrap" id="avoid-wrap" hidden>
+        <div class="rowlabel" id="avoid-label">Avoid</div>
+        <div id="avoid" class="oceans" role="radiogroup" aria-labelledby="avoid-label"></div>
+        <p class="hint" id="avoid-note"></p>
+      </div>
       <div class="rampwrap">
         <div class="rowlabel" id="ramps-label">Colour scheme</div>
         <div id="ramps" class="ramps" role="radiogroup" aria-labelledby="ramps-label"></div>
@@ -1215,8 +1229,9 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          name into the address bar, and the address bar is what the analytics
          tag records as the page location. So the reading is your nearest
          listed city, not where you are. Your
-         colour scheme, your ocean colour and the two Settings switches are
-         kept in this browser&rsquo;s local storage and go no further.
+         colour scheme, your ocean colour, the two Settings switches and the
+         carry-on choice are kept in this browser&rsquo;s local storage and go
+         no further.
          Everything else the map does is computed in your browser from files
          on this site.</p>
       <p class="disclaimer-long"><b>For reference only.</b> Every figure is an

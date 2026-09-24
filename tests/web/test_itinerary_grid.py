@@ -103,7 +103,7 @@ GROUND_TOTAL = 900
 CELL_PREV = 999
 
 
-def _probe(reading: int, air_at_bbb: str = "1") -> str:
+def _probe(reading: int, air_at_bbb: str = "1", fine: str = "null", saving: int = 0) -> str:
     """A two-flight journey whose res-6 reading is `reading`.
 
     `air_at_bbb` is the arrival-airport ordinal recorded for BBB's OWN res-4
@@ -132,7 +132,7 @@ const $ = (id) => (_els[id] ||= new El("div"));
 const MAX_MINUTES = 65534, NO_AIRPORT = 0xFFFF, NO_RAIL = 0xFFFF;
 const MODE_NAMES = ["rail", "ferry", "highway"];
 const MODE_FALLBACK = {{ rail: "by train", ferry: "by boat", highway: "by road" }};
-const meta = {{ modeDetail: null }};
+const meta = {{ modeDetail: null, carryOn: {{ departureMin: 15, arrivalMin: 10 }} }};
 {ESC_SRC}
 const fmtDur = (m) => String(m);          // raw minutes, so the rows can be summed
 const countryName = () => "Somewhere";
@@ -155,6 +155,11 @@ function cellIndex(lat, lon) {{
   return -1;
 }}
 function lookup() {{ return {reading}; }}
+// Neutral: no fine-cell route and no carry-on, so the subject here -- the two
+// grids' disagreement -- is exactly what it was. Both are run for real in
+// tests/web/test_carry_on_and_route_detail.py.
+function fineRoute() {{ return {fine}; }}
+function carryOnSaving() {{ return {saving}; }}
 
 const origin = {{
   // res-4 array: the grid the legs are read at, and the fallback total.
@@ -361,3 +366,31 @@ def test_a_hostile_airport_name_cannot_escape_its_tooltip(node, tmp_path) -> Non
     assert 'onmouseover="' not in html, (
         "the airport name closed data-tip and added a live event handler")
     assert "&quot; onmouseover=&quot;alert(1)" in html
+
+
+# ------------------------------------------- the fine cell's own route ---
+
+def test_the_panel_follows_the_fine_cells_airport_where_it_differs(node, tmp_path):
+    """Tinian inside Saipan's hover cell: the coarse cell records arr:CCC, the
+    fine cell under the pin landed at arr:DDD (ordinal 3). The legs and the
+    surface totals must be the fine cell's, not the representative's."""
+    got = _run(node, tmp_path, _probe(
+        1000, fine="{ airport: 3, modes: new Uint16Array([0, 0, 42]) }"))
+    assert got["chain"][-1].startswith("arr:DDD"), got["chain"]
+    texts = [_plain(r[1]) for r in got["rows"]]
+    assert any("Onward from DDD" in t for t in texts), texts
+    assert any(r[0] == "42" and "highway" in _plain(r[1]) for r in got["rows"]), \
+        "the surface rows must be the fine cell's own totals"
+    assert not any(r[0] == "90" for r in got["rows"]), "the coarse cell's 90 leaked in"
+
+
+def test_carry_on_takes_the_bag_drop_off_the_first_airport_and_says_so(node, tmp_path):
+    """The chain's node times are shifted by the 15-minute bag drop; the total
+    (already adjusted by lookup) is what the panel sums to."""
+    plain = _run(node, tmp_path, _probe(975))
+    carry = _run(node, tmp_path, _probe(950, saving=25))
+    first = lambda g: int(g["rows"][0][0])  # noqa: E731
+    assert first(plain) - first(carry) == 15, (plain["rows"][0], carry["rows"][0])
+    totals = [r for r in carry["rows"] if r[2]]
+    assert totals[0][1] == "Door to door, carry-on only" and int(totals[0][0]) == 950
+    assert sum(_decomposition(carry["rows"])) == 950, "the rows must still sum to the total"

@@ -158,7 +158,9 @@ def test_the_per_origin_reading_array_was_always_fetched_this_way():
     everything the test exists to protect, which is the "assert on a string in
     app.js rather than on behaviour" habit this suite has been warned about.
     """
-    fetch_at = APP.index('get(`./origins/${o.slug}${meta.readingUrlSuffix}`)')
+    # The directory comes from originBase(): the full set, or an exclusion
+    # variant (which never fetches a reading tier at all).
+    fetch_at = APP.index('get(`${originBase()}${o.slug}${meta.readingUrlSuffix}`)')
     # The response handler immediately following that fetch.
     handler = APP[fetch_at:fetch_at + 400]
     assert "? r.arrayBuffer() : null" in handler, (

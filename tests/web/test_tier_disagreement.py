@@ -52,7 +52,9 @@ def _function(name: str) -> str:
     raise AssertionError(f"function {name} is not brace-balanced")
 
 
-LOOKUP = _function("lookup")
+# The tier logic lives in lookupRaw; lookup() wraps it with the carry-on
+# adjustment, which tests/web/test_carry_on_and_route_detail.py runs.
+LOOKUP = _function("lookupRaw")
 GRID = _function("readingGrid")
 
 
@@ -87,7 +89,7 @@ const cellIndex = () => (LAND ? 0 : -1);
 const readingIndex = () => 0;
 {LOOKUP}
 {GRID}
-const out = lookup(5.9749, 116.0724);
+const out = lookupRaw(5.9749, 116.0724);
 console.log(JSON.stringify({{ value: out === undefined ? "undefined" : out,
                              grid: readingGrid() }}));
 """

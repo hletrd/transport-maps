@@ -452,6 +452,20 @@ oceanName = urlChoice("sea", OCEANS, oceanName);
 BANDS = expandRamp(RAMPS[rampName].c, N_BANDS);
 lockNorth = urlFlag("north", store.get("lockNorth", false));
 namePlaces = urlFlag("places", store.get("namePlaces", true));
+// "Avoid flights / ferries / trains": the whole map again with that mode never
+// used, precomputed by the pipeline (src/transport_maps/variants.py) and
+// offered only when index.json lists it complete. A link naming a variant this
+// build does not have falls back to the full map and says so.
+const AVOIDABLE = { air: "flights", ferry: "ferries", rail: "trains" };
+let avoid = urlChoice("avoid", AVOIDABLE, null);
+if (avoid && !(meta.variants || []).some((v) => v.exclude === avoid)) {
+  URL_REJECTED.push("avoid");
+  avoid = null;
+}
+// Carry-on only: the airport minutes a traveller with no checked bag does not
+// spend (calibration.toml [carry_on], published as meta.carryOn). Applied to
+// the journey on screen only -- the coloured map still assumes a checked bag.
+let carryOn = urlFlag("carryon", store.get("carryOn", false)) && !!meta.carryOn;
 const greyOf = () => RAMPS[rampName]?.grey ?? "#4a4d50";
 
 // ---- one time notation for the whole page ----
@@ -1566,12 +1580,15 @@ function nearestPlace(lat, lon) {
   const km = Math.sqrt(bestD) * 111.32;
   return { name, region, country, km };
 }
-// Up to 60 km the place is where you are; up to 250 km it is "near"; beyond
+// Up to 20 km the place is where you are; up to 250 km it is "near"; beyond
 // that the nearest town says nothing about the spot (Antarctica read "near
 // Port-aux-Français", 3,000 km away) and only the coordinates are honest.
 function placeLead(p) {
   if (!p || p.km > 250) return null;
-  return p.km > 60 ? `near ${p.name}` : p.name;
+  // 20 km, not 60: about one hover cell. At 60, a point on Tinian -- 25 km
+  // from the nearest gazetteer town, which is on Saipan -- was labelled
+  // "Saipan", the island it is not on.
+  return p.km > 20 ? `near ${p.name}` : p.name;
 }
 
 // ---- the departure city ----
@@ -1699,6 +1716,8 @@ function syncPermalink() {
     put("sea", oceanName === OCEAN_DEFAULT ? null : oceanName);
     put("north", lockNorth ? "1" : null);
     put("places", namePlaces ? null : "0");
+    put("avoid", avoid);
+    put("carryon", carryOn ? "1" : null);
 
     // The camera. Bearing and pitch appear only when the globe is actually
     // turned or tilted, so an ordinary link carries three numbers, not five.
@@ -1827,7 +1846,17 @@ function captureComparison() {
     ? { slug: active.slug, name: active.name, min: t, lat: pinB.lat, lon: pinB.lon } : null;
 }
 
-function paintOrigin(o, { keepZoom = false } = {}) {
+function variantMeta() {
+  return avoid ? (meta.variants || []).find((v) => v.exclude === avoid) ?? null : null;
+}
+//: The directory an origin's files are read from: the full set, or the
+//: exclusion variant the visitor chose.
+function originBase() {
+  const v = variantMeta();
+  return v ? `./${v.path}origins/` : "./origins/";
+}
+
+function paintOrigin(o, { keepZoom = false, force = false } = {}) {
   // U13 landed only its #tip half. Four of the five call sites tested the slug
   // and the results-list handler did not, so clicking the row you are ALREADY
   // departing from -- the highlighted one, aria-current="true", the obvious
@@ -1840,7 +1869,9 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // The guard belongs here rather than at the fifth call site, so a sixth
   // cannot reintroduce it. A failed origin is still retryable: that is the one
   // case where re-picking the active city has something to do.
-  if (o.slug === active?.slug && !origin.failed) return;
+  // `force`: the SAME city from a different map -- avoiding a mode reloads
+  // every array while the departure stays put.
+  if (o.slug === active?.slug && !origin.failed && !force) return;
   // A snap notice describes ONE drag. Picking a city from the list, following
   // a permalink or clicking "Depart from" all make it false, so it goes with
   // the origin it described. The drag path rewrites it immediately after this
@@ -1856,7 +1887,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   clearTileTrouble();
   if (map.getLayer("bands")) map.removeLayer("bands");
   if (map.getSource("bands")) map.removeSource("bands");
-  map.addSource("bands", { type: "vector", url: `pmtiles://./origins/${o.slug}.pmtiles` });
+  map.addSource("bands", { type: "vector", url: `pmtiles://${originBase()}${o.slug}.pmtiles` });
   map.addLayer({
     id: "bands", type: "fill", source: "bands", "source-layer": "bands",
     // Neighbouring bands overlap by one cell (see contour/bands.py) and the
@@ -1899,6 +1930,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // 10 MB per origin. Dropped on the switch rather than kept per city, so the
   // page holds one reading array at a time however many cities are visited.
   origin.reading = null;
+  origin.over = null;
   const current = () => gen === originGen;
   const settle = () => {
     if (!current()) return;
@@ -1951,21 +1983,41 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // response, and a browser cannot opt out of Accept-Encoding, so a ranged
   // .bin comes back 200 with the WHOLE body and slicing it would read block 0
   // for every point on Earth with no error anywhere.
+  // The route behind the fine reading, where it differs from the coarse
+  // cell's (emit/override.py). Only once the reading tier is in, because its
+  // entries are reading-tier slots; non-fatal like everything on this path.
+  const loadOverride = () => {
+    if (!meta.overrideUrlSuffix) return;
+    get(`${originBase()}${o.slug}${meta.overrideUrlSuffix}`)
+      .then((r) => (okOr(r, `${o.slug}${meta.overrideUrlSuffix}`) ? r.arrayBuffer() : null))
+      .then((b) => {
+        if (!b || !current()) return;
+        origin.over = parseOverride(b, `${o.slug}${meta.overrideUrlSuffix}`);
+        renderLegs();
+      })
+      .catch((err) => {
+        if (current() && !sig.aborted) console.warn("route detail unavailable:", err.message);
+      });
+  };
+
   const loadReading = () => {
     if (!READING_RES || !meta.readingUrlSuffix) return;
+    // A variant ships no reading tier (variants.py): its readings are res-4.
+    if (variantMeta()) return;
     // An explicit request not to spend the visitor's bytes on something the
     // page can already do without. The res-4 reading stands, and the line
     // under the number says so.
     if (navigator.connection && navigator.connection.saveData) return;
     loadReadingParents().then((cells) => {
       if (!cells || !current()) return null;
-      return get(`./origins/${o.slug}${meta.readingUrlSuffix}`)
+      return get(`${originBase()}${o.slug}${meta.readingUrlSuffix}`)
         .then((r) => (okOr(r, `${o.slug}${meta.readingUrlSuffix}`) ? r.arrayBuffer() : null))
         .then((b) => {
           if (!b || !current()) return;
           // Same refusal the other five arrays get.
           origin.reading = checkedReading(b, cells.length,
                                           `${o.slug}${meta.readingUrlSuffix}`);
+          loadOverride();
           // Everything read through lookup() came off the coarse grid and is
           // redone once, in place. Not settle(): that would re-announce
           // "travel times are ready" to a screen reader for data that was
@@ -2007,9 +2059,9 @@ function paintOrigin(o, { keepZoom = false } = {}) {
   // Station naming exists only in builds whose index.json says so; asking an
   // older build for it was two 404s per origin switch.
   if (meta.railDetail) Promise.all([
-    get(`./origins/${o.slug}.rail.bin`)
+    get(`${originBase()}${o.slug}.rail.bin`)
       .then((r) => (okOr(r, `${o.slug}.rail.bin`) ? r.arrayBuffer() : null)),
-    get(`./origins/${o.slug}.rail.json`)
+    get(`${originBase()}${o.slug}.rail.json`)
       .then((r) => (okOr(r, `${o.slug}.rail.json`) ? r.json() : null)),
   ]).then(([b, j]) => {
     if (!current() || !b || !j) return;
@@ -2028,7 +2080,7 @@ function paintOrigin(o, { keepZoom = false } = {}) {
                     operators: Array.isArray(j.operators) ? j.operators : [] };
     settle();
   }).catch((err) => { if (current() && !sig.aborted) console.warn("rail detail unavailable:", err.message); });
-  get(`./origins/${o.slug}.bin`)
+  get(`${originBase()}${o.slug}.bin`)
     .then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${o.slug}.bin`);
       return r.arrayBuffer();
@@ -2077,15 +2129,15 @@ function paintOrigin(o, { keepZoom = false } = {}) {
     });
   // The leg breakdown is a progressive extra: an origin built before these
   // files existed still shows times, just without the itinerary.
-  get(`./origins/${o.slug}.modes.bin`)
+  get(`${originBase()}${o.slug}.modes.bin`)
     .then((r) => (okOr(r, `${o.slug}.modes.bin`) ? r.arrayBuffer() : null))
     .then((b) => { if (!current() || !b) return; origin.modes = checked(b, 2 * MODE_NAMES.length, `${o.slug}.modes.bin`); settle(); })
     .catch((err) => { if (current() && !sig.aborted) console.warn("mode breakdown unavailable:", err.message); });
-  get(`./origins/${o.slug}.air.bin`)
+  get(`${originBase()}${o.slug}.air.bin`)
     .then((r) => (okOr(r, `${o.slug}.air.bin`) ? r.arrayBuffer() : null))
     .then((b) => { if (!current() || !b) return; origin.air = checked(b, 2, `${o.slug}.air.bin`); settle(); })
     .catch((err) => { if (current() && !sig.aborted) console.warn("arrival airports unavailable:", err.message); });
-  get(`./origins/${o.slug}.json`)
+  get(`${originBase()}${o.slug}.json`)
     .then((r) => (okOr(r, `${o.slug}.json`) ? r.json() : null))
     .then((j) => {
       if (!current() || !j) return;
@@ -2255,6 +2307,36 @@ function readingIndex(lat, lon) {
   return -1;
 }
 
+//: emit/override.py: n uint32 reading slots (sorted), n uint16 airport
+//: ordinals, n x MODE_NAMES.length uint16 minutes. Refused rather than read if
+//: the length does not divide -- a file from another format would otherwise
+//: print plausible routes for the wrong places.
+function parseOverride(b, name) {
+  const width = 4 + 2 + 2 * MODE_NAMES.length;
+  if (b.byteLength % width) throw new Error(`${name} is ${b.byteLength} bytes, not whole ${width}-byte entries`);
+  const n = b.byteLength / width;
+  return { slots: new Uint32Array(b, 0, n), airport: new Uint16Array(b, 4 * n, n),
+           modes: new Uint16Array(b, 6 * n, n * MODE_NAMES.length) };
+}
+
+//: The fine cell's own route under a point, or null: {airport, modes}.
+function fineRoute(lat, lon) {
+  const ov = origin.over;
+  if (!ov || !origin.reading || !readingParents) return null;
+  const j = readingIndex(lat, lon);
+  if (j < 0) return null;
+  let lo = 0, hi = ov.slots.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1, v = ov.slots[mid];
+    if (v === j) {
+      const n = MODE_NAMES.length;
+      return { airport: ov.airport[mid], modes: ov.modes.subarray(mid * n, mid * n + n) };
+    }
+    if (v < j) lo = mid + 1; else hi = mid - 1;
+  }
+  return null;
+}
+
 function cellIndex(lat, lon) {
   const id = BigInt("0x" + h3.latLngToCell(lat, lon, HOVER_RES));
   let lo = 0, hi = hoverCells.length - 1;
@@ -2266,9 +2348,33 @@ function cellIndex(lat, lon) {
   return -1;                          // ocean, or outside the land mask
 }
 
+// A journey's time as PRINTED: carry-on only takes the airport minutes off a
+// journey that flew. The coloured map is not reprinted, so the one caller that
+// maps a time to a band colour (the zoom detail) reads lookupRaw instead.
+function lookup(lat, lon) {
+  const t = lookupRaw(lat, lon);
+  if (t == null || t >= MAX_MINUTES) return t;
+  return Math.max(0, t - carryOnSaving(lat, lon));
+}
+
+//: Minutes carry-on saves on the journey to a point: the departure and arrival
+//: figures once each, and only when the journey flew at all.
+function carryOnSaving(lat, lon) {
+  if (!carryOn || !meta.carryOn) return 0;
+  const fine = fineRoute(lat, lon);
+  let airport;
+  if (fine) airport = fine.airport;
+  else {
+    const i = cellIndex(lat, lon);
+    if (i < 0 || !origin.air) return 0;
+    airport = origin.air[i];
+  }
+  return airport === NO_AIRPORT ? 0 : meta.carryOn.departureMin + meta.carryOn.arrivalMin;
+}
+
 // null: not land (known from hover_cells.bin alone, so the sea never reads
 // "loading"); undefined: land whose times have not arrived, or failed.
-function lookup(lat, lon) {
+function lookupRaw(lat, lon) {
   // Whether the point is LAND is still decided by the res-4 cell list, which
   // is the only file that ships an explicit land set: a res-3 block holds
   // land but 18.3% of its slots do not, and those carry the same sentinel a
@@ -2425,8 +2531,7 @@ function walkPrev(node, budget) {
 
 //: The arrival-airport chain recorded for a hover cell, or null when the cell
 //: has no chain to walk. Shared by legsTo and by its own continuation.
-function chainAtCell(i, budget) {
-  const ordinal = origin.air[i];
+function chainAtCell(i, budget, ordinal = origin.air[i]) {
   if (ordinal === NO_AIRPORT) return [];        // overland the whole way
   const { airports: airOff, stations } = origin.routes.offsets;
   const count = (stations - airOff) / 2;        // departures AND arrivals
@@ -2470,7 +2575,11 @@ function legsTo(lat, lon) {
   if (!origin.air || !origin.routes) return null;
   const i = cellIndex(lat, lon);
   if (i < 0) return null;
-  let chain = chainAtCell(i, MAX_CHAIN);
+  // Where the fine cell under the point landed somewhere else than its coarse
+  // cell's representative -- Tinian inside Saipan's hover cell -- its own
+  // airport is the one the journey reached it through.
+  const fine = fineRoute(lat, lon);
+  let chain = chainAtCell(i, MAX_CHAIN, fine ? fine.airport : origin.air[i]);
   if (chain == null || !chain.length) return chain;
 
   const known = (id) => id != null && origin.routes.byId.has(id);
@@ -2560,9 +2669,18 @@ function renderLegsInto() {
   // to the res-4 figure and says the two grids disagree.
   const ci = cellIndex(pinB.lat, pinB.lon);
   const reading = lookup(pinB.lat, pinB.lon);
-  const coarse = ci >= 0 && origin.times ? origin.times[ci] : reading;
-  const chain = legsTo(pinB.lat, pinB.lon);
-  if (coarse == null || coarse >= MAX_MINUTES || chain == null) { box.hidden = true; return; }
+  const saving = carryOnSaving(pinB.lat, pinB.lon);
+  const coarseRaw = ci >= 0 && origin.times ? origin.times[ci] : null;
+  const coarse = coarseRaw == null ? reading
+    : coarseRaw >= MAX_MINUTES ? coarseRaw : Math.max(0, coarseRaw - saving);
+  const chainRaw = legsTo(pinB.lat, pinB.lon);
+  if (coarse == null || coarse >= MAX_MINUTES || chainRaw == null) { box.hidden = true; return; }
+  // Carry-on: the bag-drop minutes come off everything from the first airport
+  // on, and the belt minutes off the leg out of the last. Node times are
+  // copied, never edited in place -- they belong to origin.routes.
+  const depSave = saving ? meta.carryOn.departureMin : 0;
+  const chain = chainRaw.map((n) => ({ ...n, min: Math.max(0, n.min - depSave) }));
+  chain.partial = chainRaw.partial;
   const landedMin = chain.length ? chain[chain.length - 1].min : 0;
   const usable = reading != null && reading < MAX_MINUTES && reading > landedMin;
   const total = usable ? reading : coarse;
@@ -2588,18 +2706,24 @@ function renderLegsInto() {
   //: Minutes the last surface() call itemised, so the note below can compare
   //: the rows against the total instead of asserting they agree.
   let surfaceMin = 0;
+  const fineHere = fineRoute(pinB.lat, pinB.lon);
   const surface = () => {
     surfaceMin = 0;
-    if (!origin.modes) return [];
     const i = cellIndex(pinB.lat, pinB.lon);
-    if (i < 0) return [];
     const n = MODE_NAMES.length;
-    const used = MODE_NAMES.map((name, k) => [name, origin.modes[i * n + k]])
+    // The fine cell's own totals where its route differs from the coarse
+    // cell's; otherwise the coarse cell's, as always.
+    const at = fineHere ? (k) => fineHere.modes[k]
+      : origin.modes && i >= 0 ? (k) => origin.modes[i * n + k] : null;
+    if (!at) return [];
+    const used = MODE_NAMES.map((name, k) => [name, at(k)])
       .filter(([, m]) => m >= 1)
       .sort((a, b) => b[1] - a[1]);
     surfaceMin = used.reduce((t, [, m]) => t + m, 0);
+    // The station naming is per coarse cell; under a fine route that differs
+    // it would name a station on the other journey, so it is left out.
     return used.map(([name, m]) =>
-      [fmtDur(m), `by <b>${mode(name)}</b>${name === "rail" ? railVia(i) : ""}`]);
+      [fmtDur(m), `by <b>${mode(name)}</b>${name === "rail" && !fineHere ? railVia(i) : ""}`]);
   };
 
   if (chain.length === 0) {
@@ -2649,11 +2773,12 @@ function renderLegsInto() {
       }
     }
   }
-  rows.push([fmtDur(total), "Door to door", true]);
+  rows.push([fmtDur(total), saving ? "Door to door, carry-on only" : "Door to door", true]);
 
   const frag = document.createDocumentFragment();
   const h = document.createElement("h2");
-  h.textContent = `Journey to ${pinB.label}`;
+  h.textContent = pinB.label.startsWith("near ")
+    ? `Journey to a point ${pinB.label}` : `Journey to ${pinB.label}`;
   frag.append(h);
   for (const [t, text, isTotal] of rows) {
     const d = document.createElement("div");
@@ -2829,7 +2954,8 @@ function onScreenBandRange() {
       // On a globe a canvas point can miss the sphere entirely; unproject
       // still returns a LngLat, and it is not a place.
       if (!ll || !Number.isFinite(ll.lat) || !Number.isFinite(ll.lng) || Math.abs(ll.lat) > 90) continue;
-      const b = bandIndexOf(lookup(ll.lat, ll.lng));
+      // Raw: this is a band COLOUR, and the colours still assume a checked bag.
+      const b = bandIndexOf(lookupRaw(ll.lat, ll.lng));
       if (b < 0) continue;                       // sea, unreachable, or not loaded
       bands.push(b);
     }
@@ -4347,6 +4473,62 @@ placesBox.addEventListener("change", () => {
   if (lastPointer) rereadPointer();
   $("tip").hidden = true;
 });
+
+// ---- carry-on only ----
+{
+  const wrap = $("carry-wrap"), box = $("carry-on"), note = $("carry-note");
+  if (meta.carryOn) {
+    wrap.hidden = false;
+    box.checked = carryOn;
+    const c = meta.carryOn;
+    note.textContent = `Takes ${c.departureMin + c.arrivalMin} minutes off any journey that `
+      + `flies: ${c.departureMin} at the first airport (no bag drop) and ${c.arrivalMin} at `
+      + "the last (no wait at the belt). Only the times shown change; the coloured map "
+      + "still assumes a checked bag.";
+    box.addEventListener("change", () => {
+      carryOn = box.checked;
+      store.set("carryOn", carryOn);
+      syncPermalink();
+      if (pinB || lastPointer) rereadPointer();
+      renderPins();
+      renderLegs();
+      render($("q").value);
+      renderDeparture();
+    });
+  }
+}
+
+// ---- avoid a mode: the exclusion variants ----
+function paintAvoidPicker() {
+  const offered = (meta.variants || []).map((v) => v.exclude).filter((m) => AVOIDABLE[m]);
+  const wrap = $("avoid-wrap");
+  if (!offered.length) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  const choices = [[null, "Nothing"], ...offered.map((m) => [m, AVOIDABLE[m]])];
+  $("avoid").replaceChildren(...choices.map(([key, label]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    const on = key === avoid;
+    b.setAttribute("aria-checked", String(on));
+    b.tabIndex = on ? 0 : -1;
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      if (key === avoid) return;
+      avoid = key;
+      paintAvoidPicker();
+      syncPermalink();
+      if (active) paintOrigin(active, { keepZoom: true, force: true });
+    });
+    return b;
+  }));
+  $("avoid-note").textContent = avoid
+    ? `Every route on this map is one that never uses ${AVOIDABLE[avoid]}. `
+      + "This map is coarser than the full one: finer than about 6 km it is enlarged, "
+      + "and times are read for areas about 20 km across."
+    : "Choose a mode to see the map with it never used.";
+}
+paintAvoidPicker();
 
 function paintRampPicker() {
   $("ramps").replaceChildren(...Object.entries(RAMPS).map(([key, r]) => {
