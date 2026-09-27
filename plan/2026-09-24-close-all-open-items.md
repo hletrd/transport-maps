@@ -32,8 +32,17 @@ three exclusion builds run after it.
 
 - [x] **V1** `build-all --exclude air|ferry|rail` -- no-air at 63.9% coverage from Seoul, ~1 MB tiles per origin; the three builds running 2026-09-26. writes a variant tree beside
       the normal one; cache keys, index and deploy aware of it.
-- [ ] **V2** The page offers "avoid flights / ferries / trains", loads the
+- [x] **V2** The page offers "avoid flights / ferries / trains", loads the
       variant, says which map is showing, and keeps it in the permalink.
+      LIVE 2026-09-27, browser-checked from Seoul: no flights -> New York and
+      Tinian "no scheduled route", Okayama 23 h 21 (5 h 18 with flights);
+      no trains -> Gumi 3 h 05 (2 h 41 with trains).
+      Known limit: variants ship no res-6 reading tier or fine-route
+      override, so a variant reads the ~20 km area's representative -- and
+      can print LESS than the full map, which reads the point itself
+      (Tinian with ferries avoided: 7 h 38, the Saipan-side time, against
+      9 h 32). Fix: build the variants with the reading tier and override
+      (~35 h, ~50 GB); not done without the owner's go-ahead.
 
 ## Page
 
@@ -46,6 +55,10 @@ three exclusion builds run after it.
 
 1. B1-B4 + V1 merged and tested -> normal rebuild -> deploy -> verify.
 2. The three variant builds -> deploy -> verify V2.
+
+## Status 2026-09-27
+
+Everything is live, V2 included (deploy 2026-09-27, all checks passed).
 
 ## Status 2026-09-26
 
