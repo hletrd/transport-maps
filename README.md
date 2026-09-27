@@ -94,3 +94,10 @@ wanted roadless terrain infinitely fast, which its guard refuses, and local
 roads drew 116 km across four journeys. `graph/ground.py` says which is which
 at the constant itself, as CLAUDE.md's calibration rule requires. The sampled durations stay in
 `data/build/` (gitignored) and nothing from them reaches `dist/`.
+
+## Licence
+
+The code in this repository is released under the [MIT License](LICENSE). That
+covers the code only: the maps in `dist/` are derived from the data sources
+above and carry their licences, notably OpenStreetMap's ODbL and the CC BY /
+CC BY-SA attribution terms.
