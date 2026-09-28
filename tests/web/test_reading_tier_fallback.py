@@ -359,3 +359,14 @@ def test_the_two_re_read_paths_have_not_drifted_apart():
         assert (call in settle) == (call in read), (
             f"{call} runs in one re-read path and not the other: "
             f"settle={call in settle}, loadReading={call in read}")
+
+
+def test_a_variant_loads_its_own_reading_tier():
+    """A variant ships the tier now (transport_maps.variants). Skipping it made
+    the page read the ~20 km area's time, faster than the full map's at Tinian
+    with ferries avoided. The fetch goes through originBase(), so it reads the
+    variant's own file."""
+    start = APP.index("const loadReading = () => {")
+    body = APP[start:APP.index("\n  };", start)]
+    assert "variantMeta()" not in body and "avoid" not in body, body[:400]
+    assert "originBase()" in body

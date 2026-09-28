@@ -2002,8 +2002,6 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
 
   const loadReading = () => {
     if (!READING_RES || !meta.readingUrlSuffix) return;
-    // A variant ships no reading tier (variants.py): its readings are res-4.
-    if (variantMeta()) return;
     // An explicit request not to spend the visitor's bytes on something the
     // page can already do without. The res-4 reading stands, and the line
     // under the number says so.
@@ -4524,8 +4522,8 @@ function paintAvoidPicker() {
   }));
   $("avoid-note").textContent = avoid
     ? `Every route on this map is one that never uses ${AVOIDABLE[avoid]}. `
-      + "This map is coarser than the full one: finer than about 6 km it is enlarged, "
-      + "and times are read for areas about 20 km across."
+      + "Its shading is coarser than the full map's: finer than about 6 km it is "
+      + "enlarged. The times are read as finely as the full map's."
     : "Choose a mode to see the map with it never used.";
 }
 paintAvoidPicker();
