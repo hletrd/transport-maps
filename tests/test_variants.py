@@ -1,6 +1,6 @@
 """Exclusion variants ("avoid flights / ferries / trains"): built into their own
-tree, slimmer than the full set, never mistaken for it, and offered only when
-complete."""
+tree, with coarser tiles than the full set but its reading tier, never mistaken
+for it, and offered only when complete."""
 
 import json
 
@@ -48,11 +48,14 @@ def test_a_variant_writes_its_own_tree_and_never_the_full_sets_files(monkeypatch
     assert marker["exclude"] == "ferry" and marker["origins"] == ["first", "second"]
 
 
-def test_a_variant_is_slim_no_zoom_7_level_and_no_reading_tier(monkeypatch, tmp_path):
+def test_a_variant_has_no_zoom_7_level_but_keeps_the_reading_tier(monkeypatch, tmp_path):
+    """Without the reading tier a variant printed the ~20 km area's time, which
+    at Tinian with ferries avoided was faster than the full map's."""
     written, calls = _run_variant(monkeypatch, tmp_path, "rail")
     assert calls["max_zoom"] == [variants.VARIANT_MAX_ZOOM] * 2
     assert calls["skip_native"] == [True, True]
-    assert not list((tmp_path / "v" / "no-rail" / "origins").glob("*.r6.bin"))
+    got = sorted(p.name for p in (tmp_path / "v" / "no-rail" / "origins").glob("*.r6.bin"))
+    assert got == ["first.r6.bin", "second.r6.bin"]
 
 
 def test_the_full_build_is_not_slim(monkeypatch, tmp_path):
@@ -188,7 +191,47 @@ def test_index_json_advertises_the_override_only_when_every_origin_has_one(tmp_p
     assert json.loads((tmp_path / "index.json").read_text())["overrideUrlSuffix"] == ".over.bin"
 
 
-def test_a_variant_writes_no_override(monkeypatch, tmp_path):
-    """The override refers to reading-tier slots; a variant ships no reading tier."""
-    written, _ = _run_variant(monkeypatch, tmp_path, "air")
-    assert not [p for p in written if p.name.endswith(".over.bin")]
+def test_a_variant_writes_the_override_with_its_reading_tier(monkeypatch, tmp_path):
+    """The route behind the fine reading, so the itinerary matches it."""
+    _run_variant(monkeypatch, tmp_path, "air")
+    got = sorted(p.name for p in (tmp_path / "v" / "no-air" / "origins").glob("*.over.bin"))
+    assert got == ["first.over.bin", "second.over.bin"]
+
+
+def test_a_set_without_the_reading_tier_is_not_offered(tmp_path):
+    """The 2026-09-27 sets: every other file, and a marker, but no .r6.bin."""
+    root = variants.variant_dir(tmp_path, "air")
+    (root / "origins").mkdir(parents=True)
+    for ext in ("pmtiles", "bin", "json", "air.bin", "modes.bin"):
+        (root / "origins" / f"a.{ext}").write_bytes(b"x")
+    variants.write_marker(root, "air", ["a"], {})
+    assert variants.complete_variants(tmp_path, ["a"]) == []
+
+
+def test_a_full_variant_rebuild_withdraws_the_finished_one_first(monkeypatch, tmp_path):
+    """Half rewritten, the tree mixes two builds; it must not stay on offer.
+
+    The rebuild dies on its second origin, so the marker it would write at the
+    end never comes: the old one has to have gone at the start.
+    """
+    root = variants.variant_dir(tmp_path, "air")
+    variants.write_marker(root, "air", ["first", "second"], {})
+    with pytest.raises(SystemExit):
+        _run_variant(monkeypatch, tmp_path, "air", coverages=(0.3, 0.0))
+    assert not (root / variants.MARKER).exists()
+
+
+def test_a_partial_variant_run_leaves_the_finished_one_on_offer(monkeypatch, tmp_path):
+    """--only rewrites one origin's files, consistently; it withdraws nothing."""
+    root = variants.variant_dir(tmp_path, "air")
+    variants.write_marker(root, "air", ["first", "second"], {})
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    _stub_pipeline(monkeypatch, [], coverages=[1.0])
+    def pmtiles(fc, out, **kw):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"x")
+
+    monkeypatch.setattr(cli.tiles, "write_pmtiles", pmtiles)
+    monkeypatch.setattr(cli.bands, "band_feature_collection", lambda *a, **kw: {"features": []})
+    cli._build_all(only=["first"], exclude="air")
+    assert (root / variants.MARKER).exists()

@@ -8,9 +8,15 @@ same pipeline (`build-all --exclude <mode>`), and keep the site static.
 They are slimmer than the full set, and the page says so. Every origin's 38.6 MB
 is 26 MB of band tiles -- three quarters of that at zoom 7-8 -- plus the 10 MB
 res-6 reading tier. Three full sets would be ~165 GB against 152 GB free on the
-web host, measured 2026-09-25. Without zoom 7-8 and the reading tier a variant
-origin is about 10 MB and a set about 14 GB: the page enlarges the zoom-6 tiles
-past zoom 6, and reads times from the res-4 hover array.
+web host, measured 2026-09-25, so a variant has no zoom 7-8 tiles: the page
+enlarges the zoom-6 ones.
+
+The first variants (2026-09-27) left out the reading tier and the fine-route
+override too, about 14 GB a set. Their times were then the ~20 km area's
+representative, and could be LOWER than the full map's at the same point --
+Tinian with ferries avoided read Saipan's 7 h 38 against 9 h 32 with every
+mode, which no map with fewer modes can do. They keep both now, which adds
+about 15 MB an origin: 17 to 23 MB an origin, 25 to 33 GB a set.
 """
 
 from __future__ import annotations
@@ -44,8 +50,15 @@ def write_marker(root: Path, exclude: str, slugs: list[str], identity: dict) -> 
     _io.write_bytes(root / MARKER, json.dumps(payload, indent=1).encode())
 
 
-# The files a variant origin must have to be offered. No .r6.bin by design.
-REQUIRED = ("pmtiles", "bin", "json", "air.bin", "modes.bin")
+# The files a variant origin must have to be offered. A set built before the
+# reading tier was kept has no .r6.bin and is not offered: its readings are
+# the coarse ones described above.
+REQUIRED = ("pmtiles", "bin", "json", "air.bin", "modes.bin", "r6.bin", "over.bin")
+
+
+def withdraw(root: Path) -> None:
+    """Stop offering a variant whose files are about to be rewritten."""
+    (root / MARKER).unlink(missing_ok=True)
 
 
 def complete_variants(dist: Path, slugs: list[str]) -> list[str]:

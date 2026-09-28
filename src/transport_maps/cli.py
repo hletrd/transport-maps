@@ -309,9 +309,9 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     validate.check_monotonic_ground(idx, minutes, speeds,
                                     country=shared["country"], zone=shared["zone"])
 
-    # The variants are built without the zoom-7+ level and without the res-6
-    # reading tier: 36 of every origin's 38.6 MB, and three full sets would
-    # not fit on the web host beside the real one (variants.py).
+    # The variants are built without the zoom-7+ level: three quarters of
+    # every origin's band tiles, and three full sets would not fit on the web
+    # host beside the real one (variants.py). They keep the reading tier.
     slim = variant is not None
     fc = bands.band_feature_collection(idx, minutes[: idx.n_cells],
                                        grid=shared["grid"], native=shared["native"],
@@ -332,13 +332,15 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     acc = modes.mode_minutes_per_node(idx, minutes, predecessors, cell_class=shared["cell_class"])
 
     hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin", parents=parents, rep=rep)
-    if not slim:
-        hover.write_reading(idx, minutes[: idx.n_cells], out / f"{slug}.r6.bin",
-                            layout=shared["reading"])
-        # The route behind the fine reading wherever it differs from the
-        # coarse cell's -- only where there IS a fine reading to go with it.
-        override.write_override(idx, last, acc, rep_arr, shared["base_hover"],
-                                shared["reading"], out / f"{slug}.over.bin")
+    hover.write_reading(idx, minutes[: idx.n_cells], out / f"{slug}.r6.bin",
+                        layout=shared["reading"])
+    # The route behind the fine reading wherever it differs from the coarse
+    # cell's. A variant needs both as much as the full set: without them it
+    # read the ~20 km area's representative, and with ferries avoided printed
+    # Tinian at Saipan's 7 h 38 -- faster than the full map's 9 h 32, which no
+    # map with fewer modes can be.
+    override.write_override(idx, last, acc, rep_arr, shared["base_hover"],
+                            shared["reading"], out / f"{slug}.over.bin")
     routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
     itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin",
                               parents=parents, rep=rep, last=last)
@@ -448,6 +450,11 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     if limit is not None:
         origins = origins[:limit]
     partial = limit is not None or bool(only)
+    # A full variant rebuild overwrites the files of a finished one origin by
+    # origin. Until it finishes the tree is half old and half new, so it stops
+    # being offered now and is offered again by the marker written at the end.
+    if exclude is not None and not partial:
+        variants.withdraw(variants.variant_dir(config.DIST, exclude))
 
     idx = nodes.build_index(rail_routes=rail_routes)
     # Before the graph, because the graph is the expensive half and a bad
