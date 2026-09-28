@@ -307,6 +307,23 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
                 elif suffix in widths and p.stat().st_size != n_cells * widths[suffix]:
                     bad.append(f"variant no-{v.get('exclude')}: {p.name} has "
                                f"{p.stat().st_size // widths[suffix]} entries, expected {n_cells}")
+            # The page reads a variant's reading tier and route override from
+            # the variant's own directory, exactly as it does the full set's.
+            if reading_bytes:
+                r6 = vdir / f"{o['slug']}.r6.bin"
+                if not r6.exists():
+                    bad.append(f"variant no-{v.get('exclude')}: {r6.name} missing")
+                elif r6.stat().st_size != reading_bytes:
+                    bad.append(f"variant no-{v.get('exclude')}: {r6.name} is "
+                               f"{r6.stat().st_size} bytes, expected {reading_bytes}")
+            if idx.get("overrideUrlSuffix"):
+                over = vdir / f"{o['slug']}{idx['overrideUrlSuffix']}"
+                entry = 4 + 2 + 2 * n_channels
+                if not over.exists():
+                    bad.append(f"variant no-{v.get('exclude')}: {over.name} missing")
+                elif over.stat().st_size % entry:
+                    bad.append(f"variant no-{v.get('exclude')}: {over.name} is "
+                               f"{over.stat().st_size} bytes, not whole {entry}-byte entries")
     n_nodes: dict[int, list[str]] = {}
     rail_advertised = bool(idx.get("railDetail"))
     for o in listed:

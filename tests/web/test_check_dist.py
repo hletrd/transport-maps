@@ -613,3 +613,36 @@ def test_an_offered_variant_must_hold_every_origins_files(check_dist, tmp_path):
     assert any("seoul.modes.bin has" in m for m in check_dist.check_dist(d))
     (vo / "seoul.modes.bin").write_bytes(b"\0" * 2 * len(CHANNELS) * N_CELLS)
     assert check_dist.check_dist(d) == []
+
+
+def test_an_offered_variant_must_hold_its_reading_tier_and_override(check_dist, tmp_path):
+    """The page reads both from the variant's own directory."""
+    # The variant is complete and passing before anything below changes it.
+    test_an_offered_variant_must_hold_every_origins_files(check_dist, tmp_path)
+    d = tmp_path / "dist"
+    entry = 4 + 2 + 2 * len(CHANNELS)
+    (d / "origins" / "seoul.over.bin").write_bytes(b"\0" * entry)
+    _advertise(d, overrideUrlSuffix=".over.bin")
+    vo = d / "v" / "no-air" / "origins"
+    assert any("variant no-air: seoul.over.bin missing" in m for m in check_dist.check_dist(d))
+    (vo / "seoul.over.bin").write_bytes(b"\0" * (entry + 1))
+    assert any("variant no-air: seoul.over.bin" in m and "not whole" in m
+               for m in check_dist.check_dist(d))
+    (vo / "seoul.over.bin").write_bytes(b"\0" * entry)
+    assert check_dist.check_dist(d) == []
+
+
+def test_an_offered_variant_must_hold_its_reading_tier_at_the_full_width(check_dist, tmp_path):
+    # The variant is complete and passing before anything below changes it.
+    test_an_offered_variant_must_hold_every_origins_files(check_dist, tmp_path)
+    d = tmp_path / "dist"
+    width = config.READING_SLOTS * 2
+    (d / "reading_parents.bin").write_bytes(b"\0" * 8)
+    _advertise(d, readingParentCount=1)
+    (d / "origins" / "seoul.r6.bin").write_bytes(b"\0" * width)
+    vo = d / "v" / "no-air" / "origins"
+    assert any("variant no-air: seoul.r6.bin missing" in m for m in check_dist.check_dist(d))
+    (vo / "seoul.r6.bin").write_bytes(b"\0" * (width - 2))
+    assert any("variant no-air: seoul.r6.bin is" in m for m in check_dist.check_dist(d))
+    (vo / "seoul.r6.bin").write_bytes(b"\0" * width)
+    assert check_dist.check_dist(d) == []
