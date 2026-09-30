@@ -29,6 +29,23 @@ MODE=full
 LOG="$(mktemp -t deploy_verify.XXXXXX)"
 RSYNC_COMMON=(-a --chmod=D755,F644 --exclude-from=deploy/rsync-excludes.txt)
 
+# What --delay-updates will actually stage: the files that differ from the
+# live set, in KiB. Measured by rsync's own dry run over the same flags, not by
+# `du dist`: a rebuild of the three variant sets changed 56 of 108 GiB, and
+# counting the whole tree refused a deploy that needed half the free space.
+# Unchanged files are not copied, so they cost nothing to stage. Falls back to
+# the whole tree when the dry run cannot answer -- the conservative figure.
+transfer_kb() {
+  local bytes
+  bytes=$(rsync "${RSYNC_COMMON[@]}" --delete --dry-run --stats \
+            dist/ "$DEPLOY_HOST:$DEPLOY_ROOT/" 2>/dev/null \
+          | awk -F': ' '/^Total transferred file size/{gsub(/[^0-9]/, "", $2); print $2}')
+  case ${bytes:-} in
+    ""|*[!0-9]*) /usr/bin/du -sk dist | awk '{print $1}' ;;
+    *) echo $(( bytes / 1024 + 1 )) ;;
+  esac
+}
+
 # Gate over the page assets that actually ship. check_dist inspects the binary
 # artifacts and the licence firewall used to run before web/ was merged into
 # dist/, so index.html, app.js, llms.txt and vendor/ were covered by neither --
@@ -225,7 +242,7 @@ if [ "$MODE" = full ]; then
   # Read-only: `df -Pk` over the connection rsync is about to use. A server
   # that will not answer is a warning, not a refusal -- this must not be a new
   # way for a good deploy to fail.
-  need_kb=$(/usr/bin/du -sk dist | awk '{print $1}')
+  need_kb=$(transfer_kb)
   # x1.3, not x2.3. The old set is ALREADY on the disk, so `df` has already
   # excluded it from the free figure; adding it back counted it twice and
   # demanded 36.1 GiB for a measured 15.69 GiB dist. --delay-updates stages the
@@ -261,7 +278,7 @@ if [ "$MODE" = full ]; then
     echo "  could not read free space on $DEPLOY_HOST; continuing without the check"
   elif [ "$free_kb" -lt "$want_kb" ]; then
     echo "  $DEPLOY_HOST:$DEPLOY_ROOT has $((free_kb/1024/1024)) GiB free; --delay-updates stages"
-    echo "  the new payload ($((need_kb/1024/1024)) GiB) beside the old one, so it needs about"
+    echo "  the changed files ($((need_kb/1024/1024)) GiB) beside the old ones, so it needs about"
     echo "  $((want_kb/1024/1024)) GiB. Refusing before any byte moves: an rsync that runs out"
     echo "  mid-rename leaves the mixed dist/ this script exists to prevent."
     exit 1

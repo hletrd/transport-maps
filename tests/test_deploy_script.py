@@ -577,3 +577,47 @@ def test_the_browser_stage_still_asks_whether_water_rendered():
         "the water check no longer refuses a zero feature count")
     assert "water layer rendered nothing" in BROWSER, (
         "the water failure no longer sets fail=1 with a message")
+
+
+def _run_transfer_kb(tmp_path, rsync_body: str) -> str:
+    """The script's own transfer_kb, run with a stub rsync first on PATH."""
+    import subprocess
+
+    fn = re.search(r"\ntransfer_kb\(\) \{.*?\n\}\n", DEPLOY, re.S)
+    assert fn, "transfer_kb has moved; re-derive this test"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "rsync"
+    stub.write_text("#!/bin/bash\n" + rsync_body)
+    stub.chmod(0o755)
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "f").write_bytes(b"\0" * 300_000)
+    script = ("RSYNC_COMMON=(-a)\nDEPLOY_HOST=h\nDEPLOY_ROOT=/r\n" + fn.group(0)
+              + "transfer_kb\n")
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, cwd=tmp_path,
+                          env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
+    assert done.returncode == 0, done.stderr
+    return done.stdout.strip()
+
+
+def test_the_space_check_counts_what_rsync_will_stage_not_the_whole_tree(tmp_path):
+    """--delay-updates stages CHANGED files only. Counting all of dist/ refused
+    the 2026-10-01 deploy: 108 GiB counted, 56 GiB actually changed, 116 free.
+
+    Mutation performed and reverted: make transfer_kb print `du -sk dist`
+    unconditionally -> red.
+    """
+    got = _run_transfer_kb(tmp_path, 'echo "Total transferred file size: 2,097,152 bytes"\n')
+    assert got == str(2_097_152 // 1024 + 1)
+
+
+def test_the_space_check_falls_back_to_the_whole_tree_when_rsync_cannot_say(tmp_path):
+    """A dry run that fails, or prints something else, must not read as zero
+    bytes to stage -- that would wave any deploy through.
+
+    Mutation performed and reverted: fall back to `echo 0` -> red.
+    """
+    for i, body in enumerate(("exit 12\n", 'echo "Total transferred file size: none"\n')):
+        (tmp_path / str(i)).mkdir()
+        got = _run_transfer_kb(tmp_path / str(i), body)
+        assert int(got) >= 290, (body, got)
