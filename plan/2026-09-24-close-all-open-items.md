@@ -37,12 +37,11 @@ three exclusion builds run after it.
       LIVE 2026-09-27, browser-checked from Seoul: no flights -> New York and
       Tinian "no scheduled route", Okayama 23 h 21 (5 h 18 with flights);
       no trains -> Gumi 3 h 05 (2 h 41 with trains).
-      Known limit: variants ship no res-6 reading tier or fine-route
-      override, so a variant reads the ~20 km area's representative -- and
-      can print LESS than the full map, which reads the point itself
-      (Tinian with ferries avoided: 7 h 38, the Saipan-side time, against
-      9 h 32). Fix: build the variants with the reading tier and override
-      (~35 h, ~50 GB); not done without the owner's go-ahead.
+      Variants first shipped without the res-6 reading tier, and could read
+      LESS than the full map (Tinian, ferries avoided: 7 h 38 against 9 h 32).
+      Rebuilt with the tier and override (owner's go-ahead 2026-09-27),
+      deployed 2026-10-01: Tinian reads 9 h 32 with ferries avoided, and no
+      cell of any variant is faster than the full map, over all 1,464 origins.
 
 ## Page
 
@@ -55,6 +54,10 @@ three exclusion builds run after it.
 
 1. B1-B4 + V1 merged and tested -> normal rebuild -> deploy -> verify.
 2. The three variant builds -> deploy -> verify V2.
+
+## Status 2026-10-01
+
+Variants rebuilt with the reading tier and redeployed; all checks passed.
 
 ## Status 2026-09-27
 
