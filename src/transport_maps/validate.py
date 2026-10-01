@@ -25,7 +25,23 @@ KNOWN_UNREACHABLE_MAX_LAT = -60.0
 # was missed. The named airports are still the ones the allowlist covers; the
 # fraction is left unquantified rather than restated at a resolution nobody
 # measured, and the next full build can fill it in from the gate's own log.
+#
+# Re-measured at res 6 on 2026-10-02: 29 of 3,996 (0.73%). The twenty beyond
+# the original nine came with land severing (graph/landmass): small islands
+# whose airport has no resolvable destination and which were joined to the
+# mainland by a ground edge across open water until then. Most still read a
+# time on the map -- their cells are reached by ferry or a neighbouring field
+# -- but the airport node itself has no edge out. Twelve are unreachable from
+# every origin, for want of any route or ferry in the source data: CCZ, CRI,
+# FHZ, FMT, FUT, GTA, GZO, OCS, PBJ, SSW, TGH, XYA, YAS.
 MAX_ISOLATED_AIRPORT_FRACTION = 0.01
+# The ones measured above, by name. tests/graph/test_build.py fails on any
+# airport cut off that is not in this set.
+KNOWN_ISOLATED_AIRPORTS = frozenset({
+    "AGE", "AGJ", "AJN", "BMR", "CCZ", "CRI", "CSA", "CYO", "CYU", "DSD",
+    "FHZ", "FMT", "FOA", "FUT", "GTA", "GZO", "IBB", "ICC", "MQC", "NRD",
+    "OCS", "PBJ", "PKG", "SSW", "TGH", "TOD", "WDN", "XYA", "YAS",
+})
 
 
 def check_coverage(minutes: np.ndarray, idx) -> float:

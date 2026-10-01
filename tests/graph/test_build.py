@@ -14,9 +14,12 @@ def idx():
 
 @pytest.fixture(scope="module")
 def build_result(idx):
+    # One build for the module (TE-18): rejected and unknown pairs come out of
+    # the same call, not a second ~40 s build_graph.
     rejected: list[tuple[str, str, float]] = []
-    csr = build.build_graph(idx, rejected)
-    return csr, rejected
+    unknown: list[tuple[str, str]] = []
+    csr = build.build_graph(idx, rejected, unknown)
+    return csr, rejected, unknown
 
 
 @pytest.fixture(scope="module")
@@ -105,10 +108,8 @@ def test_geographic_plausibility_guard_rejects_a_small_but_nonzero_count(rejecte
 
 
 @pytest.fixture(scope="module")
-def unknown_airport_pairs(idx):
-    unknown: list[tuple[str, str]] = []
-    build.build_graph(idx, None, unknown)
-    return unknown
+def unknown_airport_pairs(build_result):
+    return build_result[2]
 
 
 def test_route_pairs_naming_an_unknown_airport_are_counted(unknown_airport_pairs, idx):
@@ -117,8 +118,8 @@ def test_route_pairs_naming_an_unknown_airport_are_counted(unknown_airport_pairs
     regression would have deleted the air network one pair at a time with only
     the land-CELL coverage gate in the way.
 
-    124 today, all downstream of the 25 dropped airports. Loose on purpose --
-    investigate rather than adjust if it moves far.
+    64 of 68,152 on 2026-10-02, all downstream of the 12 dropped airports.
+    Loose on purpose -- investigate rather than adjust if it moves far.
     """
     from transport_maps.sources import routes
 
@@ -132,11 +133,16 @@ def test_route_pairs_naming_an_unknown_airport_are_counted(unknown_airport_pairs
 
 def test_the_real_graph_passes_the_airport_connectivity_gate(csr, idx):
     """The gate has to hold against the live network, not just the doubles in
-    tests/test_validate.py. 9 of 3,983 airports are isolated today (0.23%),
-    all small-island fields with no resolvable destinations.
+    tests/test_validate.py.
+
+    The count alone was implied by the call (TE-18): the gate raises above the
+    bound, so `<= bound` afterwards could not fail. The NAMES are what a test
+    can add -- a new orphan is a new fact about the network, and it should
+    turn this red and be looked at, not slip under a 1% bound.
     """
     from transport_maps import validate
 
     isolated: list[str] = []
     validate.check_airport_connectivity(idx, csr, isolated)
-    assert 0 <= len(isolated) <= validate.MAX_ISOLATED_AIRPORT_FRACTION * len(idx.airports)
+    new = sorted(set(isolated) - validate.KNOWN_ISOLATED_AIRPORTS)
+    assert not new, f"airports newly cut off from the network: {new}"
