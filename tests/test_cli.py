@@ -279,6 +279,45 @@ def test_a_gate_failure_in_a_forked_worker_aborts_the_run(monkeypatch, tmp_path)
     assert index_calls == []
 
 
+def test_forked_workers_get_the_build_context_from_the_initializer_unpickled(
+        monkeypatch, tmp_path, capsys):
+    """S2: the forked path runs every origin from a BuildContext handed to the
+    pool initializer -- not from a global the parent writes into its own
+    namespace -- and the context crosses by fork, never by pickle: a pickled
+    copy would duplicate the graph in every worker instead of sharing it
+    copy-on-write. Here pickling the context raises, so a pool that pickled
+    its initargs (the spawn start method, or the context sent with each task)
+    fails the build; and the parent must end with no context of its own.
+
+    Mutations performed and reverted, each red: the context sent to a worker
+    as a task argument (it fails on "was pickled"); `_init_worker` not
+    storing it; the parent setting the module global itself (the `_CTX`
+    shape this replaced).
+    """
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    monkeypatch.setattr(cli, "_worker_count", lambda n_origins: 2)
+    _stub_pipeline(monkeypatch, [], coverages=[1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
+
+    def no_pickle(self, protocol):
+        raise RuntimeError("the BuildContext was pickled")
+    monkeypatch.setattr(cli.BuildContext, "__reduce_ex__", no_pickle)
+
+    def hung(signum, frame):
+        raise TimeoutError("the forked build hung")
+    previous = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(15)
+    try:
+        cli._build_all()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+    rows = {ln.split()[0] for ln in capsys.readouterr().out.splitlines() if ln.split()}
+    assert {"first", "second"} <= rows
+    assert cli._WORKER_CONTEXT is None, "the parent kept a build context in its globals"
+    assert not hasattr(cli, "_CTX")
+
+
 def test_a_worker_killed_by_a_signal_aborts_the_run_instead_of_hanging(monkeypatch, tmp_path):
     """multiprocessing.Pool respawns a worker that dies of a signal and the
     task's result never arrives, so imap blocks forever: an OOM kill or a

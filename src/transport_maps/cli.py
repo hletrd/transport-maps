@@ -9,6 +9,7 @@ import os
 os.environ.setdefault("POLARS_MAX_THREADS", "1")
 
 import argparse
+import dataclasses
 import gzip
 import json
 import logging
@@ -18,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -370,10 +372,43 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
             f"{os.getpid():>8}{_peak_rss_mb():>10,.0f}")
 
 
+@dataclasses.dataclass(frozen=True)
+class BuildContext:
+    """Everything a forked worker reads, built once in the parent.
+
+    Handed to each worker as the pool initializer's argument. Under the fork
+    start method `Pool` passes `initargs` to the child through fork() itself,
+    never through pickle (measured: an argument whose __reduce__ raises
+    arrives intact, at the parent's array addresses), so the graph and the
+    shared arrays stay copy-on-write exactly as they did when this was a
+    module global the parent wrote into its own namespace before forking
+    (`globals()["_CTX"]`, S2). Frozen, and `shared` a read-only view, so a
+    worker cannot rebind what its siblings were also given.
+    """
+    idx: object
+    csr: object
+    speeds: object
+    shared: types.MappingProxyType
+
+
+# Set in each worker by _init_worker and never in the parent: the parent hands
+# the context over explicitly instead of leaving it lying in its globals.
+_WORKER_CONTEXT: BuildContext | None = None
+
+
+def _init_worker(parent_pid: int, context: BuildContext) -> None:
+    """Pool initializer: watch the parent, then keep the build's context."""
+    global _WORKER_CONTEXT
+    _watch_parent(parent_pid)
+    _WORKER_CONTEXT = context
+
+
 def _solve_one_forked(origin: dict) -> str:
-    """Pool entry point. Reads the graph the fork inherited."""
-    idx, csr, speeds, shared = globals()["_CTX"]
-    return _solve_one(origin, idx, csr, speeds, shared)
+    """Pool entry point. Reads the context the initializer was handed."""
+    context = _WORKER_CONTEXT
+    if context is None:
+        raise RuntimeError("a build worker started without its BuildContext")
+    return _solve_one(origin, context.idx, context.csr, context.speeds, context.shared)
 
 
 def _log_reading_cost(path: Path) -> None:
@@ -562,8 +597,9 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
                 print(_solve_one(origin, idx, csr, speeds, shared))
         else:
             ctx = multiprocessing.get_context("fork")
-            globals()["_CTX"] = (idx, csr, speeds, shared)
-            with ctx.Pool(workers, initializer=_watch_parent, initargs=(os.getpid(),)) as pool:
+            context = BuildContext(idx, csr, speeds, types.MappingProxyType(shared))
+            with ctx.Pool(workers, initializer=_init_worker,
+                          initargs=(os.getpid(), context)) as pool:
                 # A GateFailure in a worker comes back out of imap here (see
                 # the class); leaving the block then runs Pool.__exit__, which
                 # is terminate(): the other workers are stopped mid-origin

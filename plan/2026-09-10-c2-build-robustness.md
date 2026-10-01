@@ -175,6 +175,17 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
 - [ ] **S2** `BuildContext` frozen dataclass via `Pool(initializer=…)`; remove
       the rasterio/GDAL fallbacks in `modes.py:47-50` and `validate.py:149-153`;
       one poisoned-import fork test (ARCH-5).
+  - [x] **S2 (context half)** (2026-10-02) `cli.BuildContext` (frozen,
+        `shared` a `MappingProxyType`) is the pool initializer's argument;
+        `_init_worker` watches the parent and keeps it, and the parent's
+        `globals()["_CTX"]` is gone. Measured first: a fork pool hands
+        `initargs` over by fork, not pickle, at the parent's array addresses,
+        so copy-on-write is unchanged. The test makes pickling the context
+        raise and checks the parent holds none; three mutations each red.
+        Still open: the two fallbacks and the poisoned-import test -- removing
+        the fallbacks changes the signatures several tests and callers rely
+        on, which is beyond a contained refactor. With S2's context half in,
+        CR3-10 and TE3-10's "S2 lands" exits are met for the worker shape.
 - [ ] **R3 / H2 (hover grid)** `emit/hover.HoverGrid` built once in the parent
       (`parents`, `parent_of`, `centre_pos`, vectorised `pick`); the four
       writers and `write_hover_cells` take it so the five files provably share
