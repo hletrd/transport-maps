@@ -1571,7 +1571,13 @@ function nearestPlace(lat, lon) {
   for (let i = 0; i < places.lat.length; i++) {
     // Equirectangular is plenty to rank candidates and avoids 34,000 trig calls.
     const dy = places.lat[i] - lat;
-    const dx = (places.lon[i] - lon) * cosLat;
+    // Wrapped across ±180: Fiji and Chukotka straddle the line, and
+    // the raw difference measured a town 5 km east as some 38,000 km away and
+    // named one on the far side of the island instead.
+    let dLon = places.lon[i] - lon;
+    if (dLon > 180) dLon -= 360;
+    else if (dLon < -180) dLon += 360;
+    const dx = dLon * cosLat;
     const d = dy * dy + dx * dx;
     if (d < bestD) { bestD = d; best = i; }
   }
