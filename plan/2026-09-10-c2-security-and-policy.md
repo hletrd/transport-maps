@@ -61,13 +61,24 @@ DOM-write table).
 
 ## Cycle 3
 
-- [ ] **Q2** Rehearse the CSP before installing it: serve a scratch copy of
+- [x] **Q2** Rehearse the CSP before installing it: serve a scratch copy of
       `dist/` behind nginx with the snippet, or inject the policy as a
       `<meta http-equiv>` into a scratch `index.html` served by the preview,
       and run `browser_verify.sh` against it; then `deploy_verify.sh` step 3
       asserts `content-security-policy` and `strict-transport-security` on
       `/`, `/app.js`, `/index.json`, `/hover_cells.bin` and a `.pmtiles`
       (SEC-19).
+      *2026-10-02:* the rehearsal half is overtaken -- the snippet is installed
+      and the live site serves all six headers; `browser_verify.sh` passes
+      under that CSP today. The assert half is done and wider than asked:
+      `check_security_headers` reads every `add_header` value from
+      `deploy/worldmap-security-headers.conf` and requires each of CSP, HSTS,
+      X-Frame-Options, Referrer-Policy, Permissions-Policy (the four
+      advertising APIs included) and X-Content-Type-Options to be present and
+      exactly equal on `/`, `app.js`, `index.json`, `hover_cells.bin`,
+      `water.pmtiles` and the first origin's `.pmtiles`; a mismatch exits 1.
+      Passes against the live site; `tests/test_deploy_script.py` drives it
+      with a stub `curl`, six mutants.
 - [x] **Q4 / A18** `adsb_extract.py`: sanitised tag, https + host allow-list,
       size cap (SEC-23). Tag and asset names are one `[A-Za-z0-9][A-Za-z0-9._-]`
       component; each asset URL must be this repo's https download path; a

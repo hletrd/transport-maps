@@ -623,6 +623,157 @@ def test_the_space_check_falls_back_to_the_whole_tree_when_rsync_cannot_say(tmp_
         assert int(got) >= 290, (body, got)
 
 
+HEADERS_CONF = ROOT / "deploy" / "worldmap-security-headers.conf"
+
+
+def _conf_headers() -> list[tuple[str, str]]:
+    """(Name, value) per `add_header` in the conf, read line by line -- a
+    different reading from the script's regex, so a parse bug in either shows."""
+    out = []
+    for line in HEADERS_CONF.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("add_header ") and line.endswith(" always;"):
+            name, rest = line[len("add_header "):].split(" ", 1)
+            out.append((name, rest[: -len(" always;")].strip().strip('"')))
+    return out
+
+
+def _run_header_check(tmp_path, responses: dict[str, str], default: str,
+                      conf=HEADERS_CONF, curl_rc: int = 0):
+    """The REAL check_security_headers, with a stub `curl` that answers each
+    path with the canned response whose key the URL ends with."""
+    import subprocess
+
+    fn = re.search(r"^check_security_headers\(\) \{.*?^\}", DEPLOY, re.S | re.M)
+    assert fn, "check_security_headers is gone from deploy_verify.sh or was reshaped"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cases = ""
+    for i, (suffix, body) in enumerate(responses.items()):
+        (tmp_path / f"r{i}").write_text(body)
+        cases += f'  *"{suffix}") cat "{tmp_path}/r{i}" ;;\n'
+    (tmp_path / "default").write_text(default)
+    stub = bin_dir / "curl"
+    stub.write_text("#!/bin/bash\nurl=${@: -1}\ncase \"$url\" in\n" + cases
+                    + f'  *) cat "{tmp_path}/default" ;;\nesac\nexit {curl_rc}\n')
+    stub.chmod(0o755)
+    script = (f"set -euo pipefail\nSITE_URL=https://example.test\n{fn.group(0)}\n"
+              f'check_security_headers "{conf}" "" app.js index.json water.pmtiles'
+              ' && echo HEADERS_OK || echo HEADERS_REFUSED\n')
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                          env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
+
+
+def _response(headers: list[tuple[str, str]], status="HTTP/2 200") -> str:
+    return "\r\n".join([status, *(f"{n}: {v}" for n, v in headers), "", ""])
+
+
+def test_the_header_check_accepts_what_the_live_site_serves(tmp_path):
+    """The positive control, in both header spellings: HTTP/2 lower-cases the
+    names (what the live site sends, measured 2026-10-02) and HTTP/1.1 keeps
+    nginx's capitals. Without it every refusal below could be a check that
+    refuses everything."""
+    conf = _conf_headers()
+    assert len(conf) >= 6, conf
+    lower = _response([(n.lower(), v) for n, v in conf] + [("content-type", "text/html")])
+    upper = _response(conf, status="HTTP/1.1 200 OK")
+    done = _run_header_check(tmp_path, {"app.js": upper}, lower)
+    assert "HEADERS_OK" in done.stdout, done.stdout + done.stderr
+    assert done.stdout.count("all 6 match the conf") == 4, done.stdout
+
+
+def test_the_header_check_fails_a_deploy_whose_headers_drifted(tmp_path):
+    """Q2. The check used to PRINT whether a CSP header was present on three
+    paths and assert nothing; HSTS, X-Frame-Options, Referrer-Policy and
+    Permissions-Policy were not looked at at all. Each drift below is one the
+    old block passed.
+
+    Mutations performed and reverted, each confirmed RED:
+      * the `if not have` ABSENT branch removed        -> the missing-CSP and
+                                                          missing-HSTS cases pass
+      * the exact-value comparison removed             -> the four altered-value
+                                                          cases pass
+      * `|| bad=1` dropped from the python call        -> every case passes
+    """
+    conf = _conf_headers()
+    values = dict(conf)
+
+    def without(name):
+        return _response([(n, v) for n, v in conf if n != name])
+
+    def changed(name, value):
+        return _response([(n, value if n == name else v) for n, v in conf])
+
+    good = _response(conf)
+    pp = values["Permissions-Policy"]
+    assert "browsing-topics=()" in pp, pp
+    cases = {
+        "CSP missing on app.js only": ({"app.js": without("Content-Security-Policy")},
+                                       "/app.js: content-security-policy ABSENT"),
+        "no HSTS": ({"water.pmtiles": without("Strict-Transport-Security")},
+                    "/water.pmtiles: strict-transport-security ABSENT"),
+        "a CSP with a source appended": (
+            {"index.json": changed("Content-Security-Policy",
+                                   values["Content-Security-Policy"] + " https://evil.example")},
+            "/index.json: content-security-policy is"),
+        "Permissions-Policy without the advertising APIs": (
+            {"app.js": changed("Permissions-Policy", pp.split(", browsing-topics")[0])},
+            "/app.js: permissions-policy is"),
+        "framing allowed": ({"app.js": changed("X-Frame-Options", "SAMEORIGIN")},
+                            "/app.js: x-frame-options is"),
+        "referrer tightened past Nominatim's requirement": (
+            {"app.js": changed("Referrer-Policy", "no-referrer")},
+            "/app.js: referrer-policy is"),
+    }
+    for why, (responses, message) in cases.items():
+        sub = tmp_path / re.sub(r"\W+", "_", why)
+        sub.mkdir()
+        done = _run_header_check(sub, responses, good)
+        assert "HEADERS_REFUSED" in done.stdout, (why, done.stdout + done.stderr)
+        assert message in done.stdout, (why, message, done.stdout)
+
+
+def test_the_header_check_cannot_pass_by_reading_nothing(tmp_path):
+    """Two ways to expect or receive nothing: a conf the parse cannot read
+    (the check would want no headers and pass every response), and a curl that
+    fails (no headers at all).
+
+    Mutation performed and reverted: remove the `required <= want.keys()` guard
+    -> the unreadable-conf case passes -> red.
+    """
+    good = _response(_conf_headers())
+    bogus = tmp_path / "bogus.conf"
+    bogus.write_text("# add_header lines moved somewhere else\n")
+    (tmp_path / "a").mkdir()
+    done = _run_header_check(tmp_path / "a", {}, good, conf=bogus)
+    assert "HEADERS_REFUSED" in done.stdout, done.stdout + done.stderr
+    assert "could not read" in done.stdout, done.stdout
+
+    (tmp_path / "b").mkdir()
+    done = _run_header_check(tmp_path / "b", {}, "", curl_rc=7)
+    assert "HEADERS_REFUSED" in done.stdout, done.stdout + done.stderr
+    assert "ABSENT" in done.stdout
+
+
+def test_the_deploy_enforces_the_header_check_on_every_asset_class():
+    """The function is only a gate if the deploy calls it, on the asset classes
+    nginx serves from different locations (the page, scripts, JSON, binary
+    arrays, PMTiles), and stops when it fails.
+
+    Mutation performed and reverted: replace the call's `exit 1` with `true`
+    -> red.
+    """
+    code = _code(DEPLOY)
+    call = re.search(r'^check_security_headers "\$ROOT/deploy/worldmap-security-headers\.conf"'
+                     r'(.*?)\|\| \{([^}]*)\}', code, re.S | re.M)
+    assert call, "the deploy no longer runs check_security_headers against the conf"
+    paths, on_fail = call.group(1), call.group(2)
+    for path in ('""', "app.js", "index.json", "hover_cells.bin", ".pmtiles"):
+        assert path in paths, f"the header check no longer covers {path}"
+    assert "exit 1" in on_fail, "a header mismatch no longer stops the deploy"
+    assert "CSP header:" not in code, "the report-only header loop is back"
+
+
 def _browser_fn(name: str) -> str:
     """A function lifted verbatim from browser_verify.sh: a multi-line body
     closed by a brace in column 0, or a one-line `name() { ...; }`."""
