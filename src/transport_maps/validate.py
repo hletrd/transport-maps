@@ -154,14 +154,63 @@ def _pulled_in_vertices(cell: str) -> list[tuple[float, float]]:
     return out
 
 
+# Cells the monotonic gate samples per origin: every MONOTONIC_STRIDE-th. A
+# full sweep is O(n * 7) and the gate runs once per origin.
+MONOTONIC_STRIDE = 997
+
+
+def _ground_neighbours(idx, pos: int, cell: str, fine: np.ndarray,
+                       refined: bool) -> list[int]:
+    """Graph positions graph/ground.hex_edges joins `cell` to, before any cut.
+
+    Same-resolution ring neighbours, plus the pairs hex_edges adds across a
+    split seam: a fine cell and the unsplit base cell one of its ring
+    neighbours falls in. hex_edges adds that pair from the FINE side only (in
+    both directions), so from the base side it is found here by looking into
+    each absent neighbour's children -- the ones `refine.ground_adjacent`
+    says touch this cell, which is the test hex_edges' rule reduces to.
+    """
+    import h3
+
+    from transport_maps import config
+    from transport_maps.graph import refine
+
+    out: list[int] = []
+    for neighbour in h3.grid_ring(cell, 1):
+        q = idx.try_cell_index(neighbour)
+        if q is not None:
+            out.append(q)
+        elif fine[pos]:
+            q = idx.try_cell_index(h3.cell_to_parent(neighbour, config.SOLVE_RES))
+            if q is not None and q not in out:
+                out.append(q)
+        elif refined:
+            for child in h3.cell_to_children(neighbour, config.FINE_RES):
+                q = idx.try_cell_index(child)
+                if (q is not None and fine[q] and q not in out
+                        and refine.ground_adjacent(child, cell)):
+                    out.append(q)
+    return out
+
+
 def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
-                           country=None, zone=None) -> None:
+                           country=None, zone=None, stride: int = MONOTONIC_STRIDE) -> None:
     """Dijkstra's invariant: no cell beats reaching it via an adjacent cell.
 
     For adjacent p and q, minutes[q] must not exceed minutes[p] plus the ACTUAL
     cost of the p->q ground hop. Charge the real edge weight, which is the hop
     distance divided by the DESTINATION cell's speed -- the same rule
     ground.hex_edges uses.
+
+    "Adjacent" is what hex_edges joins, on the mixed grid too: a res-7 cell
+    and the unsplit res-6 cell beyond its ring are adjacent in both
+    directions, and so are the two ends of a road bridge or tunnel that spans
+    a water cell (`idx.spans`, graph/build._span_edges), which are not grid
+    neighbours at all. The gate used to look only at same-resolution
+    neighbours and so never saw a single seam edge (A14). The mixed-grid tests
+    in tests/test_validate.py were run against the old loop -- cross edges
+    removed from each direction in turn, spans skipped, the severed check
+    dropped from the seam -- and each went red.
 
     An earlier draft compared against the fastest speed on the grid (85 km/h
     in the superseded spec; the built table tops out at 104 km/h). That is
@@ -203,36 +252,47 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
         zone = [transfers.immigration_zone(countries.iso2(c)) if c else "" for c in country]
     crossing = ground._land_border_min()
     severed = getattr(idx, "severed", frozenset())
+    fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
+    fine = (fine_attr if len(fine_attr) == idx.n_cells
+            else np.zeros(idx.n_cells, dtype=bool))
+    refined = bool(fine.any())
 
-    stride = 997  # sample; a full sweep is O(n * 7) and this gate runs per origin
+    def check(p: int, q: int, hop: float) -> None:
+        if zone[p] and zone[q] and zone[p] != zone[q]:
+            hop += crossing
+        if minutes[q] > minutes[p] + hop + 1e-6:
+            raise ValueError(
+                f"cell {idx.cells[q]} is {minutes[q]:.1f} min but its neighbour "
+                f"{idx.cells[p]} is {minutes[p]:.1f} min and the hop costs only {hop:.1f} min; "
+                "the solver or the ground edges are inconsistent"
+            )
+
     for pos in range(0, idx.n_cells, stride):
-        here = float(minutes[pos])
-        if not np.isfinite(here):
+        if not np.isfinite(minutes[pos]):
             continue
         cell = idx.cells[pos]
         origin_latlng = np.array([h3.cell_to_latlng(cell)])
-        for neighbour in h3.grid_disk(cell, 1):
-            if neighbour == cell:
-                continue
-            q = idx.try_cell_index(neighbour)
-            if q is None or not np.isfinite(minutes[q]):
+        for q in _ground_neighbours(idx, pos, cell, fine, refined):
+            if not np.isfinite(minutes[q]):
                 continue
             if countries.is_closed(country[pos], country[q]):
                 continue
             if (pos, q) in severed:
                 continue
             distance = ground.haversine_km(
-                origin_latlng, np.array([h3.cell_to_latlng(neighbour)])
+                origin_latlng, np.array([h3.cell_to_latlng(idx.cells[q])])
             )[0]
-            hop = distance / speeds[q] * 60.0
-            if zone[pos] and zone[q] and zone[pos] != zone[q]:
-                hop += crossing
-            if minutes[q] > here + hop + 1e-6:
-                raise ValueError(
-                    f"cell {neighbour} is {minutes[q]:.1f} min but its neighbour "
-                    f"{cell} is {here:.1f} min and the hop costs only {hop:.1f} min; "
-                    "the solver or the ground edges are inconsistent"
-                )
+            check(pos, q, distance / speeds[q] * 60.0)
+
+    # Every span, not a sample: there are a few hundred on Earth and each is
+    # the only ground edge across its strait. Charged as _span_edges charges
+    # it -- the link's own minutes, plus a zone change, cut at a closed border.
+    for (p, q), span_min in (getattr(idx, "spans", None) or {}).items():
+        if not (np.isfinite(minutes[p]) and np.isfinite(minutes[q])):
+            continue
+        if countries.is_closed(country[p], country[q]):
+            continue
+        check(p, q, float(span_min))
 
 
 def check_airport_connectivity(idx, csr, isolated_out: list[str] | None = None) -> None:

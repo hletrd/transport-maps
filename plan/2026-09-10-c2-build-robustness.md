@@ -201,6 +201,12 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       parents are adjacent. **A14** Monotonic-ground gate over cross-resolution
       edges. **A18 / Q4** `adsb_extract.py`: sanitised tag, https + host
       allow-list, size cap.
+  - [x] **A14** (2026-10-02) `validate.check_monotonic_ground` walks the
+        edges `ground.hex_edges` builds: same-resolution ring neighbours, the
+        fine-to-base seam pair from either side, and every `idx.spans` link,
+        honouring `severed` and closed borders. Five mixed-grid tests; each of
+        the four new branches removed in turn turns one red. Gate only, no
+        output change.
 - [ ] **A9** South-pole cap dissolve (K13's slivers as the fixture). **A11**
       Resolvable `continue` batches in the wikitext crawl. **A15** Immigration
       zones: one table for air and ground; no border charge on airside
