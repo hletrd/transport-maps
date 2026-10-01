@@ -198,6 +198,12 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       physical memory and the measured peak (PR-4). **R5** Compute `cell_class`,
       `speeds`, `country`, `zone` once in `_build_all` and pass them into
       `build_graph` (PR-5, CR-15, J4's seam).
+  - [x] **R4 (log half)** (2026-10-02) Every per-origin row ends with the
+        process's pid and its `ru_maxrss` in MB (bytes on macOS, KB on Linux;
+        a high-water mark, so the largest figure per pid is that worker's
+        peak). Held against `ps` RSS and physical memory; either wrong unit
+        turns the test red. The cap derivation stays open: it needs the peak
+        this column will measure on the next full build.
 - [ ] **K7** `native_edges` treats a missing neighbour as resolved when any of
       its `FINE_RES` children is indexed, so the cover gate samples the seam
       (TR-11). **K11** `osm_rail.sh` filters on `route=train` alone (CR-16).

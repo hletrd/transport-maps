@@ -13,7 +13,9 @@ import gzip
 import json
 import logging
 import multiprocessing
+import resource
 import subprocess
+import sys
 import threading
 import time
 from datetime import UTC, datetime
@@ -280,6 +282,20 @@ def _preflight_origins(idx, origins: list[dict]) -> None:
             )
 
 
+def _peak_rss_mb() -> float:
+    """This process's resident high-water mark so far, in MB.
+
+    `ru_maxrss` is in bytes on macOS and in kilobytes on Linux (getrusage(2)
+    on each). It is a high-water mark, not a per-origin figure: a worker's
+    value only rises across the origins it runs, so the largest one logged
+    against a pid is that worker's peak -- the number a worker cap has to
+    fit, and one nothing recorded before (PR-4: workers measured at 11-12 GB
+    against a cap modelled on about a third of that).
+    """
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak / (1 << 20) if sys.platform == "darwin" else peak / 1024
+
+
 def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     """Solve and emit one origin. Returns the table row to print."""
     slug = origin["slug"]
@@ -351,7 +367,9 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
                                   parents=parents, rep=rep)
 
     size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
-    return f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}"
+    # Read last, after every writer has run, so the origin's own peak is in it.
+    return (f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}"
+            f"{os.getpid():>8}{_peak_rss_mb():>10,.0f}")
 
 
 def _solve_one_forked(origin: dict) -> str:
@@ -529,7 +547,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     if exclude is None:
         index.write_reading_parents(idx, config.DIST / "reading_parents.bin")
 
-    print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}")
+    print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}{'pid':>8}{'peak MB':>10}")
 
     # Origins are independent once the graph exists, and the machine has more
     # than one core. Serially this build took nearly eight hours; the graph is

@@ -370,6 +370,29 @@ def test_a_full_build_stamps_identity_count_and_graph_flags_into_index_json(monk
     assert set(kw["identity"]) == {"inputsHash", "buildId", "builtAt"}
 
 
+def test_each_origin_row_logs_its_process_and_peak_memory(monkeypatch, tmp_path, capsys):
+    """R4: the per-origin row carries the pid and the resident high-water mark,
+    so a worker's peak is a measured number in the build log. The figure is
+    held against `ps`, which reports this process's current RSS in KB: a peak
+    can be no lower than that, and no higher than the machine. A wrong unit
+    either way (getrusage is bytes on macOS, KB on Linux) misses by 1024x and
+    fails one bound or the other -- tried both, both red."""
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    _stub_pipeline(monkeypatch, [], [1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
+    cli._build_all()
+    rows = [ln.split() for ln in capsys.readouterr().out.splitlines()
+            if ln.split()[:1] in (["first"], ["second"])]
+    assert len(rows) == 2
+    rss_kb = int(subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())],
+                                capture_output=True, text=True, check=True).stdout)
+    physical_mb = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / (1 << 20)
+    for row in rows:
+        assert int(row[-2]) == os.getpid()
+        peak_mb = float(row[-1].replace(",", ""))
+        assert rss_kb / 1024 * 0.9 <= peak_mb <= physical_mb, (peak_mb, rss_kb, physical_mb)
+
+
 def test_worker_cap_drops_to_five_above_three_million_cells():
     assert cli._worker_cap(3_000_001) == 5
     assert cli._worker_cap(500_000) == 8
