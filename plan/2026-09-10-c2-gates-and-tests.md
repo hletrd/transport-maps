@@ -106,7 +106,13 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
       centre's accumulator, `.rail.bin` indexes a row naming the centre's
       station (TE-2). Lands with R3's `HoverGrid`. Mutation: fastest-child in
       each writer separately → red.
-- [ ] **P4 (node half) / F5** `web/tests/app_pure.test.mjs` (`esc`, `fmtTime`
+- [x] **P4 (node half) / F5** (2026-10-02: the `fmtTime`/`fmtDur`/`fmtTick`
+      part, run in node by `tests/web/test_time_format.py` with the 59.5 and
+      119.6 seams, four mutations red. `esc` already runs in node in
+      `test_esc.py`, `legsTo` and `cellIndex` in `test_itinerary_grid.py` and
+      `test_tier_disagreement.py`. Done as pytest-driven node, the
+      pattern every other web test uses, not a separate `.mjs` suite.)
+      `web/tests/app_pure.test.mjs` (`esc`, `fmtTime`
       boundaries incl. the 119.6 seam, `cellIndex`, `legsTo` round trip from a
       Python-written fixture) run by `tests/web/test_app_pure.py` with a visible
       skip when `node` is absent (TE-3).

@@ -2,9 +2,11 @@
 # slug/name/lat/lon -- lat/lon are the CITY CENTRE, not the airport.
 # Top world cities by airport passenger volume, plus coverage for every
 # inhabited continent (Africa, South America, Oceania included).
-# The first 157 entries were hand-picked; the 396 after the marker comment
-# further down were added by scripts/expand_origins.py (population
-# >= 1,000,000, or a national capital >= 250,000, from GeoNames cities15000).
+# The entries above the first "Added by scripts/expand_origins.py" marker
+# comment were hand-picked; each marker further down opens a block that
+# script appended, and names the population thresholds it used (GeoNames
+# cities15000). No count is given here: the last one went stale when the
+# list grew.
 
 [[origin]]
 slug = "seoul"

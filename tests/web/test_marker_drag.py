@@ -29,6 +29,7 @@ import subprocess
 
 import pytest
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -36,51 +37,21 @@ HTML = (config.ROOT / "web" / "index.html").read_text(encoding="utf-8")
 
 
 def _function(name: str) -> str:
-    """The verbatim source of a top-level function, by brace matching.
+    """The verbatim source of a top-level function.
 
-    Every other slicer in tests/web/ takes `APP.index("{", start)` as the body
-    brace. That is wrong for a DESTRUCTURED PARAMETER: `paintOrigin(o, {
-    keepZoom = false } = {})` opens and closes a brace before the body, so the
-    naive matcher returns the signature alone -- and an `assert "x" in body`
-    over a signature passes for nothing at all. Found here because this file
-    needed paintOrigin, which is the first function with that shape any test
-    has tried to slice.
-
-    So: walk the parameter parens to their close first, and take the body
-    brace after them.
+    This file found C12-10: the old per-file slicers took `APP.index("{",
+    start)` as the body brace, which for a DESTRUCTURED PARAMETER --
+    `paintOrigin(o, { keepZoom = false } = {})` -- is the parameter's, so the
+    slice was the signature alone and an `assert "x" in body` over it passed
+    for nothing. `_js.function` walks the parameter list to its close first;
+    the test below keeps it honest on the one real function with that shape.
     """
-    start = APP.index(f"function {name}(")
-    i = APP.index("(", start)
-    depth = 0
-    for j in range(i, len(APP)):
-        if APP[j] == "(":
-            depth += 1
-        elif APP[j] == ")":
-            depth -= 1
-            if depth == 0:
-                i = APP.index("{", j)
-                break
-    else:
-        raise AssertionError(f"function {name} has no parameter list")
-
-    depth = 0
-    for j in range(i, len(APP)):
-        if APP[j] == "{":
-            depth += 1
-        elif APP[j] == "}":
-            depth -= 1
-            if depth == 0:
-                body = APP[start:j + 1]
-                assert body.count("\n") > 0, (
-                    f"function {name} sliced to a single line; the matcher is "
-                    "wrong or the function is a stub")
-                return body
-    raise AssertionError(f"function {name} is not brace-balanced")
+    return _js.function(name)
 
 
 def test_the_slicer_reaches_the_body_and_not_just_the_signature():
     """The guard on the guard: paintOrigin has a destructured parameter, and
-    the naive matcher every other test file uses stops at its closing brace.
+    a naive matcher stops at its closing brace.
     """
     body = _function("paintOrigin")
     assert "keepZoom" in body and "originGen" in body, (

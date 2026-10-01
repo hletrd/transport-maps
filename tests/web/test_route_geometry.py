@@ -26,6 +26,7 @@ import subprocess
 
 import pytest
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -37,18 +38,7 @@ LONDON = (-0.46, 51.47)
 
 
 def _function(name: str) -> str:
-    """The verbatim source of a top-level function, by brace matching."""
-    start = APP.index(f"function {name}(")
-    i = APP.index("{", start)
-    depth = 0
-    for j in range(i, len(APP)):
-        if APP[j] == "{":
-            depth += 1
-        elif APP[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return APP[start:j + 1]
-    raise AssertionError(f"function {name} is not brace-balanced")
+    return _js.function(name)
 
 
 @pytest.fixture(scope="module")

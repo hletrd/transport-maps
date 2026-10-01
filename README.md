@@ -89,9 +89,11 @@ provider fingerprint reaches `dist/`. One commercial service is used during
 **calibration only**: `scripts/calibrate_ground.py` samples driving times from
 Google Routes and fits four of the six per-road-class speeds in
 `graph/ground.py` (classes 1-4) and the urban factor in `sources/urban.py`.
-Roadless terrain and local roads keep published-figure defaults: the fit
-wanted roadless terrain infinitely fast, which its guard refuses, and local
-roads drew 116 km across four journeys. `graph/ground.py` says which is which
+Roadless terrain and local roads keep published-figure defaults: for roadless
+terrain the fit returned a negative time per kilometre (a reciprocal of
+-0.00978 h/km, about -102 km/h, from 2,272 km across 55 journeys), which the
+fit's sign filter refuses, and local roads drew 116 km across four journeys,
+which its support guard refuses. `graph/ground.py` says which is which
 at the constant itself, as CLAUDE.md's calibration rule requires. The sampled durations stay in
 `data/build/` (gitignored) and nothing from them reaches `dist/`.
 

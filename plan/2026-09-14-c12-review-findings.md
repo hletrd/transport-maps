@@ -132,6 +132,13 @@ the thing that prevents a stale count shipping.
 - [x] **C12-7a** The five visitor-facing strings and `README.md:5`.
 - [ ] **C12-7b** The ~26 stale in-code comments naming 553 — cycle 13, deferred
       below. They mislead a reader, not a visitor.
+      2026-10-02, PARTIAL: the present-tense ones in `web/app.js`,
+      `tests/web/test_search_fold.py` and `test_readout_state.py` now say
+      "then"/"at the time" or name no count. Left open for `src/` and
+      `scripts/` (`cli.py:478` "553 today", `validate.py:180`,
+      `emit/hover.py:226`, `contour/bands.py:28`, `cli.py:522`), which that
+      pass was not scoped to touch. Past-tense measurements naming 553 are
+      records, not staleness, and stay.
 
 ## C12-8 — fixed sleeps in the browser gate break at 1,464 origins
 
@@ -236,7 +243,8 @@ function with that shape. Fixed there by walking the parameter parens first,
 with a guard test that fails if the slice comes back a single line.
 
 - [x] Fixed in `test_marker_drag.py` and `test_departure_list_cap.py`.
-- [ ] The same naive matcher is still in `test_route_geometry.py`,
+- [x] (2026-10-02: replaced everywhere by the shared `tests/web/_js.py`,
+      checked by `tests/web/test_js_slicer.py`.) The same naive matcher is still in `test_route_geometry.py`,
       `test_itinerary_grid.py`, `test_city_country.py` and roughly a dozen
       others. **Not currently vacuous**: none of the functions they slice has
       a destructured parameter, checked. Deferred to cycle 13 as a latent
@@ -261,7 +269,8 @@ after it.
 - [x] The loop moved below the IIFE; the ReferenceError reproduced in node to
       confirm the claim rather than assert it; pinned by
       `test_departure_list_cap.py::test_the_search_key_is_built_below_countryname`.
-- [ ] **C12-11b**: `test_module_scope_order.py` only walks handlers registered
+- [x] **C12-11b** (2026-10-02: the module body is walked too; the cycle-12
+      mutation goes red): `test_module_scope_order.py` only walks handlers registered
       before the top-level await. Module-body code *after* it is unchecked, and
       that is where this one was. Extending the walk is cycle 13. Severity
       High, confidence High — it is the failure mode CLAUDE.md is written

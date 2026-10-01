@@ -42,21 +42,13 @@ import subprocess
 
 import pytest
 
+from tests.web import _js
+
 APP = (pathlib.Path(__file__).resolve().parents[2] / "web" / "app.js").read_text()
 
 
 def _function(name: str) -> str:
-    start = APP.index(f"function {name}(")
-    i = APP.index("{", start)
-    depth = 0
-    for j in range(i, len(APP)):
-        if APP[j] == "{":
-            depth += 1
-        elif APP[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return APP[start:j + 1]
-    raise AssertionError(f"function {name} is not brace-balanced")
+    return _js.function(name)
 
 
 def _esc_source() -> str:

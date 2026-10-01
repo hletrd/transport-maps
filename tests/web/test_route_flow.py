@@ -42,6 +42,7 @@ from itertools import pairwise
 
 import pytest
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -49,17 +50,7 @@ APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
 def _slice(start: str, opener: str = "{") -> str:
     """Source from `start` to the brace that closes the block it opens."""
-    i = APP.index(start)
-    j = APP.index(opener, i)
-    depth = 0
-    for k in range(j, len(APP)):
-        if APP[k] == opener:
-            depth += 1
-        elif APP[k] == "}":
-            depth -= 1
-            if depth == 0:
-                return APP[i:k + 1]
-    raise AssertionError(f"{start!r} is not brace-balanced")
+    return _js.block(start, opener=opener)
 
 
 def _function(name: str) -> str:

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -21,17 +22,7 @@ APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
 def _body(opening: str) -> str:
     """The brace-balanced block that starts at `opening`, comments stripped."""
-    start = APP.index(opening)
-    i = APP.index("{", start)
-    depth = 0
-    for j in range(i, len(APP)):
-        if APP[j] == "{":
-            depth += 1
-        elif APP[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return re.sub(r"//[^\n]*", "", APP[start:j + 1])
-    raise AssertionError(f"{opening!r} is not brace-balanced")
+    return re.sub(r"//[^\n]*", "", _js.block(opening))
 
 
 def test_rebuilding_the_city_list_does_not_delete_the_address_results() -> None:

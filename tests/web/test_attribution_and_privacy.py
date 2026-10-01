@@ -23,6 +23,7 @@ and both are contract terms rather than matters of taste, so they get a gate.
 import re
 from html.parser import HTMLParser
 
+from tests.web import _js
 from transport_maps import config
 
 HTML = (config.ROOT / "web" / "index.html").read_text(encoding="utf-8")
@@ -30,27 +31,7 @@ APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
 
 def _function(name: str) -> str:
-    """The verbatim source of a top-level function, by brace matching."""
-    start = APP.index(f"function {name}(")
-    i, depth = APP.index("(", start), 0
-    while True:
-        if APP[i] == "(":
-            depth += 1
-        elif APP[i] == ")":
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
-    i = APP.index("{", i)
-    depth = 0
-    for j in range(i, len(APP)):
-        if APP[j] == "{":
-            depth += 1
-        elif APP[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return APP[start:j + 1]
-    raise AssertionError(f"function {name} is not brace-balanced")
+    return _js.function(name)
 
 OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright"
 GA_PARTNERS = "https://www.google.com/policies/privacy/partners/"

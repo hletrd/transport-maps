@@ -9,6 +9,7 @@ themselves live in `scripts/browser_verify.sh`, which drives the deployed page.
 
 import re
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -125,9 +126,10 @@ def test_the_one_tab_stop_in_the_city_list_is_the_city_you_depart_from():
     measuring from.
 
     Mutation performed and reverted: go back to `box.querySelector("button")`
-    alone -> red.
+    alone -> red. The stop now lives in `rovingStop()`, which
+    `tests/web/test_roving_tabindex.py` also runs in node.
     """
-    m = re.search(r"const first = (.*?);\n\s*if \(first\) first\.tabIndex = 0;", APP, re.S)
+    m = re.search(r"const stop = again(.*?);\n", _js.function("rovingStop"), re.S)
     assert m, "the roving tabindex has moved; re-derive this test"
     assert 'aria-current="true"' in m.group(1), (
         "the tab stop is the first row again, not the current departure")

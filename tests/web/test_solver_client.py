@@ -22,6 +22,7 @@ import subprocess
 
 import pytest
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -30,36 +31,10 @@ APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 def _slice_function(name: str) -> str:
     """The verbatim source of `async function NAME(...) { ... }`.
 
-    Brace matching that skips line comments, block comments and string or
-    template literals -- all three appear inside this function, and a slicer
-    that ignores them stops at the first brace in a comment.
+    Line comments, block comments and string or template literals all appear
+    inside this function; `_js` skips every one of them.
     """
-    start = APP.index(f"async function {name}(")
-    i, depth, seen = start, 0, False
-    while i < len(APP):
-        c = APP[i]
-        nxt = APP[i + 1] if i + 1 < len(APP) else ""
-        if c == "/" and nxt == "/":
-            i = APP.index("\n", i)
-            continue
-        if c == "/" and nxt == "*":
-            i = APP.index("*/", i) + 2
-            continue
-        if c in "\"'`":
-            j = i + 1
-            while j < len(APP) and APP[j] != c:
-                j += 2 if APP[j] == "\\" else 1
-            i = j + 1
-            continue
-        if c == "{":
-            depth += 1
-            seen = True
-        elif c == "}":
-            depth -= 1
-            if seen and depth == 0:
-                return APP[start:i + 1]
-        i += 1
-    raise AssertionError(f"async function {name} has no closing brace")
+    return _js.function(name, with_async=True)
 
 
 def _const_block() -> str:

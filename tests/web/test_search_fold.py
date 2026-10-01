@@ -6,7 +6,7 @@ cannot find. Nothing in the suite executed it before this file -- it is one of
 the 33 top-level `app.js` functions cycle 15's test lane found named in no
 test, and the defect it was hiding was live on the deployed site.
 
-The defect: the 553 names in `dist/index.json` carry BOTH apostrophes.
+The defect: the names in `dist/index.json` carry BOTH apostrophes.
 
     U+0027  Xi'an, Huai'an, N'Djamena
     U+2019  Tai’an, Lu’an
@@ -64,6 +64,7 @@ import tomllib
 import pytest
 
 from tests.conftest import skip_without_dist
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -72,39 +73,10 @@ APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 def _const_arrow(name: str) -> str:
     """The verbatim source of a top-level `const NAME = ...;` declaration.
 
-    Ends at the first semicolon that is not inside a string or a regex
-    literal. Copied deliberately from `test_esc.py` rather than generalised:
-    cycle 15's architect counted 13 distinct slicers across this directory and
-    7 of them the naive variant that stops at the first `;`, which would cut
-    `fold()` in half at the `;` inside no string at all -- but would cut
-    `FOLD_DROP` at the `.` if it ever grew one. Consolidating all 13 is
-    carried as DEF15-55; using the self-checking one is not negotiable.
+    Ends at the first semicolon outside every bracket, string and regex
+    literal -- `fold()` and `FOLD_DROP` are full of both.
     """
-    start = APP.index(f"const {name} = ")
-    i, depth, quote = start, 0, None
-    while i < len(APP):
-        c = APP[i]
-        if quote:
-            if c == "\\":
-                i += 2
-                continue
-            if c == quote:
-                quote = None
-        elif c in "\"'`":
-            quote = c
-        elif c == "/" and APP[i + 1] not in "/*":
-            j = i + 1
-            while j < len(APP) and APP[j] != "/":
-                j += 2 if APP[j] == "\\" else 1
-            i = j
-        elif c in "([{":
-            depth += 1
-        elif c in ")]}":
-            depth -= 1
-        elif c == ";" and depth == 0:
-            return APP[start:i + 1]
-        i += 1
-    raise AssertionError(f"const {name} has no terminating semicolon")
+    return _js.statement(f"const {name} = ")
 
 
 FOLD_SRC = "\n".join(_const_arrow(n) for n in ("FOLD_DROP", "FOLD_SPACE", "fold"))
@@ -324,8 +296,8 @@ def test_the_country_key_still_joins_on_a_single_space() -> None:
 #      Palma   -> Las Palmas ...  Santos  -> General Santos
 #      Osh     -> Baoshan         Orel    -> Morelia   ... and six more
 #
-#    At the 553 origins `dist/` holds today only Xi'an is affected; the other
-#    nineteen arrive with the rebuild. Typing "London" and getting East
+#    At the 553 origins `dist/` held when this was written only Xi'an was
+#    affected; the other nineteen arrived with the rebuild. Typing "London" and getting East
 #    London is the one a visitor would notice first.
 #
 # 2. Drop only the exact-match tier: **1 failed, 3 errored.** The errors are
@@ -416,7 +388,7 @@ def test_every_shipped_name_ranks_its_own_city_first(rank) -> None:
     to the unrelated key `fengxiang`.
 
     The `San José` case is only visible at 1,464 origins. At the 553 the
-    built `dist/` holds, it does not exist -- which is the whole reason this
+    built `dist/` held when this was written, it did not exist -- which is the whole reason this
     file now reads `data/origins.toml` instead of `dist/index.json`.
     """
     names = _shipped_names()

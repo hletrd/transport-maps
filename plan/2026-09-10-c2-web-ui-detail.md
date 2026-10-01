@@ -183,7 +183,10 @@ Controls, focus, tooltips, semantics
       PR-11) -- already shipped in `9d0a401` (`index.html:84-85`); the cycle-3
       perf review found it done and the box unticked. **N24** Solid scrim on `.tip` instead of `backdrop-filter`; trace
       before/after (PR-13).
-- [ ] **M10** Unwrap the hover ring across ±180 and wrap `dx` in `nearestPlace`
+- [x] **M10** (2026-10-02: `nearestPlace` wraps its longitude difference,
+      run in node by `tests/web/test_nearest_place.py`; the hover ring was
+      already unwrapped at `app.js` `unwrap(h3.cellToBoundary(...))`.)
+      Unwrap the hover ring across ±180 and wrap `dx` in `nearestPlace`
       (DBG-8). **M15** Hover-cell copy for Shenzhen/Hong Kong (DBG-11) — C3
       removes the value half.
 - [ ] **N22** Owner judgement: a permanent one-line credit under the legend or
@@ -199,7 +202,9 @@ Controls, focus, tooltips, semantics
       decide with the owner whether 1.8–2.7 between adjacent interpolated
       bands is the intended gradient (VER-29 refuted the wording half: CLAUDE.md
       already says anchors ≥ 6).
-- [ ] **P4 (node harness)** `web/tests/app_pure.test.mjs` run from pytest when
+- [x] **P4 (node harness)** (2026-10-02: see the gates plan; the formatters
+      run in node from `tests/web/test_time_format.py`.)
+      `web/tests/app_pure.test.mjs` run from pytest when
       `node` is present (gates plan).
 
 ## Progress

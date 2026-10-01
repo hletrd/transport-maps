@@ -1571,7 +1571,13 @@ function nearestPlace(lat, lon) {
   for (let i = 0; i < places.lat.length; i++) {
     // Equirectangular is plenty to rank candidates and avoids 34,000 trig calls.
     const dy = places.lat[i] - lat;
-    const dx = (places.lon[i] - lon) * cosLat;
+    // Wrapped across ±180: Fiji and Chukotka straddle the line, and
+    // the raw difference measured a town 5 km east as some 38,000 km away and
+    // named one on the far side of the island instead.
+    let dLon = places.lon[i] - lon;
+    if (dLon > 180) dLon -= 360;
+    else if (dLon < -180) dLon += 360;
+    const dx = dLon * cosLat;
     const d = dy * dy + dx * dx;
     if (d < bestD) { bestD = d; best = i; }
   }
@@ -2393,9 +2399,9 @@ function lookupRaw(lat, lon) {
       // land res-4 cell whose own res-6 cell is absent from the mask reads
       // "no scheduled route" at one zoom and a real duration at another.
       //
-      // Measured on the shipped build: 553 of 553 origins do this at Kota
-      // Kinabalu -- 10 h 18 min from Kolkata at res 4, "no scheduled route" at
-      // res 6 -- and 13 of 34,135 labelled places and 47 of 4,008 airports sit
+      // Measured on the 553-origin build then shipped: every origin did this
+      // at Kota Kinabalu -- 10 h 18 min from Kolkata at res 4, "no scheduled
+      // route" at res 6 -- and 13 of 34,135 labelled places and 47 of 4,008 airports sit
       // on such a cell, Bodo, Tarawa, Bora Bora and the Galapagos among them.
       //
       // The page cannot tell a padding slot from a genuinely unreachable land
@@ -3646,7 +3652,7 @@ $("copy-link").addEventListener("click", async (e) => {
 // match the cities spelt São Paulo, Zürich and Bogotá.
 //
 // Punctuation is folded for the same reason, and the apostrophe is why this
-// grew: the 553 shipped names carry BOTH U+0027 (Xi'an, Huai'an, N'Djamena)
+// grew: the shipped names carry BOTH U+0027 (Xi'an, Huai'an, N'Djamena)
 // and U+2019 (Tai’an, Lu’an), so which spelling a searcher had to type to find
 // a city was decided per city, by whoever entered it. Typing the straight
 // quote every keyboard emits found Xi'an and returned nothing for Lu'an.
@@ -3898,7 +3904,7 @@ function render(filter = "") {
     // aria-current AND aria-selected, and they are not redundant. An element
     // with role="option" inside a role="listbox" carries its selected state
     // in aria-selected; that is the property a screen reader announces as
-    // "selected", and the 553 rows had none of it. Selection was carried
+    // "selected", and the rows had none of it. Selection was carried
     // only by the word "departing" in the row's own text, which is content,
     // not state -- SC 4.1.2. aria-current stays because it is the truthful
     // answer to a different question: which row is the page's current
@@ -4001,7 +4007,7 @@ function render(filter = "") {
     li.textContent = `No departure city or airport matches “${filter.trim()}”. Press Enter or “Search address” to look it up.`;
     list.append(li);
   }
-  // Filtering 553 origins down to none changed the list and said nothing: the
+  // Filtering the list down to none changed it and said nothing: the
   // live region is the only channel a screen-reader user has for "your query
   // matched nothing". Announced only when a filter is active, so the
   // once-per-origin rebuild in settle() stays silent.
@@ -4028,9 +4034,9 @@ function render(filter = "") {
   // settle() rebuilds this list once per origin, about a second after a city
   // is clicked -- and replaceChildren throws keyboard focus to <body>, on the
   // only keyboard route to a departure city. Remember which row had it and
-  // give it back to the row with the same slug.
-  const hadFocus = box.contains(document.activeElement)
-    ? document.activeElement.dataset?.slug : null;
+  // give it back to the same row in the new list: see rovingStop().
+  const focused = box.contains(document.activeElement) ? document.activeElement : null;
+  const had = { slug: focused?.dataset?.slug, airport: focused?.dataset?.airport, el: focused };
   // ...and the address results are not ours to throw away. searchAddress()
   // PREPENDS a <ul class="addresses"> to this same box, and replaceChildren
   // deletes it. The re-attach at the end of searchAddress() covers only the
@@ -4050,15 +4056,9 @@ function render(filter = "") {
   // 0, undoing by keyboard the very scroll that puts the current departure in
   // view. A keyboard visitor arrived at the top of an alphabet with no sign
   // which city the page was measuring from.
-  const first = box.querySelector(`button[aria-current="true"][data-slug]`)
-    ?? box.querySelector("button");
-  if (first) first.tabIndex = 0;
-  if (hadFocus) {
-    const again = box.querySelector(`button[data-slug="${cssEscape(hadFocus)}"]`);
-    if (again) { again.tabIndex = 0; again.focus({ preventScroll: true }); }
-  }
-  // The list opens at the top -- so with 553 origins, Seoul is row 364 of 461,
-  // about 9,540 px down a 12,072 px scroll box, and the visitor is looking at
+  rovingStop(box, had);
+  // The list opens at the top -- so at 553 origins Seoul was row 364 of 461,
+  // about 9,540 px down a 12,072 px scroll box, and the visitor was looking at
   // "Aba" with no sign that a departure city is selected at all. Put the
   // current departure in view. Only when nothing is being typed: while
   // filtering, the top of the list IS the answer.
@@ -4080,6 +4080,26 @@ function render(filter = "") {
 }
 //: CSS.escape is not in every browser this page supports, and a slug can carry
 //: a hyphen but never a quote, so a conservative fallback is enough.
+// The list's one tab stop after render() rebuilds it, and the row keyboard
+// focus goes back to. Two defects lived in the inline version (DEF17-21/22):
+// the refocused row got tabIndex 0 BESIDE the current departure's, so a
+// roving list had two tab stops; and only a city row (data-slug) was ever
+// refocused, so a re-render with focus on an airport or address row dropped
+// it to <body>. An address row is the same node carried across the rebuild;
+// its old tabIndex from arrow-key roving is carried with it, hence the reset.
+function rovingStop(box, had) {
+  const again = had.slug ? box.querySelector(`button[data-slug="${cssEscape(had.slug)}"]`)
+    : had.airport ? box.querySelector(`button[data-airport="${cssEscape(had.airport)}"]`)
+    : had.el && box.contains(had.el) ? had.el
+    : null;
+  const stop = again
+    ?? box.querySelector(`button[aria-current="true"][data-slug]`)
+    ?? box.querySelector("button");
+  for (const b of box.querySelectorAll("button")) b.tabIndex = -1;
+  if (stop) stop.tabIndex = 0;
+  if (again) again.focus({ preventScroll: true });
+}
+
 function cssEscape(s) {
   return globalThis.CSS?.escape ? CSS.escape(s) : String(s).replace(/[^\w-]/g, "");
 }
@@ -4127,7 +4147,7 @@ async function searchAddress(q) {
   const head = document.createElement("li");
   head.className = "head"; head.setAttribute("role", "none");
   ul.append(head);
-  // PREPEND, not append. With 553 origins the results list is ~12,000 px tall,
+  // PREPEND, not append. At 553 origins the results list was ~12,000 px tall,
   // so appending put "Type at least three characters" at viewport y 12,326 in
   // a box that ends at 471: the visitor pressed "Search address", nothing
   // visible happened, and the button read as broken. What the search has to

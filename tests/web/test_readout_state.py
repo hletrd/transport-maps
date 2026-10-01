@@ -13,6 +13,7 @@ that would otherwise drift, with the mutation named on each test.
 
 import re
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -23,35 +24,13 @@ CODE = re.sub(r"^\s*//.*$", "", APP, flags=re.M)
 
 
 def _function(name: str) -> str:
-    """The verbatim source of a top-level function in CODE, by brace matching.
+    """The verbatim source of a top-level function in CODE.
 
     Slicing to a marker call (the old `body[:body.index("renderLegs()")]`)
     stops at whichever call happens to come first, so adding an early-return
     branch silently truncated the window an assertion was searching.
     """
-    start = CODE.index(f"function {name}(")
-    # Past the parameter list: a destructured parameter opens a brace of its
-    # own, and matching from the first "{" balanced on that instead of on the
-    # body, returning a 47-character "function".
-    i, depth = CODE.index("(", start), 0
-    while True:
-        if CODE[i] == "(":
-            depth += 1
-        elif CODE[i] == ")":
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
-    i = CODE.index("{", i)
-    depth = 0
-    for j in range(i, len(CODE)):
-        if CODE[j] == "{":
-            depth += 1
-        elif CODE[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return CODE[start:j + 1]
-    raise AssertionError(f"function {name} is not brace-balanced")
+    return _js.function(name, CODE)
 
 
 def test_clearing_the_pin_also_drops_the_pointer_it_froze():
@@ -162,7 +141,7 @@ def test_the_failure_notice_is_not_cleared_by_a_pointer_move_onto_land():
 def test_the_city_list_is_rebuilt_when_an_origin_fetch_fails():
     """The failure path must clear `listTimesFor` and re-render.
 
-    `settle()` rebuilds the 553-row list only when `origin.times` arrives, so
+    `settle()` rebuilds the city list only when `origin.times` arrives, so
     on the failure path it never rebuilt: the list kept the PREVIOUS city's
     times under the new city's caption, showed the new departure as a
     destination with a travel time to the city you are departing from, and
