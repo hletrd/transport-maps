@@ -76,8 +76,9 @@ PMTILES_METADATA_LEAKS = ("/users/", "/home/", "/var/folders/", "/private/",
 #: enforces over text (`tests/test_licence_firewall.py`). That firewall's
 #: SCANNED_SUFFIXES is .json/.geojson/.toml/.txt/.md/.html/.js/.xml -- which
 #: excludes .pmtiles and .bin, i.e. every binary artefact an origin ships.
-#: CLAUDE.md and deploy/README.md both call the firewall "the only automated
-#: licence gate in the project", and it could not see the format most of the
+#: deploy/README.md calls the firewall "the only automated licence gate in the
+#: project" (CLAUDE.md, cited here for that phrase until 2026-10-02, does not
+#: contain it), and it could not see the format most of the
 #: published bytes are in. No forbidden token reaches a .pmtiles today (the
 #: tippecanoe invocations and the feature properties were traced), so this
 #: closes a coverage gap rather than a live leak -- but the metadata blob is
@@ -444,13 +445,20 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
                     # The per-origin fingerprint of the build that made this
                     # file. Every fixed-width array is n_cells long whatever the
                     # solve resolution, because the res-4 parent count depends
-                    # on the land mask -- so all 349 shipped arrays are the same
+                    # on the land mask -- so every shipped array is the same
                     # size and a stale res-5 array passes every length check
                     # above.
                     #
                     # BOTH offsets, not just the first. offsets.airports is
-                    # idx.n_cells, so it moves only with the solve resolution
-                    # (about 635k at res 5 against 13.7M at res 6). The gap
+                    # idx.n_cells: the REFINED universe, the 4,091,715 res-6
+                    # base cells with the dense ones split into res-7 children,
+                    # 13,751,643 cells in the shipped build. It moves with the
+                    # solve resolution (about 635k on the old res-5 grid), the
+                    # land mask and the split rule, never with the airport set.
+                    # This comment used to call 13.7M the res-6 count, the same
+                    # 25x reading (res 5 to the refined index) that
+                    # sources/roads.py retracts: res 6 alone is about 7x res 5,
+                    # and the res-7 split adds the rest. The gap
                     # between the two offsets is the AIRPORT COUNT, which moves
                     # whenever the airport set changes -- an added snap rule, a
                     # new source extract, a different filter. Keying on

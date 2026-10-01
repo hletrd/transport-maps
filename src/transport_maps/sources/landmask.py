@@ -152,7 +152,10 @@ def _antarctic_wedges(antarctic: list) -> list:
     H3 cannot polyfill a ring that encloses a pole, which is why this continent
     was previously dropped entirely -- leaving a visible hole in the chart. Clip
     the pole away and cut what remains into longitude wedges; no wedge contains
-    the pole, so each polyfills normally. Measured: 42,704 cells, 0 failures.
+    the pole, so each polyfills normally. Measured 2026-10-02 at res 6 on the
+    current land_cells stamp: 363,488 cells carry ANTARCTICA_LANDMASS, 8.9 % of
+    the 4,091,715. The 42,704 that stood here was measured on an earlier res-5
+    universe and counts nothing the build now makes.
     """
     if not antarctic:
         return []

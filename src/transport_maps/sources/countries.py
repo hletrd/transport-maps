@@ -29,9 +29,12 @@ COUNTRIES_URL = (
 # closure to through traffic, not a hard crossing or a visa nuisance -- borders
 # that are merely slow belong in a border-time model, not here.
 #
-# Deliberately NOT included: India-Pakistan (Wagah does open), Russia-Ukraine
-# and other borders whose status is contested or changing. A wrong entry here
-# silently deletes real routes, so the bar is "obviously and durably shut".
+# A wrong entry here silently deletes real routes, so the bar is "shut to
+# through traffic", judged per border in the comment beside it. India-Pakistan
+# and Russia-Ukraine were once left out as contested or changing (Wagah does
+# open, by permit); both were added in 137923d and are in the set below, so
+# the routes they would carry are cut. Borders that merely change status are
+# still left out until they settle.
 CLOSED_BORDERS: frozenset[frozenset[str]] = frozenset({
     frozenset({"PRK", "KOR"}),   # inter-Korean: sealed since 1953
     # North Korea's other borders admit no independent traveller either --

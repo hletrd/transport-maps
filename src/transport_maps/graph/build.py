@@ -30,7 +30,10 @@ IMPLAUSIBLE_LONGHAUL_KM = 8000.0
 
 # A route pair naming an airport that never made it into the node index (see
 # nodes.MAX_DROPPED_AIRPORT_FRACTION) cannot become an edge. 124 of 68,152
-# directed pairs today (0.18%), all downstream of the 25 dropped airports.
+# directed pairs (0.18%) when last measured, all downstream of the airports
+# dropped then. That count was 25; at res 6 it is 12 of 4,008 (re-measured
+# 2026-10-02, see graph/nodes.py), and the pair figure has not been re-taken
+# since, so read it as an order of magnitude.
 # Unbounded, a land-mask regression would silently delete the air network one
 # pair at a time while every other gate stayed green.
 MAX_UNKNOWN_PAIR_FRACTION = 0.02

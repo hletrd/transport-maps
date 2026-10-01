@@ -21,7 +21,7 @@ written. Current values live in `src/transport_maps/config.py`,
 | Flight times fitted from FR24 / FlightAware | Fitted from adsb.lol globe history (ODbL); `calibration.toml [meta]` |
 | Protomaps basemap, `basemap.pmtiles` ~100 MB | No basemap; `water.pmtiles` (867 MB) built from OSM water polygons and HydroLAKES cuts the bands to the coast |
 | 548,557 res-5 cells (~253 km², ~8.5 km edge) | 4,091,715 res-6 land cells (36 km², 3.7 km edge, 6.5 km across), refined to res 7 (5.2 km², 2.4 km across) |
-| Ground speeds 85/60/40/25/5 km/h | By GRIP4 class: roadless 5, highway 104, primary 57, secondary 50, tertiary 18, local 25 km/h, fitted against 2,998 Google Routes journeys (`graph/ground.py`) |
+| Ground speeds 85/60/40/25/5 km/h | By GRIP4 class: roadless 5, highway 104, primary 57, secondary 50, tertiary 18, local 25 km/h. Only highway, primary, secondary and tertiary (classes 1-4) are fitted, against 2,998 Google Routes journeys; roadless and local roads keep published-figure defaults, because the fit returned a negative time per kilometre for roadless terrain and drew local roads from 116 km across four journeys (`graph/ground.py`) |
 | Rail 250/80 km/h with 140/56 services per week | 200/75 km/h, no headway model (`calibration.toml [rail]`) |
 | Rail sinuosity 1.15 | `detour_factor = 1.2` |
 | Transfer table | `processing_min`, `disembark_min`, `border_min` and `connection_min` tables in `calibration.toml` |

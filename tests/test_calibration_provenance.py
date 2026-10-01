@@ -117,6 +117,9 @@ _ROAD_CLAIM_FILES = (
     "web/index.html",
     "web/llms.txt",
     "README.md",
+    # The design spec's As-built table restates the fitted speeds, and was the
+    # one file outside this list still claiming all six were fitted (DOC13-3).
+    "docs/superpowers/specs/2026-09-03-global-transport-time-map-design.md",
 )
 
 
@@ -124,7 +127,9 @@ def test_no_document_claims_the_whole_road_model_is_fitted():
     """Wherever the 2,998 journeys are named, the two defaults are named too.
 
     Mutation performed and reverted: restore "a road-speed model calibrated
-    against 2,998 real driving journeys" in web/index.html -> red.
+    against 2,998 real driving journeys" in web/index.html -> red. And
+    (2026-10-02) restore the design spec's As-built row "fitted against 2,998
+    Google Routes journeys" with no default named -> red.
     """
     from transport_maps import config
 

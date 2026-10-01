@@ -49,10 +49,13 @@ def check_coverage(minutes: np.ndarray, idx) -> float:
 
     Antarctica is excluded from the denominator. It is charted so the globe has
     no hole in it, but it has no scheduled passenger service, so every one of
-    its ~43,500 cells is unreachable by construction. Counting them would drag
-    a perfect build down to about 92% and leave only two points of headroom
-    above MIN_COVERAGE -- turning a gate that should catch real regressions into
-    one that mostly measures how much of Antarctica we drew.
+    its cells is unreachable by construction: 363,493 of the 13,751,643 in the
+    shipped build's index (measured 2026-10-02; Antarctica is roadless and has
+    no city, so none of it is split to res 7). Counting them would cap a
+    perfect build at 97.4% -- a ceiling set by how much of Antarctica we drew,
+    not by any route -- and every regression the gate exists to catch would be
+    measured against it. (This said ~43,500 cells and a 92% ceiling, a res-5
+    figure that the res-6 grid made wrong in both numbers.)
     """
     import h3
 
@@ -72,7 +75,11 @@ def check_coverage(minutes: np.ndarray, idx) -> float:
 
 # Hex vertices sampled per origin and level. Gaps, when the construction is
 # wrong, are systematic -- at every band junction -- so a sample this size
-# cannot miss them, and the full 3.6 million vertices would cost minutes.
+# cannot miss them, and the full set is far too many to test per origin: six
+# per cell is about 82.5 million at the native level (13,751,643 cells in the
+# shipped build) and 24.6 million on the 4,091,715-cell res-6 grid. This said
+# "3.6 million", the res-5 grid's count, which understated the native level
+# by about 23x (2026-10-02, DOC13-14).
 COVER_SAMPLE_CELLS = 20_000
 # At the native level a quarter as many split base cells are sampled on top of
 # those cells, at SEAM_EDGE_FRACTIONS along each of their six edges: 12 points

@@ -524,8 +524,9 @@ agent-browser eval '(()=>{const m=window.__map,p=m.project([100,62]);const c=doc
 # how a tap could push the answer off a phone and pass this check.
 # `scale` is the hour ticks; T3 promised a check for them and none was written,
 # so the four-viewport pass measured the band strip and never its labels.
-# `cardOverlap` is only meaningful on the desktop layout, where .depart-card and
-# .reading are both position:fixed in the same 306px column; in the rail they
+# `cardOverlap` is only meaningful on the desktop layout, where .depart-card (a
+# child of the fixed .topleft column) and .reading (position:fixed) share the
+# same 306px column; in the rail they
 # are stacked and share a boundary, which is not an overlap.
 # It also compares the card against the MASTHEAD, which nothing did: the card
 # was pinned at a hardcoded top:104px while the masthead height follows its own

@@ -2225,9 +2225,10 @@ let readingParentsWanted = null;
 //: it: a missing reading_parents.bin blanked the entire legend, readout and
 //: city list. Reproduced in a browser against a dist with the file removed.
 //:
-//: It was dormant only because index.json carries no `readingRes` yet, so
+//: It was dormant while index.json carried no `readingRes`, because then
 //: READING_RES is null and loadReading() returns before ever calling this.
-//: The next full build advertises readingRes and arms it -- and "a blank globe
+//: emit/index.py has written readingRes since 5c08df1 (2026-09-12), so every
+//: build since has armed it, the shipped one included -- and "a blank globe
 //: with nothing in the console" is the failure CLAUDE.md records this project
 //: as having shipped twice. The per-origin .r6.bin fetch beside it was always
 //: written this way; this is the same shape.
@@ -3392,9 +3393,11 @@ function revealReading() {
   reading.scrollIntoView({ block: "nearest", behavior: REDUCED_MOTION.matches ? "auto" : "smooth" });
 }
 
-// U6: .depart-card is fixed at top:104 and grows down; .reading is fixed at
-// bottom:14 and grows up; both are 306px wide in the same column at z-index 6
-// and neither knew the other's height. At 1280x800 a nine-leg itinerary put
+// U6: .depart-card sits under the masthead in the fixed .topleft column
+// (top:14, index.html) and grows down with it; .reading is fixed at bottom:14
+// and grows up; both are 306px wide in the same column at z-index 6 and
+// neither knew the other's height. (This said the card was fixed at top:104,
+// the hardcoded offset index.html and browser_verify.sh both record removing.) At 1280x800 a nine-leg itinerary put
 // them 43px into each other, covering the reach list's last row and the whole
 // "Share of charted land ... door to door" note -- the line the modelling rule
 // requires. The itinerary is the elastic part and already scrolls, so it is

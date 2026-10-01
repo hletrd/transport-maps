@@ -30,8 +30,11 @@ from transport_maps.sources import airports, landmask
 # An airport whose containing H3 cell is absent from the land mask is snapped
 # to the nearest indexed cell within two rings (_nearest_land); one with no
 # land cell that close cannot be wired into the graph and is dropped. A handful
-# is normal and permanent: at resolution 6 about a dozen atolls of 4,008 are
-# dropped and about 46 are snapped (2026-09). Thousands would mean the land
+# is normal and permanent: of 4,008 scheduled-service airports, 12 are dropped
+# and 52 snapped, measured 2026-10-02 by re-running _place_airports over the
+# cached res-6 universe (it reproduces the shipped offsets exactly: 13,751,643
+# cells, 3,996 airports). This comment said 46 and the one in _place_airports
+# said 58; neither was the build's number. Thousands would mean the land
 # mask itself regressed -- which NOTHING else would catch, because the 90%
 # publication gate measures land CELLS, not airports, and would still pass
 # with every airport on Earth gone.
@@ -185,7 +188,8 @@ def _place_airports(apts, cell_pos: dict[str, int], split_set: set | frozenset
             # mask (reclaimed islands, atolls, a shore the 1:10m outline cuts
             # inside), the nearest land cell within two rings stands in: two
             # rings at resolution 6 reach about 13 km, and most snaps are one
-            # cell over. 58 of 4,008 airports needed it at resolution 6.
+            # cell over. 52 of 4,008 airports need it (see the count at the
+            # top of this module).
             found = _nearest_land(cell, cell_pos, lat, lon, split_set)
             if found is not None:
                 pos, km = found

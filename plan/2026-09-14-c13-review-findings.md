@@ -118,7 +118,7 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
   proved against the live build). V13-27 is not re-verified here, so the box
   stays empty until someone confirms `page_gate`'s node pre-flight closes it.
 
-- [ ] **C13-10 — the fourteen documentation HIGHs.** DOC13-1…DOC13-14. Two are
+- [x] **C13-10 — the fourteen documentation HIGHs.** DOC13-1…DOC13-14. Two are
   visitor-facing and go first: DOC13-1, the page telling readers the fit wanted
   roadless terrain "infinitely fast" when the measured reciprocal is
   −102.2 km/h, and DOC13-5, `data/origins.toml`'s header still describing 157
@@ -130,6 +130,43 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
     `data/build/ground_samples2.json`) that the sign filter refuses; the
     origins.toml header names the marker blocks and states no count.
     DOC13-3, -4 and -6…-14 remain open.
+  - [x] DOC13-3, -4 and -6…-14 fixed 2026-10-02, each checked against the
+    current code and, where a number was at stake, re-measured from the
+    cached res-6 universe (read-only; `_place_airports` re-run over it
+    reproduces the shipped offsets exactly, 13,751,643 cells and 3,996
+    airports). None was obsolete; DOC13-9's ratios and DOC13-13's
+    certificates had drifted further than the finding said.
+    - DOC13-3: the spec's As-built row says classes 1-4 are fitted and
+      roadless/local are published-figure defaults; the spec joins
+      `_ROAD_CLAIM_FILES`, and restoring the old row turns
+      `test_no_document_claims_the_whole_road_model_is_fitted` red.
+    - DOC13-4: `countries.py` no longer says IND-PAK and RUS-UKR are
+      excluded; it says they were added in 137923d.
+    - DOC13-6: `check_dist.py` cites deploy/README.md alone for "the only
+      automated licence gate".
+    - DOC13-7: `app.js` and `test_reading_tier_fallback.py` say the tier has
+      been armed since 5c08df1 (2026-09-12); the live `index.json` carries
+      `readingRes: 6`.
+    - DOC13-8: 363,488 Antarctic-landmass cells at res 6 (`landmask.py`);
+      `validate.py` says 363,493 of 13,751,643 index cells and a 97.4 %
+      ceiling, not ~43,500 and 92 %; `test_landmask.py` no longer says its
+      counts exclude Antarctica.
+    - DOC13-9: `borders.py` measured against SIMPLIFY_DEG 0.0005 and 6 dp:
+      about 1.5 px and 0.003 px at z11; 70,681 vertices, 577,747 B gzipped.
+    - DOC13-10: 52 snapped and 12 dropped of 4,008, in both `nodes.py`
+      comments; `build.py`'s "25 dropped" is marked as the old count.
+    - DOC13-11: `check_dist.py` says 13.7M is the refined res-6/7 index and
+      moves with the land mask and split rule, not only the resolution.
+    - DOC13-12: `app.js` U6 places the card in the `.topleft` column;
+      `browser_verify.sh` no longer calls it position:fixed.
+    - DOC13-13: every certificate in `test_ferry_model.py` re-run (15
+      mutations across 13 tests, bytecode caching off);
+      five were wrong (ISO count, fall-through "every case", the 196,560 min
+      figure, the berth_min mutation that leaves its test green, and "both
+      fall under a week"); each now states what the run showed, and the
+      bucket-median test names a mutation that does turn it red.
+    - DOC13-14: `validate.py` gives 82.5 M native / 24.6 M res-6 vertices
+      instead of res-5's 3.6 M.
 
 - [ ] **C13-11 — the seventeen plan ticks that did not hold.** V13-1…V13-17,
   including a third un-recorded false tick in cycle 8 and cycle 12's own

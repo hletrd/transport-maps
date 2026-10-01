@@ -4,6 +4,10 @@ Every assertion here was checked by mutation -- break the thing it names and
 this file goes red. The mutations are recorded beside each test, because
 CLAUDE.md's rule is that a test which passes on deliberately broken code is
 worse than none, and this repository has shipped several of those.
+
+Every certificate was re-run on 2026-10-02 (DOC13-13). Five said something the
+run did not show and are corrected beside their tests; one of them, on the
+bucket-median test, named a mutation that leaves that test green.
 """
 
 import numpy as np
@@ -52,7 +56,8 @@ ANCHORS = [
 ])
 def test_parse_minutes_accepts_every_observed_format(raw, minutes):
     """Mutation: drop the _BARE_MIN branch -> the '35' and '08' cases go red.
-    Mutation: drop the ISO branch -> the three PT cases go red."""
+    Mutation: drop the ISO branch -> the three PT cases and P12D go red (four;
+    this said three until it was re-run on 2026-10-02)."""
     assert osm.parse_minutes(raw) == minutes
 
 
@@ -83,7 +88,9 @@ def test_parse_minutes_rejects_what_it_cannot_read(raw):
     one would be worse than admitting there is none.
 
     Mutation: make the final `return None` fall through to `float(t.split(':')[0])`
-    -> every case here goes red."""
+    -> 14 of the 19 cases go red. Not every case, as this used to claim: None,
+    "", "   ", "PT" and "P" return before reaching that line, so they stay
+    green under it (re-run 2026-10-02)."""
     assert osm.parse_minutes(raw) is None
 
 
@@ -156,8 +163,11 @@ def test_the_floor_keeps_the_whole_crossing_inside_the_uint16_sentinel():
     correctly-modelled crossing would ship as UNREACHABLE while check_coverage
     still counted the cell covered.
 
-    Mutation: drop MIN_SAILINGS_PER_WEEK from sailings_per_week -> red at
-    4,000 km (196,560 min, three times the sentinel)."""
+    Mutation: drop MIN_SAILINGS_PER_WEEK from sailings_per_week -> red: with
+    service_fraction=0.0 the weekly count is 0, the wait becomes
+    headway.NO_SERVICE (10,000,000 min) and the crossing far exceeds the
+    sentinel. (This said "196,560 min, three times the sentinel", a figure no
+    run of this mutation produces; re-run 2026-10-02.)"""
     worst = ferry.crossing_min(
         ferry.MAX_FERRY_KM, CAL,
         interval_min=ferry.MAX_INTERVAL_MIN,     # the sparsest service accepted
@@ -226,9 +236,17 @@ def test_the_sailing_model_reproduces_the_published_bucket_medians():
     with distance. That is the failure no single detour factor could fix, and
     it is why `berth_min` exists.
 
-    Mutation: set berth_min to 0.0 -> the 1-10 km row implies 9.7 km, and the
-    final assertion's `old` figure becomes the model's own, so the last line
-    goes red."""
+    Mutation: drop `cal.berth_min +` from ferry.sailing_min -> red: the
+    inversion above no longer reproduces any bucket's median.
+
+    NOT this one, which the docstring certified until 2026-10-02: setting
+    berth_min to 0.0 in calibration.toml leaves THIS test green. At 29.1 km/h
+    the 1-10 km median implies 9.7 km, still inside the bucket, and every other
+    row stays inside its own; the final assertion is arithmetic on constants
+    (20 min at the old 35 km/h) and cannot see calibration.toml at all. That
+    mutation is caught by
+    test_the_sailing_coefficients_are_the_ones_calibration_toml_documents
+    instead."""
     # (bucket, median observed minutes) -- calibration.toml's own table
     for (lo, hi), observed in [((1, 10), 20.0), ((10, 50), 60.0), ((50, 150), 200.0),
                                ((150, 400), 570.0), ((400, 1000), 1200.0),
@@ -281,8 +299,10 @@ SPARSEST = [
 def test_the_sparsest_plausible_crossings_cost_weeks_and_stay_inside_the_sentinel(
         label, km, per_year):
     """Mutation: drop MIN_SAILINGS_PER_WEEK -> the Kerguelen case exceeds the
-    sentinel. Mutation: raise the floor to 1.0/week -> both fall under a week
-    and the "weeks, not days" assertion goes red."""
+    sentinel. Mutation: raise the floor to 1.0/week -> both cases go red, but
+    not both on "weeks, not days" as this used to say: South Georgia falls to
+    5.6 days and fails that assertion, while Kerguelen stays at 8.4 days and
+    fails the 3x-the-old-model assertion instead (re-run 2026-10-02)."""
     modelled = ferry.crossing_min(km, CAL)
     assert modelled < hover.MAX_MINUTES, (
         f"{label} costs {modelled:,.0f} min, at or above the {hover.MAX_MINUTES:,} "

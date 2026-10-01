@@ -9,10 +9,10 @@ into `#where`, and only THEN throws. The throw landed in the "not fatal" catch
 and was logged as a warning, while the legend, the readout and the city list
 had already gone. Reproduced in a browser against a dist with the file removed.
 
-It was dormant only because the shipped `index.json` carries no `readingRes`,
-so `READING_RES` is null and `loadReading()` returns before ever calling this.
-The next full build advertises `readingRes` and arms it, which is why this is
-fixed now rather than after. "A blank globe with nothing useful in the console"
+It was dormant while `index.json` carried no `readingRes`, because then
+`READING_RES` is null and `loadReading()` returns before ever calling this.
+`emit/index.py` has written `readingRes` since 5c08df1 (2026-09-12), so every
+build since arms it, the shipped one included. "A blank globe with nothing useful in the console"
 is the failure CLAUDE.md records this project as having shipped twice.
 
 Two tests, because neither alone is enough: the first RUNS the new fetch helper

@@ -2,18 +2,23 @@
 
 Natural Earth's boundary lines rather than the country polygons: the lines
 carry each border once, where dissolving polygon edges would draw every
-shared border twice and disputed ones inconsistently. Simplified to about
-1 km, which at the zooms this map reaches is below a pixel.
+shared border twice and disputed ones inconsistently. Simplified at
+SIMPLIFY_DEG (0.0005 deg, about 55 m), which keeps Natural Earth's own
+vertices and drops only the collinear ones; see the constant for why.
 
 Coordinates are rounded to COORD_DP. The default json encoder writes a float's
-full repr, so a point already simplified to a kilometre shipped as
-[-124.75886592699995,48.49401784300004] -- 38 characters for a position
-accurate to about 1,100 m. Measured over the real file (515 features, 31,182
-vertices): 1,278,586 bytes raw and 463,693 gzipped at full precision; 250,751
-gzipped at 5 dp and 221,784 at 4 dp. At the page's own maxZoom of 11 one pixel
-is 38.2 m, so 4 dp is 0.29 px where the simplification above is already 29 px.
-That is 213-242 KB off every cold load, and this is the second-largest
-same-origin JSON the page fetches.
+full repr, e.g. [-124.75886592699995,48.49401784300004] -- 38 characters for a
+position already simplified to tens of metres. At the page's
+maxZoom of 11 one pixel is 38.2 m, so the simplification is about 1.5 px and
+the 6 dp rounding (0.11 m) is 0.003 px: the rounding cannot move a drawn line.
+Measured on the shipped file (2026-10-02): 515 features, 70,681 vertices,
+1,617,350 bytes raw, 577,747 gzipped.
+
+This docstring used to measure everything against the 0.01 deg (1.1 km)
+tolerance and 4 dp the module has since left: 31,182 vertices, 221,784 bytes
+gzipped, and "4 dp is 0.29 px where the simplification is already 29 px" --
+the simplification's share of a pixel is now 20x smaller and the file 2.6x
+larger, because 59ffd73 chose Natural Earth's own resolution over size.
 """
 
 import json

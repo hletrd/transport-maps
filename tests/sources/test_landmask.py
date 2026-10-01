@@ -14,9 +14,11 @@ def cells() -> set[str]:
     return set(landmask.land_cells(config.SOLVE_RES))
 
 
-# Measured land-cell counts per solver resolution, non-Antarctic parts at
-# contain="overlap": 599,741 at res 5 and 4,091,715 at res 6 with the current
-# stamp (548,557 at res 5 before the lake and ice-shelf sources landed). Keyed
+# Measured land-cell counts per solver resolution at contain="overlap":
+# 599,741 at res 5 and 4,091,715 at res 6 with the current stamp (548,557 at
+# res 5 before the lake and ice-shelf sources landed). These include the
+# Antarctic wedges -- 363,488 of the res-6 cells (2026-10-02) -- which an
+# earlier version of this comment said they excluded. Keyed
 # on the configured resolution so the bound moves with the grid instead of
 # silently asserting the res-5 range against a res-6 universe.
 MEASURED_CELL_COUNT_BOUNDS = {5: (500_000, 620_000), 6: (3_800_000, 4_400_000)}
