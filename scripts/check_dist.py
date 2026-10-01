@@ -97,6 +97,12 @@ def pmtiles_metadata_text(path: Path) -> str | None:
     same text without carrying a second PMTiles parser, and without reading the
     28 MB of tile bodies behind it.
     """
+    blob = _pmtiles_metadata_bytes(path)
+    return None if blob is None else blob.decode("utf-8", "ignore").lower()
+
+
+def _pmtiles_metadata_bytes(path: Path) -> bytes | None:
+    """The metadata blob, gunzipped, as stored -- case and all."""
     size = path.stat().st_size
     with open(path, "rb") as fh:
         head = fh.read(127)
@@ -111,7 +117,7 @@ def pmtiles_metadata_text(path: Path) -> str | None:
             blob = gzip.decompress(blob)
         except OSError:
             return None
-    return blob.decode("utf-8", "ignore").lower()
+    return blob
 
 
 def _pmtiles_metadata_leak(path: Path) -> str | None:
@@ -157,6 +163,54 @@ def _pmtiles_ok(path: Path) -> str | None:
         if start + length > size:
             return f"{path.name} {name} runs past the end of the file (truncated copy?)"
     return None
+
+
+def _water_problems(path: Path) -> list[str]:
+    """water.pmtiles against what emit/water.py builds and web/app.js reads.
+
+    `_pmtiles_ok` proves only that the header is a PMTiles header whose ranges
+    fit the file. That passed the 867 MB z0-12 archive whose z12 tiles -- 42.7%
+    of the tile section -- no page zoom can request (E15), and it would pass an
+    archive whose one layer is not called `water`, which the page's
+    `"source-layer": "water"` then draws nothing from: no error, the shore just
+    goes back to being hex-shaped, the failure CLAUDE.md names. This file is
+    not produced by build-all, so a stale copy is the normal way to get one
+    wrong, and the deploy is the last place that can notice.
+
+    The expected zoom range and layer name come from `emit/water.py`, the
+    emitter, never from a second copy here; tests/emit/test_water.py ties the
+    emitter's zoom to the page's maxZoom and tests/web/test_check_dist.py the
+    layer name to the page's source-layer.
+    """
+    from transport_maps.emit import water
+
+    bad = []
+    with open(path, "rb") as fh:
+        head = fh.read(127)
+    # PMTiles v3: tile type at byte 99 (1 = MVT), min and max zoom at 100, 101.
+    tile_type, zmin, zmax = head[99], head[100], head[101]
+    if tile_type != 1:
+        bad.append(f"{path.name} holds tile type {tile_type}, not vector (MVT, 1): "
+                   "the page adds it as a vector source")
+    if (zmin, zmax) != (water.MIN_ZOOM, water.MAX_ZOOM):
+        bad.append(f"{path.name} spans z{zmin}-z{zmax}, emit/water.py builds "
+                   f"z{water.MIN_ZOOM}-z{water.MAX_ZOOM}: a stale archive; rebuild it with "
+                   "scripts/build_water_tiles.py")
+    blob = _pmtiles_metadata_bytes(path)
+    try:
+        meta = json.loads(blob) if blob else None
+    except ValueError:
+        meta = None
+    layers = meta.get("vector_layers") if isinstance(meta, dict) else None
+    if not isinstance(layers, list):
+        bad.append(f"{path.name} metadata has no vector_layers, so nothing confirms the "
+                   f"{water.LAYER!r} layer the page draws the coast from")
+    else:
+        ids = sorted(str(lyr.get("id")) for lyr in layers if isinstance(lyr, dict))
+        if water.LAYER not in ids:
+            bad.append(f"{path.name} has vector layers {ids}, not {water.LAYER!r}: the page's "
+                       "water layer would render nothing and the shore would go hex-shaped")
+    return bad
 
 
 def check_dist(dist: Path, origins: list[dict] | None = None,
@@ -440,6 +494,8 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
             if problem:
                 bad.append(problem)
             else:
+                if extra == "water.pmtiles":
+                    bad.extend(_water_problems(p))
                 leak = _pmtiles_metadata_leak(p)
                 if leak:
                     warn.append(leak)
