@@ -226,7 +226,8 @@ function with that shape. Fixed there by walking the parameter parens first,
 with a guard test that fails if the slice comes back a single line.
 
 - [x] Fixed in `test_marker_drag.py` and `test_departure_list_cap.py`.
-- [ ] The same naive matcher is still in `test_route_geometry.py`,
+- [x] (2026-10-02: replaced everywhere by the shared `tests/web/_js.py`,
+      checked by `tests/web/test_js_slicer.py`.) The same naive matcher is still in `test_route_geometry.py`,
       `test_itinerary_grid.py`, `test_city_country.py` and roughly a dozen
       others. **Not currently vacuous**: none of the functions they slice has
       a destructured parameter, checked. Deferred to cycle 13 as a latent

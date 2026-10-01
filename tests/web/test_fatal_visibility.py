@@ -25,39 +25,16 @@ import subprocess
 
 import pytest
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
 
 def _slice_function(name: str) -> str:
-    """The verbatim source of `function NAME(...) { ... }`, brace matched past
-    comments and string literals -- `fatal()` is now mostly comment."""
-    start = APP.index(f"function {name}(")
-    i, depth, seen = start, 0, False
-    while i < len(APP):
-        c, nxt = APP[i], APP[i + 1] if i + 1 < len(APP) else ""
-        if c == "/" and nxt == "/":
-            i = APP.index("\n", i)
-            continue
-        if c == "/" and nxt == "*":
-            i = APP.index("*/", i) + 2
-            continue
-        if c in "\"'`":
-            j = i + 1
-            while j < len(APP) and APP[j] != c:
-                j += 2 if APP[j] == "\\" else 1
-            i = j + 1
-            continue
-        if c == "{":
-            depth += 1
-            seen = True
-        elif c == "}":
-            depth -= 1
-            if seen and depth == 0:
-                return APP[start:i + 1]
-        i += 1
-    raise AssertionError(f"function {name} has no closing brace")
+    """The verbatim source of `function NAME(...) { ... }` -- `fatal()` is now
+    mostly comment, which `_js` skips."""
+    return _js.function(name)
 
 
 FATAL_SRC = _slice_function("fatal")

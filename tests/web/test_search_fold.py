@@ -64,6 +64,7 @@ import tomllib
 import pytest
 
 from tests.conftest import skip_without_dist
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -72,39 +73,10 @@ APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 def _const_arrow(name: str) -> str:
     """The verbatim source of a top-level `const NAME = ...;` declaration.
 
-    Ends at the first semicolon that is not inside a string or a regex
-    literal. Copied deliberately from `test_esc.py` rather than generalised:
-    cycle 15's architect counted 13 distinct slicers across this directory and
-    7 of them the naive variant that stops at the first `;`, which would cut
-    `fold()` in half at the `;` inside no string at all -- but would cut
-    `FOLD_DROP` at the `.` if it ever grew one. Consolidating all 13 is
-    carried as DEF15-55; using the self-checking one is not negotiable.
+    Ends at the first semicolon outside every bracket, string and regex
+    literal -- `fold()` and `FOLD_DROP` are full of both.
     """
-    start = APP.index(f"const {name} = ")
-    i, depth, quote = start, 0, None
-    while i < len(APP):
-        c = APP[i]
-        if quote:
-            if c == "\\":
-                i += 2
-                continue
-            if c == quote:
-                quote = None
-        elif c in "\"'`":
-            quote = c
-        elif c == "/" and APP[i + 1] not in "/*":
-            j = i + 1
-            while j < len(APP) and APP[j] != "/":
-                j += 2 if APP[j] == "\\" else 1
-            i = j
-        elif c in "([{":
-            depth += 1
-        elif c in ")]}":
-            depth -= 1
-        elif c == ";" and depth == 0:
-            return APP[start:i + 1]
-        i += 1
-    raise AssertionError(f"const {name} has no terminating semicolon")
+    return _js.statement(f"const {name} = ")
 
 
 FOLD_SRC = "\n".join(_const_arrow(n) for n in ("FOLD_DROP", "FOLD_SPACE", "fold"))

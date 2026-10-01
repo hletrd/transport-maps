@@ -35,6 +35,7 @@ import subprocess
 
 import pytest
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -46,32 +47,7 @@ def _const_arrow(name: str) -> str:
     Ends at the first semicolon that is not inside a string or a regex
     literal, which is what `.replace(/"/g, "&quot;")` is full of.
     """
-    start = APP.index(f"const {name} = ")
-    i, depth, quote = start, 0, None
-    while i < len(APP):
-        c = APP[i]
-        if quote:
-            if c == "\\":
-                i += 2
-                continue
-            if c == quote:
-                quote = None
-        elif c in "\"'`":
-            quote = c
-        elif c == "/" and APP[i + 1] not in "/*":
-            # a regex literal: /.../flags -- skip to its unescaped closing /
-            j = i + 1
-            while j < len(APP) and APP[j] != "/":
-                j += 2 if APP[j] == "\\" else 1
-            i = j
-        elif c in "([{":
-            depth += 1
-        elif c in ")]}":
-            depth -= 1
-        elif c == ";" and depth == 0:
-            return APP[start:i + 1]
-        i += 1
-    raise AssertionError(f"const {name} has no terminating semicolon")
+    return _js.statement(f"const {name} = ")
 
 
 ESC_SRC = _const_arrow("esc")

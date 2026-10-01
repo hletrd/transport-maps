@@ -52,6 +52,7 @@ import subprocess
 import pytest
 
 from tests.conftest import skip_without_dist
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -61,38 +62,16 @@ def _const(name: str) -> str:
     """The verbatim source of a top-level `const NAME = ...;`.
 
     `originNear` gained three module-level dependencies in cycle 15 when its
-    linear scan over all 553 origins became a latitude-band prune, and this
+    linear scan over all the origins became a latitude-band prune, and this
     harness went red with `ReferenceError: KM_PER_DEG_LAT is not defined` --
-    the slicer had no way to know. Ends at the first semicolon outside any
-    bracket, which is enough for the two declarations it is used for and is
-    checked by test_the_harness_defines_everything_origin_near_needs rather
-    than assumed.
+    the slicer had no way to know. Checked by
+    test_the_harness_defines_everything_origin_near_needs rather than assumed.
     """
-    start = APP.index(f"const {name} = ")
-    depth = 0
-    for j in range(start, len(APP)):
-        c = APP[j]
-        if c in "([{":
-            depth += 1
-        elif c in ")]}":
-            depth -= 1
-        elif c == ";" and depth == 0:
-            return APP[start:j + 1]
-    raise AssertionError(f"const {name} has no terminating semicolon")
+    return _js.statement(f"const {name} = ")
 
 
 def _function(name: str) -> str:
-    start = APP.index(f"function {name}(")
-    i = APP.index("{", start)
-    depth = 0
-    for j in range(i, len(APP)):
-        if APP[j] == "{":
-            depth += 1
-        elif APP[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return APP[start:j + 1]
-    raise AssertionError(f"function {name} is not brace-balanced")
+    return _js.function(name)
 
 
 @pytest.fixture(scope="module")

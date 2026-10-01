@@ -28,34 +28,14 @@ import subprocess
 
 import pytest
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
 
 def _function(name: str) -> str:
-    """The verbatim source of a top-level function, by brace matching.
-
-    The same slice-and-run approach `test_route_geometry.py` and
-    `test_boot_behaviour.py` take, and for the same reason: a substring check
-    stays green when the body is gutted.
-    """
-    start = APP.index(f"function {name}(")
-    if start > 0:
-        # `async function foo(` -- keep the keyword.
-        prefix = APP.rfind("async ", max(0, start - 6), start)
-        if prefix != -1:
-            start = prefix
-    i = APP.index("{", start)
-    depth = 0
-    for j in range(i, len(APP)):
-        if APP[j] == "{":
-            depth += 1
-        elif APP[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return APP[start:j + 1]
-    raise AssertionError(f"function {name} is not brace-balanced")
+    return _js.function(name, with_async=True)
 
 
 @pytest.fixture(scope="module")
@@ -283,22 +263,12 @@ def test_a_response_for_an_abandoned_origin_is_dropped_not_applied(node, tmp_pat
 
 
 def _arrow(name: str) -> str:
-    """The body of a `const NAME = (...) => { ... }` binding, by brace matching.
+    """The body of a `const NAME = (...) => { ... }` binding.
 
     `loadReading` and `settle` are arrow consts, not declarations, so
     `_function` above cannot find them.
     """
-    start = APP.index(f"const {name} = ")
-    i = APP.index("{", APP.index("=>", start))
-    depth = 0
-    for j in range(i, len(APP)):
-        if APP[j] == "{":
-            depth += 1
-        elif APP[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return APP[start:j + 1]
-    raise AssertionError(f"const {name} is not brace-balanced")
+    return _js.block(f"const {name} = ", after="=>")
 
 
 # --- and when the tier ARRIVES, everything read through lookup() is redone ---
