@@ -25,7 +25,7 @@ on the emitted geometry.
 The bands are NOT clipped to the coast here. They run one cell into the sea
 (contour/grid.py adds the fringe) and the static water layer drawn above them
 cuts them back to the real shoreline, at whatever precision that layer
-carries -- far beyond what clipping 553 origins against a land mask could
+carries -- far beyond what clipping every origin against a land mask could
 afford, and independent of it.
 """
 

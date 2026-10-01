@@ -223,7 +223,7 @@ class ReadingLayout:
 
     Built ONCE per build and carried into the fork pool, because it depends
     only on the grid and not on any origin: the mapping is the same 4,091,715
-    entries for all 553 origins, and rebuilding it per origin would cost the
+    entries for every origin, and rebuilding it per origin would cost the
     build hours for an answer that cannot change.
     """
 

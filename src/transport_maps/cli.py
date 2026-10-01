@@ -527,7 +527,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     cell_class = ground.cell_class(idx)
     # Reused by check_monotonic_ground in every origin as well: the ground
     # speed grid does not change between origins, and re-deriving it per
-    # origin cost ~4.8s x every origin (553 today) for the same value.
+    # origin cost ~4.8s x every origin for the same value.
     speeds = ground.cell_speed_kmh(idx, classes=cell_class)
     csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links,
                             exclude=exclude, speeds=speeds, country=country, zone=zone)
@@ -556,7 +556,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
               # Where every base cell's minutes go in the reading tier's block
               # array. It depends only on the grid, so it is built ONCE here
               # and inherited copy-on-write by the pool: per origin it would be
-              # 4,091,715 cells of index arithmetic x 553, for an answer that
+              # 4,091,715 cells of index arithmetic x every origin, for an answer that
               # cannot change between origins.
               "reading": hover.reading_layout(idx),
               "variant": exclude,
@@ -578,7 +578,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     if exclude is None:
         index.write_hover_cells(idx, config.DIST / "hover_cells.bin")
     # Same reasoning: the block ordering depends only on the graph, and it is
-    # ONE file for all 553 origins rather than one per origin, because the set
+    # ONE file for every origin rather than one per origin, because the set
     # of res-3 parents holding land does not vary with the departure city.
     if exclude is None:
         index.write_reading_parents(idx, config.DIST / "reading_parents.bin")

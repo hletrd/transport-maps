@@ -317,7 +317,7 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
     T23 corrected the km/h in this very sentence and left the minutes.)
 
     `speeds` is `ground.cell_speed_kmh(idx)`, computed once by the caller. This
-    gate runs once per origin (553 times in a full build), and the grid it is
+    gate runs once per origin (every origin of a full build), and the grid it is
     derived from does not change between origins; recomputing it here cost
     ~4.8s of `roads.cell_class` work per origin for a value the caller already
     has.
