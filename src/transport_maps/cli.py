@@ -21,8 +21,6 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-import numpy as np
-
 from transport_maps import _io, config, validate, variants
 from transport_maps.contour import bands, grid
 from transport_maps.emit import (
@@ -35,7 +33,7 @@ from transport_maps.emit import (
     routes_json,
     tiles,
 )
-from transport_maps.graph import build, ground, nodes, transfers
+from transport_maps.graph import build, ground, nodes
 from transport_maps.solve import dijkstra
 from transport_maps.sources import countries, osm
 
@@ -482,8 +480,22 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
         _preflight_origins(idx, origins)
     except GateFailure as exc:
         raise SystemExit(str(exc)) from exc
+    # Everything a worker needs that comes from parquet or GDAL is loaded HERE,
+    # once, and inherited copy-on-write -- so no forked child ever calls into
+    # polars or pyogrio. (See the POLARS_MAX_THREADS note at the top.) And
+    # before the graph, which needs the same four arrays: build_graph used to
+    # derive country and zone three more times (hex_edges, then rail, ferry
+    # and spans each through _border_rules) and the road class twice more, a
+    # ~4 M-cell raster pass each time (PR-5, R5).
+    country = countries.cell_country(idx.cells)
+    zone = ground.cell_zones(country)
+    cell_class = ground.cell_class(idx)
+    # Reused by check_monotonic_ground in every origin as well: the ground
+    # speed grid does not change between origins, and re-deriving it per
+    # origin cost ~4.8s x every origin (553 today) for the same value.
+    speeds = ground.cell_speed_kmh(idx, classes=cell_class)
     csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links,
-                            exclude=exclude)
+                            exclude=exclude, speeds=speeds, country=country, zone=zone)
     # Graph-level gate: runs once, before any origin is solved, because a
     # disconnected airport is a property of the network rather than of a
     # particular origin -- and per-origin coverage cannot see it. Without
@@ -491,17 +503,6 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # design, so the no-air variant is the one graph it cannot judge.
     if exclude != "air":
         validate.check_airport_connectivity(idx, csr)
-    # Computed once and reused by check_monotonic_ground below: the ground
-    # speed grid does not change between origins, and re-deriving it per
-    # origin cost ~4.8s x every origin (553 today) for the same value.
-    speeds = ground.cell_speed_kmh(idx)
-    # Everything a worker needs that comes from parquet or GDAL is loaded HERE,
-    # once, and inherited copy-on-write -- so no forked child ever calls into
-    # polars or pyogrio. (See the POLARS_MAX_THREADS note at the top.)
-    country = countries.cell_country(idx.cells)
-    zone = np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
-                     for c in country])
-    cell_class = ground.cell_class(idx)
     # The render grid (land + sea fringe, neighbour table) is the same for
     # every origin; computed once here, inherited copy-on-write.
     hover_parents = hover.hover_cells(idx)

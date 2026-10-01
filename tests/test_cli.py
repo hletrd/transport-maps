@@ -84,7 +84,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
     # cell_speed_kmh would otherwise call h3.cell_to_boundary("dummy") for real
     # and blow up; _build_all now computes it once and threads it through to
     # check_monotonic_ground (M5), so this stub needs a stand-in too.
-    monkeypatch.setattr(cli.ground, "cell_speed_kmh", lambda idx: np.array([1.0]))
+    monkeypatch.setattr(cli.ground, "cell_speed_kmh", lambda idx, **kw: np.array([1.0]))
     # _build_all preloads these in the parent so forked workers never touch
     # polars or GDAL; on a one-cell fake index they must be stand-ins too.
     monkeypatch.setattr(cli.countries, "cell_country", lambda cells: np.array(["KOR"]))
@@ -391,6 +391,40 @@ def test_each_origin_row_logs_its_process_and_peak_memory(monkeypatch, tmp_path,
         assert int(row[-2]) == os.getpid()
         peak_mb = float(row[-1].replace(",", ""))
         assert rss_kb / 1024 * 0.9 <= peak_mb <= physical_mb, (peak_mb, rss_kb, physical_mb)
+
+
+def test_the_build_derives_border_and_speed_inputs_once_for_the_graph(monkeypatch, tmp_path):
+    """R5: country, zone, road class and speeds are derived once, before the
+    graph, and build_graph receives those very arrays -- the same ones every
+    worker inherits -- instead of deriving its own. Mutations performed and
+    reverted, each red: dropping `country=` / `speeds=` from the build_graph
+    call, and `classes=` from cell_speed_kmh."""
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    _stub_pipeline(monkeypatch, [], [1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
+    country, classes, speeds = np.array(["KOR"]), np.array([1]), np.array([1.0])
+    lookups: list = []
+    monkeypatch.setattr(cli.countries, "cell_country",
+                        lambda cells: (lookups.append(1), country)[1])
+    monkeypatch.setattr(cli.ground, "cell_class", lambda idx: classes)
+    speed_kw: dict = {}
+    monkeypatch.setattr(cli.ground, "cell_speed_kmh",
+                        lambda idx, **kw: (speed_kw.update(kw), speeds)[1])
+    graph_kw: dict = {}
+    monkeypatch.setattr(cli.build, "build_graph",
+                        lambda idx, **kw: (graph_kw.update(kw), csr_matrix((1, 1)))[1])
+    worker_shared: list = []
+    solve_one = cli._solve_one
+    monkeypatch.setattr(cli, "_solve_one",
+                        lambda o, i, c, s, shared: (worker_shared.append(shared),
+                                                    solve_one(o, i, c, s, shared))[1])
+    cli._build_all()
+    assert lookups == [1]
+    assert speed_kw.get("classes") is classes
+    assert graph_kw.get("country") is country and graph_kw.get("speeds") is speeds
+    shared = worker_shared[0]
+    assert shared["country"] is country
+    assert graph_kw.get("zone") is shared["zone"], "the graph and the workers saw different zones"
 
 
 def test_worker_cap_drops_to_five_above_three_million_cells():

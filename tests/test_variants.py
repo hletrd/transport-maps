@@ -9,6 +9,7 @@ import pytest
 
 from transport_maps import cli, variants
 from transport_maps.graph import build, ground
+from transport_maps.sources import countries
 
 from .test_cli import _stub_pipeline
 
@@ -121,8 +122,11 @@ def _tagged(tag):
 def test_build_graph_leaves_out_exactly_the_excluded_modes_edges(monkeypatch, exclude, absent):
     """Each part tagged by a self-loop on its own node, so the matrix says
     which parts were assembled."""
-    monkeypatch.setattr(ground, "hex_edges", lambda idx: _tagged(0))
-    monkeypatch.setattr(build, "_span_edges", lambda idx: _tagged(6))
+    monkeypatch.setattr(ground, "hex_edges", lambda idx, **kw: _tagged(0))
+    monkeypatch.setattr(build, "_span_edges", lambda idx, *a: _tagged(6))
+    # Computed once in build_graph and handed to every builder (R5); the
+    # builders are stubbed, so the rules are never read.
+    monkeypatch.setattr(build, "_border_rules", lambda *a: (None, None, 0.0, None))
     monkeypatch.setattr(build, "_air_edges", lambda *a, **k: _tagged(1))
     monkeypatch.setattr(build, "_access_edges", lambda idx: _tagged(2))
     monkeypatch.setattr(build, "_transfer_edges", lambda idx: _tagged(3))
@@ -138,6 +142,61 @@ def test_build_graph_leaves_out_exactly_the_excluded_modes_edges(monkeypatch, ex
     csr = build.build_graph(Idx(), rail_routes=object(), ferry_links=[1], exclude=exclude)
     present = {i for i in range(7) if csr[i, i]}
     assert present == set(range(7)) - absent
+
+
+def test_build_graph_derives_the_border_rules_once_and_shares_them(monkeypatch):
+    """R5: country and zone are a ~10 M-cell pass each, and build_graph used to
+    let hex_edges, spans, rail and ferry each derive their own. Now the
+    caller's arrays (cli._build_all_locked has them) go in once, and every
+    surface builder receives that same object -- so a builder that quietly
+    recomputed, or was handed a copy, shows up as a second call or a
+    different identity.
+
+    Mutations performed and reverted, each red: `_span_edges(idx)` without
+    the rules; `_rail_edges` without them; `_ferry_edges` without them; the
+    country passed to hex_edges taken from a fresh lookup; build_graph
+    ignoring the caller's `country`.
+    """
+    seen: dict = {}
+    calls: list = []
+    real_rules = build._border_rules
+
+    def counting_rules(idx, country=None, zone=None):
+        calls.append(country)
+        return real_rules(idx, country, zone)
+
+    monkeypatch.setattr(build, "_border_rules", counting_rules)
+    monkeypatch.setattr(countries, "cell_country",
+                        lambda cells: pytest.fail("country looked up again"))
+    monkeypatch.setattr(ground, "_land_border_min", lambda: 45.0)
+    monkeypatch.setattr(ground, "hex_edges",
+                        lambda idx, **kw: (seen.__setitem__("hex", kw), _tagged(0))[1])
+    monkeypatch.setattr(build, "_span_edges",
+                        lambda idx, rules=None: (seen.__setitem__("span", rules), _tagged(6))[1])
+    monkeypatch.setattr(build, "_rail_edges",
+                        lambda idx, r, cal, rules=None: (seen.__setitem__("rail", rules), _tagged(4))[1])
+    monkeypatch.setattr(build, "_ferry_edges",
+                        lambda idx, links, cal, dropped_out=None, rules=None:
+                        (seen.__setitem__("ferry", rules), _tagged(5))[1])
+    for name, tag in (("_air_edges", 1), ("_access_edges", 2), ("_transfer_edges", 3)):
+        monkeypatch.setattr(build, name, lambda *a, _t=tag, **k: _tagged(_t))
+    monkeypatch.setattr(build.rail, "load_rail_calibration", lambda: None)
+    monkeypatch.setattr(build.ferry, "load_ferry_calibration", lambda: None)
+
+    class Idx:
+        n = 7
+        has_rail = True
+        cells = ("a", "b")
+
+    country, zone, speeds = np.array(["KOR", "JPN"]), np.array(["K", "J"]), np.array([5.0, 9.0])
+    build.build_graph(Idx(), rail_routes=object(), ferry_links=[1],
+                      speeds=speeds, country=country, zone=zone)
+    assert calls == [country], f"border rules derived {len(calls)} times"
+    rules = seen["span"]
+    assert rules[0] is country and rules[1] is zone
+    assert seen["rail"] is rules and seen["ferry"] is rules
+    assert seen["hex"]["country"] is country and seen["hex"]["zone"] is zone
+    assert seen["hex"]["speeds"] is speeds
 
 
 def test_build_graph_refuses_an_unknown_exclusion():

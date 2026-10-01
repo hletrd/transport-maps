@@ -204,6 +204,16 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
         peak). Held against `ps` RSS and physical memory; either wrong unit
         turns the test red. The cap derivation stays open: it needs the peak
         this column will measure on the next full build.
+  - [x] **R5** (2026-10-02) `_build_all_locked` derives country, zone, road
+        class and speeds once, before the graph, and passes them to
+        `build_graph(speeds=, country=, zone=)`, which builds the border rules
+        once and hands the same tuple to `hex_edges`, `_span_edges`,
+        `_rail_edges` and `_ferry_edges` (country/zone: five derivations ->
+        one; road class: four -> two, `nodes.build_index` keeping its own).
+        Every argument is optional, so other callers are unchanged. Two
+        wiring tests by identity; seven mutations (each builder or the build
+        dropping what it was handed) each red. Same arrays, so no output
+        change.
 - [ ] **K7** `native_edges` treats a missing neighbour as resolved when any of
       its `FINE_RES` children is indexed, so the cover gate samples the seam
       (TR-11). **K11** `osm_rail.sh` filters on `route=train` alone (CR-16).

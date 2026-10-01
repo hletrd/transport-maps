@@ -405,11 +405,11 @@ def test_build_graph_includes_the_span_edges(monkeypatch):
     the ones the spans produce.
     """
     empty = (np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros(0))
-    monkeypatch.setattr(ground, "hex_edges", lambda _idx: empty)
+    monkeypatch.setattr(ground, "hex_edges", lambda _idx, **kw: empty)
     for name in ("_air_edges", "_access_edges", "_transfer_edges"):
         monkeypatch.setattr(build, name, lambda *a, **k: empty)
     monkeypatch.setattr(build, "_border_rules",
-                        lambda _idx: (np.array(["DNK", "DNK"]), np.array(["S", "S"]), 45.0,
+                        lambda _idx, *a: (np.array(["DNK", "DNK"]), np.array(["S", "S"]), 45.0,
                                       lambda a, b: False))
     idx = _index_spans([A, FAR], {(0, 1): 9.0, (1, 0): 9.0})
     csr = build.build_graph(idx)
