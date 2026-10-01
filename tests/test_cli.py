@@ -122,6 +122,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
     monkeypatch.setattr(cli.grid, "native_edges",
                         lambda idx: (np.zeros(0, np.int32), np.zeros(0, np.int32), np.ones(1, bool)))
     monkeypatch.setattr(cli.validate, "check_bands_cover", lambda *a, **k: None)
+    monkeypatch.setattr(cli.bands, "precompute_flags", lambda idx, grid: None)
     # The render grid is preloaded in the parent like the arrays above; the
     # fake index's cell is not a real H3 id, so it needs a stand-in too.
     monkeypatch.setattr(cli.grid, "universe",

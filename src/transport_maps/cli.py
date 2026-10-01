@@ -315,7 +315,7 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     slim = variant is not None
     fc = bands.band_feature_collection(idx, minutes[: idx.n_cells],
                                        grid=shared["grid"], native=shared["native"],
-                                       skip_native=slim)
+                                       skip_native=slim, flags=shared["band_flags"])
     validate.check_bands_cover(idx, shared["grid"], shared["native"], fc, skip_native=slim)
 
     out = shared.get("out_root", config.DIST) / "origins"
@@ -487,11 +487,16 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # The render grid (land + sea fringe, neighbour table) is the same for
     # every origin; computed once here, inherited copy-on-write.
     hover_parents = hover.hover_cells(idx)
+    # Base-grid rings for the zoom <= 6 levels, raw adjacency of the native
+    # (mixed-resolution) cells for the finest level.
+    render_grid = grid.universe(getattr(idx, "base_cells", None) or idx.cells)
     shared = {"country": country, "zone": zone, "cell_class": cell_class,
-              # Base-grid rings for the zoom <= 6 levels, raw adjacency of the
-              # native (mixed-resolution) cells for the finest level.
-              "grid": grid.universe(getattr(idx, "base_cells", None) or idx.cells),
+              "grid": render_grid,
               "native": grid.native_edges(idx),
+              # Which cells wrap the antimeridian, and each cell's resolution:
+              # what every band dissolve of every origin asks of each cell.
+              # Once here; per origin it was ~115 s of boundary tests (R2).
+              "band_flags": bands.precompute_flags(idx, render_grid),
               # Plain dicts: a forked worker must never touch a polars frame.
               "rail_tables": rail_detail.lookup_tables(rail_routes),
               # Where every base cell's minutes go in the reading tier's block

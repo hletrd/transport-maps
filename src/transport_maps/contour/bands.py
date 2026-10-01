@@ -67,6 +67,29 @@ def _crosses_antimeridian(cell: str) -> bool:
     return max(lons) - min(lons) > ANTIMERIDIAN_SPAN_DEG
 
 
+def cell_flags(cells) -> tuple[np.ndarray, np.ndarray]:
+    """(wraps, resolution) per cell: what `_dissolve` needs to know of each.
+
+    Both are properties of the cell alone, so a build computes them ONCE for
+    its cell universes (`precompute_flags`) instead of once per cell per band
+    per origin. A cell sits in every band from its own to the slowest within
+    its rim, so the dissolves of one origin asked ~29 million times about ~14
+    million cells: two boundary tests each, about 115 s of the ~480 s an
+    origin took (PR-2), to find the few thousand cells on Earth that wrap.
+    """
+    wraps = np.fromiter((_crosses_antimeridian(c) for c in cells), dtype=bool, count=len(cells))
+    res = np.fromiter((h3.get_resolution(c) for c in cells), dtype=np.int8, count=len(cells))
+    return wraps, res
+
+
+def precompute_flags(idx, grid) -> dict:
+    """`cell_flags` of the native cells and of the render grid, for
+    `band_feature_collection(flags=...)`. `grid` is the
+    `contour.grid.universe(...)` the build hands every origin; the split
+    parents the native level paints are its leading base cells."""
+    return {"native": cell_flags(idx.cells), "base": cell_flags(grid[0])}
+
+
 def _split_at_antimeridian(cell: str) -> list:
     """A cell straddling +/-180 as one or two polygons inside [-180, 180].
 
@@ -88,7 +111,8 @@ def _split_at_antimeridian(cell: str) -> list:
     return [part for part in (left, right) if not part.is_empty]
 
 
-def _dissolve(cells: list[str]):
+def _dissolve(cells: list[str], wraps: np.ndarray | None = None,
+              res: np.ndarray | None = None):
     """Dissolve one band's cells, handling the antimeridian.
 
     h3.cells_to_h3shape is EXACT and fast even at scale -- measured against a
@@ -102,14 +126,23 @@ def _dissolve(cells: list[str]):
     Hexagons are emitted as hexagons. Rounding their corners was tried and is
     what opened gaps between bands: it moves every boundary, differently for
     each polygon it is applied to.
+
+    `wraps` and `res` are `cell_flags(cells)`, passed in by a caller that has
+    them precomputed; left out, they are computed here. Either way the parts
+    come out in the order they always did -- resolution groups in order of
+    first appearance, each in input order, then the wrapping cells -- so the
+    emitted GeoJSON is the same byte for byte (tests/contour/test_bands.py
+    compares it against the per-cell version this replaced).
     """
-    normal = [c for c in cells if not _crosses_antimeridian(c)]
-    wrapping = [c for c in cells if _crosses_antimeridian(c)]
+    if wraps is None or res is None:
+        wraps, res = cell_flags(cells)
+    cells_arr = np.asarray(cells, dtype=object)
+    normal, normal_res = cells_arr[~wraps], res[~wraps]
+    wrapping = cells_arr[wraps].tolist()
     parts = []
-    by_res: dict[int, list[str]] = {}
-    for c in normal:
-        by_res.setdefault(h3.get_resolution(c), []).append(c)
-    for group in by_res.values():
+    found, first = np.unique(normal_res, return_index=True)
+    for r in found[np.argsort(first)]:
+        group = normal[normal_res == r].tolist()
         parts.extend(shapely.get_parts(shape(h3.h3shape_to_geo(h3.cells_to_h3shape(group, tight=True)))))
     for cell in wrapping:
         parts.extend(shapely.get_parts(shapely.make_valid(unary_union(_split_at_antimeridian(cell)))))
@@ -205,21 +238,22 @@ def _edges_from_table(nb: np.ndarray, sub: np.ndarray) -> tuple[np.ndarray, np.n
     return rows.astype(np.int64), cols.astype(np.int64)
 
 
-def _base_features(lod: dict, cells_arr, nb, ring, band) -> list[dict]:
+def _base_features(lod: dict, cells_arr, nb, ring, band, flags) -> list[dict]:
     """Base-grid bands with a rim of `lod['rim']` cells over the faster ones."""
     sub = ring <= lod["rings"]
     rows, cols = _edges_from_table(nb, sub)
     slowest = _slowest_within(band, rows, cols, lod["rim"])
+    wraps, res = flags
     out = []
     for k in np.unique(band[sub]).tolist():
         keep = sub & (band <= k) & ~((band <= k - 1) & (slowest <= k - 1))
-        geometry = _dissolve(cells_arr[keep].tolist())
+        geometry = _dissolve(cells_arr[keep].tolist(), wraps[keep], res[keep])
         if geometry is not None and not geometry.is_empty:
             out.append(_feature(k, geometry, lod))
     return out
 
 
-def _native_features(lod: dict, idx, band: np.ndarray, native) -> list[dict]:
+def _native_features(lod: dict, idx, band: np.ndarray, native, flags, base_flags) -> list[dict]:
     """The mixed-resolution grid itself, rimmed, with each split base cell's
     hexagon underneath its children.
 
@@ -239,13 +273,19 @@ def _native_features(lod: dict, idx, band: np.ndarray, native) -> list[dict]:
         np.maximum.at(parent_band, idx.base_index[fine], band[fine])
         base_arr = np.array(idx.base_cells, dtype=object)
     slowest = _slowest_within(band, rows, cols, lod["rim"])
+    wraps, res = flags
     out = []
     for k in np.unique(band).tolist():
         keep = (band <= k) & ~((band <= k - 1) & (slowest <= k - 1))
         cells = cells_arr[keep].tolist()
+        cell_wraps, cell_res = wraps[keep], res[keep]
         if fine.any():
-            cells += base_arr[split_parents[parent_band[split_parents] == k]].tolist()
-        geometry = _dissolve(cells)
+            painted = split_parents[parent_band[split_parents] == k]
+            cells += base_arr[painted].tolist()
+            # Base cells lead the render grid, so their flags are its flags.
+            cell_wraps = np.concatenate([cell_wraps, base_flags[0][painted]])
+            cell_res = np.concatenate([cell_res, base_flags[1][painted]])
+        geometry = _dissolve(cells, cell_wraps, cell_res)
         if geometry is not None and not geometry.is_empty:
             out.append(_feature(k, geometry, lod))
     return out
@@ -271,9 +311,12 @@ def _coarse_features(lod: dict, cells_arr, band) -> list[dict]:
         frontier = list(grown)
     names = np.array(list(pband), dtype=object)
     pb = np.array(list(pband.values()), dtype=np.int64)
+    # Tens of thousands of parents, flagged once here rather than once per
+    # band they are dissolved in.
+    wraps, res = cell_flags(names.tolist())
     out = []
     for k in np.unique(band).tolist():
-        geometry = _dissolve(names[pb <= k].tolist())
+        geometry = _dissolve(names[pb <= k].tolist(), wraps[pb <= k], res[pb <= k])
         if geometry is not None and not geometry.is_empty:
             out.append(_feature(k, geometry, lod))
     return out
@@ -288,7 +331,7 @@ def _fill_rings(minutes: np.ndarray, nb: np.ndarray, ring: np.ndarray) -> None:
 
 
 def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=None,
-                            skip_native: bool = False) -> dict:
+                            skip_native: bool = False, flags: dict | None = None) -> dict:
     """GeoJSON FeatureCollection: one feature per occupied band per level of
     detail (see LODS), each level in ascending band order with unreachable
     land last.
@@ -301,7 +344,8 @@ def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=Non
 
     `grid` is `contour.grid.universe(idx.base_cells)` and `native` is
     `contour.grid.native_edges(idx)`; the build computes both once in the
-    parent process and hands them to every forked worker.
+    parent process and hands them to every forked worker. `flags` is
+    `precompute_flags(idx, grid)`, likewise once per build (R2).
     """
     if len(cell_minutes) < idx.n_cells:
         raise ValueError("cell_minutes shorter than the cell universe")
@@ -314,6 +358,12 @@ def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=Non
     if cells6[: len(base_cells)] != list(base_cells):
         raise ValueError("render grid does not match the base cell universe")
     native = native if native is not None else grid_mod.native_edges(idx)
+    flags = flags if flags is not None else precompute_flags(idx, (cells6, nb6, ring6))
+    # A mask from another universe would not fail anywhere: it would send the
+    # wrong cells through the planar dissolve, which is how a wrapping cell
+    # becomes a polygon spanning the globe.
+    if len(flags["native"][0]) != idx.n_cells or len(flags["base"][0]) != len(cells6):
+        raise ValueError("cell flags do not match the cell universe")
 
     minutes = np.asarray(cell_minutes[: idx.n_cells], dtype=float)
     band = band_indices(minutes)
@@ -333,9 +383,10 @@ def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=Non
     for lod in LODS:
         if lod["kind"] == "native":
             if not skip_native:
-                features += _native_features(lod, idx, band, native)
+                features += _native_features(lod, idx, band, native,
+                                             flags["native"], flags["base"])
         elif lod["kind"] == "base":
-            features += _base_features(lod, cells6_arr, nb6, ring6, base_band)
+            features += _base_features(lod, cells6_arr, nb6, ring6, base_band, flags["base"])
         else:
             features += _coarse_features(lod, cells6_arr, base_band)
     return {"type": "FeatureCollection", "features": features}

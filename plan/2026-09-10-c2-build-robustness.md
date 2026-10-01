@@ -181,9 +181,17 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       one ordering (F7); `reachable_in_principle` and the land-border minute
       into the context (PR-3, ARCH-6, PR-16). Mutation: `centre_pos[:] = -1` →
       the centre-child test goes red.
-- [ ] **R2** Precompute a `wraps` mask once per build; `_dissolve` loops only
+- [x] **R2** Precompute a `wraps` mask once per build; `_dissolve` loops only
       over wrapping cells (PR-2). Mutation: `wraps` all-False → the Fiji band
-      test goes red.
+      test goes red. *(2026-10-02: `bands.precompute_flags` -- wraps and
+      resolution per native and render-grid cell -- built once in
+      `_build_all_locked` (~1 µs a cell, ~14 s per build against ~115 s per
+      origin) and passed as `flags=`; coarse parents are flagged once per
+      origin, not per band. A Taveuni fixture with wrapping fine, unsplit,
+      sea-ring and coarse cells compares the whole feature collection against
+      the per-cell `_dissolve`: identical. Wraps all-False, the parents' flags
+      dropped, or the base level unflagged each turn it red. No output
+      change.)*
 - [ ] **R1 / H1** Stream one feature line at a time with `shapely.to_geojson`;
       `check_bands_cover` builds its STRtree from the geometries directly
       (PR-1). **R4** Log `ru_maxrss` per origin; derive the worker cap from
