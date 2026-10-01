@@ -151,6 +151,56 @@ def test_non_train_routes_are_ignored(tmp_path):
         osm.rail_routes(extracts_dir=tmp_path)
 
 
+def _extract_relation_filter():
+    """The `r/...` expressions scripts/osm_rail.sh hands `osmium tags-filter`,
+    as a predicate over a relation's tags. osmium's own grammar: KEY=V1,V2
+    matches KEY with any of the listed values (the comma separates VALUES),
+    a bare KEY matches its presence, and separate expressions are OR'ed."""
+    import pathlib
+    import re
+    script = (pathlib.Path(__file__).resolve().parents[2] / "scripts" / "osm_rail.sh").read_text()
+    command = script[script.index("osmium tags-filter"):].split(" -o ", 1)[0]
+    exprs = re.findall(r"(?<!\S)r/(\S+)", command)
+    assert exprs, "no relation filter found in scripts/osm_rail.sh"
+
+    def kept(tags: dict) -> bool:
+        for expr in exprs:
+            key, _, values = expr.partition("=")
+            if (tags.get(key) in values.split(",")) if values else key in tags:
+                return True
+        return False
+    return kept
+
+
+def test_the_extract_keeps_exactly_the_relations_the_parser_reads(tmp_path):
+    """K11. `r/type=route,route=train` read as "type is `route` or
+    `route=train`" and kept every route relation on Earth, with their member
+    ways and nodes. The filter must keep every relation the parser accepts --
+    every service tier, heritage included -- and none it ignores.
+
+    Mutation performed and reverted: restoring `r/type=route,route=train`
+    turns this red (the bus, hiking and road routes are kept)."""
+    kept = _extract_relation_filter()
+    nodes = [(1, 40.0, 1.0, {"name": "A"}), (2, 41.0, 2.0, {"name": "B"})]
+    stops = [("n", 1, "stop"), ("n", 2, "stop")]
+    relations = {
+        11: {"type": "route", "route": "train"},
+        12: {"type": "route", "route": "train", "service": "tourism"},
+        13: {"type": "route", "route": "train", "service": "light_rail"},
+        14: {"type": "route", "route": "train", "highspeed": "yes"},
+        21: {"type": "route", "route": "bus"},
+        22: {"type": "route", "route": "hiking"},
+        23: {"type": "route", "route": "road"},
+        24: {"type": "route", "route": "tram"},
+        25: {"type": "route_master", "route_master": "train"},
+    }
+    write_pbf(tmp_path / "k-rail.osm.pbf", nodes,
+              [(rid, stops, {**tags, "name": f"r{rid}"}) for rid, tags in relations.items()])
+    parsed, _wanted = osm._relations(tmp_path / "k-rail.osm.pbf")
+    assert set(parsed) == {11, 12, 13, 14}, "fixture: the parser's own selection moved"
+    assert {rid for rid, tags in relations.items() if kept(tags)} == set(parsed)
+
+
 def test_missing_extracts_are_an_error_not_an_empty_frame(tmp_path):
     with pytest.raises(FileNotFoundError, match="no .*-rail.osm.pbf"):
         osm.rail_routes(extracts_dir=tmp_path)

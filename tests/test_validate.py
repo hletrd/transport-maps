@@ -328,3 +328,137 @@ def test_the_cover_sample_pull_in_stays_inside_an_antimeridian_cell():
     for lon, lat in validate._pulled_in_vertices(chukotka):
         dlon = (lon - clon + 540.0) % 360.0 - 180.0
         assert abs(dlon) < 0.2 and abs(lat - clat) < 0.2, f"sample point {lon:.2f},{lat:.2f} left the cell"
+
+
+# --- Monotonic gate on the mixed grid (A14) ----------------------------------
+#
+# hex_edges joins a res-7 cell to the unsplit res-6 cell beyond its ring, both
+# ways, and joins the two ends of every road bridge or tunnel in `idx.spans`.
+# The gate looked at same-resolution neighbours only, so none of those edges
+# was ever checked. Each fixture below puts the inconsistency ONLY on such an
+# edge: every same-resolution pair is consistent.
+
+
+class _MixedIdx:
+    """A split res-6 cell (seven res-7 children) ringed by six unsplit ones,
+    laid out as graph/refine.refine lays it out: unsplit cells first."""
+
+    def __init__(self):
+        from transport_maps.graph import refine
+        centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+        base = sorted(h3.grid_disk(centre, 1))
+        split = np.array([c == centre for c in base])
+        self.cells, self.base_index, self.fine = refine.refine(base, split)
+        self.base_cells = base
+        self.n_cells = len(self.cells)
+        self._pos = {c: i for i, c in enumerate(self.cells)}
+        self.severed = frozenset()
+        self.spans = {}
+
+    def try_cell_index(self, cell):
+        return self._pos.get(cell)
+
+
+def _monotonic(idx, minutes, **kw):
+    """The gate with every input that would need a raster or a parquet given:
+    one country, no zones, a flat 50 km/h."""
+    n = idx.n_cells
+    validate.check_monotonic_ground(idx, minutes, np.full(n, 50.0),
+                                    country=np.array(["KOR"] * n), zone=[""] * n, **kw)
+
+
+def _seam_pairs(idx):
+    """(base, fine) positions hex_edges joins across the split seam."""
+    from transport_maps.graph import refine
+    return [(b, f) for b in np.flatnonzero(~idx.fine) for f in np.flatnonzero(idx.fine)
+            if refine.ground_adjacent(idx.cells[f], idx.cells[b])]
+
+
+def test_a_fine_cell_far_later_than_the_base_cell_beside_it_is_rejected():
+    """Base cells at 0 min, every fine child at 1e6. Fine-to-fine and
+    base-to-base are consistent; only the seam is not. At the default stride
+    only position 0 -- an unsplit base cell -- is sampled, so this is the base
+    side's view of the seam, which hex_edges builds from the fine side."""
+    idx = _MixedIdx()
+    assert _seam_pairs(idx), "fixture: no seam between the split cell and its ring"
+    assert not idx.fine[0] and any(b == 0 for b, _ in _seam_pairs(idx)), \
+        "fixture: position 0 is not a base cell on the seam"
+    minutes = np.where(idx.fine, 1e6, 0.0)
+    with pytest.raises(ValueError, match="inconsistent"):
+        _monotonic(idx, minutes)
+
+
+def test_a_base_cell_far_later_than_the_fine_cell_beside_it_is_rejected():
+    """The other direction: fine children at 0, base cells at 1e6. The fine
+    cells must be sampled to see it, hence stride 1."""
+    idx = _MixedIdx()
+    minutes = np.where(idx.fine, 0.0, 1e6)
+    with pytest.raises(ValueError, match="inconsistent"):
+        _monotonic(idx, minutes, stride=1)
+
+
+def test_consistent_times_on_the_mixed_grid_are_accepted():
+    idx = _MixedIdx()
+    _monotonic(idx, np.zeros(idx.n_cells), stride=1)       # must not raise
+
+
+def test_a_severed_seam_pair_is_exempt():
+    """Open water across the seam: hex_edges cuts the pair, so the gate must
+    not hold the far side to it. Same times as the two rejections above."""
+    idx = _MixedIdx()
+    idx.severed = frozenset(p for b, f in _seam_pairs(idx) for p in ((b, f), (f, b)))
+    _monotonic(idx, np.where(idx.fine, 1e6, 0.0), stride=1)   # must not raise
+    _monotonic(idx, np.where(idx.fine, 0.0, 1e6), stride=1)   # must not raise
+
+
+def test_a_span_end_far_later_than_its_other_end_is_rejected():
+    """A bridge joining two cells that are not grid neighbours. Nothing but the
+    span joins them, so only the span can show the inconsistency; the control
+    with the span's own minutes in hand passes."""
+    a = h3.latlng_to_cell(55.5, 11.0, config.SOLVE_RES)
+    b = next(c for c in h3.grid_ring(a, 3))
+
+    class Idx:
+        cells: ClassVar[list[str]] = [a, b]
+        n_cells = 2
+        severed = frozenset()
+        spans: ClassVar[dict] = {(0, 1): 20.0, (1, 0): 20.0}
+
+        def try_cell_index(self, cell):
+            return {a: 0, b: 1}.get(cell)
+
+    with pytest.raises(ValueError, match="inconsistent"):
+        _monotonic(Idx(), np.array([0.0, 21.0]))
+    _monotonic(Idx(), np.array([0.0, 20.0]))                # must not raise
+
+
+def test_a_sliver_left_open_at_a_split_seam_is_rejected():
+    """Seven fine children do not tile their parent; the parent hexagon painted
+    beneath them closes the slivers they leave. With it the native level is
+    whole; without it the gate must see the slivers -- which no vertex sample
+    can, every vertex being inside its own painted cell (K7)."""
+    from shapely.ops import unary_union
+
+    from transport_maps.contour import grid
+    from transport_maps.graph import refine
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    base = sorted(h3.grid_disk(centre, 2))
+    cells, base_index, fine = refine.refine(base, np.array([c == centre for c in base]))
+
+    class Idx:
+        pass
+    idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
+    idx.base_cells = base; idx.base_index = base_index; idx.fine = fine
+    universe, native = grid.universe(base), grid.native_edges(idx)
+    lower = _features(_whole(universe[0]).buffer(1e-6))[1:]
+
+    def with_native(geometry):
+        return {"features": [_features(geometry)[0], *lower]}
+
+    without_parent = unary_union([_whole([c]) for c in cells])
+    with pytest.raises(ValueError, match="level 0"):
+        validate.check_bands_cover(idx, universe, native, with_native(without_parent),
+                                   samples=len(cells))
+    validate.check_bands_cover(idx, universe, native,
+                               with_native(without_parent.union(_whole([centre]))),
+                               samples=len(cells))    # must not raise

@@ -212,23 +212,31 @@ def _transfer_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]
     )
 
 
-def _border_rules(idx: NodeIndex):
+def _border_rules(idx: NodeIndex, country=None, zone=None):
     """Country and immigration zone per cell, plus the crossing charge.
 
     Ground edges applied these from the start; rail and ferry did not, and an
     OSM ferry way across the Yellow Sea carried travellers from Seoul into
     North Korea with every land border sealed. The same two rules -- cut a
     closed pair, charge a zone change -- now apply to every surface edge.
+
+    `build_graph` calls this ONCE and hands the result to every edge builder.
+    Each builder used to call it for itself -- spans, rail and ferry, beside
+    hex_edges' own copy -- and every call materialised a ~10 M-string country
+    array and walked it for zones: ~2.4 GB of churn in the parent before the
+    fork (PR-5). `country` and `zone` are taken from the caller when it has
+    them (cli._build_all_locked does).
     """
     from transport_maps.sources import countries
 
-    country = countries.cell_country(idx.cells)
-    zone = np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
-                     for c in country])
+    if country is None:
+        country = countries.cell_country(idx.cells)
+    if zone is None:
+        zone = ground.cell_zones(country)
     return country, zone, ground._land_border_min(), countries.is_closed
 
 
-def _span_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _span_edges(idx: NodeIndex, rules=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Road bridges and tunnels long enough to cross a water cell (graph/landmass).
 
     Their two ends were never grid neighbours, so hex_edges had no edge for
@@ -240,7 +248,7 @@ def _span_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if not spans:
         empty = np.zeros(0, dtype=np.int64)
         return empty, empty, np.zeros(0, dtype=np.float64)
-    country, zone, crossing, is_closed = _border_rules(idx)
+    country, zone, crossing, is_closed = rules or _border_rules(idx)
     rows, cols, mins = [], [], []
     for (u, v), minutes in sorted(spans.items()):
         if is_closed(country[u], country[v]):
@@ -252,7 +260,7 @@ def _span_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
             np.asarray(mins, dtype=np.float64))
 
 
-def _rail_edges(idx: NodeIndex, routes, cal) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _rail_edges(idx: NodeIndex, routes, cal, rules=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Station-to-station rides, plus the cell edges that board and alight.
 
     Rides are symmetrised. OSM usually models the two directions of a service
@@ -271,7 +279,7 @@ def _rail_edges(idx: NodeIndex, routes, cal) -> tuple[np.ndarray, np.ndarray, np
                    .group_by("a", "b").agg(pl.col("minutes").min())
                    .filter(pl.col("a") != pl.col("b")))
 
-    country, zone, crossing, is_closed = _border_rules(idx)
+    country, zone, crossing, is_closed = rules or _border_rules(idx)
     a_l, b_l, m_l = [], [], []
     cut = 0
     for sa, sb, mins in zip(undirected["a"], undirected["b"], undirected["minutes"]):
@@ -318,7 +326,7 @@ MIN_FERRY_LINKS_TO_BOUND = 200
 
 
 def _ferry_edges(idx: NodeIndex, links, cal,
-                 dropped_out: dict[str, int] | None = None
+                 dropped_out: dict[str, int] | None = None, rules=None
                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Ferry crossings as direct cell-to-cell edges, both ways.
 
@@ -336,7 +344,7 @@ def _ferry_edges(idx: NodeIndex, links, cal,
     able to see it. `_air_edges` has counted its rejects since commit fcb4d2a;
     this is the same pattern one function further down.
     """
-    country, zone, crossing, is_closed = _border_rules(idx)
+    country, zone, crossing, is_closed = rules or _border_rules(idx)
     a_cells, b_cells, minutes = [], [], []
     dropped = dropped_out if dropped_out is not None else {}
     cut = 0
@@ -427,11 +435,20 @@ def build_graph(
     rail_routes=None,
     ferry_links=None,
     exclude: str | None = None,
+    speeds=None,
+    country=None,
+    zone=None,
 ) -> sp.csr_matrix:
     """Assemble the graph. Pass a list as `rejected_air_pairs` to have it filled
     with the (src, dst, km) triples `is_geographically_plausible` dropped, and
     one as `unknown_airport_pairs` for those naming an airport the node index
     does not hold.
+
+    `speeds` (ground.cell_speed_kmh), `country` (countries.cell_country) and
+    `zone` (ground.cell_zones) are computed here when not given; the build
+    passes the ones it already holds, so each is derived once per build
+    rather than once per edge builder (R5). Either way every builder sees the
+    same arrays.
 
     `exclude` ("air", "ferry" or "rail") builds the graph of an exclusion
     variant (transport_maps.variants): that mode's edges are simply absent, so
@@ -449,18 +466,20 @@ def build_graph(
             "the station nodes would sit unreachable in the graph"
         )
 
+    rules = _border_rules(idx, country, zone)
     parts = [
-        ground.hex_edges(idx),
-        _span_edges(idx),
+        ground.hex_edges(idx, speeds=speeds, country=rules[0], zone=rules[1]),
+        _span_edges(idx, rules),
     ]
     if exclude != "air":
         parts += [_air_edges(idx, rejected_air_pairs, unknown_airport_pairs),
                   _access_edges(idx),
                   _transfer_edges(idx)]
     if idx.has_rail and exclude != "rail":
-        parts.append(_rail_edges(idx, rail_routes, rail.load_rail_calibration()))
+        parts.append(_rail_edges(idx, rail_routes, rail.load_rail_calibration(), rules))
     if ferry_links is not None and len(ferry_links) and exclude != "ferry":
-        parts.append(_ferry_edges(idx, ferry_links, ferry.load_ferry_calibration()))
+        parts.append(_ferry_edges(idx, ferry_links, ferry.load_ferry_calibration(),
+                                  rules=rules))
     rows = np.concatenate([p[0] for p in parts])
     cols = np.concatenate([p[1] for p in parts])
     data = np.concatenate([p[2] for p in parts])

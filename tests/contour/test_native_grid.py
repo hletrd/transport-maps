@@ -91,3 +91,18 @@ def test_the_size_rule_still_decides_when_no_one_asks(tmp_path, monkeypatch):
     assert not list(tmp_path.glob("native-edges-*.npz"))
     grid.native_edges(idx)
     assert len(list(tmp_path.glob("native-edges-*.npz"))) == 1, "the size rule stopped applying"
+
+
+def test_the_unsplit_side_of_a_seam_is_complete():
+    """A base cell whose ring neighbour was split finds that neighbour absent
+    from the index -- its children are there instead, joined to it from their
+    side. It is resolved, not on the land edge, and the cover gate samples
+    only `complete` cells; counted incomplete, no cell on the unsplit side of
+    any seam was ever sampled (TR-11 / K7)."""
+    idx = _mixed()
+    _rows, _cols, complete = grid.native_edges(idx)
+    centre = h3.cell_to_parent(idx.cells[int(np.flatnonzero(idx.fine)[0])], config.SOLVE_RES)
+    seam = [i for i, c in enumerate(idx.cells)
+            if not idx.fine[i] and h3.grid_distance(c, centre) == 1]
+    assert len(seam) == 6, "fixture: the split cell is not ringed by six unsplit ones"
+    assert complete[seam].all(), "the unsplit side of the seam is still counted incomplete"

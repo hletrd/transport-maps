@@ -84,7 +84,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
     # cell_speed_kmh would otherwise call h3.cell_to_boundary("dummy") for real
     # and blow up; _build_all now computes it once and threads it through to
     # check_monotonic_ground (M5), so this stub needs a stand-in too.
-    monkeypatch.setattr(cli.ground, "cell_speed_kmh", lambda idx: np.array([1.0]))
+    monkeypatch.setattr(cli.ground, "cell_speed_kmh", lambda idx, **kw: np.array([1.0]))
     # _build_all preloads these in the parent so forked workers never touch
     # polars or GDAL; on a one-cell fake index they must be stand-ins too.
     monkeypatch.setattr(cli.countries, "cell_country", lambda cells: np.array(["KOR"]))
@@ -122,6 +122,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
     monkeypatch.setattr(cli.grid, "native_edges",
                         lambda idx: (np.zeros(0, np.int32), np.zeros(0, np.int32), np.ones(1, bool)))
     monkeypatch.setattr(cli.validate, "check_bands_cover", lambda *a, **k: None)
+    monkeypatch.setattr(cli.bands, "precompute_flags", lambda idx, grid: None)
     # The render grid is preloaded in the parent like the arrays above; the
     # fake index's cell is not a real H3 id, so it needs a stand-in too.
     monkeypatch.setattr(cli.grid, "universe",
@@ -278,6 +279,45 @@ def test_a_gate_failure_in_a_forked_worker_aborts_the_run(monkeypatch, tmp_path)
     assert index_calls == []
 
 
+def test_forked_workers_get_the_build_context_from_the_initializer_unpickled(
+        monkeypatch, tmp_path, capsys):
+    """S2: the forked path runs every origin from a BuildContext handed to the
+    pool initializer -- not from a global the parent writes into its own
+    namespace -- and the context crosses by fork, never by pickle: a pickled
+    copy would duplicate the graph in every worker instead of sharing it
+    copy-on-write. Here pickling the context raises, so a pool that pickled
+    its initargs (the spawn start method, or the context sent with each task)
+    fails the build; and the parent must end with no context of its own.
+
+    Mutations performed and reverted, each red: the context sent to a worker
+    as a task argument (it fails on "was pickled"); `_init_worker` not
+    storing it; the parent setting the module global itself (the `_CTX`
+    shape this replaced).
+    """
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    monkeypatch.setattr(cli, "_worker_count", lambda n_origins: 2)
+    _stub_pipeline(monkeypatch, [], coverages=[1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
+
+    def no_pickle(self, protocol):
+        raise RuntimeError("the BuildContext was pickled")
+    monkeypatch.setattr(cli.BuildContext, "__reduce_ex__", no_pickle)
+
+    def hung(signum, frame):
+        raise TimeoutError("the forked build hung")
+    previous = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(15)
+    try:
+        cli._build_all()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+    rows = {ln.split()[0] for ln in capsys.readouterr().out.splitlines() if ln.split()}
+    assert {"first", "second"} <= rows
+    assert cli._WORKER_CONTEXT is None, "the parent kept a build context in its globals"
+    assert not hasattr(cli, "_CTX")
+
+
 def test_a_worker_killed_by_a_signal_aborts_the_run_instead_of_hanging(monkeypatch, tmp_path):
     """multiprocessing.Pool respawns a worker that dies of a signal and the
     task's result never arrives, so imap blocks forever: an OOM kill or a
@@ -367,6 +407,63 @@ def test_a_full_build_stamps_identity_count_and_graph_flags_into_index_json(monk
     assert kw["hover_cell_count"] == 1
     assert kw["graph"] == {"rail": False, "ferry": False}
     assert set(kw["identity"]) == {"inputsHash", "buildId", "builtAt"}
+
+
+def test_each_origin_row_logs_its_process_and_peak_memory(monkeypatch, tmp_path, capsys):
+    """R4: the per-origin row carries the pid and the resident high-water mark,
+    so a worker's peak is a measured number in the build log. The figure is
+    held against `ps`, which reports this process's current RSS in KB: a peak
+    can be no lower than that, and no higher than the machine. A wrong unit
+    either way (getrusage is bytes on macOS, KB on Linux) misses by 1024x and
+    fails one bound or the other -- tried both, both red."""
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    _stub_pipeline(monkeypatch, [], [1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
+    cli._build_all()
+    rows = [ln.split() for ln in capsys.readouterr().out.splitlines()
+            if ln.split()[:1] in (["first"], ["second"])]
+    assert len(rows) == 2
+    rss_kb = int(subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())],
+                                capture_output=True, text=True, check=True).stdout)
+    physical_mb = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / (1 << 20)
+    for row in rows:
+        assert int(row[-2]) == os.getpid()
+        peak_mb = float(row[-1].replace(",", ""))
+        assert rss_kb / 1024 * 0.9 <= peak_mb <= physical_mb, (peak_mb, rss_kb, physical_mb)
+
+
+def test_the_build_derives_border_and_speed_inputs_once_for_the_graph(monkeypatch, tmp_path):
+    """R5: country, zone, road class and speeds are derived once, before the
+    graph, and build_graph receives those very arrays -- the same ones every
+    worker inherits -- instead of deriving its own. Mutations performed and
+    reverted, each red: dropping `country=` / `speeds=` from the build_graph
+    call, and `classes=` from cell_speed_kmh."""
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    _stub_pipeline(monkeypatch, [], [1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
+    country, classes, speeds = np.array(["KOR"]), np.array([1]), np.array([1.0])
+    lookups: list = []
+    monkeypatch.setattr(cli.countries, "cell_country",
+                        lambda cells: (lookups.append(1), country)[1])
+    monkeypatch.setattr(cli.ground, "cell_class", lambda idx: classes)
+    speed_kw: dict = {}
+    monkeypatch.setattr(cli.ground, "cell_speed_kmh",
+                        lambda idx, **kw: (speed_kw.update(kw), speeds)[1])
+    graph_kw: dict = {}
+    monkeypatch.setattr(cli.build, "build_graph",
+                        lambda idx, **kw: (graph_kw.update(kw), csr_matrix((1, 1)))[1])
+    worker_shared: list = []
+    solve_one = cli._solve_one
+    monkeypatch.setattr(cli, "_solve_one",
+                        lambda o, i, c, s, shared: (worker_shared.append(shared),
+                                                    solve_one(o, i, c, s, shared))[1])
+    cli._build_all()
+    assert lookups == [1]
+    assert speed_kw.get("classes") is classes
+    assert graph_kw.get("country") is country and graph_kw.get("speeds") is speeds
+    shared = worker_shared[0]
+    assert shared["country"] is country
+    assert graph_kw.get("zone") is shared["zone"], "the graph and the workers saw different zones"
 
 
 def test_worker_cap_drops_to_five_above_three_million_cells():

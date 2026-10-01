@@ -58,12 +58,18 @@ def urban_mask(idx: NodeIndex) -> np.ndarray:
     return urban.urban_mask(idx.cells)
 
 
-def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
-    """Effective ground speed per cell, indexed by cell position."""
+def cell_speed_kmh(idx: NodeIndex, classes: np.ndarray | None = None) -> np.ndarray:
+    """Effective ground speed per cell, indexed by cell position.
+
+    `classes` is `cell_class(idx)` when the caller already has it: the build
+    does (cli._build_all_locked), and deriving it again is a ~4 M-cell raster
+    pass (PR-5).
+    """
     # Footprint aggregation, NOT centroid sampling: an H3 cell's window spans 1-4
     # GRIP4 cells, and sampling the centre alone reports 51.5% of land roadless
     # against a true 29.3%, depressing mean ground speed from 36.8 to 23.9 km/h.
-    classes = cell_class(idx)
+    if classes is None:
+        classes = cell_class(idx)
     speeds = SPEED_BY_ROAD_CLASS_KMH[classes]
     # GRIP4 gives a cell the grade of its BEST road, so a dense city cell with a
     # motorway through it is charged at motorway speed. Measured over 112 real
@@ -79,21 +85,36 @@ def cell_speed_kmh(idx: NodeIndex) -> np.ndarray:
     return speeds
 
 
-def hex_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def cell_zones(country) -> np.ndarray:
+    """Immigration zone per cell from its ISO3 country ("" where none)."""
+    return np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
+                     for c in country])
+
+
+def hex_edges(idx: NodeIndex, speeds: np.ndarray | None = None,
+              country: np.ndarray | None = None, zone: np.ndarray | None = None
+              ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Directed edges between adjacent land cells, weighted in minutes.
 
     Traversing from u into v is charged at v's speed, so slow terrain costs you
     on entry regardless of which side you approach from.
+
+    `speeds`, `country` and `zone` are computed here when not given. The build
+    computes them once and passes them down (graph/build.build_graph): each is
+    a pass over ~10 M cells, and they were being derived four times over before
+    the first origin was solved (PR-5).
     """
-    speeds = cell_speed_kmh(idx)
+    if speeds is None:
+        speeds = cell_speed_kmh(idx)
     centroids = np.array([h3.cell_to_latlng(c) for c in idx.cells], dtype=np.float64)
 
     # Adjacency alone asserts that every border on Earth can be walked across.
     # Some cannot, and a road route through the inter-Korean border made Seoul
     # reachable overland from Vladivostok.
-    country = countries.cell_country(idx.cells)
-    zone = np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
-                     for c in country])
+    if country is None:
+        country = countries.cell_country(idx.cells)
+    if zone is None:
+        zone = cell_zones(country)
     crossing_min = _land_border_min()
 
     # Preallocated: at 82 million edges, three Python lists peaked at 19 GB

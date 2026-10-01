@@ -175,24 +175,79 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
 - [ ] **S2** `BuildContext` frozen dataclass via `Pool(initializer=…)`; remove
       the rasterio/GDAL fallbacks in `modes.py:47-50` and `validate.py:149-153`;
       one poisoned-import fork test (ARCH-5).
+  - [x] **S2 (context half)** (2026-10-02) `cli.BuildContext` (frozen,
+        `shared` a `MappingProxyType`) is the pool initializer's argument;
+        `_init_worker` watches the parent and keeps it, and the parent's
+        `globals()["_CTX"]` is gone. Measured first: a fork pool hands
+        `initargs` over by fork, not pickle, at the parent's array addresses,
+        so copy-on-write is unchanged. The test makes pickling the context
+        raise and checks the parent holds none; three mutations each red.
+        Still open: the two fallbacks and the poisoned-import test -- removing
+        the fallbacks changes the signatures several tests and callers rely
+        on, which is beyond a contained refactor. With S2's context half in,
+        CR3-10 and TE3-10's "S2 lands" exits are met for the worker shape.
 - [ ] **R3 / H2 (hover grid)** `emit/hover.HoverGrid` built once in the parent
       (`parents`, `parent_of`, `centre_pos`, vectorised `pick`); the four
       writers and `write_hover_cells` take it so the five files provably share
       one ordering (F7); `reachable_in_principle` and the land-border minute
       into the context (PR-3, ARCH-6, PR-16). Mutation: `centre_pos[:] = -1` →
       the centre-child test goes red.
-- [ ] **R2** Precompute a `wraps` mask once per build; `_dissolve` loops only
+- [x] **R2** Precompute a `wraps` mask once per build; `_dissolve` loops only
       over wrapping cells (PR-2). Mutation: `wraps` all-False → the Fiji band
-      test goes red.
+      test goes red. *(2026-10-02: `bands.precompute_flags` -- wraps and
+      resolution per native and render-grid cell -- built once in
+      `_build_all_locked` (~1 µs a cell, ~14 s per build against ~115 s per
+      origin) and passed as `flags=`; coarse parents are flagged once per
+      origin, not per band. A Taveuni fixture with wrapping fine, unsplit,
+      sea-ring and coarse cells compares the whole feature collection against
+      the per-cell `_dissolve`: identical. Wraps all-False, the parents' flags
+      dropped, or the base level unflagged each turn it red. No output
+      change.)*
 - [ ] **R1 / H1** Stream one feature line at a time with `shapely.to_geojson`;
       `check_bands_cover` builds its STRtree from the geometries directly
       (PR-1). **R4** Log `ru_maxrss` per origin; derive the worker cap from
       physical memory and the measured peak (PR-4). **R5** Compute `cell_class`,
       `speeds`, `country`, `zone` once in `_build_all` and pass them into
       `build_graph` (PR-5, CR-15, J4's seam).
+  - [x] **R4 (log half)** (2026-10-02) Every per-origin row ends with the
+        process's pid and its `ru_maxrss` in MB (bytes on macOS, KB on Linux;
+        a high-water mark, so the largest figure per pid is that worker's
+        peak). Held against `ps` RSS and physical memory; either wrong unit
+        turns the test red. The cap derivation stays open: it needs the peak
+        this column will measure on the next full build.
+  - [x] **R5** (2026-10-02) `_build_all_locked` derives country, zone, road
+        class and speeds once, before the graph, and passes them to
+        `build_graph(speeds=, country=, zone=)`, which builds the border rules
+        once and hands the same tuple to `hex_edges`, `_span_edges`,
+        `_rail_edges` and `_ferry_edges` (country/zone: five derivations ->
+        one; road class: four -> two, `nodes.build_index` keeping its own).
+        Every argument is optional, so other callers are unchanged. Two
+        wiring tests by identity; seven mutations (each builder or the build
+        dropping what it was handed) each red. Same arrays, so no output
+        change.
 - [ ] **K7** `native_edges` treats a missing neighbour as resolved when any of
       its `FINE_RES` children is indexed, so the cover gate samples the seam
       (TR-11). **K11** `osm_rail.sh` filters on `route=train` alone (CR-16).
+  - [x] **K7** (2026-10-02) `grid.native_edges` counts a split neighbour as
+        resolved (`NATIVE_VERSION` v2, so a v1 cache cannot hand back the old
+        flag), and `check_bands_cover` also samples split cells a quarter of
+        the way along each edge, where the slivers their children leave are
+        (measured: all 36 edge points of six split cells). Deleting the
+        parent-under-children painting now turns the mixed-grid gate test red;
+        with the seam sample removed it stayed green. Gate only, no output
+        change.
+  - [x] **K11** (2026-10-02) `scripts/osm_rail.sh` filters relations on
+        `r/route=train` (osmium's comma separates values, so the old
+        expression kept every `type=route` relation). `osm._relations` reads
+        only `type=route` + `route=train`, and every service tier -- heritage
+        (`service=tourism`) included -- is a tag on those, so the parse is
+        unchanged; a test runs the script's own expression against the parser
+        on a fixture of train, heritage, light-rail, bus, hiking, road, tram
+        and route-master relations, and the old expression turns it red.
+        Takes effect only when the extracts are next regenerated; the rail
+        and ferry parquet caches key on each extract's size and mtime, so a
+        regenerated extract is a miss and no parser-version bump is needed.
+        Build output unchanged.
 - [x] **L12 / E15** `check_dist` reads `water.pmtiles`' header and metadata and
       checks `maxzoom` and the `water` layer against `emit/water.py`.
       *Done 2026-10-02:* `_water_problems` refuses a tile type other than MVT,
@@ -210,15 +265,32 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       edges. **A18 / Q4** `adsb_extract.py`: sanitised tag, https + host
       allow-list, size cap. *(A18 done 2026-10-02 -- see Q4 in the security
       plan; A10, A12 and A14 are still open, so the box stays empty.)*
+  - [x] **A14** (2026-10-02) `validate.check_monotonic_ground` walks the
+        edges `ground.hex_edges` builds: same-resolution ring neighbours, the
+        fine-to-base seam pair from either side, and every `idx.spans` link,
+        honouring `severed` and closed borders. Five mixed-grid tests; each of
+        the four new branches removed in turn turns one red. Gate only, no
+        output change.
 - [ ] **A9** South-pole cap dissolve (K13's slivers as the fixture). **A11**
       Resolvable `continue` batches in the wikitext crawl. **A15** Immigration
       zones: one table for air and ground; no border charge on airside
       transits (model change — document before/after per CLAUDE.md). **A16**
       `check_bands_cover` samples the tiles tippecanoe wrote. **G2** Raw
       downloads by URL hash with ETag/size and a refresh policy.
-- [ ] **O6 / E6** `transport-maps assets` (or the last step of `build-all`)
+- [x] **O6 / E6** `transport-maps assets` (or the last step of `build-all`)
       writes `places.json`, `airports.json`, `borders.json`; README lists it.
-      Not run this cycle (writes under `dist/`).
+      Not run this cycle (writes under `dist/`). *(2026-10-02: code half
+      landed -- `transport-maps assets [NAME ...]` calls the three emitters'
+      `build(out)` under the build lock; `check_dist` names the producer when
+      one is missing. Tested on tmp_path only: all three, a subset, refusal
+      under a held lock, unknown names, dispatch, and the airports table's
+      shape; dropping an entry, the lock or the dispatch each turns one red.
+      Still NOT run against `dist/`, so the live copies remain the
+      hand-made ones until the owner runs it. Not taken here: C11's airport
+      filtering (a separate web-plan entry, and filtering by the graph would
+      need the node index inside `assets`), folding the water build in
+      (CR4-aside), and the bare-filename download caches in `places.py` /
+      `borders.py` (C11-D1).)*
 
 ## Progress
 

@@ -9,17 +9,19 @@ import os
 os.environ.setdefault("POLARS_MAX_THREADS", "1")
 
 import argparse
+import dataclasses
 import gzip
 import json
 import logging
 import multiprocessing
+import resource
 import subprocess
+import sys
 import threading
 import time
+import types
 from datetime import UTC, datetime
 from pathlib import Path
-
-import numpy as np
 
 from transport_maps import _io, config, validate, variants
 from transport_maps.contour import bands, grid
@@ -33,7 +35,7 @@ from transport_maps.emit import (
     routes_json,
     tiles,
 )
-from transport_maps.graph import build, ground, nodes, transfers
+from transport_maps.graph import build, ground, nodes
 from transport_maps.solve import dijkstra
 from transport_maps.sources import countries, osm
 
@@ -280,6 +282,20 @@ def _preflight_origins(idx, origins: list[dict]) -> None:
             )
 
 
+def _peak_rss_mb() -> float:
+    """This process's resident high-water mark so far, in MB.
+
+    `ru_maxrss` is in bytes on macOS and in kilobytes on Linux (getrusage(2)
+    on each). It is a high-water mark, not a per-origin figure: a worker's
+    value only rises across the origins it runs, so the largest one logged
+    against a pid is that worker's peak -- the number a worker cap has to
+    fit, and one nothing recorded before (PR-4: workers measured at 11-12 GB
+    against a cap modelled on about a third of that).
+    """
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak / (1 << 20) if sys.platform == "darwin" else peak / 1024
+
+
 def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     """Solve and emit one origin. Returns the table row to print."""
     slug = origin["slug"]
@@ -315,7 +331,7 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     slim = variant is not None
     fc = bands.band_feature_collection(idx, minutes[: idx.n_cells],
                                        grid=shared["grid"], native=shared["native"],
-                                       skip_native=slim)
+                                       skip_native=slim, flags=shared["band_flags"])
     validate.check_bands_cover(idx, shared["grid"], shared["native"], fc, skip_native=slim)
 
     out = shared.get("out_root", config.DIST) / "origins"
@@ -351,13 +367,48 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
                                   parents=parents, rep=rep)
 
     size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
-    return f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}"
+    # Read last, after every writer has run, so the origin's own peak is in it.
+    return (f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}"
+            f"{os.getpid():>8}{_peak_rss_mb():>10,.0f}")
+
+
+@dataclasses.dataclass(frozen=True)
+class BuildContext:
+    """Everything a forked worker reads, built once in the parent.
+
+    Handed to each worker as the pool initializer's argument. Under the fork
+    start method `Pool` passes `initargs` to the child through fork() itself,
+    never through pickle (measured: an argument whose __reduce__ raises
+    arrives intact, at the parent's array addresses), so the graph and the
+    shared arrays stay copy-on-write exactly as they did when this was a
+    module global the parent wrote into its own namespace before forking
+    (`globals()["_CTX"]`, S2). Frozen, and `shared` a read-only view, so a
+    worker cannot rebind what its siblings were also given.
+    """
+    idx: object
+    csr: object
+    speeds: object
+    shared: types.MappingProxyType
+
+
+# Set in each worker by _init_worker and never in the parent: the parent hands
+# the context over explicitly instead of leaving it lying in its globals.
+_WORKER_CONTEXT: BuildContext | None = None
+
+
+def _init_worker(parent_pid: int, context: BuildContext) -> None:
+    """Pool initializer: watch the parent, then keep the build's context."""
+    global _WORKER_CONTEXT
+    _watch_parent(parent_pid)
+    _WORKER_CONTEXT = context
 
 
 def _solve_one_forked(origin: dict) -> str:
-    """Pool entry point. Reads the graph the fork inherited."""
-    idx, csr, speeds, shared = globals()["_CTX"]
-    return _solve_one(origin, idx, csr, speeds, shared)
+    """Pool entry point. Reads the context the initializer was handed."""
+    context = _WORKER_CONTEXT
+    if context is None:
+        raise RuntimeError("a build worker started without its BuildContext")
+    return _solve_one(origin, context.idx, context.csr, context.speeds, context.shared)
 
 
 def _log_reading_cost(path: Path) -> None:
@@ -464,8 +515,22 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
         _preflight_origins(idx, origins)
     except GateFailure as exc:
         raise SystemExit(str(exc)) from exc
+    # Everything a worker needs that comes from parquet or GDAL is loaded HERE,
+    # once, and inherited copy-on-write -- so no forked child ever calls into
+    # polars or pyogrio. (See the POLARS_MAX_THREADS note at the top.) And
+    # before the graph, which needs the same four arrays: build_graph used to
+    # derive country and zone three more times (hex_edges, then rail, ferry
+    # and spans each through _border_rules) and the road class twice more, a
+    # ~4 M-cell raster pass each time (PR-5, R5).
+    country = countries.cell_country(idx.cells)
+    zone = ground.cell_zones(country)
+    cell_class = ground.cell_class(idx)
+    # Reused by check_monotonic_ground in every origin as well: the ground
+    # speed grid does not change between origins, and re-deriving it per
+    # origin cost ~4.8s x every origin (553 today) for the same value.
+    speeds = ground.cell_speed_kmh(idx, classes=cell_class)
     csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links,
-                            exclude=exclude)
+                            exclude=exclude, speeds=speeds, country=country, zone=zone)
     # Graph-level gate: runs once, before any origin is solved, because a
     # disconnected airport is a property of the network rather than of a
     # particular origin -- and per-origin coverage cannot see it. Without
@@ -473,25 +538,19 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # design, so the no-air variant is the one graph it cannot judge.
     if exclude != "air":
         validate.check_airport_connectivity(idx, csr)
-    # Computed once and reused by check_monotonic_ground below: the ground
-    # speed grid does not change between origins, and re-deriving it per
-    # origin cost ~4.8s x every origin (553 today) for the same value.
-    speeds = ground.cell_speed_kmh(idx)
-    # Everything a worker needs that comes from parquet or GDAL is loaded HERE,
-    # once, and inherited copy-on-write -- so no forked child ever calls into
-    # polars or pyogrio. (See the POLARS_MAX_THREADS note at the top.)
-    country = countries.cell_country(idx.cells)
-    zone = np.array([transfers.immigration_zone(countries.iso2(c)) if c else ""
-                     for c in country])
-    cell_class = ground.cell_class(idx)
     # The render grid (land + sea fringe, neighbour table) is the same for
     # every origin; computed once here, inherited copy-on-write.
     hover_parents = hover.hover_cells(idx)
+    # Base-grid rings for the zoom <= 6 levels, raw adjacency of the native
+    # (mixed-resolution) cells for the finest level.
+    render_grid = grid.universe(getattr(idx, "base_cells", None) or idx.cells)
     shared = {"country": country, "zone": zone, "cell_class": cell_class,
-              # Base-grid rings for the zoom <= 6 levels, raw adjacency of the
-              # native (mixed-resolution) cells for the finest level.
-              "grid": grid.universe(getattr(idx, "base_cells", None) or idx.cells),
+              "grid": render_grid,
               "native": grid.native_edges(idx),
+              # Which cells wrap the antimeridian, and each cell's resolution:
+              # what every band dissolve of every origin asks of each cell.
+              # Once here; per origin it was ~115 s of boundary tests (R2).
+              "band_flags": bands.precompute_flags(idx, render_grid),
               # Plain dicts: a forked worker must never touch a polars frame.
               "rail_tables": rail_detail.lookup_tables(rail_routes),
               # Where every base cell's minutes go in the reading tier's block
@@ -524,7 +583,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     if exclude is None:
         index.write_reading_parents(idx, config.DIST / "reading_parents.bin")
 
-    print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}")
+    print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}{'pid':>8}{'peak MB':>10}")
 
     # Origins are independent once the graph exists, and the machine has more
     # than one core. Serially this build took nearly eight hours; the graph is
@@ -538,8 +597,9 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
                 print(_solve_one(origin, idx, csr, speeds, shared))
         else:
             ctx = multiprocessing.get_context("fork")
-            globals()["_CTX"] = (idx, csr, speeds, shared)
-            with ctx.Pool(workers, initializer=_watch_parent, initargs=(os.getpid(),)) as pool:
+            context = BuildContext(idx, csr, speeds, types.MappingProxyType(shared))
+            with ctx.Pool(workers, initializer=_init_worker,
+                          initargs=(os.getpid(), context)) as pool:
                 # A GateFailure in a worker comes back out of imap here (see
                 # the class); leaving the block then runs Pool.__exit__, which
                 # is terminate(): the other workers are stopped mid-origin
@@ -781,6 +841,48 @@ def _reindex(dist: Path | None = None) -> None:
         lock.unlink(missing_ok=True)
 
 
+#: The static files the page loads beside the per-origin arrays, each with the
+#: module whose `build(out)` writes it. None depends on the graph or on any
+#: origin, so they are not part of build-all; and until this command existed
+#: nothing called those `build` functions at all, so the copies in dist/ were
+#: made by hand and could not be reproduced (E6 / O6, AA13, C11-D8).
+#: `water.pmtiles`, the fourth static file check_dist requires, is still
+#: scripts/build_water_tiles.py: it needs the OSM water polygons and
+#: tippecanoe, not a JSON emitter.
+ASSETS = {
+    "places.json": "places",
+    "airports.json": "airports_json",
+    "borders.json": "borders",
+}
+
+
+def _assets(dist: Path | None = None, names: list[str] | None = None) -> None:
+    """(Re)write the static page assets into `dist` (default dist/).
+
+    Under the build lock, so it cannot interleave with a build-all or a
+    reindex rewriting the same directory. Each file is written atomically by
+    its emitter (`_io.atomic_write`), so a failure leaves the previous copy in
+    place rather than half a file.
+    """
+    import importlib
+
+    dist = dist or config.DIST
+    names = names or list(ASSETS)
+    unknown = [n for n in names if n not in ASSETS]
+    if unknown:
+        raise SystemExit(f"unknown asset(s) {unknown}; choose from {list(ASSETS)}")
+    lock = _acquire_lock(dist)
+    try:
+        for name in names:
+            # Imported here, not at the top: borders pulls in pyogrio and
+            # places httpx, and neither belongs in the parent a build forks.
+            emitter = importlib.import_module(f"transport_maps.emit.{ASSETS[name]}")
+            count = emitter.build(dist / name)
+            print(f"{name}: {count:,} entries -> {dist / name}", flush=True)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
 def _consume(pool, results):
     """Yield imap results, aborting when a worker has died without reporting.
 
@@ -858,6 +960,14 @@ def main() -> None:
         help="rewrite dist/index.json from the artifacts on disk (no solving, no rebuild)",
     )
 
+    assets = sub.add_parser(
+        "assets",
+        help="write the static page assets (places.json, airports.json, borders.json) "
+             "into dist/; no graph, no origins",
+    )
+    assets.add_argument("names", nargs="*", metavar="NAME",
+                        help=f"which to write, of {', '.join(ASSETS)} (default: all)")
+
     args = parser.parse_args()
     config.ensure_dirs()
 
@@ -865,6 +975,8 @@ def main() -> None:
         _build_all(limit=args.limit, only=args.only, exclude=args.exclude)
     elif args.command == "reindex":
         _reindex()
+    elif args.command == "assets":
+        _assets(names=args.names)
 
 
 # Without this, `python -m transport_maps.cli build-all` imports the module,

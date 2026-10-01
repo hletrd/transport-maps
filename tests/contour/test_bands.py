@@ -279,3 +279,99 @@ def test_a_split_cell_is_painted_by_its_children_with_the_parent_underneath():
     for k in kids:
         for la, lo in h3.cell_to_boundary(cells[k]):
             assert any(g.contains(Point(lo, la)) for g in by_band.values()), "child vertex uncovered"
+
+
+def test_a_mixed_grid_passes_the_cover_gate_and_its_seams_are_judged():
+    """The real path on a mixed grid: two split cells inside a disk, bands
+    that change across every seam. It must pass the cover gate -- and the gate
+    must actually be looking at the seams, which is what the parent hexagon
+    painted under each split cell (`_native_features`) exists for. Run with
+    that painting deleted, this test goes red: the slivers the seven children
+    leave uncovered open between bands, and the seam sample finds them (K7).
+    Before the seam sample existed the same deletion left it green."""
+    from transport_maps.contour import grid
+    from transport_maps.graph import refine
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    base = sorted(h3.grid_disk(centre, 3))
+    other = sorted(h3.grid_ring(centre, 1))[0]
+    split = np.array([c in (centre, other) for c in base])
+    cells, base_index, fine = refine.refine(base, split)
+
+    class Idx:
+        pass
+    idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
+    idx.base_cells = base; idx.base_index = base_index; idx.fine = fine
+    edges = np.asarray(config.BAND_EDGES_MIN, dtype=float)
+    band = np.random.default_rng(3).integers(0, 6, size=len(cells))
+    minutes = np.where(band == 0, 1.0, edges[np.maximum(band - 1, 0)] + 1.0)
+    universe = grid.universe(base)
+    native = grid.native_edges(idx)
+    fc = bands.band_feature_collection(idx, minutes, grid=universe, native=native)
+    validate.check_bands_cover(idx, universe, native, fc, samples=len(cells) * 4)
+
+
+def _per_cell_dissolve(cells, wraps=None, res=None):
+    """`bands._dissolve` as it stood before R2, verbatim: both boundary tests
+    and the resolution read per cell, per call. The flags are ignored."""
+    from shapely.geometry import shape
+    from shapely.ops import unary_union
+    normal = [c for c in cells if not bands._crosses_antimeridian(c)]
+    wrapping = [c for c in cells if bands._crosses_antimeridian(c)]
+    parts = []
+    by_res: dict[int, list[str]] = {}
+    for c in normal:
+        by_res.setdefault(h3.get_resolution(c), []).append(c)
+    for group in by_res.values():
+        parts.extend(shapely.get_parts(shape(h3.h3shape_to_geo(h3.cells_to_h3shape(group, tight=True)))))
+    for cell in wrapping:
+        parts.extend(shapely.get_parts(shapely.make_valid(unary_union(bands._split_at_antimeridian(cell)))))
+    parts = [g for g in parts if g.geom_type == "Polygon" and not g.is_empty]
+    if not parts:
+        return None
+    return shapely.multipolygons(parts) if len(parts) > 1 else parts[0]
+
+
+def test_precomputed_flags_emit_exactly_what_the_per_cell_tests_did(monkeypatch):
+    """R2 moved the antimeridian and resolution tests out of `_dissolve` into
+    flags computed once per build. The output must not move by one byte, so
+    the whole feature collection -- every level, every band, every part in
+    order -- is compared against the per-cell version on a mixed grid that
+    straddles 180 degrees at Taveuni, Fiji, with wrapping cells at both
+    resolutions and among the coarse parents.
+
+    Mutation performed and reverted: `cell_flags` returning wraps all False
+    sends the wrapping cells through the planar dissolve, and this goes red.
+    """
+    from transport_maps.contour import grid
+    from transport_maps.graph import refine
+    centre = h3.latlng_to_cell(-16.8, 180.0, config.SOLVE_RES)
+    base = sorted(h3.grid_disk(centre, 4))
+    to_split = [c for c in sorted(h3.grid_disk(centre, 1)) if bands._crosses_antimeridian(c)][:2]
+    assert to_split, "fixture: no wrapping base cell to split"
+    cells, base_index, fine = refine.refine(base, np.array([c in to_split for c in base]))
+
+    class Idx:
+        pass
+    idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
+    idx.base_cells = base; idx.base_index = base_index; idx.fine = fine
+    universe = grid.universe(base)
+    flags = bands.precompute_flags(idx, universe)
+    assert flags["native"][0][fine].any(), "fixture: no wrapping fine cell"
+    assert flags["native"][0][~fine].any(), "fixture: no wrapping unsplit cell"
+    assert flags["base"][0][len(base):].any(), "fixture: no wrapping sea-ring cell"
+    assert any(bands._crosses_antimeridian(h3.cell_to_parent(c, 4)) for c in base), \
+        "fixture: no wrapping coarse parent"
+
+    edges = np.asarray(config.BAND_EDGES_MIN, dtype=float)
+    band = np.random.default_rng(7).integers(0, 8, size=len(cells))
+    minutes = np.where(band == 0, 1.0, edges[np.maximum(band - 1, 0)] + 1.0)
+    native = grid.native_edges(idx)
+
+    new = bands.band_feature_collection(idx, minutes, grid=universe, native=native, flags=flags)
+    unflagged = bands.band_feature_collection(idx, minutes, grid=universe, native=native)
+    monkeypatch.setattr(bands, "_dissolve", _per_cell_dissolve)
+    old = bands.band_feature_collection(idx, minutes, grid=universe, native=native)
+
+    assert len(new["features"]) == len(old["features"]) > len(bands.LODS)
+    assert new == old, "the precomputed flags changed the emitted geometry"
+    assert unflagged == old

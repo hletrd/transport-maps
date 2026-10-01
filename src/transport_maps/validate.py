@@ -74,6 +74,18 @@ def check_coverage(minutes: np.ndarray, idx) -> float:
 # wrong, are systematic -- at every band junction -- so a sample this size
 # cannot miss them, and the full 3.6 million vertices would cost minutes.
 COVER_SAMPLE_CELLS = 20_000
+# At the native level a quarter as many split base cells are sampled on top of
+# those cells, at SEAM_EDGE_FRACTIONS along each of their six edges: 12 points
+# each against a cell's 6 vertices, so 60,000 points beside the 120,000.
+#
+# Where along a split cell's edge its seam is sampled. Seven FINE_RES children
+# do not tile their parent: their outline zigzags across each parent edge,
+# leaving a sliver of parent outside every child. Measured on six split cells
+# from Reykjavik to Sydney, a point a quarter of the way along every edge
+# (pulled in 3%, as the vertices are) lies in such a sliver, all 36 of them;
+# the midpoint and the vertices themselves lie inside a child. Both quarters
+# are taken so that the other winding is covered too.
+SEAM_EDGE_FRACTIONS = (0.25, 0.75)
 
 
 def check_bands_cover(idx, grid, native, feature_collection: dict,
@@ -86,6 +98,16 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
     between neighbours; this checks that promise on the emitted geometry, at
     the hex VERTICES, where holes used to appear. Interior cells only: each
     level's outer edge is legitimately open sea.
+
+    The native level also samples the seam where a split base cell meets the
+    grid (K7). A vertex sample cannot see it: every sampled point lies inside
+    its own cell, and every cell is painted. What can open there is the sliver
+    of a split cell its seven children do not cover, which only the parent
+    hexagon painted beneath them closes (contour.bands._native_features). So
+    split cells whose children are all interior are sampled along their edges,
+    where those slivers are (SEAM_EDGE_FRACTIONS). Run with the parent painting
+    deleted, tests/contour/test_bands.py's mixed-grid gate test goes red;
+    before this sample existed it stayed green.
     """
     import shapely
 
@@ -102,6 +124,7 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
                 continue
             cells = list(idx.cells)
             interior = np.flatnonzero(complete)
+            seam = _interior_split_parents(idx, complete)
         else:
             # Strictly inside this level's base universe. The coarse level is
             # built from parents, whose edges wander from the children's, so
@@ -113,6 +136,7 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
                      & (ring6[np.maximum(nb6, 0)] <= lod.get("rings", 0)).all(axis=1)
             cells = cells6
             interior = np.flatnonzero(inside)
+            seam = np.zeros(0, dtype=np.int64)
         if len(interior) == 0:
             continue
         rng = np.random.default_rng(seed)
@@ -122,7 +146,13 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
         # containment even when the two meet perfectly -- on the mixed grid a
         # fine cell's corner lies on the seam between its parent and the next
         # base cell -- while the holes this gate exists for are cells wide.
-        pts = np.array([pt for c in pick for pt in _pulled_in_vertices(cells[c])])
+        pts = [pt for c in pick for pt in _pulled_in_vertices(cells[c])]
+        # Drawn after `pick`, from the same generator, so the cell sample above
+        # is the one it always was.
+        if len(seam):
+            seam_pick = rng.choice(seam, size=min(max(1, samples // 4), len(seam)), replace=False)
+            pts += [pt for b in seam_pick for pt in _pulled_in_edge_points(idx.base_cells[b])]
+        pts = np.array(pts)
 
         # Features are multipolygons whose parts may overlap (contour.bands),
         # which GEOS predicates do not accept on the whole; the parts are
@@ -139,6 +169,51 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
             raise ValueError(
                 f"level {i} (zoom {lod['minzoom']}+): {n:,} of {len(pts):,} interior hex "
                 "vertices fall between bands")
+
+
+def _interior_split_parents(idx, complete: np.ndarray) -> np.ndarray:
+    """Positions in `idx.base_cells` of the split cells whose children are all
+    interior (`complete`): the seams the cover gate can judge. Empty for an
+    index that was never refined."""
+    fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
+    if len(fine_attr) != idx.n_cells or not fine_attr.any():
+        return np.zeros(0, dtype=np.int64)
+    kids = np.flatnonzero(fine_attr)
+    parent = np.asarray(idx.base_index)[kids]
+    split = np.zeros(len(idx.base_cells), dtype=bool)
+    split[parent] = True
+    edge = np.zeros(len(idx.base_cells), dtype=bool)
+    edge[parent[~complete[kids]]] = True
+    return np.flatnonzero(split & ~edge)
+
+
+def _unwrap_dlon(dlon: float) -> float:
+    if dlon > 180.0:
+        return dlon - 360.0
+    if dlon < -180.0:
+        return dlon + 360.0
+    return dlon
+
+
+def _pulled_in_edge_points(cell: str,
+                           fractions: tuple[float, ...] = SEAM_EDGE_FRACTIONS
+                           ) -> list[tuple[float, float]]:
+    """Points `fractions` of the way along each edge of `cell`, pulled 3 %
+    toward its centre, as (lon, lat). Unwrapped across the antimeridian the
+    same way as `_pulled_in_vertices`, which says why."""
+    import h3
+
+    clat, clon = h3.cell_to_latlng(cell)
+    ring = [(lat, _unwrap_dlon(lon - clon)) for lat, lon in h3.cell_to_boundary(cell)]
+    out = []
+    for i, (lat1, d1) in enumerate(ring):
+        lat2, d2 = ring[(i + 1) % len(ring)]
+        for t in fractions:
+            lat = lat1 + t * (lat2 - lat1)
+            plon = clon + 0.97 * (d1 + t * (d2 - d1))
+            out.append((plon - 360.0 if plon > 180.0 else plon + 360.0 if plon < -180.0 else plon,
+                        clat + 0.97 * (lat - clat)))
+    return out
 
 
 def _pulled_in_vertices(cell: str) -> list[tuple[float, float]]:
@@ -170,14 +245,63 @@ def _pulled_in_vertices(cell: str) -> list[tuple[float, float]]:
     return out
 
 
+# Cells the monotonic gate samples per origin: every MONOTONIC_STRIDE-th. A
+# full sweep is O(n * 7) and the gate runs once per origin.
+MONOTONIC_STRIDE = 997
+
+
+def _ground_neighbours(idx, pos: int, cell: str, fine: np.ndarray,
+                       refined: bool) -> list[int]:
+    """Graph positions graph/ground.hex_edges joins `cell` to, before any cut.
+
+    Same-resolution ring neighbours, plus the pairs hex_edges adds across a
+    split seam: a fine cell and the unsplit base cell one of its ring
+    neighbours falls in. hex_edges adds that pair from the FINE side only (in
+    both directions), so from the base side it is found here by looking into
+    each absent neighbour's children -- the ones `refine.ground_adjacent`
+    says touch this cell, which is the test hex_edges' rule reduces to.
+    """
+    import h3
+
+    from transport_maps import config
+    from transport_maps.graph import refine
+
+    out: list[int] = []
+    for neighbour in h3.grid_ring(cell, 1):
+        q = idx.try_cell_index(neighbour)
+        if q is not None:
+            out.append(q)
+        elif fine[pos]:
+            q = idx.try_cell_index(h3.cell_to_parent(neighbour, config.SOLVE_RES))
+            if q is not None and q not in out:
+                out.append(q)
+        elif refined:
+            for child in h3.cell_to_children(neighbour, config.FINE_RES):
+                q = idx.try_cell_index(child)
+                if (q is not None and fine[q] and q not in out
+                        and refine.ground_adjacent(child, cell)):
+                    out.append(q)
+    return out
+
+
 def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
-                           country=None, zone=None) -> None:
+                           country=None, zone=None, stride: int = MONOTONIC_STRIDE) -> None:
     """Dijkstra's invariant: no cell beats reaching it via an adjacent cell.
 
     For adjacent p and q, minutes[q] must not exceed minutes[p] plus the ACTUAL
     cost of the p->q ground hop. Charge the real edge weight, which is the hop
     distance divided by the DESTINATION cell's speed -- the same rule
     ground.hex_edges uses.
+
+    "Adjacent" is what hex_edges joins, on the mixed grid too: a res-7 cell
+    and the unsplit res-6 cell beyond its ring are adjacent in both
+    directions, and so are the two ends of a road bridge or tunnel that spans
+    a water cell (`idx.spans`, graph/build._span_edges), which are not grid
+    neighbours at all. The gate used to look only at same-resolution
+    neighbours and so never saw a single seam edge (A14). The mixed-grid tests
+    in tests/test_validate.py were run against the old loop -- cross edges
+    removed from each direction in turn, spans skipped, the severed check
+    dropped from the seam -- and each went red.
 
     An earlier draft compared against the fastest speed on the grid (85 km/h
     in the superseded spec; the built table tops out at 104 km/h). That is
@@ -219,36 +343,47 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
         zone = [transfers.immigration_zone(countries.iso2(c)) if c else "" for c in country]
     crossing = ground._land_border_min()
     severed = getattr(idx, "severed", frozenset())
+    fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
+    fine = (fine_attr if len(fine_attr) == idx.n_cells
+            else np.zeros(idx.n_cells, dtype=bool))
+    refined = bool(fine.any())
 
-    stride = 997  # sample; a full sweep is O(n * 7) and this gate runs per origin
+    def check(p: int, q: int, hop: float) -> None:
+        if zone[p] and zone[q] and zone[p] != zone[q]:
+            hop += crossing
+        if minutes[q] > minutes[p] + hop + 1e-6:
+            raise ValueError(
+                f"cell {idx.cells[q]} is {minutes[q]:.1f} min but its neighbour "
+                f"{idx.cells[p]} is {minutes[p]:.1f} min and the hop costs only {hop:.1f} min; "
+                "the solver or the ground edges are inconsistent"
+            )
+
     for pos in range(0, idx.n_cells, stride):
-        here = float(minutes[pos])
-        if not np.isfinite(here):
+        if not np.isfinite(minutes[pos]):
             continue
         cell = idx.cells[pos]
         origin_latlng = np.array([h3.cell_to_latlng(cell)])
-        for neighbour in h3.grid_disk(cell, 1):
-            if neighbour == cell:
-                continue
-            q = idx.try_cell_index(neighbour)
-            if q is None or not np.isfinite(minutes[q]):
+        for q in _ground_neighbours(idx, pos, cell, fine, refined):
+            if not np.isfinite(minutes[q]):
                 continue
             if countries.is_closed(country[pos], country[q]):
                 continue
             if (pos, q) in severed:
                 continue
             distance = ground.haversine_km(
-                origin_latlng, np.array([h3.cell_to_latlng(neighbour)])
+                origin_latlng, np.array([h3.cell_to_latlng(idx.cells[q])])
             )[0]
-            hop = distance / speeds[q] * 60.0
-            if zone[pos] and zone[q] and zone[pos] != zone[q]:
-                hop += crossing
-            if minutes[q] > here + hop + 1e-6:
-                raise ValueError(
-                    f"cell {neighbour} is {minutes[q]:.1f} min but its neighbour "
-                    f"{cell} is {here:.1f} min and the hop costs only {hop:.1f} min; "
-                    "the solver or the ground edges are inconsistent"
-                )
+            check(pos, q, distance / speeds[q] * 60.0)
+
+    # Every span, not a sample: there are a few hundred on Earth and each is
+    # the only ground edge across its strait. Charged as _span_edges charges
+    # it -- the link's own minutes, plus a zone change, cut at a closed border.
+    for (p, q), span_min in (getattr(idx, "spans", None) or {}).items():
+        if not (np.isfinite(minutes[p]) and np.isfinite(minutes[q])):
+            continue
+        if countries.is_closed(country[p], country[q]):
+            continue
+        check(p, q, float(span_min))
 
 
 def check_airport_connectivity(idx, csr, isolated_out: list[str] | None = None) -> None:
