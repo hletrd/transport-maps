@@ -37,8 +37,16 @@ for r in europe asia north-america south-america africa australia-oceania centra
     mv "$raw.part" "$raw"
   fi
   echo "[filt] $r ($(du -h "$raw" | cut -f1))"
+  # `r/route=train`, not `r/type=route,route=train`: in an osmium expression
+  # the comma lists VALUES of one key, so that read "type is `route` or
+  # `route=train`" and kept every route relation on Earth -- bus, hiking,
+  # bicycle, road -- with all their member ways and nodes (CR-16 / K11).
+  # sources/osm.py reads only `type=route` + `route=train` relations, and
+  # every service tier, heritage (`service=tourism`) included, is a tag on
+  # those, so nothing it parses is lost. Members of a kept relation are still
+  # kept, which is how its stop nodes survive.
   if nice -n 19 ionice -c 3 osmium tags-filter --overwrite "$raw" \
-       r/type=route,route=train w/railway=rail n/railway=station,halt \
+       r/route=train w/railway=rail n/railway=station,halt \
        w/route=ferry n/amenity=ferry_terminal -o "$out"; then
     rm -f "$raw"; echo "[done] $r -> $(du -h "$out" | cut -f1)"
   else

@@ -215,6 +215,18 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
         parent-under-children painting now turns the mixed-grid gate test red;
         with the seam sample removed it stayed green. Gate only, no output
         change.
+  - [x] **K11** (2026-10-02) `scripts/osm_rail.sh` filters relations on
+        `r/route=train` (osmium's comma separates values, so the old
+        expression kept every `type=route` relation). `osm._relations` reads
+        only `type=route` + `route=train`, and every service tier -- heritage
+        (`service=tourism`) included -- is a tag on those, so the parse is
+        unchanged; a test runs the script's own expression against the parser
+        on a fixture of train, heritage, light-rail, bus, hiking, road, tram
+        and route-master relations, and the old expression turns it red.
+        Takes effect only when the extracts are next regenerated; the rail
+        and ferry parquet caches key on each extract's size and mtime, so a
+        regenerated extract is a miss and no parser-version bump is needed.
+        Build output unchanged.
 - [ ] **L12 / E15** `check_dist` reads `water.pmtiles`' header and metadata and
       checks `maxzoom` and the `water` layer against `emit/water.py`; `-D 10` /
       low-detail for the water layer's z0–2 (PR-14).
