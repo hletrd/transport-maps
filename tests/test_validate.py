@@ -430,3 +430,35 @@ def test_a_span_end_far_later_than_its_other_end_is_rejected():
     with pytest.raises(ValueError, match="inconsistent"):
         _monotonic(Idx(), np.array([0.0, 21.0]))
     _monotonic(Idx(), np.array([0.0, 20.0]))                # must not raise
+
+
+def test_a_sliver_left_open_at_a_split_seam_is_rejected():
+    """Seven fine children do not tile their parent; the parent hexagon painted
+    beneath them closes the slivers they leave. With it the native level is
+    whole; without it the gate must see the slivers -- which no vertex sample
+    can, every vertex being inside its own painted cell (K7)."""
+    from shapely.ops import unary_union
+
+    from transport_maps.contour import grid
+    from transport_maps.graph import refine
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    base = sorted(h3.grid_disk(centre, 2))
+    cells, base_index, fine = refine.refine(base, np.array([c == centre for c in base]))
+
+    class Idx:
+        pass
+    idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
+    idx.base_cells = base; idx.base_index = base_index; idx.fine = fine
+    universe, native = grid.universe(base), grid.native_edges(idx)
+    lower = _features(_whole(universe[0]).buffer(1e-6))[1:]
+
+    def with_native(geometry):
+        return {"features": [_features(geometry)[0], *lower]}
+
+    without_parent = unary_union([_whole([c]) for c in cells])
+    with pytest.raises(ValueError, match="level 0"):
+        validate.check_bands_cover(idx, universe, native, with_native(without_parent),
+                                   samples=len(cells))
+    validate.check_bands_cover(idx, universe, native,
+                               with_native(without_parent.union(_whole([centre]))),
+                               samples=len(cells))    # must not raise

@@ -81,7 +81,11 @@ def universe(cells: list[str], rings: int = RINGS) -> tuple[list[str], np.ndarra
     return allc, nb, ring_arr
 
 
-NATIVE_VERSION = "native-edges-v1"
+# v2: `complete` counts a split neighbour (one whose FINE_RES children are
+# indexed) as resolved, so the unsplit side of a seam is sampled (K7). The
+# edges are unchanged; the flag is what moved, and a v1 file would hand the
+# cover gate the old, seam-blind sample.
+NATIVE_VERSION = "native-edges-v2"
 
 
 def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -92,6 +96,14 @@ def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     graph/ground.py joins them. `complete[i]` says every ring neighbour of
     cell i was resolved -- the cell is not on the land edge -- which is what
     the coverage gate samples. Cached on the exact cell list.
+
+    An unsplit base cell whose ring neighbour was split finds that neighbour
+    absent from the index, yet the neighbour's children are there and joined
+    to it (from their side, by the cross edges below). It is resolved, not on
+    the land edge. Counting it incomplete kept every cell on the unsplit side
+    of a seam out of the cover gate's sample -- exactly where
+    contour.bands._native_features closes slivers with the parent hexagon
+    (TR-11 / K7). tests/contour/test_native_grid.py goes red without it.
     """
     cells = list(idx.cells)
     key = hashlib.sha256(f"{NATIVE_VERSION}|{''.join(cells)}".encode()).hexdigest()[:24]
@@ -103,6 +115,9 @@ def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     pos = {c: i for i, c in enumerate(cells)}
     fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
     fine = fine_attr if len(fine_attr) == len(cells) else np.zeros(len(cells), dtype=bool)
+    # Only a refined index has children to look for: on a uniform grid the
+    # lookup could only miss, and below FINE_RES it would not even be defined.
+    refined = bool(fine.any())
     cap = EDGE_SLOTS_PER_CELL * len(cells)
     rows = np.empty(cap, dtype=np.int32)
     cols = np.empty(cap, dtype=np.int32)
@@ -132,6 +147,8 @@ def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                         put(u, v)
                         put(v, u)
                     continue
+            elif refined and any(k in pos for k in h3.cell_to_children(n, config.FINE_RES)):
+                continue
             complete[u] = False
     out = (rows[:m].copy(), cols[:m].copy(), complete)
     if len(cells) >= MIN_CELLS_TO_CACHE:

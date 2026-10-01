@@ -193,6 +193,14 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
 - [ ] **K7** `native_edges` treats a missing neighbour as resolved when any of
       its `FINE_RES` children is indexed, so the cover gate samples the seam
       (TR-11). **K11** `osm_rail.sh` filters on `route=train` alone (CR-16).
+  - [x] **K7** (2026-10-02) `grid.native_edges` counts a split neighbour as
+        resolved (`NATIVE_VERSION` v2, so a v1 cache cannot hand back the old
+        flag), and `check_bands_cover` also samples split cells a quarter of
+        the way along each edge, where the slivers their children leave are
+        (measured: all 36 edge points of six split cells). Deleting the
+        parent-under-children painting now turns the mixed-grid gate test red;
+        with the seam sample removed it stayed green. Gate only, no output
+        change.
 - [ ] **L12 / E15** `check_dist` reads `water.pmtiles`' header and metadata and
       checks `maxzoom` and the `water` layer against `emit/water.py`; `-D 10` /
       low-detail for the water layer's z0–2 (PR-14).

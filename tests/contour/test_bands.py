@@ -279,3 +279,32 @@ def test_a_split_cell_is_painted_by_its_children_with_the_parent_underneath():
     for k in kids:
         for la, lo in h3.cell_to_boundary(cells[k]):
             assert any(g.contains(Point(lo, la)) for g in by_band.values()), "child vertex uncovered"
+
+
+def test_a_mixed_grid_passes_the_cover_gate_and_its_seams_are_judged():
+    """The real path on a mixed grid: two split cells inside a disk, bands
+    that change across every seam. It must pass the cover gate -- and the gate
+    must actually be looking at the seams, which is what the parent hexagon
+    painted under each split cell (`_native_features`) exists for. Run with
+    that painting deleted, this test goes red: the slivers the seven children
+    leave uncovered open between bands, and the seam sample finds them (K7).
+    Before the seam sample existed the same deletion left it green."""
+    from transport_maps.contour import grid
+    from transport_maps.graph import refine
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    base = sorted(h3.grid_disk(centre, 3))
+    other = sorted(h3.grid_ring(centre, 1))[0]
+    split = np.array([c in (centre, other) for c in base])
+    cells, base_index, fine = refine.refine(base, split)
+
+    class Idx:
+        pass
+    idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
+    idx.base_cells = base; idx.base_index = base_index; idx.fine = fine
+    edges = np.asarray(config.BAND_EDGES_MIN, dtype=float)
+    band = np.random.default_rng(3).integers(0, 6, size=len(cells))
+    minutes = np.where(band == 0, 1.0, edges[np.maximum(band - 1, 0)] + 1.0)
+    universe = grid.universe(base)
+    native = grid.native_edges(idx)
+    fc = bands.band_feature_collection(idx, minutes, grid=universe, native=native)
+    validate.check_bands_cover(idx, universe, native, fc, samples=len(cells) * 4)

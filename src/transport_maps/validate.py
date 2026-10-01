@@ -58,6 +58,18 @@ def check_coverage(minutes: np.ndarray, idx) -> float:
 # wrong, are systematic -- at every band junction -- so a sample this size
 # cannot miss them, and the full 3.6 million vertices would cost minutes.
 COVER_SAMPLE_CELLS = 20_000
+# At the native level a quarter as many split base cells are sampled on top of
+# those cells, at SEAM_EDGE_FRACTIONS along each of their six edges: 12 points
+# each against a cell's 6 vertices, so 60,000 points beside the 120,000.
+#
+# Where along a split cell's edge its seam is sampled. Seven FINE_RES children
+# do not tile their parent: their outline zigzags across each parent edge,
+# leaving a sliver of parent outside every child. Measured on six split cells
+# from Reykjavik to Sydney, a point a quarter of the way along every edge
+# (pulled in 3%, as the vertices are) lies in such a sliver, all 36 of them;
+# the midpoint and the vertices themselves lie inside a child. Both quarters
+# are taken so that the other winding is covered too.
+SEAM_EDGE_FRACTIONS = (0.25, 0.75)
 
 
 def check_bands_cover(idx, grid, native, feature_collection: dict,
@@ -70,6 +82,16 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
     between neighbours; this checks that promise on the emitted geometry, at
     the hex VERTICES, where holes used to appear. Interior cells only: each
     level's outer edge is legitimately open sea.
+
+    The native level also samples the seam where a split base cell meets the
+    grid (K7). A vertex sample cannot see it: every sampled point lies inside
+    its own cell, and every cell is painted. What can open there is the sliver
+    of a split cell its seven children do not cover, which only the parent
+    hexagon painted beneath them closes (contour.bands._native_features). So
+    split cells whose children are all interior are sampled along their edges,
+    where those slivers are (SEAM_EDGE_FRACTIONS). Run with the parent painting
+    deleted, tests/contour/test_bands.py's mixed-grid gate test goes red;
+    before this sample existed it stayed green.
     """
     import shapely
 
@@ -86,6 +108,7 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
                 continue
             cells = list(idx.cells)
             interior = np.flatnonzero(complete)
+            seam = _interior_split_parents(idx, complete)
         else:
             # Strictly inside this level's base universe. The coarse level is
             # built from parents, whose edges wander from the children's, so
@@ -97,6 +120,7 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
                      & (ring6[np.maximum(nb6, 0)] <= lod.get("rings", 0)).all(axis=1)
             cells = cells6
             interior = np.flatnonzero(inside)
+            seam = np.zeros(0, dtype=np.int64)
         if len(interior) == 0:
             continue
         rng = np.random.default_rng(seed)
@@ -106,7 +130,13 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
         # containment even when the two meet perfectly -- on the mixed grid a
         # fine cell's corner lies on the seam between its parent and the next
         # base cell -- while the holes this gate exists for are cells wide.
-        pts = np.array([pt for c in pick for pt in _pulled_in_vertices(cells[c])])
+        pts = [pt for c in pick for pt in _pulled_in_vertices(cells[c])]
+        # Drawn after `pick`, from the same generator, so the cell sample above
+        # is the one it always was.
+        if len(seam):
+            seam_pick = rng.choice(seam, size=min(max(1, samples // 4), len(seam)), replace=False)
+            pts += [pt for b in seam_pick for pt in _pulled_in_edge_points(idx.base_cells[b])]
+        pts = np.array(pts)
 
         # Features are multipolygons whose parts may overlap (contour.bands),
         # which GEOS predicates do not accept on the whole; the parts are
@@ -123,6 +153,51 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
             raise ValueError(
                 f"level {i} (zoom {lod['minzoom']}+): {n:,} of {len(pts):,} interior hex "
                 "vertices fall between bands")
+
+
+def _interior_split_parents(idx, complete: np.ndarray) -> np.ndarray:
+    """Positions in `idx.base_cells` of the split cells whose children are all
+    interior (`complete`): the seams the cover gate can judge. Empty for an
+    index that was never refined."""
+    fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
+    if len(fine_attr) != idx.n_cells or not fine_attr.any():
+        return np.zeros(0, dtype=np.int64)
+    kids = np.flatnonzero(fine_attr)
+    parent = np.asarray(idx.base_index)[kids]
+    split = np.zeros(len(idx.base_cells), dtype=bool)
+    split[parent] = True
+    edge = np.zeros(len(idx.base_cells), dtype=bool)
+    edge[parent[~complete[kids]]] = True
+    return np.flatnonzero(split & ~edge)
+
+
+def _unwrap_dlon(dlon: float) -> float:
+    if dlon > 180.0:
+        return dlon - 360.0
+    if dlon < -180.0:
+        return dlon + 360.0
+    return dlon
+
+
+def _pulled_in_edge_points(cell: str,
+                           fractions: tuple[float, ...] = SEAM_EDGE_FRACTIONS
+                           ) -> list[tuple[float, float]]:
+    """Points `fractions` of the way along each edge of `cell`, pulled 3 %
+    toward its centre, as (lon, lat). Unwrapped across the antimeridian the
+    same way as `_pulled_in_vertices`, which says why."""
+    import h3
+
+    clat, clon = h3.cell_to_latlng(cell)
+    ring = [(lat, _unwrap_dlon(lon - clon)) for lat, lon in h3.cell_to_boundary(cell)]
+    out = []
+    for i, (lat1, d1) in enumerate(ring):
+        lat2, d2 = ring[(i + 1) % len(ring)]
+        for t in fractions:
+            lat = lat1 + t * (lat2 - lat1)
+            plon = clon + 0.97 * (d1 + t * (d2 - d1))
+            out.append((plon - 360.0 if plon > 180.0 else plon + 360.0 if plon < -180.0 else plon,
+                        clat + 0.97 * (lat - clat)))
+    return out
 
 
 def _pulled_in_vertices(cell: str) -> list[tuple[float, float]]:
