@@ -218,7 +218,10 @@ inferred.
       `test_an_enormous_query_is_refused_before_it_is_parsed` documents a `parse_qs` spy
       **that does not exist**; it proves "refused", not "before parsed". Add the spy, or
       rename the test to what it checks. Confirm RED under the reordering mutation.
-- [ ] **C15-5.5** `tests/web/test_esc.py:300-350` — **three `esc()` calls can be deleted
+- [x] **C15-5.5** (2026-10-02, as DEF16-23: `describe`, `placeLine`, `railVia`, `ap`
+      and `mode` are checked as HTML helpers, and a sink's plain-code calls must be
+      one of them; deleting `esc()` in `describe()` now goes red.)
+      `tests/web/test_esc.py:300-350` — **three `esc()` calls can be deleted
       with every gate green** because the sink inventory cannot see through `describe()`
       (`web/app.js:2861-2869`) and `mode()` (`:2492-2495`) to the sink at `:2904`. Teach
       the inventory those two hops. Confirm RED by deleting one `esc()`.

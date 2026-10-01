@@ -314,8 +314,10 @@ def test_every_html_sink_routes_through_esc():
         for piece in pieces:
             checked += 1
             body = piece.strip()
-            safe = ("esc(" in body or "railVia(" in body or "mode(" in body
-                    or "ap(" in body or body in SAFE_PIECES)
+            # A helper is trusted by name only because
+            # test_every_html_helper_escapes_what_it_returns checks its body.
+            # By name, not by substring: `"ap(" in body` also admitted `.map(`.
+            safe = "esc(" in body or bool(_helper_calls(body)) or body in SAFE_PIECES
             assert safe, (
                 f"app.js:{line} interpolates `{body}` into innerHTML without "
                 "esc(); if it is provably safe, name it in SAFE_PIECES with "
@@ -324,6 +326,114 @@ def test_every_html_sink_routes_through_esc():
     # cannot pass by checking nothing. Eleven today across the five templates.
     assert checked >= 10, (
         f"only {checked} interpolation(s) were checked; the extractor is stale")
+
+
+# --- C15-5.5 / DEF16-23: one hop further, into the helpers --------------------
+#
+# The sink check above trusts `ap(`, `mode(` and `railVia(` by name, and never
+# saw `describe()` at all: the `#where` sink reaches it as
+# `placeLine(lat, lng) + ...`, a call OUTSIDE any template, which the
+# interpolation scan does not read. So `esc()` could be deleted from inside
+# any of them with every gate green -- and `describe()` escapes GeoNames'
+# community-edited name, region and country, which `emit/places.py` writes
+# verbatim. Each helper whose RETURN VALUE is HTML is now checked by the same
+# rules as a sink, and a sink may call, outside a template, only `esc` or one
+# of these.
+
+#: The helpers whose output is HTML, sliced from app.js. `ap` and `mode` are
+#: arrows local to renderLegsInto().
+HTML_HELPERS = {
+    "describe": _js.function("describe"),
+    "placeLine": _js.function("placeLine"),
+    "railVia": _js.function("railVia"),
+    "ap": _js.block("  const ap = (code) => {", after="=>"),
+    "mode": _js.block("  const mode = (name) => {", after="=>"),
+}
+#: Functions whose output is not HTML-bearing: digits, units, hemisphere letters.
+SAFE_FORMATTERS = {
+    "fmtCoord": "degrees to one decimal and N/S/E/W, from two numbers",
+}
+
+_CALL = re.compile(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(")
+
+
+def _helper_calls(code: str) -> set[str]:
+    return {m for m in _CALL.findall(code) if m in HTML_HELPERS}
+
+
+def _piece_is_safe(piece: str, body: str, depth: int = 0) -> bool:
+    """Whether an interpolated expression inside a helper's `body` is escaped.
+
+    Escaped means: it calls `esc(`; or it calls another checked helper; or it
+    calls a SAFE_FORMATTER; or it is a local `const` whose own initialiser is
+    one of those, a template whose every piece is, or a list escaped with
+    `.map(esc)` -- railVia's operator line.
+    """
+    piece = piece.strip()
+    if "esc(" in piece or _helper_calls(piece):
+        return True
+    if any(f in SAFE_FORMATTERS for f in _CALL.findall(piece)) and piece.endswith(")"):
+        return True
+    if depth < 4 and piece.isidentifier() and f"const {piece} = " in body:
+        init = _js.statement(f"const {piece} = ", body)[len(f"const {piece} = "):-1]
+        if ".map(esc)" in init:
+            return True
+        pieces = _interpolations(init)
+        if pieces:
+            return all(_piece_is_safe(p, body, depth + 1) for p in pieces)
+        return _piece_is_safe(init, body, depth + 1)
+    return False
+
+
+def test_every_html_helper_escapes_what_it_returns():
+    """DEF16-23. Every `${...}` in a helper's templates is escaped.
+
+    Mutations performed and reverted, each -> red here. The first three were
+    GREEN across the whole of tests/web without this test (measured, with the
+    two new tests deselected); the last two were already caught by node runs
+    in test_itinerary_grid.py and test_rail_via.py, and are red here as well:
+    - describe(): `${esc(lead)}` -> `${lead}` (a GeoNames name).
+    - describe(): `${esc(where)}` -> `${where}` (GeoNames region, country).
+    - mode(): `data-tip="${esc(tip)}"` -> `${tip}`.
+    - ap(): `data-tip="${esc(a[1])}, ...` -> `${a[1]}` (an OurAirports name).
+    - railVia(): drop `.map(esc)` from the operator line (OSM operator, ref).
+    """
+    checked = 0
+    for name, body in HTML_HELPERS.items():
+        assert body.rstrip().endswith("}"), f"{name} sliced short:\n{body}"
+        for piece in _interpolations(body):
+            checked += 1
+            assert _piece_is_safe(piece, body), (
+                f"{name}() interpolates `{piece.strip()}` into the HTML it returns "
+                "without esc(); its callers trust it by name, so this reaches a sink")
+    # Thirteen today. A slicer that lost a helper's body would check nothing.
+    assert checked >= 12, f"only {checked} helper interpolation(s) checked"
+
+
+def test_a_sink_calls_only_esc_and_checked_helpers_outside_its_templates():
+    """The hop the interpolation scan could not see: `#where` is assigned
+    `placeLine(lat, lng) + ...`, and placeLine() returns describe()'s HTML.
+    A call in a sink's plain code must be `esc` or a checked HTML helper.
+
+    Mutation performed and reverted: route the `#where` sink through an
+    unchecked wrapper, `placeLine2(lat, lng)` -> red here, GREEN across the
+    rest of tests/web.
+    """
+    seen = set()
+    for line, expr in _sink_statements():
+        code, j = [], 0
+        while j < len(expr):
+            k = _js.skip(expr, j)
+            code.append(" " * (k - j) if k != j else expr[j])
+            j = k if k != j else j + 1
+        for call in _CALL.findall("".join(code)):
+            seen.add(call)
+            assert call == "esc" or call in HTML_HELPERS, (
+                f"app.js:{line} puts `{call}(...)` into innerHTML outside any "
+                "template; check it as an HTML helper or escape its result")
+    assert "placeLine" in seen, (
+        "the #where sink no longer calls placeLine(); re-derive this test, it "
+        "is what carries describe()'s GeoNames strings to the page")
 
 
 def test_the_allow_list_has_no_dead_entries():
