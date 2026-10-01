@@ -27,6 +27,7 @@ import subprocess
 
 import pytest
 
+from tests.web import _js
 from transport_maps import config
 
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -130,3 +131,125 @@ def test_arrowdown_stops_at_the_last_row(press):
     got = press(["ArrowDown"] * 20, rows=5)
     assert got["focused"] == 4, got
     assert got["stops"] == [4], got
+
+
+# --- DEF17-21 / DEF17-22: the stop render() leaves behind ---------------------
+#
+# render() rebuilds #results once per origin, up to a second after a city is
+# clicked, and gives keyboard focus back to the row that had it. The inline
+# version set tabIndex 0 on the current departure AND on the refocused row --
+# two stops in a one-stop list (DEF17-21) -- and refocused only city rows, so
+# a rebuild under an airport or address row dropped focus to <body> (DEF17-22).
+# rovingStop() is that step, run here against a DOM built for it.
+
+@pytest.fixture(scope="module")
+def rebuild(tmp_path_factory):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH; rovingStop cannot be run")
+    src = """
+let active = null;
+const document = { get activeElement() { return active; } };
+function button(id, attrs, data) {
+  return { id, attrs, dataset: data, tabIndex: -1, focus() { active = this; } };
+}
+// The selectors rovingStop uses, and nothing else: an attribute list, each
+// either present or equal to a quoted value.
+function matches(b, sel) {
+  for (const [, name, val] of sel.matchAll(/\\[([\\w-]+)(?:="([^"]*)")?\\]/g)) {
+    const have = name.startsWith("data-") ? b.dataset[name.slice(5)] : b.attrs[name];
+    if (have === undefined || (val !== undefined && have !== val)) return false;
+  }
+  return true;
+}
+SRC
+const plan = JSON.parse(process.argv[2]);
+const rows = plan.rows.map(([id, attrs, data, tab]) => {
+  const b = button(id, attrs, data);
+  if (tab !== undefined) b.tabIndex = tab;
+  return b;
+});
+const box = {
+  querySelector: (sel) => rows.find((b) => matches(b, sel)) ?? null,
+  querySelectorAll: () => rows,
+  contains: (el) => rows.includes(el),
+};
+// The row focus was on BEFORE the rebuild: the same node for an address row
+// (carried across), a different node with the same data for a city or airport.
+const before = plan.focused === null ? null
+  : plan.carried ? rows.find((b) => b.id === plan.focused)
+  : { dataset: plan.focusedData };
+active = before;
+rovingStop(box, { slug: before?.dataset?.slug, airport: before?.dataset?.airport, el: before });
+process.stdout.write(JSON.stringify({
+  stops: rows.filter((b) => b.tabIndex === 0).map((b) => b.id),
+  focused: rows.includes(active) ? active.id : null,
+}));
+""".replace("SRC", _js.function("cssEscape") + "\n" + _js.function("rovingStop"))
+    path = tmp_path_factory.mktemp("rs") / "rs.cjs"
+    path.write_text(src, encoding="utf-8")
+
+    def call(*, focused=None, focused_data=None, carried=False, address_tab=-1):
+        rows = [
+            ["addr", {}, {"geo": "1,2"}, address_tab],
+            ["aba", {"aria-current": "false"}, {"slug": "aba"}],
+            ["seoul", {"aria-current": "true"}, {"slug": "seoul"}],
+            ["tokyo", {"aria-current": "false"}, {"slug": "tokyo"}],
+            ["hnd", {}, {"airport": "HND"}],
+        ]
+        plan = {"rows": rows, "focused": focused, "focusedData": focused_data,
+                "carried": carried}
+        done = subprocess.run([node, str(path), json.dumps(plan)],
+                              capture_output=True, text=True)
+        assert done.returncode == 0, done.stderr
+        return json.loads(done.stdout)
+    return call
+
+
+def test_a_rebuild_under_a_city_row_leaves_one_stop_on_that_row(rebuild):
+    """DEF17-21. Focus on Tokyo while departing from Seoul: Tokyo keeps focus
+    and the stop, and Seoul -- the default stop -- does not keep one as well.
+
+    Mutation performed and reverted: restore the inline version's shape
+    (`stop` = the current departure, then `again.tabIndex = 0` on top, no
+    reset) -> red, stops ["seoul", "tokyo"].
+    """
+    got = rebuild(focused="tokyo", focused_data={"slug": "tokyo"})
+    assert got == {"stops": ["tokyo"], "focused": "tokyo"}, got
+
+
+def test_a_rebuild_under_an_airport_row_keeps_focus(rebuild):
+    """DEF17-22. Was: focus dropped to <body>, only data-slug rows restored.
+
+    Mutation performed and reverted: drop the `had.airport` branch -> red,
+    focused null and the stop back on Seoul.
+    """
+    got = rebuild(focused="hnd", focused_data={"airport": "HND"})
+    assert got == {"stops": ["hnd"], "focused": "hnd"}, got
+
+
+def test_a_carried_address_row_keeps_focus_and_sheds_its_old_stop(rebuild):
+    """An address row is the same node before and after; focus returns to it.
+    Unfocused, the tabIndex 0 that arrow-key roving left on it must not
+    survive beside the departure's.
+
+    Mutation performed and reverted: delete the reset loop in rovingStop ->
+    red on the second case, stops ["addr", "seoul"].
+    """
+    got = rebuild(focused="addr", carried=True)
+    assert got == {"stops": ["addr"], "focused": "addr"}, got
+    got = rebuild(address_tab=0)
+    assert got == {"stops": ["seoul"], "focused": None}, got
+
+
+def test_with_nothing_focused_the_stop_is_the_departure(rebuild):
+    """Not row 1: see test_page_affordances' note on "Aba" and scrollTop."""
+    assert rebuild() == {"stops": ["seoul"], "focused": None}
+
+
+def test_render_uses_rovingstop_and_sets_no_stop_of_its_own() -> None:
+    """The tests above run rovingStop; this pins that render() is what calls
+    it, and that no second `tabIndex = 0` has crept back in beside it."""
+    body = _js.function("render")
+    assert "rovingStop(box, had)" in body
+    assert "tabIndex = 0" not in body, "render() sets a tab stop outside rovingStop"

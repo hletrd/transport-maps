@@ -4034,9 +4034,9 @@ function render(filter = "") {
   // settle() rebuilds this list once per origin, about a second after a city
   // is clicked -- and replaceChildren throws keyboard focus to <body>, on the
   // only keyboard route to a departure city. Remember which row had it and
-  // give it back to the row with the same slug.
-  const hadFocus = box.contains(document.activeElement)
-    ? document.activeElement.dataset?.slug : null;
+  // give it back to the same row in the new list: see rovingStop().
+  const focused = box.contains(document.activeElement) ? document.activeElement : null;
+  const had = { slug: focused?.dataset?.slug, airport: focused?.dataset?.airport, el: focused };
   // ...and the address results are not ours to throw away. searchAddress()
   // PREPENDS a <ul class="addresses"> to this same box, and replaceChildren
   // deletes it. The re-attach at the end of searchAddress() covers only the
@@ -4056,13 +4056,7 @@ function render(filter = "") {
   // 0, undoing by keyboard the very scroll that puts the current departure in
   // view. A keyboard visitor arrived at the top of an alphabet with no sign
   // which city the page was measuring from.
-  const first = box.querySelector(`button[aria-current="true"][data-slug]`)
-    ?? box.querySelector("button");
-  if (first) first.tabIndex = 0;
-  if (hadFocus) {
-    const again = box.querySelector(`button[data-slug="${cssEscape(hadFocus)}"]`);
-    if (again) { again.tabIndex = 0; again.focus({ preventScroll: true }); }
-  }
+  rovingStop(box, had);
   // The list opens at the top -- so with 553 origins, Seoul is row 364 of 461,
   // about 9,540 px down a 12,072 px scroll box, and the visitor is looking at
   // "Aba" with no sign that a departure city is selected at all. Put the
@@ -4086,6 +4080,26 @@ function render(filter = "") {
 }
 //: CSS.escape is not in every browser this page supports, and a slug can carry
 //: a hyphen but never a quote, so a conservative fallback is enough.
+// The list's one tab stop after render() rebuilds it, and the row keyboard
+// focus goes back to. Two defects lived in the inline version (DEF17-21/22):
+// the refocused row got tabIndex 0 BESIDE the current departure's, so a
+// roving list had two tab stops; and only a city row (data-slug) was ever
+// refocused, so a re-render with focus on an airport or address row dropped
+// it to <body>. An address row is the same node carried across the rebuild;
+// its old tabIndex from arrow-key roving is carried with it, hence the reset.
+function rovingStop(box, had) {
+  const again = had.slug ? box.querySelector(`button[data-slug="${cssEscape(had.slug)}"]`)
+    : had.airport ? box.querySelector(`button[data-airport="${cssEscape(had.airport)}"]`)
+    : had.el && box.contains(had.el) ? had.el
+    : null;
+  const stop = again
+    ?? box.querySelector(`button[aria-current="true"][data-slug]`)
+    ?? box.querySelector("button");
+  for (const b of box.querySelectorAll("button")) b.tabIndex = -1;
+  if (stop) stop.tabIndex = 0;
+  if (again) again.focus({ preventScroll: true });
+}
+
 function cssEscape(s) {
   return globalThis.CSS?.escape ? CSS.escape(s) : String(s).replace(/[^\w-]/g, "");
 }
