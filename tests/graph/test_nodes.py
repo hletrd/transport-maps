@@ -47,20 +47,5 @@ def test_airports_without_a_land_cell_are_counted_not_silently_skipped(idx):
     assert 0 <= len(idx.dropped_airports) <= nodes.MAX_DROPPED_AIRPORT_FRACTION * total
 
 
-def test_the_dropped_airport_bound_actually_aborts(monkeypatch):
-    """Proof the bound is a gate and not just a number: put every airport off
-    the land mask and build_index must refuse, not return an empty graph.
-    """
-    import polars as pl
-
-    monkeypatch.setattr(
-        nodes.airports, "scheduled_airports",
-        lambda: pl.DataFrame({
-            # Mid-Pacific and mid-Atlantic: open ocean, no land cell anywhere near.
-            "iata": ["AAA", "BBB"],
-            "lat": [0.0, 30.0],
-            "lon": [-160.0, -40.0],
-        }),
-    )
-    with pytest.raises(RuntimeError, match="land mask has regressed"):
-        nodes.build_index()
+# The proof that the bound ABORTS needs no real data and lives, fast, in
+# test_nodes_bounds.py (TE-26).

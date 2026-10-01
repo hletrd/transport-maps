@@ -118,6 +118,10 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
       (Antarctica in the golden threshold), TE-20 c1 (ramps parser count
       guard), TE-26 c1 (44-second bound tests); **S5** `native_edges` cache
       branch reachable by a `cache=` parameter (ARCH-13).
+  - [x] TE-26 (2026-10-02): the abort proof moved to
+        `tests/graph/test_nodes_bounds.py`, `build_index` on a stubbed
+        19-cell world (44 s -> <1 s, no data/ needed) plus a counted-drop
+        case. Raise removed / `dropped` not reported -> each red.
   - [x] S5 (2026-10-02): `grid.native_edges(idx, cache=None|True|False)`;
         tests read back a doctored file and pin the size rule. Read branch
         off, `rows` key renamed, write skipped, always-cache -> each red.
