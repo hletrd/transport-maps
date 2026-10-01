@@ -99,8 +99,12 @@ build.
 - [ ] **E13** Owner decision on the `pyproject.toml` author email.
 - [ ] **I5 (docs part)** The vendored JS hashes table (recorded by the security
       reviewer) in `web/README.md`, and a test that recomputes them (with Q6).
-- [ ] **S6** Name the two cross-layer invariants (mode prose; overlap-by-rim
-      and `fill-sort-key`) in the contract document.
+- [x] **S6** Name the two cross-layer invariants (mode prose; overlap-by-rim
+      and `fill-sort-key`) in the contract document. (2026-10-02:
+      `docs/contract.md` "Rules that cross the layer boundary", created for
+      this with J1's remaining sections still to come; the spec's As-built
+      table gains a row for the false "never learns" sentence. Noted there:
+      `test_app_constants.py` pins the sort key's presence, not its sign.)
 
 ## Progress
 

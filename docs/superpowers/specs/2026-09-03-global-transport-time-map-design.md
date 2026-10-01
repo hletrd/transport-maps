@@ -30,6 +30,7 @@ written. Current values live in `src/transport_maps/config.py`,
 | `.bin` 162 KB (82,983 cells) | 181,480 B (90,740 res-4 cells; `hover_cells.bin` gives the ordering) |
 | Eleven bands | 37 bands (`config.BAND_EDGES_MIN`) |
 | Contour lines | None |
+| "The frontend never learns how the numbers were made; the pipeline never learns how they are drawn" (Architecture) | False both ways, by design: the page prints the pipeline's per-mode prose (`modeDetail`), and the bands overlap by a one-cell rim that is gap-free only if the page draws the faster band on top (`fill-sort-key`). Both rules are written down in `docs/contract.md` |
 | EC2 / S3 / CloudFront | nginx (`deploy/`) |
 
 ## Summary
