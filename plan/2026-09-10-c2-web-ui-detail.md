@@ -202,7 +202,9 @@ Controls, focus, tooltips, semantics
       decide with the owner whether 1.8–2.7 between adjacent interpolated
       bands is the intended gradient (VER-29 refuted the wording half: CLAUDE.md
       already says anchors ≥ 6).
-- [ ] **P4 (node harness)** `web/tests/app_pure.test.mjs` run from pytest when
+- [x] **P4 (node harness)** (2026-10-02: see the gates plan; the formatters
+      run in node from `tests/web/test_time_format.py`.)
+      `web/tests/app_pure.test.mjs` run from pytest when
       `node` is present (gates plan).
 
 ## Progress
