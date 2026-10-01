@@ -141,7 +141,9 @@ def _run_build_path(monkeypatch, tmp_path, idx, minutes, pred):
 
     parents = hover.hover_cells(idx)
     shared = {"country": None, "zone": None, "cell_class": CELL_CLASS,
-              "grid": None, "native": None, "rail_tables": TABLES,
+              # The band writer is stubbed above, so its precomputed flags
+              # (contour.bands.precompute_flags) are never read.
+              "grid": None, "native": None, "band_flags": None, "rail_tables": TABLES,
               "reading": hover.reading_layout(idx), "variant": None,
               "hover_parents": parents,
               "hover_groups": hover.hover_groups(idx, parents),
