@@ -84,7 +84,7 @@ def universe(cells: list[str], rings: int = RINGS) -> tuple[list[str], np.ndarra
 NATIVE_VERSION = "native-edges-v1"
 
 
-def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def native_edges(idx, cache: bool | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Raw adjacency of the index's own (mixed-resolution) cells:
     (rows, cols, complete), directed both ways, no border cuts.
 
@@ -92,11 +92,16 @@ def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     graph/ground.py joins them. `complete[i]` says every ring neighbour of
     cell i was resolved -- the cell is not on the land edge -- which is what
     the coverage gate samples. Cached on the exact cell list.
+
+    `cache` None applies the size rule (MIN_CELLS_TO_CACHE); True or False
+    forces it either way. The size rule alone meant no fixture small enough
+    for a test ever took the read branch of a 671 MB file (S5, ARCH-13).
     """
     cells = list(idx.cells)
+    use_cache = len(cells) >= MIN_CELLS_TO_CACHE if cache is None else cache
     key = hashlib.sha256(f"{NATIVE_VERSION}|{''.join(cells)}".encode()).hexdigest()[:24]
     cached = config.BUILD / f"native-edges-{key}.npz"
-    if len(cells) >= MIN_CELLS_TO_CACHE and cached.exists():
+    if use_cache and cached.exists():
         z = np.load(cached, allow_pickle=False)
         return z["rows"], z["cols"], z["complete"]
 
@@ -134,7 +139,7 @@ def native_edges(idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                     continue
             complete[u] = False
     out = (rows[:m].copy(), cols[:m].copy(), complete)
-    if len(cells) >= MIN_CELLS_TO_CACHE:
+    if use_cache:
         def _save(tmp):
             with open(tmp, "wb") as fh:
                 np.savez(fh, rows=out[0], cols=out[1], complete=out[2])

@@ -118,6 +118,9 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
       (Antarctica in the golden threshold), TE-20 c1 (ramps parser count
       guard), TE-26 c1 (44-second bound tests); **S5** `native_edges` cache
       branch reachable by a `cache=` parameter (ARCH-13).
+  - [x] S5 (2026-10-02): `grid.native_edges(idx, cache=None|True|False)`;
+        tests read back a doctored file and pin the size rule. Read branch
+        off, `rows` key renamed, write skipped, always-cache -> each red.
 - [ ] **B3** Golden bounds tightened to the shipped values ± a documented
       tolerance once the 553-origin build ships.
 - [ ] **K3 test**, **K4 test**, **G1 tests** — with their build-plan tasks if

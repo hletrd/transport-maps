@@ -36,3 +36,58 @@ def test_fine_cells_are_joined_to_the_unsplit_cell_beyond_their_ring():
     assert complete[idx.fine].all()
     assert not complete[[i for i, c in enumerate(idx.cells)
                          if not idx.fine[i] and h3.grid_distance(c, h3.cell_to_parent(idx.cells[list(fine_pos)[0]], config.SOLVE_RES)) == 2]].any()
+
+
+def test_the_native_cache_is_read_back_not_recomputed(tmp_path, monkeypatch):
+    """The cached branch is what every real build takes (13.8 million cells,
+    a 671 MB file), and the size rule kept every fixture off it (S5, ARCH-13).
+    `cache=True` forces it on 25 cells. The file is then overwritten with a
+    payload no computation would produce, so a second call can only return it
+    by READING the file -- a recompute returns the true arrays, which is why
+    comparing two calls proves nothing (TE3-7 is that mistake in `universe`).
+
+    Mutations performed and reverted, each -> red: the read branch made
+    `if False:` (the doctored payload is not returned); the saved key `rows`
+    renamed `row` (KeyError on read); the write skipped (no file).
+    """
+    monkeypatch.setattr(grid.config, "BUILD", tmp_path)
+    idx = _mixed()
+    rows, cols, complete = grid.native_edges(idx, cache=True)
+    files = list(tmp_path.glob("native-edges-*.npz"))
+    assert len(files) == 1, "cache=True wrote no cache file"
+    # What the writer wrote, the reader can read: same arrays back.
+    for got, want in zip(grid.native_edges(idx, cache=True), (rows, cols, complete)):
+        assert np.array_equal(got, want)
+
+    doctored = (rows[::-1].copy(), cols[::-1].copy(), ~complete)
+    np.savez(files[0], rows=doctored[0], cols=doctored[1], complete=doctored[2])
+    again = grid.native_edges(idx, cache=True)
+    for got, want in zip(again, doctored):
+        assert np.array_equal(got, want), "the cached file was not read"
+
+    # Keyed on the exact cell list: another universe neither reads this file
+    # nor overwrites it.
+    other = _mixed()
+    other.cells = other.cells[:-1]
+    grid.native_edges(other, cache=True)
+    assert len(list(tmp_path.glob("native-edges-*.npz"))) == 2
+
+
+def test_the_size_rule_still_decides_when_no_one_asks(tmp_path, monkeypatch):
+    """`cache=None` must behave exactly as before -- a 25-cell fixture writes
+    nothing -- and `cache=False` must hold even above the threshold.
+
+    Mutation performed and reverted: `use_cache = True` regardless of `cache`
+    -> red (a file appears).
+    """
+    monkeypatch.setattr(grid.config, "BUILD", tmp_path)
+    idx = _mixed()
+    assert len(idx.cells) < grid.MIN_CELLS_TO_CACHE
+    grid.native_edges(idx)
+    assert not list(tmp_path.glob("native-edges-*.npz"))
+
+    monkeypatch.setattr(grid, "MIN_CELLS_TO_CACHE", 1)
+    grid.native_edges(idx, cache=False)
+    assert not list(tmp_path.glob("native-edges-*.npz"))
+    grid.native_edges(idx)
+    assert len(list(tmp_path.glob("native-edges-*.npz"))) == 1, "the size rule stopped applying"
