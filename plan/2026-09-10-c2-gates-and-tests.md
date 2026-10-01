@@ -110,9 +110,10 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
       boundaries incl. the 119.6 seam, `cellIndex`, `legsTo` round trip from a
       Python-written fixture) run by `tests/web/test_app_pure.py` with a visible
       skip when `node` is absent (TE-3).
-- [ ] **F10** Unit tests for `_air_edges` border charge, `_access_edges`
+- [x] **F10** Unit tests for `_air_edges` border charge, `_access_edges`
       direction, `_transfer_edges` `max(conn, wait)` and "nothing departs → no
-      edge".
+      edge". (2026-10-02: `tests/graph/test_edge_builders.py`, real builders
+      and calibration on seven stubbed airports; 13 mutations, each red.)
 - [ ] **F13 rest** TE-18 c1 (implied assertion, double graph build), TE-19 c1
       (Antarctica in the golden threshold), TE-20 c1 (ramps parser count
       guard), TE-26 c1 (44-second bound tests); **S5** `native_edges` cache
