@@ -193,14 +193,23 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
 - [ ] **K7** `native_edges` treats a missing neighbour as resolved when any of
       its `FINE_RES` children is indexed, so the cover gate samples the seam
       (TR-11). **K11** `osm_rail.sh` filters on `route=train` alone (CR-16).
-- [ ] **L12 / E15** `check_dist` reads `water.pmtiles`' header and metadata and
-      checks `maxzoom` and the `water` layer against `emit/water.py`; `-D 10` /
-      low-detail for the water layer's z0–2 (PR-14).
+- [x] **L12 / E15** `check_dist` reads `water.pmtiles`' header and metadata and
+      checks `maxzoom` and the `water` layer against `emit/water.py`.
+      *Done 2026-10-02:* `_water_problems` refuses a tile type other than MVT,
+      a header zoom range other than `MIN_ZOOM`-`MAX_ZOOM` (the old z0-12
+      archive fails), metadata without `vector_layers`, and layers that do not
+      include `water.LAYER`; a test pins the page's `source-layer` to the same
+      name. The live `dist/water.pmtiles` (z0-11, `water`) passes.
+      `tests/web/test_check_dist.py`, seven mutants.
+- [ ] **L12 (PR-14 half)** `-D 10` / low-detail for the water layer's z0–2.
+      Split out of the line above: it changes the tileset, so it lands with
+      the next `scripts/build_water_tiles.py` run, not with a gate.
 - [ ] **A10** Stable secondary key in `osm.rail_routes` dedupe. **A12** Count
       and bound dropped ferry crossings; book a ferry leg as ferry when the base
       parents are adjacent. **A14** Monotonic-ground gate over cross-resolution
       edges. **A18 / Q4** `adsb_extract.py`: sanitised tag, https + host
-      allow-list, size cap.
+      allow-list, size cap. *(A18 done 2026-10-02 -- see Q4 in the security
+      plan; A10, A12 and A14 are still open, so the box stays empty.)*
 - [ ] **A9** South-pole cap dissolve (K13's slivers as the fixture). **A11**
       Resolvable `continue` batches in the wikitext crawl. **A15** Immigration
       zones: one table for air and ground; no border charge on airside

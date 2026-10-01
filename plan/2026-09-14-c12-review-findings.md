@@ -147,11 +147,20 @@ Two thresholds that do not break but silently weaken: `:144`
 `'"departing":1'` is an unanchored substring satisfied by anything from 1000 to
 1464.
 
-- [ ] **C12-8** Cycle 13. Deferred this cycle with a reason, below: the gate is
+- [x] **C12-8** Cycle 13. Deferred this cycle with a reason, below: the gate is
       correct against the **currently deployed** 553-origin build, this cycle
       deploys page-only against exactly that build, and rewriting the gate in the
       same cycle that depends on it to verify a deploy is how a weakened gate
       ships. It must be rewritten and proved against the new build.
+      *Done 2026-10-02, outside any deploy:* both cold loads poll `wait_until`
+      (a 90 s ceiling that sets `fail=1` and names what never arrived) for the
+      condition the following reads need -- map style and tiles, every capped
+      row timed, the departure label; Tokyo selected with its times landed.
+      `check_city_list` replaces both loose greps: exactly one `departing`,
+      no blank row, the counts add up to the rows, at least one time, and no
+      "no route" in a capped (ranked) list. Proved against the live 1,464-origin
+      build (`ALL CHECKS PASSED`, ready after 2 s on both waits);
+      `tests/test_deploy_script.py`, twelve mutants.
 
 ## C12-9 — `esc()` is disabled in the one harness that exercises it
 

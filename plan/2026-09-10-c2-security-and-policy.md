@@ -61,15 +61,30 @@ DOM-write table).
 
 ## Cycle 3
 
-- [ ] **Q2** Rehearse the CSP before installing it: serve a scratch copy of
+- [x] **Q2** Rehearse the CSP before installing it: serve a scratch copy of
       `dist/` behind nginx with the snippet, or inject the policy as a
       `<meta http-equiv>` into a scratch `index.html` served by the preview,
       and run `browser_verify.sh` against it; then `deploy_verify.sh` step 3
       asserts `content-security-policy` and `strict-transport-security` on
       `/`, `/app.js`, `/index.json`, `/hover_cells.bin` and a `.pmtiles`
       (SEC-19).
-- [ ] **Q4 / A18** `adsb_extract.py`: sanitised tag, https + host allow-list,
-      size cap (SEC-23).
+      *2026-10-02:* the rehearsal half is overtaken -- the snippet is installed
+      and the live site serves all six headers; `browser_verify.sh` passes
+      under that CSP today. The assert half is done and wider than asked:
+      `check_security_headers` reads every `add_header` value from
+      `deploy/worldmap-security-headers.conf` and requires each of CSP, HSTS,
+      X-Frame-Options, Referrer-Policy, Permissions-Policy (the four
+      advertising APIs included) and X-Content-Type-Options to be present and
+      exactly equal on `/`, `app.js`, `index.json`, `hover_cells.bin`,
+      `water.pmtiles` and the first origin's `.pmtiles`; a mismatch exits 1.
+      Passes against the live site; `tests/test_deploy_script.py` drives it
+      with a stub `curl`, six mutants.
+- [x] **Q4 / A18** `adsb_extract.py`: sanitised tag, https + host allow-list,
+      size cap (SEC-23). Tag and asset names are one `[A-Za-z0-9][A-Za-z0-9._-]`
+      component; each asset URL must be this repo's https download path; a
+      redirect may only go to https on GitHub's asset hosts; a part over 4 GB or
+      a day over 16 GB is refused before download and the declared size caps
+      the bytes received. `tests/sources/test_adsb_extract.py`, nine mutants.
 - [ ] **I2 (6.x)** Try MapLibre 6.9.0 with pmtiles 4.5.0 on the preview with
       the tile-loading retest `web/README.md` describes.
 - [ ] **N22 / DOC-12** Attribution visibility (owner judgement, web plan).

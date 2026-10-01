@@ -621,3 +621,322 @@ def test_the_space_check_falls_back_to_the_whole_tree_when_rsync_cannot_say(tmp_
         (tmp_path / str(i)).mkdir()
         got = _run_transfer_kb(tmp_path / str(i), body)
         assert int(got) >= 290, (body, got)
+
+
+HEADERS_CONF = ROOT / "deploy" / "worldmap-security-headers.conf"
+
+
+def _conf_headers() -> list[tuple[str, str]]:
+    """(Name, value) per `add_header` in the conf, read line by line -- a
+    different reading from the script's regex, so a parse bug in either shows."""
+    out = []
+    for line in HEADERS_CONF.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("add_header ") and line.endswith(" always;"):
+            name, rest = line[len("add_header "):].split(" ", 1)
+            out.append((name, rest[: -len(" always;")].strip().strip('"')))
+    return out
+
+
+def _run_header_check(tmp_path, responses: dict[str, str], default: str,
+                      conf=HEADERS_CONF, curl_rc: int = 0):
+    """The REAL check_security_headers, with a stub `curl` that answers each
+    path with the canned response whose key the URL ends with."""
+    import subprocess
+
+    fn = re.search(r"^check_security_headers\(\) \{.*?^\}", DEPLOY, re.S | re.M)
+    assert fn, "check_security_headers is gone from deploy_verify.sh or was reshaped"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cases = ""
+    for i, (suffix, body) in enumerate(responses.items()):
+        (tmp_path / f"r{i}").write_text(body)
+        cases += f'  *"{suffix}") cat "{tmp_path}/r{i}" ;;\n'
+    (tmp_path / "default").write_text(default)
+    stub = bin_dir / "curl"
+    stub.write_text("#!/bin/bash\nurl=${@: -1}\ncase \"$url\" in\n" + cases
+                    + f'  *) cat "{tmp_path}/default" ;;\nesac\nexit {curl_rc}\n')
+    stub.chmod(0o755)
+    script = (f"set -euo pipefail\nSITE_URL=https://example.test\n{fn.group(0)}\n"
+              f'check_security_headers "{conf}" "" app.js index.json water.pmtiles'
+              ' && echo HEADERS_OK || echo HEADERS_REFUSED\n')
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                          env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
+
+
+def _response(headers: list[tuple[str, str]], status="HTTP/2 200") -> str:
+    return "\r\n".join([status, *(f"{n}: {v}" for n, v in headers), "", ""])
+
+
+def test_the_header_check_accepts_what_the_live_site_serves(tmp_path):
+    """The positive control, in both header spellings: HTTP/2 lower-cases the
+    names (what the live site sends, measured 2026-10-02) and HTTP/1.1 keeps
+    nginx's capitals. Without it every refusal below could be a check that
+    refuses everything."""
+    conf = _conf_headers()
+    assert len(conf) >= 6, conf
+    lower = _response([(n.lower(), v) for n, v in conf] + [("content-type", "text/html")])
+    upper = _response(conf, status="HTTP/1.1 200 OK")
+    done = _run_header_check(tmp_path, {"app.js": upper}, lower)
+    assert "HEADERS_OK" in done.stdout, done.stdout + done.stderr
+    assert done.stdout.count("all 6 match the conf") == 4, done.stdout
+
+
+def test_the_header_check_fails_a_deploy_whose_headers_drifted(tmp_path):
+    """Q2. The check used to PRINT whether a CSP header was present on three
+    paths and assert nothing; HSTS, X-Frame-Options, Referrer-Policy and
+    Permissions-Policy were not looked at at all. Each drift below is one the
+    old block passed.
+
+    Mutations performed and reverted, each confirmed RED:
+      * the `if not have` ABSENT branch removed        -> the missing-CSP and
+                                                          missing-HSTS cases pass
+      * the exact-value comparison removed             -> the four altered-value
+                                                          cases pass
+      * `|| bad=1` dropped from the python call        -> every case passes
+    """
+    conf = _conf_headers()
+    values = dict(conf)
+
+    def without(name):
+        return _response([(n, v) for n, v in conf if n != name])
+
+    def changed(name, value):
+        return _response([(n, value if n == name else v) for n, v in conf])
+
+    good = _response(conf)
+    pp = values["Permissions-Policy"]
+    assert "browsing-topics=()" in pp, pp
+    cases = {
+        "CSP missing on app.js only": ({"app.js": without("Content-Security-Policy")},
+                                       "/app.js: content-security-policy ABSENT"),
+        "no HSTS": ({"water.pmtiles": without("Strict-Transport-Security")},
+                    "/water.pmtiles: strict-transport-security ABSENT"),
+        "a CSP with a source appended": (
+            {"index.json": changed("Content-Security-Policy",
+                                   values["Content-Security-Policy"] + " https://evil.example")},
+            "/index.json: content-security-policy is"),
+        "Permissions-Policy without the advertising APIs": (
+            {"app.js": changed("Permissions-Policy", pp.split(", browsing-topics")[0])},
+            "/app.js: permissions-policy is"),
+        "framing allowed": ({"app.js": changed("X-Frame-Options", "SAMEORIGIN")},
+                            "/app.js: x-frame-options is"),
+        "referrer tightened past Nominatim's requirement": (
+            {"app.js": changed("Referrer-Policy", "no-referrer")},
+            "/app.js: referrer-policy is"),
+    }
+    for why, (responses, message) in cases.items():
+        sub = tmp_path / re.sub(r"\W+", "_", why)
+        sub.mkdir()
+        done = _run_header_check(sub, responses, good)
+        assert "HEADERS_REFUSED" in done.stdout, (why, done.stdout + done.stderr)
+        assert message in done.stdout, (why, message, done.stdout)
+
+
+def test_the_header_check_cannot_pass_by_reading_nothing(tmp_path):
+    """Two ways to expect or receive nothing: a conf the parse cannot read
+    (the check would want no headers and pass every response), and a curl that
+    fails (no headers at all).
+
+    Mutation performed and reverted: remove the `required <= want.keys()` guard
+    -> the unreadable-conf case passes -> red.
+    """
+    good = _response(_conf_headers())
+    bogus = tmp_path / "bogus.conf"
+    bogus.write_text("# add_header lines moved somewhere else\n")
+    (tmp_path / "a").mkdir()
+    done = _run_header_check(tmp_path / "a", {}, good, conf=bogus)
+    assert "HEADERS_REFUSED" in done.stdout, done.stdout + done.stderr
+    assert "could not read" in done.stdout, done.stdout
+
+    (tmp_path / "b").mkdir()
+    done = _run_header_check(tmp_path / "b", {}, "", curl_rc=7)
+    assert "HEADERS_REFUSED" in done.stdout, done.stdout + done.stderr
+    assert "ABSENT" in done.stdout
+
+
+def test_the_deploy_enforces_the_header_check_on_every_asset_class():
+    """The function is only a gate if the deploy calls it, on the asset classes
+    nginx serves from different locations (the page, scripts, JSON, binary
+    arrays, PMTiles), and stops when it fails.
+
+    Mutation performed and reverted: replace the call's `exit 1` with `true`
+    -> red.
+    """
+    code = _code(DEPLOY)
+    call = re.search(r'^check_security_headers "\$ROOT/deploy/worldmap-security-headers\.conf"'
+                     r'(.*?)\|\| \{([^}]*)\}', code, re.S | re.M)
+    assert call, "the deploy no longer runs check_security_headers against the conf"
+    paths, on_fail = call.group(1), call.group(2)
+    for path in ('""', "app.js", "index.json", "hover_cells.bin", ".pmtiles"):
+        assert path in paths, f"the header check no longer covers {path}"
+    assert "exit 1" in on_fail, "a header mismatch no longer stops the deploy"
+    assert "CSP header:" not in code, "the report-only header loop is back"
+
+
+def _browser_fn(name: str) -> str:
+    """A function lifted verbatim from browser_verify.sh: a multi-line body
+    closed by a brace in column 0, or a one-line `name() { ...; }`."""
+    m = (re.search(rf"^{name}\(\) \{{\n.*?^\}}", BROWSER, re.S | re.M)
+         or re.search(rf"^{name}\(\) \{{.*\}}$", BROWSER, re.M))
+    assert m, f"{name} is gone from browser_verify.sh or has been reshaped"
+    return m.group(0)
+
+
+def _run_wait_until(tmp_path, answers: list[str], limit: int):
+    """The real wait_until, with a stub `agent-browser` that prints one line of
+    `answers` per call (the last repeats) in the shape a real eval returns."""
+    import subprocess
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "answers").write_text("\n".join(answers) + "\n")
+    stub = bin_dir / "agent-browser"
+    stub.write_text(
+        "#!/bin/bash\n"
+        f'n=$(cat "{tmp_path}/n" 2>/dev/null || echo 0); echo $((n + 1)) > "{tmp_path}/n"\n'
+        f'total=$(wc -l < "{tmp_path}/answers")\n'
+        "i=$(( n + 1 > total ? total : n + 1 ))\n"
+        f'sed -n "${{i}}p" "{tmp_path}/answers"\n')
+    stub.chmod(0o755)
+    script = (f"set -u\nfail=0\n{_browser_fn('wait_until')}\n"
+              f'wait_until {limit} "the thing" "js"; echo "rc=$? fail=$fail"\n')
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                          env={"PATH": f"{bin_dir}:/usr/bin:/bin"}, timeout=60)
+    calls = int((tmp_path / "n").read_text())
+    return done, calls
+
+
+def test_the_browser_stage_waits_for_the_page_not_for_a_clock():
+    """C12-8 / V13-28. Both cold loads slept a fixed 15 s and 10 s, chosen
+    against 553 origins, before reading data that grew to 1,464 rows and a
+    ~10 MB reading tier -- the mechanism behind four gate failures on correct
+    code. Each must now poll a readiness condition before its first read.
+
+    Mutations performed and reverted: put `; sleep 15` back on the first open
+    -> red; drop the `?from=tokyo` open's wait_until -> red.
+    """
+    code = _code(BROWSER)
+    for opener, first_read in (('agent-browser open "$URL"', "R=$(agent-browser eval"),
+                               ('agent-browser open "${URL}?from=tokyo"', 'q.value="JFK"')):
+        at = code.index(opener)
+        line = code[at:code.index("\n", at)]
+        assert not re.search(r"sleep\s+\d", line), (
+            f"a cold load waits a fixed time again: {line.strip()}")
+        between = code[at:code.index(first_read, at)]
+        assert re.search(r"^wait_until \d+ ", between, re.M), (
+            f"nothing waits for the page between `{opener}` and its first read")
+
+
+def test_wait_until_returns_as_soon_as_the_page_answers(tmp_path):
+    """The positive control: the poll must not simply always time out."""
+    done, calls = _run_wait_until(tmp_path, ['"false"', '"false"', '"true"'], limit=30)
+    assert "rc=0 fail=0" in done.stdout, done.stdout + done.stderr
+    assert "ready after" in done.stdout
+    assert calls == 3, f"polled {calls} times for an answer that came on the third"
+
+
+def test_wait_until_fails_loudly_when_the_page_never_gets_there(tmp_path):
+    """A ceiling that is reached must set fail=1 and say what it waited for --
+    a timeout that falls through silently is the old fixed sleep again.
+
+    Mutations performed and reverted: delete `fail=1` from wait_until -> red;
+    `return 1` -> `return 0` -> red; compare `$got` against "false" instead of
+    "true" -> red (the positive control above goes red as well).
+    """
+    # $SECONDS ticks in whole seconds, so a 2 s ceiling can see one poll or
+    # two depending on where in the second it started; 3 s always sees two.
+    done, calls = _run_wait_until(tmp_path, ['"false"'], limit=3)
+    assert "rc=1 fail=1" in done.stdout, done.stdout + done.stderr
+    assert "!! waited 3 s for the thing" in done.stdout
+    assert calls >= 2, "it gave up without polling"
+
+
+def test_wait_until_treats_a_tool_error_as_not_ready(tmp_path):
+    """No session, a CDP disconnect or a JS exception comes back as text, never
+    as `true`, so it must run out the ceiling and fail -- and show the text."""
+    done, _ = _run_wait_until(tmp_path, ["Error: no browser session"], limit=2)
+    assert "rc=1 fail=1" in done.stdout, done.stdout + done.stderr
+    assert "Error: no browser session" in done.stdout
+
+
+def _city_list(cl: str, cities: int = 1464, cap: int = 60):
+    import subprocess
+
+    script = (f"set -u\nCITIES={cities}\nCAP={cap}\n{_browser_fn('json_num')}\n"
+              f"{_browser_fn('check_city_list')}\n"
+              'check_city_list "$1"; echo "rc=$?"\n')
+    return subprocess.run(["bash", "-c", script, "_", cl], capture_output=True, text=True)
+
+
+def _cl(rows, durations, no_route=0, blank=0, departing=1):
+    # The real shape: agent-browser prints the JSON as a quoted string and the
+    # gate strips its backslashes, so the object arrives wrapped in quotes.
+    return (f'"{{"rows":{rows},"durations":{durations},"coords":0,"clipped":0,'
+            f'"noRoute":{no_route},"blank":{blank},"departing":{departing}}}"')
+
+
+def test_the_city_list_check_accepts_a_correct_list():
+    """Positive controls, capped and uncapped (a small local dist can show a
+    "no route" row; a capped list is the quickest 60 and cannot)."""
+    for cl, cities in ((_cl(60, 59), 1464), (_cl(3, 1, no_route=1), 3)):
+        done = _city_list(cl, cities=cities)
+        assert "rc=0" in done.stdout, (cl, done.stdout + done.stderr)
+        assert "!!" not in done.stdout
+
+
+def test_the_city_list_check_refuses_what_the_old_patterns_let_through():
+    """`'"departing":1'` was an unanchored substring, satisfied by 1000-1464,
+    and `"durations":[1-9][0-9]` asserted ten timed rows out of sixty. Each case
+    here must fail with its own reason; the first two passed the old greps.
+
+    Mutations performed and reverted, each confirmed RED:
+      * `[ "$dep" -eq 1 ]` -> `[ "$dep" -ge 1 ]`       -> departing 1000 passes
+      * the `blank -ne 0` branch removed              -> 49 blank rows report
+                                                         the wrong reason
+      * the counts-add-up branch removed              -> 5 unrecognised rows
+                                                         pass
+      * the `dur -ge 1` check removed                 -> the all-"no route"
+                                                         list passes
+      * the capped-list `no route` check removed      -> 5 unreachable rows in
+                                                         a ranked list pass
+      * the empty-count guard removed                 -> unreadable output
+                                                         reports the wrong
+                                                         reason
+    """
+    old = re.compile(r'"durations":[1-9][0-9]')
+    cases = [
+        (_cl(60, 59, departing=1000), 1464, "1000 rows are marked as the current departure"),
+        (_cl(60, 10, blank=49), 1464, "49 of 60 city rows carry no travel time"),
+        (_cl(60, 54), 1464, "5 of 60 city rows read as neither"),
+        (_cl(3, 0, no_route=2), 3, "carries no travel times"),
+        (_cl(60, 54, no_route=5), 1464, "yet 5 of its rows have no route"),
+    ]
+    for cl, cities, why in cases[:2]:
+        # Proof these are cases the OLD gate waved through.
+        assert old.search(cl) and '"departing":1' in cl, cl
+    for cl, cities, why in cases:
+        done = _city_list(cl, cities=cities)
+        assert "rc=1" in done.stdout, (cl, done.stdout + done.stderr)
+        assert why in done.stdout, (why, done.stdout + done.stderr)
+
+    for unreadable in ("", "Error: no browser session", '"{"rows":60}"'):
+        done = _city_list(unreadable)
+        assert "rc=1" in done.stdout, (unreadable, done.stdout)
+        assert "could not read the city-list counts" in done.stdout, done.stdout
+
+
+def test_the_city_list_check_is_what_the_gate_runs():
+    """The two loose greps are gone from the gate, and the function the tests
+    above exercise is the one it calls on the eval's output.
+
+    Mutation performed and reverted: restore the `'"departing":1'` grep in
+    place of the check_city_list call -> red.
+    """
+    code = _code(BROWSER)
+    assert '"departing":1\'' not in code, "the unanchored departing grep is back"
+    assert '"durations":[1-9][0-9]' not in code, "the ten-row durations floor is back"
+    assert re.search(r'^check_city_list "\$CL" \|\| fail=1$', code, re.M), (
+        "the gate no longer runs check_city_list on the city-list eval")
+    for key in ("noRoute:", "blank:", "departing:"):
+        assert key in code, f"the city-list eval no longer reports {key}"

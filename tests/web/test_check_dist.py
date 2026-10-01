@@ -7,6 +7,7 @@ import struct
 import pytest
 
 from transport_maps import config
+from transport_maps.emit import water
 from transport_maps.emit.index import ATTRIBUTION
 from transport_maps.emit.modes import CHANNELS
 
@@ -22,13 +23,15 @@ def check_dist():
 N_CELLS = 3
 
 
-def _pmtiles(path, size=4096, metadata=b'{"name":"water"}', gzipped=False):
+def _pmtiles(path, size=4096, metadata=b'{"name":"water"}', gzipped=False,
+             tile_type=0, zooms=(0, 0)):
     if gzipped:
         import gzip
         metadata = gzip.compress(metadata)
     head = bytearray(127)
     head[:7] = b"PMTiles"
     head[7] = 3
+    head[99], head[100], head[101] = tile_type, *zooms
     # root dir at 127 (len 100), metadata at 227, leaves after it (len 0), then tiles
     mlen = len(metadata)
     struct.pack_into("<QQQQQQQQ", head, 8, 127, 100, 227, mlen,
@@ -36,6 +39,16 @@ def _pmtiles(path, size=4096, metadata=b'{"name":"water"}', gzipped=False):
     body = bytearray(b"\0" * (size - 127))
     body[227 - 127:227 - 127 + mlen] = metadata
     path.write_bytes(bytes(head) + bytes(body))
+
+
+def _water(path, layers=(water.LAYER,), zooms=(water.MIN_ZOOM, water.MAX_ZOOM), tile_type=1,
+           metadata=None, **kw):
+    """A water archive shaped like the one tippecanoe writes: MVT, the
+    emitter's zoom range, and a vector_layers entry per layer."""
+    if metadata is None:
+        metadata = json.dumps({"name": "water", "format": "pbf", "vector_layers": [
+            {"id": i, "minzoom": zooms[0], "maxzoom": zooms[1]} for i in layers]}).encode()
+    _pmtiles(path, metadata=metadata, tile_type=tile_type, zooms=zooms, **kw)
 
 
 def _good_dist(tmp_path, slugs=("seoul",), rail=True):
@@ -56,7 +69,7 @@ def _good_dist(tmp_path, slugs=("seoul",), rail=True):
             (d / "origins" / f"{s}.rail.json").write_text('{"fields":[],"stations":[]}')
     for extra in ("places.json", "airports.json", "borders.json"):
         (d / extra).write_text("{}")
-    _pmtiles(d / "water.pmtiles")
+    _water(d / "water.pmtiles")
     (d / "index.json").write_text(json.dumps({
         "origins": [{"slug": s, "name": s, "lat": 0, "lon": 0} for s in slugs],
         "bandEdgesMin": [30, 60], "railDetail": rail, "hoverCellCount": N_CELLS,
@@ -646,3 +659,93 @@ def test_an_offered_variant_must_hold_its_reading_tier_at_the_full_width(check_d
     assert any("variant no-air: seoul.r6.bin is" in m for m in check_dist.check_dist(d))
     (vo / "seoul.r6.bin").write_bytes(b"\0" * width)
     assert check_dist.check_dist(d) == []
+
+
+# --- L12 / E15: water.pmtiles is checked for what it holds, not only its shape
+#
+# `_pmtiles_ok` reads the header's magic and offsets and nothing else, so it
+# passed the 867 MB z0-12 archive (42.7% of its tile section at a zoom no page
+# can request) and would pass one whose layer is not called `water` -- which
+# the page's `"source-layer": "water"` then draws nothing from, with no error.
+
+def test_the_real_water_archive_shape_passes(check_dist, tmp_path):
+    """The positive control, gzipped as tippecanoe writes it, in the shape the
+    real archive has (measured on dist/ 2026-10-02: v3, MVT, z0-11, one
+    `water` layer)."""
+    d = _good_dist(tmp_path)
+    _water(d / "water.pmtiles", size=8192, gzipped=True)
+    assert check_dist.check_dist(d, [{"slug": "seoul"}]) == []
+
+
+@pytest.mark.parametrize(("zooms", "why"), [
+    ((0, 12), "the old 867 MB archive: z12 tiles no page zoom can request"),
+    ((0, 10), "a coast that stops a zoom short of the page"),
+    ((2, 11), "nothing to draw at the opening view"),
+])
+def test_a_water_archive_at_the_wrong_zoom_range_is_refused(check_dist, tmp_path, zooms, why):
+    """Mutation performed and reverted: delete the zoom comparison from
+    `_water_problems` -> all three cases red."""
+    d = _good_dist(tmp_path)
+    _water(d / "water.pmtiles", zooms=zooms)
+    bad = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any(f"spans z{zooms[0]}-z{zooms[1]}" in b and "stale archive" in b for b in bad), (why, bad)
+
+
+def test_a_water_archive_without_the_water_layer_is_refused(check_dist, tmp_path):
+    """Mutation performed and reverted: `water.LAYER not in ids` -> `False`
+    -> red."""
+    d = _good_dist(tmp_path)
+    _water(d / "water.pmtiles", layers=("ocean", "lakes"))
+    bad = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any("vector layers ['lakes', 'ocean'], not 'water'" in b for b in bad), bad
+
+
+@pytest.mark.parametrize("metadata", [b'{"name":"water"}', b"not json",
+                                      b'{"vector_layers":"water"}'])
+def test_a_water_archive_whose_layers_cannot_be_read_is_refused(check_dist, tmp_path, metadata):
+    """No vector_layers is not the same as the right ones: a gate that only
+    looked for a WRONG layer would wave through metadata it could not read.
+
+    Mutation performed and reverted: make the `not isinstance(layers, list)`
+    branch append nothing -> red."""
+    d = _good_dist(tmp_path)
+    _water(d / "water.pmtiles", metadata=metadata)
+    bad = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any("metadata has no vector_layers" in b for b in bad), bad
+
+
+def test_a_raster_water_archive_is_refused(check_dist, tmp_path):
+    """Mutation performed and reverted: delete the tile-type comparison -> red."""
+    d = _good_dist(tmp_path)
+    _water(d / "water.pmtiles", tile_type=2)        # PNG
+    bad = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any("holds tile type 2, not vector" in b for b in bad), bad
+
+
+def test_the_water_rules_are_applied_to_water_pmtiles_only(check_dist, tmp_path):
+    """An origin archive's layer is `bands` and the fixture's origin archive
+    has no vector_layers at all; holding it to the water rules would refuse
+    every build.
+
+    Mutation performed and reverted: drop the `extra == "water.pmtiles"`
+    condition and call `_water_problems` on the origin archives too -> red."""
+    d = _good_dist(tmp_path)
+    assert check_dist.check_dist(d, [{"slug": "seoul"}]) == []
+
+
+def test_the_page_draws_the_layer_the_emitter_writes():
+    """The other half of the layer check: the gate compares the archive with
+    emit/water.py, so the page must read that same name, or the archive and
+    the emitter could agree with each other and the page still draw nothing.
+
+    Mutation performed and reverted: `"source-layer": "water"` -> `"coast"` in
+    web/app.js -> red."""
+    import re
+
+    app = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    layer = re.search(r'source: WATER_SOURCE, "source-layer": "([^"]+)"', app)
+    assert layer, "web/app.js no longer adds a layer from the water source"
+    assert layer.group(1) == water.LAYER, (
+        f"the page draws source-layer {layer.group(1)!r} and the emitter writes {water.LAYER!r}")
+    assert 'url: "pmtiles://./water.pmtiles"' in app, (
+        "the page no longer loads water.pmtiles, which REQUIRED_EXTRAS gates")

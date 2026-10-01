@@ -342,12 +342,64 @@ done
 probe "$LIVE_SLUG.pmtiles range" "origins/$LIVE_SLUG.pmtiles" 206 -r 0-99
 probe "water.pmtiles range" "water.pmtiles" 206 -r 0-99
 [ "$live_fail" -eq 0 ] || { echo "!! live checks failed"; exit 1; }
-# Report (not yet assert -- the corrected nginx conf is an owner install) the
-# security headers on the page assets; absent CSP means the old conf is live.
-for f in "" app.js index.json; do
-  h=$(curl -sI "$SITE_URL/$f" | tr -d '\r' | grep -ci "^content-security-policy:" || true)
-  printf "  %-26s CSP header: %s\n" "/${f}" "$([ "$h" -gt 0 ] && echo present || echo ABSENT)"
-done
+# The security headers are ASSERTED, on every asset class the page loads. This
+# used to print "CSP header: present" for three paths and assert nothing,
+# because the corrected nginx conf was an owner install still to come. It is
+# installed now, and a header that silently disappears is exactly what nginx
+# does when a location gains an add_header of its own (E3: add_header does not
+# merge across levels), so the next such edit must fail a deploy rather than be
+# found by a reviewer.
+#
+# The expected values are READ from deploy/worldmap-security-headers.conf --
+# the file the server includes -- not copied here, so tightening the CSP or the
+# Permissions-Policy (browsing-topics=() and the other three advertising APIs)
+# changes the check with it. Each header must be present and equal to the
+# conf's value exactly: a substring test would accept a CSP with a source
+# appended, or a Permissions-Policy missing its last four entries. The parse is
+# itself checked -- a conf it cannot read would otherwise expect nothing and
+# pass everything.
+check_security_headers() {  # check_security_headers <conf> <url-path>...
+  local conf="$1" path hdrs bad=0; shift
+  for path in "$@"; do
+    hdrs=$(curl -sI "$SITE_URL/$path" 2>&1 | tr -d '\r' || true)
+    python3 - "$conf" "/$path" "$hdrs" <<'PY' || bad=1
+import re
+import sys
+
+conf, label, raw = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(conf, encoding="utf-8").read()
+want = {m.group(1).lower(): m.group(2) for m in re.finditer(
+    r'^\s*add_header\s+([A-Za-z-]+)\s+"([^"]*)"\s+always\s*;', text, re.M)}
+required = {"content-security-policy", "strict-transport-security", "x-frame-options",
+            "referrer-policy", "permissions-policy", "x-content-type-options"}
+if not required <= want.keys():
+    print(f"  !! could not read {sorted(required - want.keys())} from {conf}; "
+          "the header check would expect nothing")
+    sys.exit(1)
+got = {}
+for line in raw.splitlines():
+    name, sep, value = line.partition(":")
+    if sep and " " not in name.strip():
+        got.setdefault(name.strip().lower(), []).append(value.strip())
+bad = []
+for name, value in sorted(want.items()):
+    have = got.get(name, [])
+    if not have:
+        bad.append(f"{name} ABSENT")
+    elif any(v != value for v in have):
+        bad.append(f"{name} is {' | '.join(have)!r}, the conf says {value!r}")
+for b in bad:
+    print(f"  !! {label}: {b}")
+if bad:
+    sys.exit(1)
+print(f"  {label:<26} security headers: all {len(want)} match the conf")
+PY
+  done
+  return $bad
+}
+check_security_headers "$ROOT/deploy/worldmap-security-headers.conf" \
+    "" app.js index.json hover_cells.bin water.pmtiles "origins/$LIVE_SLUG.pmtiles" \
+  || { echo "!! the live security headers do not match deploy/worldmap-security-headers.conf"; exit 1; }
 
 echo "=== 4. open it in a browser ==="
 # No deploy is done until the page has been opened and checked (CLAUDE.md):

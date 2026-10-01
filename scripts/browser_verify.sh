@@ -93,6 +93,69 @@ tap_js() {
   })();})()
 JS
 }
+# Wait for a CONDITION, never for a number of seconds. Both cold loads used to
+# `sleep 15` / `sleep 10` and then read: the waits were chosen against a
+# 553-origin build and every data assertion read straight after them, so as
+# index.json grew to 1,464 origins and the reading tier to ~10 MB they became
+# the mechanism behind the gate failures recorded on correct code (C12-8,
+# V13-28; commits 9d7c484 and 5cf7ad2 are the same shape). A bigger number only
+# moves the cliff.
+#   wait_until <ceiling seconds> <what> <js that returns true when ready>
+# The ceiling is a ceiling: it returns the moment the page answers true. When
+# it is reached it says so and sets fail=1 -- the checks after it still run, so
+# the output names WHICH part never arrived, and the cleanup at the end still
+# happens.
+wait_until() {
+  local limit=$1 what=$2 js=$3 got="" t0=$SECONDS
+  while [ $((SECONDS - t0)) -lt "$limit" ]; do
+    got=$(agent-browser eval "$js" 2>&1 | tail -1 | tr -d '\\"')
+    if [ "$got" = "true" ]; then
+      echo "  ready after $((SECONDS - t0)) s: $what"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "  !! waited ${limit} s for $what and it never happened (last answer: ${got:-nothing})."
+  echo "     The checks below read a page that was not ready; this is the failure to fix first."
+  fail=1
+  return 1
+}
+# One number out of an eval's JSON, read whole and compared as a number -- so
+# `"departing":1` can no longer be satisfied by 1000-1464 the way the old
+# unanchored substring was. Empty output means the key was absent: the caller
+# must treat that as a failure, never as zero.
+json_num() { printf '%s' "$2" | sed -n "s/.*\"$1\":\([0-9][0-9]*\).*/\1/p"; }
+# The city list's counts, compared with EACH OTHER and with the row count
+# rather than against a literal width. `"durations":[1-9][0-9]` asserted ten
+# timed rows -- at the cap of 60 that let 49 rows go blank -- and
+# `"departing":1` matched any count from 1 to 1999.
+#   - exactly one row is the current departure;
+#   - no row is blank: a blank `.rowtime` is a row rendered before the
+#     per-origin array landed, i.e. the page the old fixed sleep could catch;
+#   - every row is a travel time, "no route" or "departing" -- the counts must
+#     add up to the rows -- and at least one is a travel time;
+#   - a capped resting list is the quickest $CAP to reach (capCities), so when
+#     the roster exceeds the cap it shows nothing unreachable.
+check_city_list() {
+  local cl=$1 rows dur nr blank dep bad=0
+  rows=$(json_num rows "$cl"); dur=$(json_num durations "$cl"); nr=$(json_num noRoute "$cl")
+  blank=$(json_num blank "$cl"); dep=$(json_num departing "$cl")
+  if [ -z "$rows" ] || [ -z "$dur" ] || [ -z "$nr" ] || [ -z "$blank" ] || [ -z "$dep" ]; then
+    echo "  !! could not read the city-list counts; every check on them would pass vacuously"
+    return 1
+  fi
+  [ "$dep" -eq 1 ] || { echo "  !! $dep rows are marked as the current departure, not exactly one"; bad=1; }
+  if [ "$blank" -ne 0 ]; then
+    echo "  !! $blank of $rows city rows carry no travel time at all"; bad=1
+  elif [ $((dur + nr + dep)) -ne "$rows" ]; then
+    echo "  !! $((rows - dur - nr - dep)) of $rows city rows read as neither a time, \"no route\" nor \"departing\""; bad=1
+  fi
+  [ "$dur" -ge 1 ] || { echo "  !! the city list carries no travel times"; bad=1; }
+  if [ "$CITIES" -gt "$CAP" ] && [ "$nr" -ne 0 ]; then
+    echo "  !! the resting list is the quickest $CAP to reach, yet $nr of its rows have no route"; bad=1
+  fi
+  return $bad
+}
 # Only the browser processes THIS run starts are killed at the end: another
 # agent's session on the same machine must survive a verification pass.
 BEFORE=$(/bin/ps -ax -o pid=,command= | grep -E "\.agent-browser/" | grep -v grep | awk '{print $1}' | sort)
@@ -103,8 +166,20 @@ agent-browser close >/dev/null 2>&1
 # pass, which put the route click into the Pacific and failed two checks that
 # have nothing to do with the route.
 agent-browser set viewport 1280 800 >/dev/null 2>&1
-agent-browser open "$URL" >/dev/null 2>&1; sleep 15
 fail=0
+agent-browser open "$URL" >/dev/null 2>&1
+# Ready means everything the desktop checks below read straight away: the map
+# and its style and tiles (the water count), every capped row timed (the
+# per-origin array has landed and the list was re-ranked), and the departure's
+# own label (places.json). body.fatal ends the wait at once -- the page has
+# answered, and the fatal check below reports it.
+READY_JS='(()=>{if(document.body.classList.contains("fatal"))return true;
+  const m=window.__map;
+  if(!m||!document.querySelector("#map canvas")||!m.isStyleLoaded()||!m.areTilesLoaded())return false;
+  const t=[...document.querySelectorAll(".results button[data-slug] .rowtime")].map(s=>s.textContent.trim());
+  return t.length===__ROWS__&&t.every(x=>x!=="")
+    &&!!document.querySelector(".lbl.origin[aria-current=\"true\"]")})()'
+wait_until 90 "the opening view: map, $ROWS timed rows, departure label" "${READY_JS//__ROWS__/$ROWS}"
 echo "=== data-level checks (desktop) ==="
 R=$(agent-browser eval '(()=>{const q=s=>document.querySelector(s);return JSON.stringify({
   fatal:document.body.classList.contains("fatal"), where:(q("#where")||{}).textContent.slice(0,160),
@@ -171,12 +246,12 @@ CL=$(agent-browser eval '(()=>{const bs=[...document.querySelectorAll(".results 
   const coords=t.filter(x=>/^-?\d+\.\d,\s*-?\d+\.\d$/.test(x)).length;
   const clipped=bs.filter(b=>{const s=b.querySelector(".rowtime");return s&&s.scrollWidth>s.clientWidth+1}).length;
   return JSON.stringify({rows:bs.length,durations:dur,coords:coords,clipped:clipped,
+   noRoute:t.filter(x=>x==="no route").length,blank:t.filter(x=>x.trim()==="").length,
    departing:t.filter(x=>x==="departing").length})})()' 2>&1 | tail -1 | tr -d '\\')
 echo "  city list: $CL"
-echo "$CL" | grep -qE '"durations":[1-9][0-9]' || { echo "  !! the city list carries no travel times"; fail=1; }
-echo "$CL" | grep -q '"coords":0' || { echo "  !! the city list still ends in coordinates"; fail=1; }
-echo "$CL" | grep -q '"clipped":0' || { echo "  !! a travel time is clipped in the city list"; fail=1; }
-echo "$CL" | grep -q '"departing":1' || { echo "  !! the current departure is not marked in the list"; fail=1; }
+check_city_list "$CL" || fail=1
+echo "$CL" | grep -q '"coords":0,' || { echo "  !! the city list still ends in coordinates"; fail=1; }
+echo "$CL" | grep -q '"clipped":0,' || { echo "  !! a travel time is clipped in the city list"; fail=1; }
 # Where the rows ARE is a separate question from whether they exist, and the
 # page got it wrong twice with nothing to show for it: the list rendered the
 # right rows, announced the right count, and scrolled to a position that put
@@ -356,7 +431,15 @@ for _ in $(seq 1 20); do
 done
 echo "  ?from=atlantis -> $B"
 echo "$B" | grep -qi "no departure city called" || { echo "  !! an unknown ?from= slug is swallowed silently"; fail=1; }
-agent-browser open "${URL}?from=tokyo" >/dev/null 2>&1; sleep 10
+agent-browser open "${URL}?from=tokyo" >/dev/null 2>&1
+# The JFK search below reads Tokyo's own travel times, so ready is Tokyo
+# selected with its array landed (every row timed), not merely the page up.
+TOKYO_JS='(()=>{if(document.body.classList.contains("fatal"))return true;
+  const n=document.getElementById("origin-name"),m=window.__map;
+  if(!m||!m.isStyleLoaded()||!n||n.textContent.trim()!=="Tokyo")return false;
+  const t=[...document.querySelectorAll(".results button[data-slug] .rowtime")].map(s=>s.textContent.trim());
+  return t.length>0&&t.every(x=>x!=="")})()'
+wait_until 90 "?from=tokyo: Tokyo selected and its times landed" "$TOKYO_JS"
 echo "=== a searched destination writes the answer, not only the itinerary ==="
 # The two search branches used to call renderPins()+renderLegs() and nothing
 # else, so the 50px headline kept the PREVIOUS destination's time above an
