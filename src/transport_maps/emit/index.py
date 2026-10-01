@@ -237,9 +237,10 @@ def mode_detail() -> dict[str, str]:
                       f"{kmh[5]:.0f} km/h, a published-figure default. Both {halved}.",
         # Class 0 was the last speed in this table with no provenance on it.
         # graph/ground.py keeps it as a published-figure default because the
-        # fit wanted roadless terrain infinitely fast -- a collinearity
-        # artefact its guard refuses -- and an earlier unguarded fit returned
-        # 58 km/h for terrain with no road at all.
+        # fit returned a negative time per kilometre for roadless terrain
+        # (-0.00978 h/km), which the sign filter in calibrate/ground.py
+        # refuses -- and an earlier unguarded fit returned 58 km/h for terrain
+        # with no road at all.
         "track": f"No mapped road: {kmh[0]:.0f} km/h, walking pace, a published-figure "
                  "default (the fit for roadless terrain is degenerate).",
     }

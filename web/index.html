@@ -50,7 +50,7 @@
       ],
       "conditionsOfAccess": "A derivative of mixed-licence open data: ODbL 1.0 (OpenStreetMap, adsb.lol), CC BY-SA 4.0 (Wikipedia), CC BY 4.0 (GeoNames, HydroLAKES), CC0 (Wikidata, GRIP4) and public-domain (OurAirports, Natural Earth) sources. Each source's attribution and share-alike terms apply to the data derived from it; credits are listed in index.json and on the page.",
       "isAccessibleForFree": true,
-      "dateModified": "2026-09-26"
+      "dateModified": "2026-10-02"
     },
     {
       "@type": "WebApplication",
@@ -1150,9 +1150,10 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          Routes API — the one commercial service this project uses, and it is
          used during calibration only: nothing from it reaches this site, and
          no commercial flight data is used anywhere. Roadless
-         terrain and local roads keep published-figure defaults, because the
-         fit wanted roadless terrain infinitely fast and drew local roads from
-         116 km of driving across four journeys. Roadless terrain is the slowest of the six
+         terrain and local roads keep published-figure defaults. For roadless
+         terrain the fit came back with a negative time per kilometre, as
+         though crossing it gave time back, so the fit refuses it; local roads
+         drew 116 km of driving across four journeys, too little to fit. Roadless terrain is the slowest of the six
          classes and local roads the third, so between them they set the last
          kilometres of many journeys. And the build that is being served may lag
          the code: <code>index.json</code> records what was actually

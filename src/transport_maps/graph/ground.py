@@ -18,9 +18,11 @@ logger = logging.getLogger(__name__)
 # populated places (scripts/calibrate_ground.py), with built-up cells weighted
 # by the urban factor so these are FREE-FLOW speeds and the two regimes do not
 # blend. Held-out median observed/predicted 0.977. Classes 1-4 are fitted;
-# roadless and local keep published-figure defaults: the fit for roadless
-# wanted it infinitely fast (a collinearity artefact the guard refuses) and
-# local drew 116 km across 4 journeys. An earlier unguarded fit returned
+# roadless and local keep published-figure defaults. Roadless passed the
+# support guard (2,272 km across 55 journeys) but the fit returned a NEGATIVE
+# reciprocal, -0.00978 h/km (about -102 km/h), which the `recip > 0` sign
+# filter in calibrate/ground.py refuses; local drew 116 km across 4 journeys,
+# which the support guard refuses. An earlier unguarded fit returned
 # 58 km/h for ROADLESS terrain, which is not merely wrong but impossible.
 SPEED_BY_ROAD_CLASS_KMH = np.array([5.0, 104.0, 57.0, 50.0, 18.0, 25.0], dtype=np.float64)
 

@@ -121,6 +121,12 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
   −102.2 km/h, and DOC13-5, `data/origins.toml`'s header still describing 157
   plus 396 rows in a 1,464-row file. DOC13-2 (`plan/README.md` calling F1, F3
   and F4 unbuilt when all three shipped) is fixed in this cycle's README edit.
+  - [x] DOC13-1 and DOC13-5 fixed 2026-10-02: page, README, `graph/ground.py`
+    and `emit/index.py` now say the roadless fit returned a negative
+    reciprocal (-0.00978 h/km over 2,272 km / 55 journeys, re-run from
+    `data/build/ground_samples2.json`) that the sign filter refuses; the
+    origins.toml header names the marker blocks and states no count.
+    DOC13-3, -4 and -6…-14 remain open.
 
 - [ ] **C13-11 — the seventeen plan ticks that did not hold.** V13-1…V13-17,
   including a third un-recorded false tick in cycle 8 and cycle 12's own
