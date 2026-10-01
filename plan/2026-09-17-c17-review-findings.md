@@ -100,9 +100,9 @@ Changzhi; the `aria-label` carries the same label; and a test built from the rea
 `dist/index.json` + `dist/places.json` asserts pairwise distinctness and goes RED
 when `p.region` is removed from the escalation.
 
-- [ ] C17-1.1 group-keyed, per-group-escalating disambiguation label
-- [ ] C17-1.2 `aria-label` carries it
-- [ ] C17-1.3 test over real data, mutation-checked
+- [x] C17-1.1 group-keyed, per-group-escalating disambiguation label
+- [x] C17-1.2 `aria-label` carries it
+- [x] C17-1.3 test over real data, mutation-checked
 
 ### C17-2 — Typing a departure city's exact name and pressing Enter departs from somewhere else
 
@@ -127,8 +127,8 @@ exists for is untouched, because no departure city is called JFK.
 **Done when:** each of the six names ranks its own city first on the live site,
 and a test asserts it and goes RED when the new condition is removed.
 
-- [ ] C17-2.1 exact city-name match outranks the airport code
-- [ ] C17-2.2 test over the six real collisions, mutation-checked
+- [x] C17-2.1 exact city-name match outranks the airport code
+- [x] C17-2.2 test over the six real collisions, mutation-checked
 
 ### C17-3 — Opening "Departure" carries the entire legend off screen
 
@@ -171,8 +171,8 @@ viewports.
 **Done when:** `.legend` visible px after the click is >= before at 844x390,
 390x844 and 820x1180 on the live site, and `browser_verify.sh` fails if it is not.
 
-- [ ] C17-3.1 clamp the panel-open scroll against the legend
-- [ ] C17-3.2 `browser_verify.sh` asserts the legend survives opening Departure
+- [x] C17-3.1 clamp the panel-open scroll against the legend
+- [x] C17-3.2 `browser_verify.sh` asserts the legend survives opening Departure
 
 ### C17-4 — The filtered departure-list cap is guarded nowhere
 
@@ -193,7 +193,7 @@ to prevent.
 **Fix.** Add a behavioural test that exercises the **filtered** branch and
 asserts the cap, and confirm it goes RED under that exact mutation.
 
-- [ ] C17-4.1 filtered-branch cap test, mutation-checked
+- [x] C17-4.1 filtered-branch cap test, mutation-checked
 
 ### C17-5 — One query, three different counts on screen
 
@@ -209,8 +209,8 @@ caption counts cities only.
 describe the **city** matches, which is what the cap applies to, and the airport
 rows are an addition the copy already treats separately.
 
-- [ ] C17-5.1 caption and live region agree on one population
-- [ ] C17-5.2 test, mutation-checked
+- [x] C17-5.1 caption and live region agree on one population
+- [x] C17-5.2 test, mutation-checked
 
 ### C17-6 — One ArrowUp leaves the listbox with zero tab stops
 
@@ -225,8 +225,8 @@ keystroke a visitor uses to get back out of the list.
 **Fix.** Restore a tab stop when focus leaves the list upward: the row that had
 it keeps it.
 
-- [ ] C17-6.1 ArrowUp out of the list leaves exactly one tab stop
-- [ ] C17-6.2 test, mutation-checked
+- [x] C17-6.1 ArrowUp out of the list leaves exactly one tab stop
+- [x] C17-6.2 test, mutation-checked
 
 ### C17-7 — Handover hygiene: the documents a human will read next
 
@@ -259,11 +259,11 @@ that disagrees with the code is a trap. Specifically:
   lists the original four**, though `c2d11f5` added a repo-wide `ruff check` and
   four more refusal conditions today (DOC17-9).
 
-- [ ] C17-7.1 tick cycle 16's checkboxes to match its own §8
-- [ ] C17-7.2 correct `plan/README.md`'s four wrong ranges and the build description
-- [ ] C17-7.3 repair `DEF16-24`'s table row and give `deferred.md:184` an ID and a criterion
-- [ ] C17-7.4 correct the three self-contradicting `web/app.js` comments
-- [ ] C17-7.5 correct `deploy/README.md`'s refusal list
+- [x] C17-7.1 tick cycle 16's checkboxes to match its own §8
+- [x] C17-7.2 correct `plan/README.md`'s four wrong ranges and the build description
+- [x] C17-7.3 repair `DEF16-24`'s table row and give `deferred.md:184` an ID and a criterion
+- [x] C17-7.4 correct the three self-contradicting `web/app.js` comments
+- [x] C17-7.5 correct `deploy/README.md`'s refusal list
 
 ## 3. Deferred — every finding not scheduled above
 
@@ -317,3 +317,7 @@ deferred on exactly that ground and on no other, and each says so.
 ## 4. Progress
 
 Filled in as tasks land.
+
+## Bookkeeping 2026-10-02
+
+Ticked 2026-10-02 on a code check of every item: all seventeen shipped (commits 004bbbd, 701238c, ea84088, 5c88bfc, 0346929, 186ec69, 84d8892, c45ca3e, 0edabb4); the boxes were never updated.

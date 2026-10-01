@@ -57,12 +57,12 @@ route wins — a shorter airport dwell can make a two-flight itinerary beat a
 one-flight one, so the saving is not a constant that can be subtracted per
 airport in the general case. Design them together.
 
-- [ ] **R1.1** Decide and document the bag share of `processing_min`, with
+- [x] **R1.1** Decide and document the bag share of `processing_min`, with
       provenance, or record why it cannot be split.
-- [ ] **R1.2** Decide where it evaluates: page-side for the selected itinerary
+- [x] **R1.2** Decide where it evaluates: page-side for the selected itinerary
       (cheap, honest only if disclosed) or solver-side (correct, needs R2's
       service).
-- [ ] **R1.3** If page-side, the disclosure text is part of the deliverable, not
+- [x] **R1.3** If page-side, the disclosure text is part of the deliverable, not
       a follow-up.
 
 ---
@@ -102,13 +102,13 @@ counting label-table entries, 147,332 of them including reverse-filled keys; it
 is a different denominator for the same defect, and 4.31% is the one that is
 reproducible without a build.)
 
-- [ ] **R2.1** Exclusion: decide whether the three extra builds are worth the
+- [x] **R2.1** Exclusion: decide whether the three extra builds are worth the
       storage and hours, or whether exclusion also waits for the solver.
-- [ ] **R2.2** Weighting: solver-side only. Do not attempt a page-side
+- [x] **R2.2** Weighting: solver-side only. Do not attempt a page-side
       approximation — there is no sound one.
-- [ ] **R2.3** Whichever ships, the itinerary, modes and rail naming are
+- [x] **R2.3** Whichever ships, the itinerary, modes and rail naming are
       recomputed from the same solve that produced the colours.
-- [ ] **R2.4** The request shape cycle 13 designed carries a start point and
+- [x] **R2.4** The request shape cycle 13 designed carries a start point and
       needs a bounded map of mode → multiplier. `service/wire.py` will need: a
       fixed key set (the six `MODE_NAMES` the page already ships, never
       caller-supplied keys), a finite positive bound on each multiplier with
@@ -125,3 +125,7 @@ reproducible without a build.)
 Neither is scheduled for a cycle. Both are blocked on the same decision — does
 the on-demand solver get built — which is the owner's, not a cycle's. Exit
 criterion for both rows: that decision is made, either way.
+
+## Bookkeeping 2026-10-02
+
+Ticked 2026-10-02. R1 (carry-on only) is live page-side with its disclosure (calibration.toml [carry_on]). R2.1: the owner chose precomputed exclusions on 2026-09-24, built and live (dist/v/no-*), and R2.3 holds -- each variant ships its own itinerary, modes, rail naming, reading tier and override. R2.2 and R2.4 (weighting, and a weighted request shape) are obsolete: the owner chose exclusion only, no weighting.

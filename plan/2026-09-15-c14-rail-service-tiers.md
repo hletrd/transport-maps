@@ -224,7 +224,7 @@ absent four times in five, and the information is usually already inside `name`
 
 ## 5. Tasks
 
-- [ ] **C14-R1 — parse the tags.** `sources/osm.py`: add `service`, `operator`,
+- [x] **C14-R1 — parse the tags.** `sources/osm.py`: add `service`, `operator`,
   `ref` to `SCHEMA`; add `service_tier()` mapping a raw tag value to one of the
   six tiers, handling `;`-joined values by taking the slowest recognised tier
   (justified because `ride_edges` already resolves parallel services by
@@ -233,7 +233,7 @@ absent four times in five, and the information is usually already inside `name`
   assertion, and the two fit-set routes carrying it imply 153 km/h against
   their tier's 79.7.
 
-- [ ] **C14-R2 — bump `RAIL_PARSER_VERSION` 2 → 3**, and add the new constants
+- [x] **C14-R2 — bump `RAIL_PARSER_VERSION` 2 → 3**, and add the new constants
   to `_rail_cache_path`. Without this the whole feature is a silent cache hit on
   the 257,007-row parquet. Closes **AGG14-5** in part (verifier V2,
   test-engineer SRC-01, cross-agent): add `RAIL_PARSER_VERSION` to the
@@ -241,36 +241,36 @@ absent four times in five, and the information is usually already inside `name`
   **AGG14-72**: `sorted(SCHEMA)` hashes keys only, so a dtype change is a cache
   hit — hash the items.
 
-- [ ] **C14-R3 — per-tier speeds in the graph.** `graph/rail.py`:
+- [x] **C14-R3 — per-tier speeds in the graph.** `graph/rail.py`:
   `RailCalibration` gains the six tiers; `ride_edges` prices each leg by its
   route's tier and adds the per-leg overhead. Closes **AGG14-15** (critic C1).
 
-- [ ] **C14-R4 — `calibration.toml`.** A `[rail.tiers.*]` table per tier, each
+- [x] **C14-R4 — `calibration.toml`.** A `[rail.tiers.*]` table per tier, each
   declaring FITTED with n, the residuals, the bootstrap CI, and the regional
   skew; the folded tiers named with the ratios that chose them. Correct the
   `[rail]` block's claim that there is nothing to regress against.
 
-- [ ] **C14-R5 — the caption must name the service that was timed.**
+- [x] **C14-R5 — the caption must name the service that was timed.**
   `emit/rail_detail.py` picks the line by lowest OSM route id while
   `ride_edges` prices by `min(minutes)`; the tracer lane measured **20.9%**
   (30,742 of 147,332 directed pairs) naming a different line than the one timed,
   370 of them a different speed class. Closes **AGG14-58** (cross-agent:
   code-reviewer, tracer).
 
-- [ ] **C14-R6 — the reverse-direction caption.** `_line_between` does
+- [x] **C14-R6 — the reverse-direction caption.** `_line_between` does
   `out.setdefault((b, a), name)`, filling the reverse pair with the forward
   service's directional name: **50.0%** of arrow-named station pairs caption a
   ride with the service running the other way, and 3,834 shipped rows name the
   line's own origin terminus as the destination. Closes **AGG14-4** (tracer T1).
 
-- [ ] **C14-R7 — an unnamed stop must not inherit the route name.**
+- [x] **C14-R7 — an unnamed stop must not inherit the route name.**
   `sources/osm.py` falls back to the relation's `name` when a stop node has
   none, and `emit/rail_detail.py` then publishes it as the station:
   1,144 of 124,488 shipped rows render
   `via S1: Rostock Hbf → Warnemünde (S1: Rostock Hbf → Warnemünde)`.
   Closes **AGG14-90** (tracer T3).
 
-- [ ] **C14-R8 — ship the labels.** `emit/rail_detail.py` writes
+- [x] **C14-R8 — ship the labels.** `emit/rail_detail.py` writes
   `operator`/`ref` with the operator interned; `web/app.js` `railVia()` renders
   them. Degradation is the requirement: a missing field prints nothing at all —
   never an empty parenthesis, never a bare dash. The designer lane's D18 gives
@@ -278,12 +278,12 @@ absent four times in five, and the information is usually already inside `name`
   and ref on a second quieter line at `--t-cap` in `--text-3`, join present
   fields with ` · `, and omit the whole second line when neither exists.
 
-- [ ] **C14-R9 — the fixtures lie about the schema.** `tests/graph/test_rail.py`
+- [x] **C14-R9 — the fixtures lie about the schema.** `tests/graph/test_rail.py`
   and `test_rail_integration.py` build 7 keys against an 8-field `osm.SCHEMA`,
   so polars silently nulls `route_name`; this change takes the schema to 11 and
   would widen the hole. Closes **AGG14-110** (test-engineer GRAPH-15).
 
-- [ ] **C14-R10 — rail is charged 20 minutes and every surface says 15.**
+- [x] **C14-R10 — rail is charged 20 minutes and every surface says 15.**
   `boarding_min` 15 + `alighting_min` 5; `emit/index.py`'s tooltip and
   `web/llms.txt` both say 15. The same tooltip says conventional rail runs
   "along the track" when the model uses a straight-line chord × 1.2 and
@@ -459,3 +459,7 @@ fast. Two distinct causes remain, and only one is a tagging problem.
 - **`detour_factor` was held at 1.2 and not refitted** alongside the tier
   speeds, so the speeds absorb any error in it. The two must not be read
   separately, and `calibration.toml` says so.
+
+## Bookkeeping 2026-10-02
+
+Ticked 2026-10-02: C14-R1..R10 were already ticked in §7 of this file and are live; §5's boxes had not been updated to match.
