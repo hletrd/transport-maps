@@ -252,7 +252,8 @@ after it.
 - [x] The loop moved below the IIFE; the ReferenceError reproduced in node to
       confirm the claim rather than assert it; pinned by
       `test_departure_list_cap.py::test_the_search_key_is_built_below_countryname`.
-- [ ] **C12-11b**: `test_module_scope_order.py` only walks handlers registered
+- [x] **C12-11b** (2026-10-02: the module body is walked too; the cycle-12
+      mutation goes red): `test_module_scope_order.py` only walks handlers registered
       before the top-level await. Module-body code *after* it is unchecked, and
       that is where this one was. Extending the walk is cycle 13. Severity
       High, confidence High — it is the failure mode CLAUDE.md is written

@@ -254,3 +254,309 @@ def test_no_module_scope_listener_reaches_a_binding_declared_below_it() -> None:
         "a module-scope listener can reach a binding in its temporal dead zone; "
         "declare these in the state block at the top of web/app.js:\n  "
         + "\n  ".join(late))
+
+
+# --- C12-11b: the module body below the await --------------------------------
+#
+# Everything above walks from LISTENERS. The module body itself is just as able
+# to reach a binding in its temporal dead zone, and more directly: a statement
+# runs top to bottom, so any module-level `let`/`const` it reads -- itself, or
+# through a function it calls -- must be declared ABOVE it. Cycle 12 wrote
+# exactly that (`for (const c of cities) { ... countryName(c.country) ... }`
+# above `const countryName = (() => ...)()`) and caught it by reading, because
+# the walk above starts at listeners and never looked at module-body code.
+#
+# What runs NOW and what runs LATER is decided per arrow function:
+#
+# - an arrow passed to an array method that calls it synchronously, or to
+#   `new Promise`, or invoked on the spot (`(() => { ... })()`), runs now;
+# - every other arrow -- a listener, a `.then`, a `setTimeout`, an arrow
+#   stored in a `const` -- runs later, and its body is dropped from the
+#   statement's "now" text. Below the last top-level await "later" means after
+#   evaluation has finished, when every binding exists. Above it, the walk at
+#   the top of this file is what covers listeners firing during the suspension.
+#
+# Functions a statement CALLS are walked transitively, through `function`
+# declarations and through arrow consts alike, with the same now/later split
+# applied to their bodies.
+
+#: Callee names that invoke an arrow argument before returning.
+_SYNC_CALLEES = re.compile(
+    r"(?:\.(?:forEach|map|filter|some|every|find|findIndex|findLast|reduce|"
+    r"sort|flatMap|from)|new\s+Promise)\s*$")
+#: An identifier that is a READ of a binding: not a property after `.` (but a
+#: spread `...name` is a read).
+_REF = re.compile(r"(?:(?<=\.\.\.)|(?<![.\w$]))([A-Za-z_$][\w$]*)")
+#: The same, followed by a call's open paren.
+_CALLED = re.compile(r"(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(")
+
+
+def _code(src: str) -> str:
+    """Comments and string literals blanked, offsets kept -- like `_strip`,
+    except that a template's `${...}` stays as the code it is. `_strip` blanks
+    the whole template, which is right for the listener walk's purposes and
+    would hide `${countryName(c.country)}` -- the cycle-12 read -- from this one.
+    """
+    from tests.web import _js
+
+    out = list(src)
+
+    def blank(lo: int, hi: int) -> None:
+        for i in range(lo, hi):
+            if out[i] != "\n":
+                out[i] = " "
+
+    def walk(lo: int, hi: int) -> None:
+        j = lo
+        while j < hi:
+            k = _js.skip(src, j)
+            if k == j:
+                j += 1
+                continue
+            if src[j] == "`":
+                # Blank the literal text; recurse into each ${...}.
+                i = j
+                while i < k:
+                    m = src.find("${", i, k)
+                    if m < 0:
+                        blank(i, k)
+                        break
+                    blank(i, m + 2)
+                    end = _js.close(src, m + 1)
+                    walk(m + 2, end)
+                    i = end
+            elif src[j] in "\"'/":
+                blank(j, k)
+            j = k
+
+    walk(0, len(src))
+    return "".join(out)
+
+
+def _groups(src: str, lo: int, hi: int) -> dict[int, int]:
+    """Every bracket pair inside [lo, hi), as {open: close}, literals skipped."""
+    from tests.web import _js
+
+    pairs: dict[int, int] = {}
+    stack: list[int] = []
+    j = lo
+    while j < hi:
+        k = _js.skip(src, j)
+        if k != j:
+            j = k
+            continue
+        if src[j] in "([{":
+            stack.append(j)
+        elif src[j] in ")]}" and stack:
+            pairs[stack.pop()] = j
+        j += 1
+    return pairs
+
+
+def _arrows(src: str, lo: int, hi: int) -> list[tuple[int, int, int]]:
+    """(params_start, body_start, body_end) of every arrow in [lo, hi)."""
+    from tests.web import _js
+
+    pairs = _groups(src, lo, hi)
+    closes = {c: o for o, c in pairs.items()}
+    out = []
+    j = lo
+    while j < hi:
+        k = _js.skip(src, j)
+        if k != j:
+            j = k
+            continue
+        if src.startswith("=>", j):
+            p = j - 1
+            while src[p] in " \t\n":
+                p -= 1
+            if src[p] == ")":
+                ps = closes[p]
+            else:
+                ps = p
+                while src[ps - 1].isalnum() or src[ps - 1] in "_$":
+                    ps -= 1
+            b = j + 2
+            while src[b] in " \t\n":
+                b += 1
+            if src[b] == "{":
+                e = pairs[b] + 1
+            else:
+                # An expression body runs to the `,` `;` or closing bracket of
+                # whatever it is nested in.
+                e = b
+                while e < hi:
+                    k = _js.skip(src, e)
+                    if k != e:
+                        e = k
+                        continue
+                    if src[e] in "([{":
+                        e = pairs[e] + 1
+                        continue
+                    if src[e] in ",;)]}":
+                        break
+                    e += 1
+            out.append((ps, b, e))
+        j += 1
+    return out
+
+
+def _now_text(src: str, lo: int, hi: int) -> str:
+    """src[lo:hi] with the bodies of arrows that run LATER blanked out."""
+    pairs = _groups(src, lo, hi)
+    chars = list(src[lo:hi])
+    for ps, b, e in _arrows(src, lo, hi):
+        enclosing = [(o, c) for o, c in pairs.items() if o < ps < c and src[o] == "("]
+        sync = False
+        if enclosing:
+            o, c = max(enclosing)
+            before = src[lo:o]
+            after = src[c + 1:c + 3].lstrip()
+            iife = src[o + 1:ps].strip() == "" and after.startswith("(")
+            sync = bool(_SYNC_CALLEES.search(before)) or iife
+        if not sync:
+            for i in range(b - lo, e - lo):
+                if chars[i] != "\n":
+                    chars[i] = " "
+    return "".join(chars)
+
+
+def _module_statements(src: str) -> list[tuple[int, int]]:
+    """[start, end) of every top-level statement: each begins on a column-0
+    line at bracket depth 0 and runs to the next one."""
+    from tests.web import _js
+
+    starts = []
+    j = 0
+    while j < len(src):
+        k = _js.skip(src, j)
+        if k != j:
+            j = k
+            continue
+        c = src[j]
+        if (j == 0 or src[j - 1] == "\n") and (c.isalpha() or c in "_$"):
+            starts.append(j)
+        if c in "([{":
+            j = _js.close(src, j) + 1
+            continue
+        j += 1
+    return list(zip(starts, starts[1:] + [len(src)], strict=True))
+
+
+_ARROW_CONST = re.compile(r"(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?=[(\w$])")
+
+
+def _arrow_const(src: str, lo: int, hi: int) -> str | None:
+    """The name, if [lo, hi) is `const NAME = (...) => ...` -- a definition,
+    whose body runs only when it is called. An IIFE is not one."""
+    from tests.web import _js
+
+    m = _ARROW_CONST.match(src, lo)
+    if not m:
+        return None
+    p = m.end()
+    if src[p] == "(":
+        p = _js.close(src, p) + 1
+    else:
+        while src[p].isalnum() or src[p] in "_$":
+            p += 1
+    return m.group(1) if src[p:p + 4].lstrip().startswith("=>") else None
+
+
+def _late_reads(raw: str, reached: dict[str, set[str]] | None = None) -> list[str]:
+    code = _code(raw)
+    decls: dict[str, int] = {}
+    for m in _DECL.finditer(code):
+        for name in _NAME.findall(m.group(1)):
+            decls.setdefault(name, _line_of(raw, m.start()))
+
+    callables: dict[str, tuple[int, int]] = {}
+    immediate: list[tuple[int, int]] = []
+    for lo, hi in _module_statements(raw):
+        fm = _FUNC.match(raw, lo)
+        if fm:
+            callables[fm.group(1)] = (lo, hi)
+            continue
+        name = _arrow_const(raw, lo, hi)
+        if name:
+            callables[name] = (lo, hi)
+            continue
+        immediate.append((lo, hi))
+
+    def reads(lo: int, hi: int, *, whole_arrow: bool = False) -> tuple[set[str], set[str]]:
+        """(names read, names CALLED) by the code in [lo, hi) that runs now."""
+        if whole_arrow:
+            # Calling an arrow const runs ITS body, which _now_text drops.
+            ps, b, e = _arrows(raw, lo, hi)[0]
+            text = raw[lo:b] + _now_text(raw, b, e) + raw[e:hi]
+        else:
+            text = _now_text(raw, lo, hi)
+        # Comments and literals out, by position: _code preserves offsets.
+        text = "".join(t if k != " " or t == "\n" else " "
+                       for t, k in zip(text, code[lo:hi], strict=True))
+        return set(_REF.findall(text)), set(_CALLED.findall(text))
+
+    funcs = {m.group(1) for m in _FUNC.finditer(raw)}
+    body = {n: reads(lo, hi, whole_arrow=n not in funcs)
+            for n, (lo, hi) in callables.items()}
+
+    late = []
+    for lo, hi in immediate:
+        line = _line_of(raw, lo)
+        # A name read is checked; a callable is walked only where it is CALLED.
+        # Passing `originDragEnd` to `.on(...)` reads it -- a TDZ error if it
+        # were a `const` below -- but runs none of its body.
+        read, called = reads(lo, hi)
+        seen = dict.fromkeys(read, "this statement")
+        queue = [n for n in called if n in callables]
+        walked = set(queue)
+        while queue:
+            fn = queue.pop()
+            fn_read, fn_called = body[fn]
+            for name in fn_read:
+                seen.setdefault(name, f"{fn}()")
+            for name in fn_called:
+                if name in callables and name not in walked:
+                    walked.add(name)
+                    queue.append(name)
+        if reached is not None:
+            reached[raw[lo:raw.index("\n", lo)]] = set(seen)
+        for name, via in sorted(seen.items()):
+            decl = decls.get(name)
+            if decl is not None and decl > line:
+                late.append(f"{name} (declared line {decl}) is read by {via}, which the "
+                            f"module body runs at line {line} -- before line {decl}")
+    return late
+
+
+def test_no_module_body_statement_reaches_a_binding_declared_below_it() -> None:
+    """C12-11b. The module body, every statement of it, above the await and
+    below, walked through every function it calls.
+
+    Mutation performed and reverted: move the `for (const c of cities)`
+    search-key loop back above `const countryName = (() => ...)()` -- the
+    cycle-12 near-miss, which the listener walk above stays green on -> red,
+    "countryName (declared line 3678) is read by this statement". And move
+    the module-level `render();` up to just below `paintSea();` -> red through
+    the call graph, "FOLD_DROP ... is read by fold()" among eight. Both leave
+    the listener walk above green. Measured on HEAD: nothing late.
+    """
+    raw = APP.read_text(encoding="utf-8")
+    statements = _module_statements(raw)
+    # The guard on the guard: app.js has hundreds of top-level statements, and
+    # a scanner that lost its place would find a handful and pass.
+    assert len(statements) > 300, f"only {len(statements)} module statements found"
+    reached: dict[str, set[str]] = {}
+    late = _late_reads(raw, reached)
+    # And that it reads what it must: the cycle-12 loop reads countryName in a
+    # template's `${...}`, and `render();` reaches `fold`'s constants only
+    # through two calls. Either going missing means the walk has gone blind.
+    assert "countryName" in reached["for (const c of cities) {"], (
+        "the search-key loop no longer reads countryName; the walk lost the "
+        "template interpolation, or the loop moved -- re-read this guard")
+    assert {"cities", "FOLD_DROP"} <= reached["render();"], (
+        "render(); no longer reaches cities and FOLD_DROP through the call graph")
+    assert not late, (
+        "module-body code reads a binding in its temporal dead zone -- a "
+        "ReferenceError at load, which boot.js turns into a blank page:\n  "
+        + "\n  ".join(late))
