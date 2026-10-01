@@ -97,8 +97,14 @@ build.
       through the build context; `_land_border_min` no longer parsed per origin
       (ARCH-8). After the rebuild.
 - [ ] **E13** Owner decision on the `pyproject.toml` author email.
-- [ ] **I5 (docs part)** The vendored JS hashes table (recorded by the security
+- [x] **I5 (docs part)** The vendored JS hashes table (recorded by the security
       reviewer) in `web/README.md`, and a test that recomputes them (with Q6).
+      (2026-10-02: found already done and never ticked. The table landed in
+      43eb6b6/773eafe, the recomputing test in 773eafe, and 3ec7e34 then
+      704e789 widened it to every file under `vendor/`, both directions.
+      The upstream-provenance half that `deferred.md` SEC4-5 folded into this
+      task was not done. It is now a "Where each file came from" table in
+      `web/README.md`, checked against jsDelivr and IBM/plex on this date.)
 - [x] **S6** Name the two cross-layer invariants (mode prose; overlap-by-rim
       and `fill-sort-key`) in the contract document. (2026-10-02:
       `docs/contract.md` "Rules that cross the layer boundary", created for
@@ -114,3 +120,10 @@ build.
   says anchors ≥ 6 (changed in `2526673`); D20's wording half stands as done.
 - 2026-09-10 cycle 2 done: O2 comment half 30e6034 (provenance test red twice under a deleted label) with the code half in 269e17c; O3 9555045 + 9d0a401 (JSON-LD) + 8129e47 (roads/ground/hover/tiles); O8 9555045 + 269e17c; O10 9555045 + 8129e47; O5 43eb6b6 + 773eafe (hashes recorded after the patch); O7 9b4a248 + a6e6d22; O9 a6e6d22; O12 64ab007 (water flag) + 9d0a401 (sky comment); O11, O16, O4 docs half, O1 llms half 43eb6b6; O14 a6e6d22; O15 9d0a401; E14 364986b (land_cells docstring; the cache-free islands test pins contain=overlap).
 - 2026-09-10 cycle 2 closed at `29c6330`: every Cycle 2 task above is ticked; the Cycle 3 section stays open, so this plan is not archived. Both gates green on the whole repo at that commit (ruff clean; pytest 356 passed, 4 deselected, 5 warnings, exit 0) -- recorded in `plan/2026-09-10-c2-gates-and-tests.md`.
+- 2026-10-02: the doc-only remainder of this plan. S6 is done (`docs/contract.md`)
+  and I5 is ticked above. Three items stay open, none of them doc-only. J1
+  bundles the contract document with code (`config.CONTRACT_VERSION`, the page
+  refusing an unknown version, `NodeIndex.offsets`, `check_dist` deriving
+  widths, a contract test), so only S6's part of the document exists. B2's
+  table move changes what a build reads and waits for a rebuild. E13 is the
+  owner's call.

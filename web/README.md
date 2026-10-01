@@ -75,6 +75,26 @@ until its hash is recorded here. The three font faces are served
 `immutable, max-age=31536000` and are named by family, subset and weight, not by
 content, so a swapped face would be cached for a year with no other signal.
 
+## Where each file came from
+
+The hashes above pin what is on disk. This table records what it was taken
+from, checked against upstream on 2026-10-02. The four `.js` bundles are
+jsDelivr `+esm` builds, which jsDelivr generates on demand (each file's own
+header says not to use SRI on it), so they have no stable upstream hash to
+compare. For those the provenance is the original file each header names.
+
+| file | upstream | matches upstream byte for byte |
+|---|---|---|
+| maplibre-gl.js | jsDelivr `+esm` of `/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js` | no: one-token CVE-2026-85061 patch, upstream hash in the table above |
+| pmtiles.js | jsDelivr `+esm` of `/npm/pmtiles@4.5.0/dist/esm/index.js` | no: its `fflate` import is rewritten to `./fflate.js` |
+| h3.js | jsDelivr `+esm` of `/npm/h3-js@4.2.1/dist/browser/h3-js.es.js` | generated, see above |
+| fflate.js | jsDelivr `+esm` of `/npm/fflate@0.8.3/esm/browser.js` | generated, see above |
+| maplibre-gl.css | `https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css` | yes |
+| ibm-plex-sans-latin-{400,500,600}-normal.woff2 | `https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5.3.0/files/` (IBM Plex Sans 3.201; 5.2.5 to 5.3.0 ship the same bytes) | yes |
+| OFL.txt | `LICENSE.txt` of github.com/IBM/plex (also `@ibm/plex-sans@1.1.0`) | yes |
+| fonts.css | written here | not applicable |
+| licences/ | each package's own licence text; see `licences/README.md` | |
+
 ## Deploy
 
 `scripts/deploy_verify.sh` copies `index.html`, `boot.js`, `app.js`,
