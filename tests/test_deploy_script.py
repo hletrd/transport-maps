@@ -621,3 +621,171 @@ def test_the_space_check_falls_back_to_the_whole_tree_when_rsync_cannot_say(tmp_
         (tmp_path / str(i)).mkdir()
         got = _run_transfer_kb(tmp_path / str(i), body)
         assert int(got) >= 290, (body, got)
+
+
+def _browser_fn(name: str) -> str:
+    """A function lifted verbatim from browser_verify.sh: a multi-line body
+    closed by a brace in column 0, or a one-line `name() { ...; }`."""
+    m = (re.search(rf"^{name}\(\) \{{\n.*?^\}}", BROWSER, re.S | re.M)
+         or re.search(rf"^{name}\(\) \{{.*\}}$", BROWSER, re.M))
+    assert m, f"{name} is gone from browser_verify.sh or has been reshaped"
+    return m.group(0)
+
+
+def _run_wait_until(tmp_path, answers: list[str], limit: int):
+    """The real wait_until, with a stub `agent-browser` that prints one line of
+    `answers` per call (the last repeats) in the shape a real eval returns."""
+    import subprocess
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "answers").write_text("\n".join(answers) + "\n")
+    stub = bin_dir / "agent-browser"
+    stub.write_text(
+        "#!/bin/bash\n"
+        f'n=$(cat "{tmp_path}/n" 2>/dev/null || echo 0); echo $((n + 1)) > "{tmp_path}/n"\n'
+        f'total=$(wc -l < "{tmp_path}/answers")\n'
+        "i=$(( n + 1 > total ? total : n + 1 ))\n"
+        f'sed -n "${{i}}p" "{tmp_path}/answers"\n')
+    stub.chmod(0o755)
+    script = (f"set -u\nfail=0\n{_browser_fn('wait_until')}\n"
+              f'wait_until {limit} "the thing" "js"; echo "rc=$? fail=$fail"\n')
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                          env={"PATH": f"{bin_dir}:/usr/bin:/bin"}, timeout=60)
+    calls = int((tmp_path / "n").read_text())
+    return done, calls
+
+
+def test_the_browser_stage_waits_for_the_page_not_for_a_clock():
+    """C12-8 / V13-28. Both cold loads slept a fixed 15 s and 10 s, chosen
+    against 553 origins, before reading data that grew to 1,464 rows and a
+    ~10 MB reading tier -- the mechanism behind four gate failures on correct
+    code. Each must now poll a readiness condition before its first read.
+
+    Mutations performed and reverted: put `; sleep 15` back on the first open
+    -> red; drop the `?from=tokyo` open's wait_until -> red.
+    """
+    code = _code(BROWSER)
+    for opener, first_read in (('agent-browser open "$URL"', "R=$(agent-browser eval"),
+                               ('agent-browser open "${URL}?from=tokyo"', 'q.value="JFK"')):
+        at = code.index(opener)
+        line = code[at:code.index("\n", at)]
+        assert not re.search(r"sleep\s+\d", line), (
+            f"a cold load waits a fixed time again: {line.strip()}")
+        between = code[at:code.index(first_read, at)]
+        assert re.search(r"^wait_until \d+ ", between, re.M), (
+            f"nothing waits for the page between `{opener}` and its first read")
+
+
+def test_wait_until_returns_as_soon_as_the_page_answers(tmp_path):
+    """The positive control: the poll must not simply always time out."""
+    done, calls = _run_wait_until(tmp_path, ['"false"', '"false"', '"true"'], limit=30)
+    assert "rc=0 fail=0" in done.stdout, done.stdout + done.stderr
+    assert "ready after" in done.stdout
+    assert calls == 3, f"polled {calls} times for an answer that came on the third"
+
+
+def test_wait_until_fails_loudly_when_the_page_never_gets_there(tmp_path):
+    """A ceiling that is reached must set fail=1 and say what it waited for --
+    a timeout that falls through silently is the old fixed sleep again.
+
+    Mutations performed and reverted: delete `fail=1` from wait_until -> red;
+    `return 1` -> `return 0` -> red; compare `$got` against "false" instead of
+    "true" -> red (the positive control above goes red as well).
+    """
+    # $SECONDS ticks in whole seconds, so a 2 s ceiling can see one poll or
+    # two depending on where in the second it started; 3 s always sees two.
+    done, calls = _run_wait_until(tmp_path, ['"false"'], limit=3)
+    assert "rc=1 fail=1" in done.stdout, done.stdout + done.stderr
+    assert "!! waited 3 s for the thing" in done.stdout
+    assert calls >= 2, "it gave up without polling"
+
+
+def test_wait_until_treats_a_tool_error_as_not_ready(tmp_path):
+    """No session, a CDP disconnect or a JS exception comes back as text, never
+    as `true`, so it must run out the ceiling and fail -- and show the text."""
+    done, _ = _run_wait_until(tmp_path, ["Error: no browser session"], limit=2)
+    assert "rc=1 fail=1" in done.stdout, done.stdout + done.stderr
+    assert "Error: no browser session" in done.stdout
+
+
+def _city_list(cl: str, cities: int = 1464, cap: int = 60):
+    import subprocess
+
+    script = (f"set -u\nCITIES={cities}\nCAP={cap}\n{_browser_fn('json_num')}\n"
+              f"{_browser_fn('check_city_list')}\n"
+              'check_city_list "$1"; echo "rc=$?"\n')
+    return subprocess.run(["bash", "-c", script, "_", cl], capture_output=True, text=True)
+
+
+def _cl(rows, durations, no_route=0, blank=0, departing=1):
+    # The real shape: agent-browser prints the JSON as a quoted string and the
+    # gate strips its backslashes, so the object arrives wrapped in quotes.
+    return (f'"{{"rows":{rows},"durations":{durations},"coords":0,"clipped":0,'
+            f'"noRoute":{no_route},"blank":{blank},"departing":{departing}}}"')
+
+
+def test_the_city_list_check_accepts_a_correct_list():
+    """Positive controls, capped and uncapped (a small local dist can show a
+    "no route" row; a capped list is the quickest 60 and cannot)."""
+    for cl, cities in ((_cl(60, 59), 1464), (_cl(3, 1, no_route=1), 3)):
+        done = _city_list(cl, cities=cities)
+        assert "rc=0" in done.stdout, (cl, done.stdout + done.stderr)
+        assert "!!" not in done.stdout
+
+
+def test_the_city_list_check_refuses_what_the_old_patterns_let_through():
+    """`'"departing":1'` was an unanchored substring, satisfied by 1000-1464,
+    and `"durations":[1-9][0-9]` asserted ten timed rows out of sixty. Each case
+    here must fail with its own reason; the first two passed the old greps.
+
+    Mutations performed and reverted, each confirmed RED:
+      * `[ "$dep" -eq 1 ]` -> `[ "$dep" -ge 1 ]`       -> departing 1000 passes
+      * the `blank -ne 0` branch removed              -> 49 blank rows report
+                                                         the wrong reason
+      * the counts-add-up branch removed              -> 5 unrecognised rows
+                                                         pass
+      * the `dur -ge 1` check removed                 -> the all-"no route"
+                                                         list passes
+      * the capped-list `no route` check removed      -> 5 unreachable rows in
+                                                         a ranked list pass
+      * the empty-count guard removed                 -> unreadable output
+                                                         reports the wrong
+                                                         reason
+    """
+    old = re.compile(r'"durations":[1-9][0-9]')
+    cases = [
+        (_cl(60, 59, departing=1000), 1464, "1000 rows are marked as the current departure"),
+        (_cl(60, 10, blank=49), 1464, "49 of 60 city rows carry no travel time"),
+        (_cl(60, 54), 1464, "5 of 60 city rows read as neither"),
+        (_cl(3, 0, no_route=2), 3, "carries no travel times"),
+        (_cl(60, 54, no_route=5), 1464, "yet 5 of its rows have no route"),
+    ]
+    for cl, cities, why in cases[:2]:
+        # Proof these are cases the OLD gate waved through.
+        assert old.search(cl) and '"departing":1' in cl, cl
+    for cl, cities, why in cases:
+        done = _city_list(cl, cities=cities)
+        assert "rc=1" in done.stdout, (cl, done.stdout + done.stderr)
+        assert why in done.stdout, (why, done.stdout + done.stderr)
+
+    for unreadable in ("", "Error: no browser session", '"{"rows":60}"'):
+        done = _city_list(unreadable)
+        assert "rc=1" in done.stdout, (unreadable, done.stdout)
+        assert "could not read the city-list counts" in done.stdout, done.stdout
+
+
+def test_the_city_list_check_is_what_the_gate_runs():
+    """The two loose greps are gone from the gate, and the function the tests
+    above exercise is the one it calls on the eval's output.
+
+    Mutation performed and reverted: restore the `'"departing":1'` grep in
+    place of the check_city_list call -> red.
+    """
+    code = _code(BROWSER)
+    assert '"departing":1\'' not in code, "the unanchored departing grep is back"
+    assert '"durations":[1-9][0-9]' not in code, "the ten-row durations floor is back"
+    assert re.search(r'^check_city_list "\$CL" \|\| fail=1$', code, re.M), (
+        "the gate no longer runs check_city_list on the city-list eval")
+    for key in ("noRoute:", "blank:", "departing:"):
+        assert key in code, f"the city-list eval no longer reports {key}"

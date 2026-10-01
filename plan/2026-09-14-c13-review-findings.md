@@ -114,6 +114,9 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
   Both are in the deploy path this cycle must run, so neither is touched while
   a build holds the lock: changing a gate in the same cycle that runs it makes
   a failure unattributable.
+  *2026-10-02:* V13-28 is done (see C12-8: polls in place of both sleeps,
+  proved against the live build). V13-27 is not re-verified here, so the box
+  stays empty until someone confirms `page_gate`'s node pre-flight closes it.
 
 - [ ] **C13-10 — the fourteen documentation HIGHs.** DOC13-1…DOC13-14. Two are
   visitor-facing and go first: DOC13-1, the page telling readers the fit wanted
