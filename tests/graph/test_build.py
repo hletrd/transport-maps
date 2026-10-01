@@ -52,7 +52,10 @@ def test_duplicate_row_col_pairs_across_edge_parts_are_rejected(monkeypatch):
 
     dup = (np.array([0, 0], dtype=np.int64), np.array([1, 1], dtype=np.int64), np.array([5.0, 3.0]))
     empty = (np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.float64))
-    monkeypatch.setattr(build.ground, "hex_edges", lambda idx: dup)
+    monkeypatch.setattr(build.ground, "hex_edges", lambda idx, **kw: dup)
+    # build_graph derives the border rules once for every surface builder
+    # (R5); this index has no cells to derive them from, and nothing reads them.
+    monkeypatch.setattr(build, "_border_rules", lambda *a: (None, None, 0.0, None))
     monkeypatch.setattr(build, "_air_edges", lambda *args, **kwargs: empty)
     monkeypatch.setattr(build, "_access_edges", lambda idx: empty)
     monkeypatch.setattr(build, "_transfer_edges", lambda idx: empty)
