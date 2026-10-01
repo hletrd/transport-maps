@@ -268,9 +268,20 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       transits (model change — document before/after per CLAUDE.md). **A16**
       `check_bands_cover` samples the tiles tippecanoe wrote. **G2** Raw
       downloads by URL hash with ETag/size and a refresh policy.
-- [ ] **O6 / E6** `transport-maps assets` (or the last step of `build-all`)
+- [x] **O6 / E6** `transport-maps assets` (or the last step of `build-all`)
       writes `places.json`, `airports.json`, `borders.json`; README lists it.
-      Not run this cycle (writes under `dist/`).
+      Not run this cycle (writes under `dist/`). *(2026-10-02: code half
+      landed -- `transport-maps assets [NAME ...]` calls the three emitters'
+      `build(out)` under the build lock; `check_dist` names the producer when
+      one is missing. Tested on tmp_path only: all three, a subset, refusal
+      under a held lock, unknown names, dispatch, and the airports table's
+      shape; dropping an entry, the lock or the dispatch each turns one red.
+      Still NOT run against `dist/`, so the live copies remain the
+      hand-made ones until the owner runs it. Not taken here: C11's airport
+      filtering (a separate web-plan entry, and filtering by the graph would
+      need the node index inside `assets`), folding the water build in
+      (CR4-aside), and the bare-filename download caches in `places.py` /
+      `borders.py` (C11-D1).)*
 
 ## Progress
 

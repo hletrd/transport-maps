@@ -434,7 +434,11 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
     for extra in REQUIRED_EXTRAS:
         p = dist / extra
         if not p.exists():
-            bad.append(f"{extra} missing")
+            # Name the producer: for years nothing in the repository could
+            # make the three JSON files, and the refusal gave no way forward.
+            remedy = ("scripts/build_water_tiles.py" if extra.endswith(".pmtiles")
+                      else f"transport-maps assets {extra}")
+            bad.append(f"{extra} missing (write it with `{remedy}`)")
         elif extra.endswith(".pmtiles"):
             problem = _pmtiles_ok(p)
             if problem:

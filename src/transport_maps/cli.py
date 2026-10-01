@@ -841,6 +841,48 @@ def _reindex(dist: Path | None = None) -> None:
         lock.unlink(missing_ok=True)
 
 
+#: The static files the page loads beside the per-origin arrays, each with the
+#: module whose `build(out)` writes it. None depends on the graph or on any
+#: origin, so they are not part of build-all; and until this command existed
+#: nothing called those `build` functions at all, so the copies in dist/ were
+#: made by hand and could not be reproduced (E6 / O6, AA13, C11-D8).
+#: `water.pmtiles`, the fourth static file check_dist requires, is still
+#: scripts/build_water_tiles.py: it needs the OSM water polygons and
+#: tippecanoe, not a JSON emitter.
+ASSETS = {
+    "places.json": "places",
+    "airports.json": "airports_json",
+    "borders.json": "borders",
+}
+
+
+def _assets(dist: Path | None = None, names: list[str] | None = None) -> None:
+    """(Re)write the static page assets into `dist` (default dist/).
+
+    Under the build lock, so it cannot interleave with a build-all or a
+    reindex rewriting the same directory. Each file is written atomically by
+    its emitter (`_io.atomic_write`), so a failure leaves the previous copy in
+    place rather than half a file.
+    """
+    import importlib
+
+    dist = dist or config.DIST
+    names = names or list(ASSETS)
+    unknown = [n for n in names if n not in ASSETS]
+    if unknown:
+        raise SystemExit(f"unknown asset(s) {unknown}; choose from {list(ASSETS)}")
+    lock = _acquire_lock(dist)
+    try:
+        for name in names:
+            # Imported here, not at the top: borders pulls in pyogrio and
+            # places httpx, and neither belongs in the parent a build forks.
+            emitter = importlib.import_module(f"transport_maps.emit.{ASSETS[name]}")
+            count = emitter.build(dist / name)
+            print(f"{name}: {count:,} entries -> {dist / name}", flush=True)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
 def _consume(pool, results):
     """Yield imap results, aborting when a worker has died without reporting.
 
@@ -918,6 +960,14 @@ def main() -> None:
         help="rewrite dist/index.json from the artifacts on disk (no solving, no rebuild)",
     )
 
+    assets = sub.add_parser(
+        "assets",
+        help="write the static page assets (places.json, airports.json, borders.json) "
+             "into dist/; no graph, no origins",
+    )
+    assets.add_argument("names", nargs="*", metavar="NAME",
+                        help=f"which to write, of {', '.join(ASSETS)} (default: all)")
+
     args = parser.parse_args()
     config.ensure_dirs()
 
@@ -925,6 +975,8 @@ def main() -> None:
         _build_all(limit=args.limit, only=args.only, exclude=args.exclude)
     elif args.command == "reindex":
         _reindex()
+    elif args.command == "assets":
+        _assets(names=args.names)
 
 
 # Without this, `python -m transport_maps.cli build-all` imports the module,
