@@ -53,10 +53,13 @@ in the same commit.
 | h3.js | `fcaa69b16ddfdd26e8544bf326eeb2c6d25ae3ba94ffa27c0a484cb5318cfd32` |
 | fflate.js | `d22d603594fe32208e563d2f2fbe9e53f8addc1c845320786c7de62464c288a8` |
 | maplibre-gl.css | `ab1e70d59ec40465bae7e7030da2f3ccf28133fd502e62bd598eefbadfd7a732` |
-| fonts.css | `2c6b4a194338790b27cdfa65a3f06ac64c774bd12ed6c2658904105989e0d35b` |
+| fonts.css | `ca06ffa19cbf1148916985a311fb10def2a7f34504e667ecc015dbf30f9ab1aa` |
 | ibm-plex-sans-latin-400-normal.woff2 | `3b646991d30055a93a4ecc499713d4347953a74a947ecab435ab72070cbdab0e` |
 | ibm-plex-sans-latin-500-normal.woff2 | `0717336fb31fcdcde4b8deb3675bb4a0f7f6d484864afcd6751ac29975962203` |
 | ibm-plex-sans-latin-600-normal.woff2 | `8960851d691c054ed38e259bdcf1a6190d157b4203ed5bb32c632a863fb8ec2f` |
+| ibm-plex-sans-latin-ext-400-normal.woff2 | `c93d2a12aaa280f68b9ab7b726ff8dfedda67c99ef9abed047c1847a1cc6d583` |
+| ibm-plex-sans-latin-ext-500-normal.woff2 | `2846035d85100f84c79393f80f1442d4ee720129ab8b3ffa8969aae281db8c6c` |
+| ibm-plex-sans-latin-ext-600-normal.woff2 | `b25dfd4f979e442ae1e25cd0894463434cf01ba21ac1a35d39f4a82bd4cc060e` |
 | OFL.txt | `7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da` |
 | licences/README.md | `8c1826ebbd28d7ebb77dcc11c114f831492637cbdffebc9c729de19ea4f95054` |
 | licences/fflate.LICENSE.txt | `0a1df3a083d0c010560aa342e87959c8c1070e6fd54545741f083f22d0c8b551` |
@@ -71,7 +74,7 @@ Every file in `vendor/` appears above, including the licence texts under
 rather than reading a hard-coded list (it used `iterdir()` until cycle 15,
 which could not see the subdirectory at all while this sentence claimed it
 could), so a newly vendored file fails the gate
-until its hash is recorded here. The three font faces are served
+until its hash is recorded here. The six font faces are served
 `immutable, max-age=31536000` and are named by family, subset and weight, not by
 content, so a swapped face would be cached for a year with no other signal.
 
@@ -90,10 +93,16 @@ compare. For those the provenance is the original file each header names.
 | h3.js | jsDelivr `+esm` of `/npm/h3-js@4.2.1/dist/browser/h3-js.es.js` | generated, see above |
 | fflate.js | jsDelivr `+esm` of `/npm/fflate@0.8.3/esm/browser.js` | generated, see above |
 | maplibre-gl.css | `https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css` | yes |
-| ibm-plex-sans-latin-{400,500,600}-normal.woff2 | `https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5.3.0/files/` (IBM Plex Sans 3.201; 5.2.5 to 5.3.0 ship the same bytes) | yes |
+| ibm-plex-sans-latin-{400,500,600}-normal.woff2, ibm-plex-sans-latin-ext-{400,500,600}-normal.woff2 | `https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5.3.0/files/` (IBM Plex Sans 3.201; 5.2.5 to 5.3.0 ship the same bytes) | yes |
 | OFL.txt | `LICENSE.txt` of github.com/IBM/plex (also `@ibm/plex-sans@1.1.0`) | yes |
 | fonts.css | written here | not applicable |
 | licences/ | each package's own licence text; see `licences/README.md` | |
+
+The faces are fontsource's subsets of IBM Plex Sans, not IBM's own split
+files from `@ibm/plex-sans`. The latin faces were already fontsource's, and
+latin-ext must come from the same build (3.201, identical vertical metrics)
+and the same subsetting, or the two subsets' `unicode-range`s would neither
+meet nor match the glyphs, and a name mixing both would set in two builds.
 
 ## Deploy
 
@@ -122,7 +131,8 @@ the readout's band range carry the fine distinctions the colour alone cannot.
 
 ## Typography
 
-IBM Plex Sans only (`vendor/fonts.css`, latin subset, weights 400/500/600),
+IBM Plex Sans only (`vendor/fonts.css`, latin and latin-ext subsets, weights
+400/500/600; latin-ext is fetched only for a name that uses it),
 default letter-spacing, no uppercase transforms, no tabular figures — see the
 design policy in `CLAUDE.md`. IBM Plex Sans © 2017–2019 IBM Corp., SIL Open
 Font License 1.1 (`vendor/OFL.txt`). Place labels are DOM markers so they use

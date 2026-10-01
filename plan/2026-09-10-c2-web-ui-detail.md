@@ -172,8 +172,19 @@ Controls, focus, tooltips, semantics
       and `.json` lazily on the first click through the C5 path; `borders.json`
       as a URL source (H8). Design and flags in `architect.md` §4 D13 — M3 is
       the prerequisite and must stay first.
-- [ ] **D2 (subset)** Vendor `latin-ext` only (26 of the 900 label-pool names
+- [x] **D2 (subset)** Vendor `latin-ext` only (26 of the 900 label-pool names
       need it; cyrillic/greek are not needed — gazetteer names are romanised).
+      (2026-10-02: latin-ext 400/500/600 from @fontsource/ibm-plex-sans 5.3.0,
+      the same build (Plex Sans 3.201) and package the latin faces are
+      byte-identical to, rather than IBM's own split files, whose subsets would
+      not meet fontsource's ranges. Every face now carries fontsource's
+      unicode-range. Measured on today's gazetteer: 3,371 of 34,510 names need
+      latin-ext and 190 still need Vietnamese or other marks that neither
+      subset has. In a local browser an ASCII page fetched only the latin
+      faces and a page with "Gdańsk" added latin-ext-400 alone. Guard:
+      `test_every_face_carries_a_unicode_range_and_latin_ext_skips_ascii`;
+      deleting one face's range and widening latin-ext over ASCII each turn it
+      red. No index.html change: the preloads stay latin.)
 - [ ] **N15** Bottom-sheet layout below 480 px regardless of orientation; rows
       wrap (UX-36). **N16** Show the one-line description from 600 px (UX-37).
       **N19** `.results{max-height:min(40vh,280px)}` and 22vh with a route open

@@ -90,6 +90,9 @@ NOTICE_FOR = {
     "ibm-plex-sans-latin-400-normal.woff2": "../OFL.txt",
     "ibm-plex-sans-latin-500-normal.woff2": "../OFL.txt",
     "ibm-plex-sans-latin-600-normal.woff2": "../OFL.txt",
+    "ibm-plex-sans-latin-ext-400-normal.woff2": "../OFL.txt",
+    "ibm-plex-sans-latin-ext-500-normal.woff2": "../OFL.txt",
+    "ibm-plex-sans-latin-ext-600-normal.woff2": "../OFL.txt",
     "fonts.css": "../OFL.txt",
 }
 
@@ -236,3 +239,52 @@ def test_the_held_out_error_is_called_what_it_is():
             f"{path.name} calls the mean absolute error a median")
         assert "mean" in window.lower(), (
             f"{path.name} does not say the held-out error is a mean")
+
+
+# --- D2: the latin-ext faces load only for a name that needs them ------------
+
+def _font_faces() -> list[dict[str, str]]:
+    css = (WEB / "vendor" / "fonts.css").read_text(encoding="utf-8")
+    faces = []
+    for block in re.findall(r"@font-face\s*\{([^}]*)\}", css):
+        props = dict(re.findall(r"([\w-]+)\s*:\s*([^;]+);", block))
+        faces.append({k: v.strip() for k, v in props.items()})
+    return faces
+
+
+def _ranges(spec: str) -> list[tuple[int, int]]:
+    out = []
+    for part in spec.split(","):
+        lo, _, hi = part.strip().removeprefix("U+").partition("-")
+        out.append((int(lo, 16), int(hi or lo, 16)))
+    return out
+
+
+def test_every_face_carries_a_unicode_range_and_latin_ext_skips_ascii():
+    """A @font-face with no unicode-range covers every code point, so the
+    browser would fetch latin-ext for the first line of ASCII on the page --
+    on every visit, for the 31,000 names that never use it. Each face
+    therefore names its range, latin-ext's must not cover plain ASCII, and
+    every subset exists at all three weights the stylesheet uses.
+
+    Mutation performed and reverted: delete the unicode-range from the
+    latin-ext 500 rule -> red; widen latin-ext's first range to U+0000-02BA
+    -> red.
+    """
+    faces = _font_faces()
+    assert faces, "vendor/fonts.css declares no @font-face"
+    weights: dict[str, set[str]] = {}
+    for face in faces:
+        src = re.search(r"url\(\s*['\"]?\./([^'\")]+)", face.get("src", ""))
+        assert src, f"a face has no local src: {face}"
+        name = src.group(1)
+        assert "unicode-range" in face, f"{name} has no unicode-range, so it loads for any text"
+        subset = "latin-ext" if "-latin-ext-" in name else "latin"
+        weights.setdefault(subset, set()).add(face["font-weight"])
+        if subset == "latin-ext":
+            for lo, hi in _ranges(face["unicode-range"]):
+                assert hi < 0x20 or lo > 0x7E, (
+                    f"{name} claims printable ASCII (U+{lo:04X}-{hi:04X}), so it "
+                    "would be fetched for every page")
+    assert weights.get("latin") == weights.get("latin-ext") == {"400", "500", "600"}, (
+        f"each subset must exist at 400, 500 and 600: {weights}")
