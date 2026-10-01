@@ -120,6 +120,11 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
       direction, `_transfer_edges` `max(conn, wait)` and "nothing departs → no
       edge". (2026-10-02: `tests/graph/test_edge_builders.py`, real builders
       and calibration on seven stubbed airports; 13 mutations, each red.)
+  - [x] TE-18 (2026-10-02): one `build_graph` per module, and the isolated
+        airports asserted BY NAME against `validate.KNOWN_ISOLATED_AIRPORTS`
+        (29 at res 6); dropping one name -> red.
+  - [x] TE-19 (2026-10-02): the golden coverage test uses
+        `validate.check_coverage`, as the gate does (99.5% gated, 96.9% raw).
 - [ ] **F13 rest** TE-18 c1 (implied assertion, double graph build), TE-19 c1
       (Antarctica in the golden threshold), TE-20 c1 (ramps parser count
       guard), TE-26 c1 (44-second bound tests); **S5** `native_edges` cache
@@ -131,8 +136,10 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
   - [x] S5 (2026-10-02): `grid.native_edges(idx, cache=None|True|False)`;
         tests read back a doctored file and pin the size rule. Read branch
         off, `rows` key renamed, write skipped, always-cache -> each red.
-- [ ] **B3** Golden bounds tightened to the shipped values ± a documented
-      tolerance once the 553-origin build ships.
+- [x] **B3** Golden bounds tightened to the shipped values ± a documented
+      tolerance once the 553-origin build ships. (2026-10-02: Seoul -> Tokyo
+      314 min and -> London 904 min, ±15%, measured on the 1,464-origin graph;
+      shifted expectations -> red.)
 - [ ] **K3 test**, **K4 test**, **G1 tests** — with their build-plan tasks if
       they do not land in cycle 2.
 
