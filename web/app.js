@@ -2399,9 +2399,9 @@ function lookupRaw(lat, lon) {
       // land res-4 cell whose own res-6 cell is absent from the mask reads
       // "no scheduled route" at one zoom and a real duration at another.
       //
-      // Measured on the shipped build: 553 of 553 origins do this at Kota
-      // Kinabalu -- 10 h 18 min from Kolkata at res 4, "no scheduled route" at
-      // res 6 -- and 13 of 34,135 labelled places and 47 of 4,008 airports sit
+      // Measured on the 553-origin build then shipped: every origin did this
+      // at Kota Kinabalu -- 10 h 18 min from Kolkata at res 4, "no scheduled
+      // route" at res 6 -- and 13 of 34,135 labelled places and 47 of 4,008 airports sit
       // on such a cell, Bodo, Tarawa, Bora Bora and the Galapagos among them.
       //
       // The page cannot tell a padding slot from a genuinely unreachable land
@@ -3652,7 +3652,7 @@ $("copy-link").addEventListener("click", async (e) => {
 // match the cities spelt São Paulo, Zürich and Bogotá.
 //
 // Punctuation is folded for the same reason, and the apostrophe is why this
-// grew: the 553 shipped names carry BOTH U+0027 (Xi'an, Huai'an, N'Djamena)
+// grew: the shipped names carry BOTH U+0027 (Xi'an, Huai'an, N'Djamena)
 // and U+2019 (Tai’an, Lu’an), so which spelling a searcher had to type to find
 // a city was decided per city, by whoever entered it. Typing the straight
 // quote every keyboard emits found Xi'an and returned nothing for Lu'an.
@@ -3904,7 +3904,7 @@ function render(filter = "") {
     // aria-current AND aria-selected, and they are not redundant. An element
     // with role="option" inside a role="listbox" carries its selected state
     // in aria-selected; that is the property a screen reader announces as
-    // "selected", and the 553 rows had none of it. Selection was carried
+    // "selected", and the rows had none of it. Selection was carried
     // only by the word "departing" in the row's own text, which is content,
     // not state -- SC 4.1.2. aria-current stays because it is the truthful
     // answer to a different question: which row is the page's current
@@ -4007,7 +4007,7 @@ function render(filter = "") {
     li.textContent = `No departure city or airport matches “${filter.trim()}”. Press Enter or “Search address” to look it up.`;
     list.append(li);
   }
-  // Filtering 553 origins down to none changed the list and said nothing: the
+  // Filtering the list down to none changed it and said nothing: the
   // live region is the only channel a screen-reader user has for "your query
   // matched nothing". Announced only when a filter is active, so the
   // once-per-origin rebuild in settle() stays silent.
@@ -4057,8 +4057,8 @@ function render(filter = "") {
   // view. A keyboard visitor arrived at the top of an alphabet with no sign
   // which city the page was measuring from.
   rovingStop(box, had);
-  // The list opens at the top -- so with 553 origins, Seoul is row 364 of 461,
-  // about 9,540 px down a 12,072 px scroll box, and the visitor is looking at
+  // The list opens at the top -- so at 553 origins Seoul was row 364 of 461,
+  // about 9,540 px down a 12,072 px scroll box, and the visitor was looking at
   // "Aba" with no sign that a departure city is selected at all. Put the
   // current departure in view. Only when nothing is being typed: while
   // filtering, the top of the list IS the answer.
@@ -4147,7 +4147,7 @@ async function searchAddress(q) {
   const head = document.createElement("li");
   head.className = "head"; head.setAttribute("role", "none");
   ul.append(head);
-  // PREPEND, not append. With 553 origins the results list is ~12,000 px tall,
+  // PREPEND, not append. At 553 origins the results list was ~12,000 px tall,
   // so appending put "Type at least three characters" at viewport y 12,326 in
   // a box that ends at 471: the visitor pressed "Search address", nothing
   // visible happened, and the button read as broken. What the search has to

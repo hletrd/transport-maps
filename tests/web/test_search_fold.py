@@ -6,7 +6,7 @@ cannot find. Nothing in the suite executed it before this file -- it is one of
 the 33 top-level `app.js` functions cycle 15's test lane found named in no
 test, and the defect it was hiding was live on the deployed site.
 
-The defect: the 553 names in `dist/index.json` carry BOTH apostrophes.
+The defect: the names in `dist/index.json` carry BOTH apostrophes.
 
     U+0027  Xi'an, Huai'an, N'Djamena
     U+2019  Tai’an, Lu’an
@@ -296,8 +296,8 @@ def test_the_country_key_still_joins_on_a_single_space() -> None:
 #      Palma   -> Las Palmas ...  Santos  -> General Santos
 #      Osh     -> Baoshan         Orel    -> Morelia   ... and six more
 #
-#    At the 553 origins `dist/` holds today only Xi'an is affected; the other
-#    nineteen arrive with the rebuild. Typing "London" and getting East
+#    At the 553 origins `dist/` held when this was written only Xi'an was
+#    affected; the other nineteen arrived with the rebuild. Typing "London" and getting East
 #    London is the one a visitor would notice first.
 #
 # 2. Drop only the exact-match tier: **1 failed, 3 errored.** The errors are
@@ -388,7 +388,7 @@ def test_every_shipped_name_ranks_its_own_city_first(rank) -> None:
     to the unrelated key `fengxiang`.
 
     The `San José` case is only visible at 1,464 origins. At the 553 the
-    built `dist/` holds, it does not exist -- which is the whole reason this
+    built `dist/` held when this was written, it did not exist -- which is the whole reason this
     file now reads `data/origins.toml` instead of `dist/index.json`.
     """
     names = _shipped_names()

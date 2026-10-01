@@ -141,7 +141,7 @@ def test_the_failure_notice_is_not_cleared_by_a_pointer_move_onto_land():
 def test_the_city_list_is_rebuilt_when_an_origin_fetch_fails():
     """The failure path must clear `listTimesFor` and re-render.
 
-    `settle()` rebuilds the 553-row list only when `origin.times` arrives, so
+    `settle()` rebuilds the city list only when `origin.times` arrives, so
     on the failure path it never rebuilt: the list kept the PREVIOUS city's
     times under the new city's caption, showed the new departure as a
     destination with a travel time to the city you are departing from, and

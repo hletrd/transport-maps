@@ -131,6 +131,13 @@ the thing that prevents a stale count shipping.
 - [x] **C12-7a** The five visitor-facing strings and `README.md:5`.
 - [ ] **C12-7b** The ~26 stale in-code comments naming 553 — cycle 13, deferred
       below. They mislead a reader, not a visitor.
+      2026-10-02, PARTIAL: the present-tense ones in `web/app.js`,
+      `tests/web/test_search_fold.py` and `test_readout_state.py` now say
+      "then"/"at the time" or name no count. Left open for `src/` and
+      `scripts/` (`cli.py:478` "553 today", `validate.py:180`,
+      `emit/hover.py:226`, `contour/bands.py:28`, `cli.py:522`), which that
+      pass was not scoped to touch. Past-tense measurements naming 553 are
+      records, not staleness, and stay.
 
 ## C12-8 — fixed sleeps in the browser gate break at 1,464 origins
 
