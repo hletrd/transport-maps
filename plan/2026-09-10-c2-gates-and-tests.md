@@ -93,7 +93,13 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
 
 ## Cycle 3
 
-- [ ] **P3 / F7** `tests/emit/test_layout_contract.py`: one index at real
+- [x] **P3 / F7** (2026-10-02: three real res-4 cells, centre slower than a
+      differently-routed sibling, cells listed in reverse; run through
+      `cli._solve_one` and through each writer's defaults; `.over.bin` and
+      `.r6.bin` checked against the same representative. Fastest-child in
+      itinerary, modes, rail_detail and `representative_array`, reversed
+      parents in modes, reversed `base_hover` -> each red.)
+      `tests/emit/test_layout_contract.py`: one index at real
       resolutions, a predecessor chain through a sibling, all five files
       written; equal lengths, the hover value is the centre's, `.air.bin`
       decodes to the centre's arrival node, `.modes.bin` row equals the
