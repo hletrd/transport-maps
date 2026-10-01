@@ -200,7 +200,8 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       and bound dropped ferry crossings; book a ferry leg as ferry when the base
       parents are adjacent. **A14** Monotonic-ground gate over cross-resolution
       edges. **A18 / Q4** `adsb_extract.py`: sanitised tag, https + host
-      allow-list, size cap.
+      allow-list, size cap. *(A18 done 2026-10-02 -- see Q4 in the security
+      plan; A10, A12 and A14 are still open, so the box stays empty.)*
 - [ ] **A9** South-pole cap dissolve (K13's slivers as the fixture). **A11**
       Resolvable `continue` batches in the wikitext crawl. **A15** Immigration
       zones: one table for air and ground; no border charge on airside

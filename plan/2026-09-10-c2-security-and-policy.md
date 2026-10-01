@@ -68,8 +68,12 @@ DOM-write table).
       asserts `content-security-policy` and `strict-transport-security` on
       `/`, `/app.js`, `/index.json`, `/hover_cells.bin` and a `.pmtiles`
       (SEC-19).
-- [ ] **Q4 / A18** `adsb_extract.py`: sanitised tag, https + host allow-list,
-      size cap (SEC-23).
+- [x] **Q4 / A18** `adsb_extract.py`: sanitised tag, https + host allow-list,
+      size cap (SEC-23). Tag and asset names are one `[A-Za-z0-9][A-Za-z0-9._-]`
+      component; each asset URL must be this repo's https download path; a
+      redirect may only go to https on GitHub's asset hosts; a part over 4 GB or
+      a day over 16 GB is refused before download and the declared size caps
+      the bytes received. `tests/sources/test_adsb_extract.py`, nine mutants.
 - [ ] **I2 (6.x)** Try MapLibre 6.9.0 with pmtiles 4.5.0 on the preview with
       the tile-loading retest `web/README.md` describes.
 - [ ] **N22 / DOC-12** Attribution visibility (owner judgement, web plan).

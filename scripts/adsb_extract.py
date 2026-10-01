@@ -17,11 +17,44 @@ import gzip
 import json
 import math
 import os
+import re
 import tarfile
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
-GITHUB_RELEASES = "https://api.github.com/repos/adsblol/globe_history_2026/releases?per_page=30"
+REPO = "adsblol/globe_history_2026"
+GITHUB_RELEASES = f"https://api.github.com/repos/{REPO}/releases?per_page=30"
+# Everything below this point trusts nothing the releases API returns. The tag
+# becomes a file name under the cache and each asset URL is fetched and written
+# into it, so a tag of `../../.ssh/authorized_keys`, a URL that points at some
+# other host, or an http:// hop that a man in the middle can answer, would each
+# turn a calibration download into a write or a fetch the operator never asked
+# for (SEC-23).
+#
+# A tag or asset name is one path component from a deliberately small alphabet:
+# what adsb.lol actually publishes is `v2026.09.30-planes-readsb-prod-0` and
+# `v2026.09.30-planes-readsb-prod-0.tar.aa`. No slash, no backslash, no NUL,
+# and it may not start with a dot, which rules out `.`, `..` and hidden files
+# in one rule rather than a list of special cases.
+SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+# Where a release asset may come from. GitHub answers the browser download URL
+# with a 302 to its asset CDN, so the redirect target is allowed too -- but
+# only these hosts, only over https, and the first URL must be this repo's own
+# download path.
+DOWNLOAD_HOST = "github.com"
+REDIRECT_HOSTS = frozenset({
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+})
+# A day's archive is two parts of at most 2.0 GB each (measured 2026-10-02:
+# 2,000,000,000 + 1,978,338,304 bytes for prod-0). A part is refused above 4 GB
+# and a day above 16 GB: generous enough for a busier day, small enough that a
+# hostile or broken release cannot fill the cache disk.
+MAX_PART_BYTES = 4 * 10**9
+MAX_ARCHIVE_BYTES = 16 * 10**9
 # A leg must look like a real scheduled flight, not a circuit, tow or test hop.
 MIN_MINUTES, MAX_MINUTES = 25.0, 1000.0
 MIN_KM, MAX_KM = 150.0, 15000.0
@@ -93,32 +126,109 @@ def legs_from_trace(doc) -> tuple[list, list]:
     return airborne_legs, cruise_legs
 
 
-def newest_asset_urls(instance: str) -> tuple[str, list[str]]:
-    with urllib.request.urlopen(GITHUB_RELEASES, timeout=60) as r:
+def safe_name(name, what: str) -> str:
+    """`name` if it is one safe path component, else stop the run."""
+    if not isinstance(name, str) or not SAFE_NAME.fullmatch(name):
+        raise SystemExit(f"refusing unsafe {what} from the releases API: {name!r}")
+    return name
+
+
+def check_asset_url(url, tag: str, name: str) -> str:
+    """`url` if it is this repo's https download path for `tag`/`name`."""
+    parts = urllib.parse.urlsplit(url if isinstance(url, str) else "")
+    expected = f"/{REPO}/releases/download/{tag}/{name}"
+    if (parts.scheme != "https" or parts.hostname != DOWNLOAD_HOST
+            or parts.port is not None or parts.path != expected
+            or parts.query or parts.fragment or parts.username or parts.password):
+        raise SystemExit(f"refusing asset URL {url!r}: expected https://{DOWNLOAD_HOST}{expected}")
+    return url
+
+
+class _AllowListRedirects(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to an https URL on an allow-listed host.
+
+    urllib's default handler follows a 302 to any http, https or ftp URL, so
+    checking the first URL alone would let the response send the download
+    anywhere.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parts = urllib.parse.urlsplit(newurl)
+        if parts.scheme != "https" or parts.hostname not in REDIRECT_HOSTS:
+            raise urllib.error.HTTPError(
+                newurl, code, f"refusing redirect to {newurl!r}", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_opener = urllib.request.build_opener(_AllowListRedirects)
+
+
+def newest_assets(instance: str) -> tuple[str, list[tuple[str, int]]]:
+    """(tag, [(url, declared size), ...]) of the newest release for `instance`.
+
+    Every name, URL and size is checked before it is returned; nothing the API
+    says reaches the file system or the network unvalidated.
+    """
+    with _opener.open(GITHUB_RELEASES, timeout=60) as r:
         releases = json.load(r)
     for rel in releases:
-        if instance in rel["tag_name"]:
-            urls = [a["browser_download_url"] for a in rel.get("assets", [])]
-            if urls:
-                return rel["tag_name"], sorted(urls)
+        tag = rel.get("tag_name")
+        if not isinstance(tag, str) or instance not in tag:
+            continue
+        tag = safe_name(tag, "release tag")
+        assets = []
+        for a in rel.get("assets", []):
+            name = safe_name(a.get("name"), "asset name")
+            url = check_asset_url(a.get("browser_download_url"), tag, name)
+            size = a.get("size")
+            if not isinstance(size, int) or isinstance(size, bool) or not 0 < size <= MAX_PART_BYTES:
+                raise SystemExit(f"refusing asset {name}: declared size {size!r} is "
+                                 f"outside 1..{MAX_PART_BYTES:,} bytes")
+            assets.append((url, size))
+        if assets:
+            total = sum(size for _, size in assets)
+            if total > MAX_ARCHIVE_BYTES:
+                raise SystemExit(f"refusing release {tag}: {total:,} bytes declared, "
+                                 f"cap is {MAX_ARCHIVE_BYTES:,}")
+            return tag, sorted(assets)
     raise SystemExit(f"no release found for instance {instance!r}")
 
 
 def ensure_archive(cache: Path, instance: str) -> Path:
     """Download once, keep forever. Parts are concatenated into one tar."""
-    tag, urls = newest_asset_urls(instance)
+    tag, assets = newest_assets(instance)
     target = cache / f"{tag}.tar"
+    # Belt and braces: `safe_name` already forbids a separator, but the
+    # property that matters is that the file lands directly in `cache`.
+    if target.parent != cache:
+        raise SystemExit(f"refusing archive path outside the cache: {target}")
     if target.exists() and target.stat().st_size > 0:
         print(f"  cached: {target.name} ({target.stat().st_size/1e9:.2f} GB)", flush=True)
         return target
     cache.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".partial")
-    with tmp.open("wb") as fh:
-        for u in urls:                      # .tar.aa, .tar.ab ... in order
-            print(f"  downloading {u.rsplit('/', 1)[-1]}", flush=True)
-            with urllib.request.urlopen(u, timeout=900) as r:
-                while chunk := r.read(1 << 22):
-                    fh.write(chunk)
+    try:
+        with tmp.open("wb") as fh:
+            for u, declared in assets:          # .tar.aa, .tar.ab ... in order
+                print(f"  downloading {u.rsplit('/', 1)[-1]}", flush=True)
+                got = 0
+                with _opener.open(u, timeout=900) as r:
+                    while chunk := r.read(1 << 22):
+                        got += len(chunk)
+                        # The declared size is the cap, enforced on the bytes
+                        # actually received: a server that keeps sending is
+                        # stopped here, not when the disk fills.
+                        if got > declared:
+                            raise SystemExit(f"{u} sent more than its declared "
+                                             f"{declared:,} bytes; refusing")
+                        fh.write(chunk)
+                if got != declared:
+                    raise SystemExit(f"{u} sent {got:,} of its declared {declared:,} bytes")
+    except BaseException:
+        # A refused or broken download must not leave a partial behind that a
+        # later reader could mistake for a part of the archive.
+        tmp.unlink(missing_ok=True)
+        raise
     os.replace(tmp, target)
     print(f"  stored {target.name} ({target.stat().st_size/1e9:.2f} GB)", flush=True)
     return target
