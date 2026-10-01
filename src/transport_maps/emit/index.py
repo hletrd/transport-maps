@@ -171,12 +171,14 @@ def mode_detail() -> dict[str, str]:
     kmh = ground.SPEED_BY_ROAD_CLASS_KMH
     rc, fc = rail.load_rail_calibration(), ferry.load_ferry_calibration()
     # The tooltip quotes the range the tiers span rather than listing six, and
-    # reads it off the calibration so it cannot drift. `tourism` is excluded
-    # from the low end deliberately: at 20 km/h it is a heritage railway, not
-    # the slow end of scheduled service, and quoting it would misdescribe the
-    # model to a reader planning a journey.
+    # reads it off the calibration so it cannot drift. `tourism` is kept out
+    # of the range deliberately -- at 20 km/h it is a heritage railway, not
+    # the slow end of scheduled service -- and named on its own instead, as
+    # the methods page and llms.txt do (DEF16-3): left out entirely, the
+    # tooltip contradicted both about what the model prices.
     tier_lo = rc.tiers["commuter"]
     tier_hi = rc.tiers["high_speed"]
+    tier_heritage = rc.tiers["tourism"]
     halved = (f"halved inside cities (within {urban.URBAN_RADIUS_KM:.0f} km of a city "
               f"over {urban.URBAN_POP_MIN:,.0f} people)")
     return {
@@ -192,7 +194,9 @@ def mode_detail() -> dict[str, str]:
                 f"where it carries one (about a quarter of relations do not, and "
                 f"fall to a general-purpose default), "
                 f"{tier_lo.speed_kmh:.0f} km/h for a commuter train up to "
-                f"{tier_hi.speed_kmh:.0f} km/h for a high-speed one, over the straight-line "
+                f"{tier_hi.speed_kmh:.0f} km/h for a high-speed one, and "
+                f"{tier_heritage.speed_kmh:.0f} km/h for heritage and tourist lines, "
+                "over the straight-line "
                 f"distance between stops times {rc.detour_factor:.1f} for curves, plus a "
                 "per-stop allowance. "
                 f"{rc.boarding_min + rc.alighting_min:.0f} min covers reaching the platform "

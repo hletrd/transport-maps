@@ -175,3 +175,19 @@ def test_every_speed_in_the_mode_tooltips_says_which_it_is():
     for mode, sentence in detail.items():
         for lo, hi in re.findall(r"(\d+)-(\d+) km/h", sentence):
             assert int(lo) <= int(hi), f"the {mode!r} tooltip prints a backwards range: {sentence!r}"
+
+
+def test_the_rail_tooltip_names_the_heritage_tier_the_page_describes():
+    """The methods page and llms.txt both describe a separate heritage tier;
+    the tooltip left it out, so the three disagreed about the model (DEF16-3).
+    Read off the calibration, not hard-coded.
+
+    Mutation performed and reverted: drop the heritage clause from the rail
+    sentence in emit/index.py -> red.
+    """
+    from transport_maps.emit import index
+    from transport_maps.graph import rail
+
+    heritage = rail.load_rail_calibration().tiers["tourism"].speed_kmh
+    sentence = index.mode_detail()["rail"]
+    assert f"{heritage:.0f} km/h for heritage" in sentence, sentence
