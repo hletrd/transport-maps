@@ -40,7 +40,8 @@ were forked with the modules imported.
       traceback. This is what makes a restart safe and does not touch the
       running process.
 - [x] **C12-1c** A test over the real `data/origins.toml` that is red before
-      the fix and green after.
+      the fix and green after. (The original certificate was false, C13-11;
+      re-proved 2026-10-02 through `cli._solve_one`, both mutations red.)
 - [x] **C12-1d** Land-validate in `scripts/expand_origins.py`, which added the
       911 new origins with no check at all (`DBG12-2`, High).
 

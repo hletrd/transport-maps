@@ -128,6 +128,10 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
   raises the `GateFailure` in its own body, so deleting `cli.py:222-223` leaves
   it green. Correcting a false tick is bookkeeping, and this cycle's diff is
   already the largest thing it can verify.
+  - [x] C12-1c's half (2026-10-02): `test_origin_snap.py` now drives
+    `cli._solve_one` itself; deleting its `except ValueError` -> red, and
+    dropping `snap_origin`'s `_nearest_land` branch -> red on the new
+    snapped-origin test. The other sixteen V13 ticks remain open.
 
 ---
 

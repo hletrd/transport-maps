@@ -79,13 +79,36 @@ def test_the_snap_picks_the_nearest_neighbour_not_the_first_one():
         f"{min(km, key=km.get)} is {min(km.values()):.1f} km away")
 
 
-def test_an_origin_in_open_ocean_is_a_named_gate_failure_not_a_traceback():
+class _ReachedTheSolver(Exception):
+    """Raised by the stubbed solver so a test can stop `_solve_one` right
+    after the origin was resolved, and read WHICH node it was resolved to."""
+
+    def __init__(self, source):
+        super().__init__(source)
+        self.source = source
+
+
+def _stop_at_the_solver(monkeypatch):
+    def solve_from(csr, source, **kwargs):
+        raise _ReachedTheSolver(source)
+    monkeypatch.setattr(dijkstra, "solve_from", solve_from)
+
+
+def test_an_origin_in_open_ocean_is_a_named_gate_failure_not_a_traceback(monkeypatch):
     """Two rings reach about 13 km. Beyond that the coordinate is wrong, and
     the run must still abort -- but saying which origin, which is the whole
     difference between a five-minute fix and a lost multi-day build.
 
-    Mutation performed and reverted: drop the `except ValueError` in
-    `_solve_one` -> the ValueError escapes uncaught, which is the original bug.
+    This goes through `cli._solve_one` itself. The version it replaces caught
+    the `ValueError` and raised the `GateFailure` in its own body, so it stayed
+    green with the guard in `_solve_one` deleted: the mutation certificate
+    C12-1c was ticked on was false (C13-11, V13-7). The solver is stubbed to
+    fail loudly -- an unresolvable origin must never reach it, and nothing
+    after the origin lookup is needed to prove that.
+
+    Mutation performed and reverted: delete the `try`/`except ValueError`
+    around `dijkstra.origin_node` in `cli._solve_one` -> red (`ValueError:
+    origin (-30.0, -140.0) is not on a land cell` escapes, not `GateFailure`).
     """
     from transport_maps import cli
 
@@ -95,22 +118,42 @@ def test_an_origin_in_open_ocean_is_a_named_gate_failure_not_a_traceback():
     far = h3.latlng_to_cell(0.0, 0.0, config.SOLVE_RES)
     idx = _index([far])
     assert idx.try_cell_index(own) is None
+    _stop_at_the_solver(monkeypatch)
 
-    with pytest.raises(ValueError, match="not on a land cell"):
-        dijkstra.origin_node(idx, lat, lon)
-
-    # ...and the CLI turns that into a GateFailure carrying the slug, which is
-    # the type cli.py:404 actually catches.
+    origin = {"slug": "nowhere-pacific", "lat": lat, "lon": lon}
+    with pytest.raises(cli.GateFailure, match="not on a land cell") as caught:
+        cli._solve_one(origin, idx, csr=None, speeds=None, shared={})
+    assert str(caught.value).startswith("nowhere-pacific:"), (
+        "the failure must name the slug to fix, not only the coordinate")
+    assert isinstance(caught.value.__cause__, ValueError)
+    # ...and it is the type the CLI's top level actually catches.
     assert issubclass(cli.GateFailure, RuntimeError)
-    try:
-        try:
-            dijkstra.origin_node(idx, lat, lon)
-        except ValueError as exc:
-            raise cli.GateFailure(f"nowhere: {exc}") from exc
-    except cli.GateFailure as gate:
-        assert "nowhere" in str(gate)
-    else:
-        pytest.fail("no GateFailure raised")
+
+
+def test_the_build_solves_a_snapped_origin_from_its_nearest_neighbour(monkeypatch):
+    """The other half of C12-1c on the same real code path: `_solve_one` must
+    hand the solver the SNAPPED node for Kota Kinabalu rather than abort.
+
+    Mutation performed and reverted: drop the `_nearest_land` branch from
+    `dijkstra.snap_origin` -> red (`GateFailure: kota-kinabalu: origin
+    (5.9749, 116.0724) is not on a land cell`: rebuild19's failure, now with
+    the slug attached).
+    """
+    from transport_maps import cli
+
+    lat, lon = KOTA_KINABALU
+    own = h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
+    ring = sorted(h3.grid_ring(own, 1))
+    idx = _index(ring)
+    assert idx.try_cell_index(own) is None
+    _stop_at_the_solver(monkeypatch)
+
+    km = {c: h3.great_circle_distance((lat, lon), h3.cell_to_latlng(c), unit="km")
+          for c in ring}
+    with pytest.raises(_ReachedTheSolver) as reached:
+        cli._solve_one({"slug": "kota-kinabalu", "lat": lat, "lon": lon}, idx,
+                       csr=None, speeds=None, shared={})
+    assert ring[reached.value.source] == min(km, key=km.get)
 
 
 def test_every_charted_origin_has_a_plausible_coordinate():
