@@ -42,6 +42,12 @@ were forked with the modules imported.
 - [x] **C12-1c** A test over the real `data/origins.toml` that is red before
       the fix and green after. (The original certificate was false, C13-11;
       re-proved 2026-10-02 through `cli._solve_one`, both mutations red.)
+      CORRECTION (C13-11 / V13-7, 2026-10-02): the test does **not** read
+      `data/origins.toml`. `tests/solve/test_origin_snap.py` hard-codes
+      `KOTA_KINABALU = (5.9749, 116.0724)`. That matches the file today, but
+      nothing ties the two together. The certificate half holds; the
+      "over the real origins.toml" half does not. To make it true, assert the
+      constant against `load_origins()`'s `kota-kinabalu` row.
 - [x] **C12-1d** Land-validate in `scripts/expand_origins.py`, which added the
       911 new origins with no check at all (`DBG12-2`, High).
 
@@ -76,11 +82,27 @@ chase it: all 1,464 `lookup()` calls plus the filter and sort measure 2.39 ms.
 - [x] **C12-3a** Cap the unfiltered view and say so, with a footer line naming
       the true total. This deletes the scroll-to-current block and `inView()`
       rather than adding code.
+      CORRECTION (C13-11 / V13-9, 2026-10-02): nothing was deleted. The cap
+      (`UNFILTERED_CAP = 60`, `daa1a8c`) and the footer were ADDED, and both
+      the scroll-to-current block and `inView()` are still in `web/app.js`.
 - [x] **C12-3b** Fold country into the search key, so a country can be typed.
 - [x] **C12-3c** rAF-debounce the input handler.
-- [ ] **C12-3d** `content-visibility: auto` on the rows — cycle 13.
-- [ ] **C12-3e** Windowed rendering, the real answer if the cap is ever lifted
+- [~] **C12-3d** `content-visibility: auto` on the rows — cycle 13.
+      (2026-10-02: **OBSOLETE while the cap stands.** Not built:
+      `content-visibility` appears nowhere in `web/`. The cost it targeted was
+      8,784 nodes for 1,464 rows. C12-3a caps the list at 60 rows
+      (`UNFILTERED_CAP = 60`, `web/app.js`), and `b9dfc7f` applied the cap to
+      search results too, so a few hundred nodes are left and there is nothing
+      for it to skip. The deferral row below keeps its exit criterion. It
+      reopens with C12-3e if the cap is ever lifted.)
+- [~] **C12-3e** Windowed rendering, the real answer if the cap is ever lifted
       — deferred, exit criterion below.
+      (2026-10-02: **OBSOLETE while the cap stands**, for the same reason. No
+      windowing exists. The list is capped at 60 rows in both the resting
+      view and search, and `tests/web/test_departure_list_cap.py` fails if
+      the cap is removed or bypassed by either branch. The exit criterion
+      below is unchanged: if the cap is lifted, or the capped list is measured
+      over 100 ms on a mid-range phone, this reopens as written.)
 
 ## C12-4 — the headline can read "no scheduled route" over a full itinerary
 
@@ -94,10 +116,20 @@ and the reconciliation note's guard at `:2259` (`reading < MAX_MINUTES`)
 excludes exactly this case — so **nothing is said**. Measured at 7.03% of res-6
 cells inside flown res-4 cells, 84% of them between 60°S and 60°N.
 
-- [ ] **C12-4** Cycle 13. Not built this cycle: the fix is a change to the
+- [x] **C12-4** Cycle 13. Not built this cycle: the fix is a change to the
       reading-tier reconciliation that wants its own cycle and its own gate,
       and the remit is explicit that only the three named tasks plus HIGH
       correctness land now. Recorded as scheduled, not deferred.
+      (2026-10-02: DONE as C13-6, in `fe93bea`. When the res-6 slot holds the
+      sentinel and the res-4 value is finite, `lookupRaw()` in `web/app.js`
+      returns the res-4 value and sets `lastReadingRes` to `HOVER_RES`. So
+      `usable` stays true, the headline no longer says "no scheduled route",
+      and the reading line says it came from a wider cell. The
+      reconciliation guard (`reading < MAX_MINUTES`) is unchanged, and no
+      longer sees the sentinel in this case. Pinned by
+      `tests/web/test_tier_disagreement.py` (eight tests, including
+      `test_the_kota_kinabalu_case_stops_printing_no_scheduled_route` and
+      `test_both_tiers_unreachable_still_reads_unreachable`).)
 
 ## C12-5 — `renderPins()` is missing from the reading-tier arrival block
 
@@ -404,7 +436,7 @@ Build-path tests before the go-ahead: 42 passed, 1 deselected, exit 0
 
 ### Still open, scheduled rather than done
 
-- [ ] **C12-1e** A pre-flight that resolves every origin against the mask right
+- [x] **C12-1e** A pre-flight that resolves every origin against the mask right
       after `build_index()`, turning a future bad coordinate into a first-minute
       failure instead of an hour-26 one. **Deliberately not landed before the
       restart**: it is a change to the build path immediately before a 39-hour
@@ -412,3 +444,20 @@ Build-path tests before the go-ahead: 42 passed, 1 deselected, exit 0
       check and `tests/solve/test_origin_snap.py` already prevent a bad
       coordinate being introduced; this would catch one that arrives by some
       other route, such as a land-mask regression. Cycle 13.
+      (2026-10-02: DONE as C13-1, in `f01ea2b`. `cli._preflight_origins`
+      resolves every selected origin with `dijkstra.snap_origin` straight after
+      `nodes.build_index()` and before `build_graph()`. It reports every bad
+      slug at once as a `SystemExit`, logs each snapped origin, and caps the
+      snapped share at `MAX_SNAPPED_ORIGIN_FRACTION` (5 %). Pinned by
+      `tests/cli/test_origin_preflight.py`.)
+
+---
+
+## Archived (2026-10-02)
+
+Every task in this file is ticked or recorded as obsolete with its reason,
+checked against the code that day. C12-4 was done as C13-6 (`fe93bea`) and
+C12-1e as C13-1 (`f01ea2b`). C12-3d and C12-3e are obsolete while the 60-row
+cap stands. C12-1c and C12-3a carry C13-11 corrections. The deferral table
+above stays here, readable, as cycle 14's does in its archived file. Its rows
+keep their exit criteria.

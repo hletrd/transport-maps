@@ -225,9 +225,22 @@ inferred.
       with every gate green** because the sink inventory cannot see through `describe()`
       (`web/app.js:2861-2869`) and `mode()` (`:2492-2495`) to the sink at `:2904`. Teach
       the inventory those two hops. Confirm RED by deleting one `esc()`.
-- [ ] **C15-5.6** Every one of the above records its mutation and its RED/GREEN result in
+- [x] **C15-5.6** Every one of the above records its mutation and its RED/GREEN result in
       the test file itself, per CLAUDE.md. **If a mutation stays GREEN, say so in the file
       rather than deleting the test.**
+      (2026-10-02, verified file by file; no single commit landed it. 5.1:
+      `tests/conftest.py` `hermetic_build`'s docstring records the four-way
+      mutation that left the airports file green (`c5e3fcf`). 5.2:
+      `tests/sources/test_airports.py` has a "MUTATIONS PERFORMED" block with
+      its red counts, and keeps the `== "yes"` -> `!= "no"` mutation that
+      stays GREEN with the reason (`c5e3fcf`). 5.3:
+      `tests/emit/test_rail_detail.py` has a was/now mutation block, including
+      `60.0` -> `60` staying GREEN with the reason (`abe6b45`). 5.4:
+      `tests/service/test_wire.py::test_an_enormous_query_is_refused_before_it_is_parsed`
+      records the earlier GREEN and the RED from moving the length check
+      (`264c3b2`). 5.5: `tests/web/test_esc.py::test_every_html_helper_escapes_what_it_returns`
+      lists five mutations, all red, and says which were GREEN before
+      (`00d1c0d`).)
 
 ### C15-6 — Documentation that ships and is wrong
 **From AGG15-5 (page half), AGG15-62, AGG15-63, AGG15-64, AGG15-70 · Severity Medium**

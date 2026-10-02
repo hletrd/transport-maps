@@ -71,7 +71,7 @@ def test_header_regex_sees_every_table_tomllib_sees():
         m.group(1).strip() for line in text.splitlines() if (m := HEADER.match(line))
     }
     assert from_regex == _tables_from_toml(tomllib.loads(text))
-    assert {"airborne", "frequency", "rail", "ferry", "land_border"} <= from_regex
+    assert {"airborne", "frequency", "rail", "ferry", "land_border", "ground", "urban"} <= from_regex
 
 
 def test_every_calibration_table_is_labelled_fitted_or_default():

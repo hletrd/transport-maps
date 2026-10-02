@@ -49,6 +49,11 @@ slice — a missed slice is a green test of nothing.
 - [x] **F1.2** Cover all six requirements above.
 - [x] **F1.3** Assert the sink inventory, so a seventh sink that forgets `esc`
       fails here rather than on the live site.
+      CORRECTION (C13-11 / V13-8, 2026-10-02): as shipped, the inventory saw three of
+      the six live sinks. It was rewritten as C13-5 in `268e98d`. Removing
+      `esc()` from `active.name` or from `where` now turns
+      `test_every_html_sink_routes_through_esc` red. The tick holds since
+      `268e98d`, not since cycle 12.
 - [x] **F1.4** Pin that `'` is deliberately **not** escaped and is safe only
       because no sink uses a single-quoted attribute — verified true today,
       unguarded until now.
@@ -103,6 +108,10 @@ from where you dropped the marker."**
 - Commit the destination through `commitDestination()` `:2715`.
 
 - [x] **F2.1** Make the start marker draggable; live feedback in `#where`.
+      CORRECTION (C13-11 / V13-13, 2026-10-02): the live feedback goes to `#snapped`
+      (`snapNotice()`, called from `originDragMove()`), not to `#where`, which
+      a drag never writes. The behaviour is right; the element name in the
+      task text was wrong.
 - [x] **F2.2** Snap unconditionally to the nearest origin on dragend; return the
       marker to that city's real coordinates.
 - [x] **F2.3** Say plainly that it moved, with the distance, in a dedicated slot
@@ -111,6 +120,14 @@ from where you dropped the marker."**
       reading during the drag; commit on dragend.
 - [x] **F2.5** Keyboard and screen-reader equivalence: dragging is
       pointer-only, so both already-existing keyboard paths keep working.
+      CORRECTION (C13-11 / V13-14, 2026-10-02): overstated. Both existing keyboard paths
+      do still work: Enter or Space on `#map`, and the city list. But the
+      destination handle is announced as a button reading "Drag to move it"
+      and cannot be focused. MapLibre adds a tabindex only to default and
+      popup markers, so `.pinhandle:focus-visible` never applies, and no key
+      handler moves it. There is no keyboard equivalent of dragging the
+      destination, and none was built. Recorded as D13-2 in the cycle-13
+      findings.
 - [x] **F2.6** Tests, mutated and confirmed red.
 
 ---

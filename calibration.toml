@@ -1,7 +1,7 @@
 # calibration.toml
 #
-# Calibration constants for the air, rail, ferry and land-border models. Each
-# table's comment says whether it is FITTED (and against what) or a
+# Calibration constants for the air, rail, ferry, ground, urban and land-border
+# models. Each table's comment says whether it is FITTED (and against what) or a
 # published-figure default -- the CLAUDE.md modelling rule, checked by
 # tests/test_calibration_provenance.py. This file contains NO flight records
 # from any provider -- only regression outputs. See the licence firewall note
@@ -54,11 +54,9 @@ small = 4.0
 #   flights_per_week = max(MIN_FLIGHTS_PER_WEEK,
 #                          base * size_weight[dep] * size_weight[arr]
 #                              * max(distance_km, KNEE_KM) ^ decay)
-# The two bounds are NOT in this file: KNEE_KM = 400 km and
-# MIN_FLIGHTS_PER_WEEK = 0.5 live in graph/air.py, and the unbounded equation
-# written here was not the one the model applies. KNEE_KM caps the short-range
-# blow-up (below 400 km the pure power law runs away); MIN_FLIGHTS_PER_WEEK
-# floors the ultra-long-haul tail. Moving either into this file is task B2.
+# KNEE_KM is `knee_km` and MIN_FLIGHTS_PER_WEEK is `min_flights_per_week`,
+# both at the end of this table. graph/air.py reads them from here. They
+# lived in graph/air.py until task B2 (2026-10-02), with the same values.
 # The coefficients are a hand fit, not a regression: no observed-frequency
 # refit has been done, and no observed frequency is ever written to dist/.
 # Fitted to two real-world anchors: ICN-NRT (1,258 km) runs about 120 flights/week
@@ -73,6 +71,20 @@ small = 4.0
 # every flight cost 17-56 hours of expected waiting and the whole map was nonsense.
 base = 300000.0
 decay = -1.10
+# NOT fitted, and not a published figure either: a bound on the model, chosen
+# so that no fitted anchor moves. The decay exponent is negative, so
+# `distance_km ** decay` diverges as distance goes to zero. With the old 1 km
+# floor, the 2.8 km Westray-Papa Westray hop came out at 6,041 flights a week
+# and a 1-minute expected wait, against a real ~14 a week and ~6 hours. 400 km
+# is the same as a ceiling of 412 flights a week for a large-large pair
+# (12 minutes' expected wait), which no real route beats by much. It sits
+# below every anchor, so none of them moves: ICN-CJU 361.9/wk, ICN-NRT
+# 116.8/wk, ICN-LHR 13.6/wk. Do NOT raise it past ~450. At 500 km the knee
+# clamps Seoul-Jeju and drags a fitted anchor from 361.9 down to 322.3.
+knee_km = 400.0
+# NOT fitted: a floor on the ultra-long-haul tail, one flight a fortnight. It
+# first binds at 14,395 km for a small-small pair, so it never meets the knee.
+min_flights_per_week = 0.5
 
 # Published-figure defaults; not fitted.
 [frequency.size_weight]
@@ -434,9 +446,9 @@ stop_overhead_min = 0.90
 #
 # The two bounds are NOT in this file: KNEE_KM = 8 km and
 # MIN_SAILINGS_PER_WEEK = 0.1 live in graph/ferry.py, with the derivation of
-# each. Said explicitly because the [frequency] table above documents an
-# unbounded equation that is not the one the model applies, and this table is
-# not going to repeat that.
+# each. Said explicitly because the [frequency] table above used to document an
+# unbounded equation that was not the one the model applied (its bounds moved
+# into it in task B2), and this table is not going to repeat that.
 #
 # The anchors, all published operator headways:
 #
@@ -527,6 +539,59 @@ terminal_min = 30.0
 # only meaningful together with the exponent and the 8 km knee.
 interval_base_h = 0.008915
 interval_decay = 1.5137
+
+# Ground speed per GRIP4 road class, in km/h: class 0 roadless, 1 highway,
+# 2 primary, 3 secondary, 4 tertiary, 5 local. A MIXTURE. One key per class
+# rather than an array: tests/test_licence_firewall.py refuses any list in
+# this file, because a list is what a dump of records would look like.
+#
+# Classes 1-4 (104, 57, 50, 18) are FITTED against 2,998 real driving journeys
+# sampled from Google Routes between populated places
+# (scripts/calibrate_ground.py). Built-up cells are weighted by the [urban]
+# factor below, so these are FREE-FLOW speeds and the two regimes do not
+# blend. Held-out median observed/predicted is 0.977.
+#
+# Classes 0 and 5 (5 and 25) are published-figure defaults, not fitted.
+# Roadless passed the support guard (2,272 km across 55 journeys), but the fit
+# returned a NEGATIVE reciprocal, -0.00978 h/km (about -102 km/h), which the
+# `recip > 0` sign filter in calibrate/ground.py refuses. Local drew 116 km
+# across 4 journeys, which the support guard refuses. An earlier unguarded fit
+# returned 58 km/h for ROADLESS terrain, which is not merely wrong but
+# impossible.
+#
+# Read by graph/ground.py (SPEED_BY_ROAD_CLASS_KMH), where it lived until task
+# B2 (2026-10-02), with the same values. The sampled journeys stay in
+# data/build/ and nothing from them reaches dist/.
+[ground]
+roadless_kmh = 5.0       # class 0, published-figure default
+highway_kmh = 104.0      # class 1, FITTED
+primary_kmh = 57.0       # class 2, FITTED
+secondary_kmh = 50.0     # class 3, FITTED
+tertiary_kmh = 18.0      # class 4, FITTED
+local_kmh = 25.0         # class 5, published-figure default
+
+# The urban mask and the congestion it charges. FITTED, all three, jointly
+# against both journey sets of scripts/calibrate_ground.py. GRIP4 gives a cell
+# the grade of the best road inside it, so a dense city cell with a motorway
+# through it was charged at motorway speed. Over 112 real city-to-airport
+# journeys that made urban access 2.03x too fast, against only 1.12x over
+# 1,383 inter-town journeys. This setting brings urban access to 1.02x and
+# inter-town to 1.06x, and marks 5.7% of land as built up.
+#
+# City POPULATION barely predicts the error (correlation +0.15 with log10
+# population), so the factor is flat over a radius rather than scaled by size.
+# `pop_min` was measured against the `pop_max` column of Natural Earth's
+# populated places (sources/urban.py PLACES_URL), so it is tied to that
+# dataset. The factor divides the speed of a built-up cell that has roads; a
+# roadless cell is already at walking pace and is left alone.
+#
+# Read by sources/urban.py (URBAN_POP_MIN, URBAN_RADIUS_KM,
+# URBAN_CONGESTION_FACTOR), where they lived until task B2 (2026-10-02), with
+# the same values. The urban-mask cache keys on pop_min and radius_km.
+[urban]
+pop_min = 200000.0
+radius_km = 40.0
+congestion_factor = 2.0
 
 # Crossing a land border. Charged on the ground edge between two cells whose
 # countries sit in different immigration zones, the same test the air model

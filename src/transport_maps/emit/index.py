@@ -21,6 +21,15 @@ from transport_maps.emit import hover, modes
 # letter or digit first. One grammar, checked where the slugs are read.
 _SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
+#: The version of the pipeline-to-page contract this emitter writes, published
+#: as `contractVersion` (docs/contract.md, "Versioning"). An index.json without
+#: the field predates it and reads as 1. Raise it when an existing field or
+#: file changes meaning, width or order -- not for a new optional field the
+#: page can ignore. The page is to WARN on a version it does not know, never
+#: to stop: every field has a fallback, and the deploy gates are what refuse
+#: an inconsistent dist/.
+CONTRACT_VERSION = 2
+
 # Redistribution obligations of the open datasets this artifact is derived from.
 # The licence firewall (tests/test_licence_firewall.py) only proves that NO
 # commercial flight records leaked into dist/; it says nothing about crediting
@@ -375,6 +384,7 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
     a state `reindex` created.
     """
     payload = {
+        "contractVersion": CONTRACT_VERSION,
         "bandEdgesMin": list(config.BAND_EDGES_MIN),
         "unreachable": config.UNREACHABLE,
         "hoverRes": config.HOVER_RES,

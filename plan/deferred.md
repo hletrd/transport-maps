@@ -12,7 +12,8 @@ the design policy).
 
 Security, correctness and data-loss findings are not deferred here: they are
 scheduled (with a cycle) in the plans, or recorded as blocked-on-owner in
-`2026-09-10-c2-security-and-policy.md`. The modelling items below are
+`archive/2026-09-10-c2-security-and-policy.md` (its open owner decisions are
+carried at the end of this file since 2026-10-02). The modelling items below are
 correctness-adjacent and are deferred under the CLAUDE.md modelling rule quoted
 with them.
 
@@ -738,14 +739,14 @@ three done in `8d1c08b`: `tests/web/test_esc.py` (25 cases, nine mutants each
 confirmed red) and `test_itinerary_grid.py:128`'s identity stub replaced with
 the real sliced helper plus a hostile-airport-name fixture.
 
-Everything cycle 12 defers is tabled in `2026-09-14-c12-review-findings.md`
+Everything cycle 12 defers is tabled in `archive/2026-09-14-c12-review-findings.md`
 under "Deferred, with exit criteria", with the reviewer's own severity and
 confidence preserved. Two rows deserve restating here because they are HIGH and
 because the reason is a run constraint rather than a judgement:
 
 | ID | Finding | File:line | Sev | Conf | Reason | Exit criterion |
 |---|---|---|---|---|---|---|
-| ~~C12-8~~ **CLOSED (2026-10-02)** -- both sleeps are `wait_until` polls and both loose greps are `check_city_list`; proved against the live 1,464-origin build. See C12-8 in `2026-09-14-c12-review-findings.md`. Original text follows. | `browser_verify.sh:96` (`sleep 15`) and `:327` (`sleep 10`) are unconditional cold-load waits with every data assertion reading straight after them. `index.json` goes 40 KB → ~106 KB and the list builds 1,464 rows. Same shape as the three gate failures already recorded, and as commits `9d7c484` and `5cf7ad2`. Secondary: `:144` `"durations":[1-9][0-9]` asserts 10 timed rows out of 1,464, and `:147` `'"departing":1'` is an unanchored substring satisfied by 1000–1464. | `scripts/browser_verify.sh:96,327,144,147` | HIGH | High | **This cycle's own deploy is verified by this gate**, against the 553-origin build it is correct for. Rewriting a gate in the same cycle that depends on it to prove a deploy is precisely how a weakened gate ships — and the orchestrator's instruction is quoted: "Never weaken a gate to make a deploy pass." The waits are correct at 553 and only break at 1,464, which is not deployed. | The rebuild lands, or cycle 13 opens, whichever is first. Replace both sleeps with polls on a readiness condition, anchor `"departing":1` with `}`, and compare `durations` against `rows` rather than a literal width |
+| ~~C12-8~~ **CLOSED (2026-10-02)** -- both sleeps are `wait_until` polls and both loose greps are `check_city_list`; proved against the live 1,464-origin build. See C12-8 in `archive/2026-09-14-c12-review-findings.md`. Original text follows. | `browser_verify.sh:96` (`sleep 15`) and `:327` (`sleep 10`) are unconditional cold-load waits with every data assertion reading straight after them. `index.json` goes 40 KB → ~106 KB and the list builds 1,464 rows. Same shape as the three gate failures already recorded, and as commits `9d7c484` and `5cf7ad2`. Secondary: `:144` `"durations":[1-9][0-9]` asserts 10 timed rows out of 1,464, and `:147` `'"departing":1'` is an unanchored substring satisfied by 1000–1464. | `scripts/browser_verify.sh:96,327,144,147` | HIGH | High | **This cycle's own deploy is verified by this gate**, against the 553-origin build it is correct for. Rewriting a gate in the same cycle that depends on it to prove a deploy is precisely how a weakened gate ships — and the orchestrator's instruction is quoted: "Never weaken a gate to make a deploy pass." The waits are correct at 553 and only break at 1,464, which is not deployed. | The rebuild lands, or cycle 13 opens, whichever is first. Replace both sleeps with polls on a readiness condition, anchor `"departing":1` with `}`, and compare `durations` against `rows` rather than a literal width |
 | ~~C12-11b~~ **CLOSED (2026-10-02)** -- `test_no_module_body_statement_reaches_a_binding_declared_below_it` walks every top-level statement, above the await and below, through every function and arrow const it calls; arrows handed to a listener, `.then` or timer are dropped as running later. Seeded with the cycle-12 mutation as the row asked (red), plus `render();` moved up (red through the call graph); green on HEAD. Original text follows. | `tests/web/test_module_scope_order.py` walks the call graph only from handlers registered **before** the top-level await. Module-body code after it is unchecked — and that is exactly where cycle 12 wrote a temporal dead zone `ReferenceError` and caught it by reading rather than by any gate. CLAUDE.md records three of this class having shipped and blanked the site; `node --check` passes them, because a TDZ error is valid syntax. | `tests/web/test_module_scope_order.py`, `web/app.js` module body after `:710` | HIGH | High | Not deferred on convenience: extending the walk to the whole module body means ordering every module-level `const` against every reference to it, and a first version that over-fires would be muted rather than fixed. It needs to be built against the known-bad case (the cycle-12 near-miss, reproduced in node) as its fixture, which is a test-engineering task rather than a corner of a feature cycle. | Cycle 13. Extend the walk past the top-level await, seed it with the cycle-12 mutation (`c.skey` loop above the `countryName` IIFE) as a red fixture, then confirm it stays green on HEAD |
 | ~~C12-10~~ **CLOSED (2026-10-02)** -- one shared slicer, `tests/web/_js.py`, now serves every file that sliced `app.js`; it walks the parameter list before looking for the body brace and skips comments, strings, templates and regex literals. `tests/web/test_js_slicer.py` checks it, with three mutations of the helper each going red. Original text follows. | Every JS slicer in `tests/web/` takes the first `{` after the function name as the body brace. For a destructured parameter — `paintOrigin(o, { keepZoom = false } = {})` — that brace is the parameter's, so the slice is the signature alone and any `assert "x" in body` over it passes vacuously. | `tests/web/test_route_geometry.py:38`, `test_itinerary_grid.py:61`, and ~12 others | MEDIUM | High | **Not currently vacuous**: every function those files slice was checked, and none has a destructured parameter. The two files written this cycle use a correct matcher. This is a latent trap, not a live one. | The moment any sliced function gains an options object, or cycle 13, whichever is first. Lift the corrected matcher from `test_marker_drag.py` into a shared helper and add its single-line guard assertion |
 
@@ -755,3 +756,28 @@ because the reason is a run constraint rather than a judgement:
 |---|---|---|
 | C10-6 | The res-6 reading tier reads unreachable where the res-4 tier reads a real duration | Deferred on the premise that "the page has no res-6 land set". True, and irrelevant: the page ships a res-4 land set, and when the tier it trusts for land has an answer for the cell the pointer is in, printing that beats printing a sentinel. Fixed in `fe93bea`, seven tests, five mutations red. The emitter-side fix the row imagined is REJECTED, not deferred: filling the reading tier's padding slots would paint door-to-door times over 6.33 % of the res-6 grid that is genuinely open water. |
 | DEF/DBG13-2 | The origin snap is silent | Airports log theirs and bound the snapped share; origins logged nothing, so a roster expansion could move a city 13 km with nothing said. Closed in `f01ea2b` by the build pre-flight, which logs every snapped origin with its distance and bounds the share with `MAX_SNAPPED_ORIGIN_FRACTION`. |
+
+## Exit criteria that fired on 2026-10-02 (J1 document, B2 table move)
+
+| ID | What fired | Disposition |
+|---|---|---|
+| ARCH3-4 | "J1 lands". `places.json`'s largest-first row order is now in `docs/contract.md` as part of the format. | **CLOSED.** The order is in the schema, and the schema is in one place. |
+| CR3-7 | "B2 lands". The factor now lives in `calibration.toml [urban] congestion_factor` and `sources/urban.py` loads it from there. | **Still open, now unblocked.** `emit/index.mode_detail()` still prints the word "halved", and `web/app.js` `MODE_FALLBACK` repeats it. The fix belongs to whichever lane may edit `emit/index.py`'s prose and `web/`: render the sentence from `urban.URBAN_CONGESTION_FACTOR` ("halved" only when it is 2). |
+| DEF8-17 | "Belongs with B2". `MIN_FLIGHTS_PER_WEEK` is now `calibration.toml [frequency] min_flights_per_week`, and `knee_km` sits beside it. The comment labels both as bounds rather than fits and gives where each binds. | **CLOSED** as a documentation finding. The floor is not dead code: it first binds at 14,395 km for a small-small pair (`graph/air.frequency_model`). Whether any scheduled route that long exists is a data question, not a calibration one. |
+| AB46 | Partly. The ground, urban and air-bound tables are read once per process instead of the land-border time being re-parsed per origin. | **Still open** as B2b in `2026-09-10-c2-docs-attribution-calibration.md`: there is still no single `calibrate.load()`, and the air loader is still called three times in `graph/build.py`. |
+| H13, J2 | "J1 done" / "J1 lands". The contract document exists, so a format change to `hover_cells.bin` (H13) or the package re-layout (J2) now has a place to be specified. | **Still deferred**, criterion re-set: H13 reopens when a `contractVersion` bump is budgeted, and J2 when J1b's `NodeIndex.offsets` lands. Neither is a defect. |
+| ARCH3-3 | "J1 lands". The page's copy of the node-offset arithmetic is now written down in `docs/contract.md` ("Node-offset arithmetic"). | **Still open** as J1b(c): `NodeIndex.offsets` does not exist yet. |
+
+## Owner decisions carried from the archived c2 security plan (2026-10-02)
+
+`archive/2026-09-10-c2-security-and-policy.md` had every checkbox done when it
+was archived. Its "Blocked on owner" list was not a set of tasks this
+repository can finish, so the three still-open entries carry on here, under
+their original IDs. E3 (installed and verified 2026-09-13) and A6d (won't do,
+2026-10-02) are closed in that file.
+
+| ID | Decision | Input | Exit criterion |
+|---|---|---|---|
+| E4 | Keep public Nominatim (explicit search plus throttled reverse geocoding, within policy after Q1) or self-host. | Q1's request-rate evidence; one Nominatim queue at 1.1 s spacing, latest click wins | The owner chooses; a self-host choice opens a deploy task |
+| SEC-6 | Whether the Google tag needs a consent banner. | The Privacy section's statement of what the tag collects | The owner rules |
+| SEC-17 | Whether `conditionsOfAccess` with per-source licences satisfies CC BY-SA for the Wikipedia-derived network. DOC3-21, DOC3-22 and DOC5-2 wait on the same ruling. | `index.html` JSON-LD; ODbL §4.4/§4.6 (DOC5-2) | The owner rules; the JSON-LD then carries the chosen licence |

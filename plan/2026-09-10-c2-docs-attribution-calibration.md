@@ -82,7 +82,7 @@ build.
 
 ## Cycle 3
 
-- [ ] **J1 / S1 (document)** `docs/contract.md`: file set and suffix table,
+- [x] **J1 / S1 (document)** `docs/contract.md`: file set and suffix table,
       `index.json` schema by `contractVersion`, binary layouts (widths,
       ordering, sentinels, clamp), PMTiles layer/props/LODs, the rendering
       invariants (faster band on top; water above bands), node-offset
@@ -92,10 +92,101 @@ build.
       derives widths from `modeChannels`; a contract test (design in
       `architect.md` §4 J1). The S parts (`buildId`, `builtAt`,
       `hoverCellCount`, `modeChannels`, `graph`) land in cycle 2 (build plan).
-- [ ] **B2 (table move)** `[ground]`, `[urban]` and the air-bound constants
+      (2026-10-02, the document half and the version field are DONE; the
+      code half is split out as J1b below. `docs/contract.md` now covers the
+      owners (pipeline, page, service), versioning, the shared files, the nine
+      per-origin files with widths, orderings and sentinels, the variants, what
+      is never deployed (`.progress/`, the solver bundle), every `index.json`
+      field with the page's fallback, the node-offset arithmetic, byte order,
+      and the S6 rules. `places.json`'s largest-first row order is recorded
+      there too, which was ARCH3-4's exit criterion. `index.json` carries
+      `contractVersion: 2`. It is defined as `emit/index.py:CONTRACT_VERSION`,
+      not in `config`, because a `config`-derived payload field joins the
+      reindex refusal set and that is J1b's change to make. The new tests are
+      `tests/emit/test_index.py::test_index_json_carries_the_contract_version_the_contract_names`,
+      whose expected value is read from the document, and
+      `tests/test_contract_doc.py`, which compares the document's tables with
+      `write_index`'s keys, `progress.SUFFIXES` and `check_dist.REQUIRED_EXTRAS`
+      in both directions. All eight mutations listed in those files went RED.
+      One deviation from the text above: the page must **warn** on an unknown
+      version, never `fatal()`. That is the owner's standing rule that the page
+      never goes blank, and every field already has a fallback.)
+- [ ] **J1b (code half of J1)**, not doc-only and outside the 2026-10-02
+      lane, which could not touch `web/`, `cli.py` or `scripts/`:
+      (a) the page reads `meta.contractVersion` and, when it is greater
+      than the version it knows, calls `console.warn` with the two numbers
+      and carries on. That is one guarded line after the `meta` load in
+      `web/app.js`, plus a `tests/web/` source test that strips comments and
+      fails on any `fatal(` in that guard. It needs a browser check before it
+      ships (CLAUDE.md).
+      (b) Add `"contractVersion": lambda: index.CONTRACT_VERSION` to
+      `cli._CURRENT_INDEX_CONSTANTS`, so `reindex` refuses to stamp today's
+      version over a dist/ built under another one. An absent field still
+      passes, as for the other keys.
+      (c) One `NodeIndex.offsets` to replace the seven hand-derived sites
+      (`docs/contract.md`, "Node-offset arithmetic"). This was ARCH3-3.
+      (d) `check_dist` should take the channel width from `index.json`'s
+      `modeChannels` rather than the emitter's `CHANNELS`. This was AA44/AA34.
+- [x] **B2 (table move)** `[ground]`, `[urban]` and the air-bound constants
       into `calibration.toml` with labels; one `calibrate.load()` threaded
       through the build context; `_land_border_min` no longer parsed per origin
       (ARCH-8). After the rebuild.
+      (2026-10-02, DONE except for the single threaded loader, which is
+      carried as B2b. `calibration.toml` gains `[ground]`
+      speeds with one key per GRIP4 class, `roadless_kmh` to `local_kmh`.
+      They are keys and not an array because the licence firewall refuses any
+      list in the file. The table is labelled as a mixture: classes 1-4 FITTED to
+      2,998 Google Routes journeys, 0 and 5 published-figure defaults, with
+      the reasons. It gains `[urban]` `pop_min`, `radius_km` and
+      `congestion_factor`, all FITTED jointly to the 112 + 1,383 journey sets.
+      `[frequency]` gains `knee_km` and `min_flights_per_week`, labelled NOT
+      fitted, as bounds chosen so no anchor moves. The derivations moved with
+      the values. `graph/ground.py`, `sources/urban.py` and `graph/air.py` each
+      read their table once, at import, through a loader that takes a path
+      (`load_ground_calibration`, `load_urban_calibration`,
+      `load_frequency_bounds`). The module constants keep their names, so no
+      caller changed. `_land_border_min()` now returns the value read at import
+      instead of re-parsing the file for every origin's monotonicity gate.
+      **The values are identical.** `tests/test_calibration_moved.py` pins
+      them against the old literals, typed into the test, and checks that each
+      loader follows an edit to the file and that each constant is assigned
+      only from its loader. Six mutations, all red.
+      **Caches.** The only derived cache any of these govern is the urban mask
+      (`urban._mask_cache_path`). It keys on `pop_min`, `radius_km`,
+      `PLACES_URL` and the cell list, as before. Its key value does NOT
+      change: `urban_mask-81727e55` for the pinned cells, before and after, and
+      the test pins that literal. The loader casts to float, because the key
+      is digested through json, where 200000 and 200000.0 differ. The ground
+      speeds, the congestion factor, the two air bounds and the land-border
+      time reach the artifacts only through the graph. No disk cache holds
+      them. The per-origin completion records key on `inputsHash`, which
+      hashes `calibration.toml` and the package source, so that key DOES
+      change. The cost is that `build-all --skip-existing` will not resume a
+      build started before this commit; it rebuilds those origins. Any commit
+      under `src/` has the same effect. The graph digest in the same records
+      is unchanged, because the edge weights are.
+      Not done here, and not doc-only: the page's `MODE_FALLBACK` and
+      `mode_detail()`'s "halved" still render the congestion factor as a
+      word (CR3-7, whose exit criterion "B2 lands" has now fired, in
+      `deferred.md`). Three texts still say the fitted values live in
+      `graph/ground.py` and `sources/urban.py`, and should name
+      `calibration.toml [ground]`/`[urban]` instead: `README.md`'s calibration
+      paragraph (around line 110), and the docstrings of
+      `scripts/calibrate_ground.py` (lines 12-13) and `scripts/ground_check.py`
+      (lines 7-8). All three files were outside this lane. Full gate after the
+      move: 1411 passed, 25 skipped, 53 deselected, exit 0. The pre-move
+      baseline was 1397 passed, and the 14 new tests account for the
+      difference.)
+- [ ] **B2b** One calibration loader threaded through the build context
+      (`calibrate.load()`), replacing the per-module loaders: air, rail,
+      ferry, ground, urban and carry-on each still open `calibration.toml`
+      themselves (AB46). `air.load_calibration()` alone is called three times
+      in `graph/build.py`, and the rail and ferry loaders again in
+      `emit/index.mode_detail()`. All of these run before the workers fork.
+      The per-origin parse that ARCH-8 named was `_land_border_min()` in
+      `validate.check_monotonic_ground`, and that one is gone, which was the
+      correctness half. What is left is the refactor half. It touches `cli.py` and `graph/build.py`, so it
+      waits for a lane that may edit them.
 - [ ] **E13** Owner decision on the `pyproject.toml` author email.
 - [x] **I5 (docs part)** The vendored JS hashes table (recorded by the security
       reviewer) in `web/README.md`, and a test that recomputes them (with Q6).

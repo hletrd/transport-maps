@@ -150,6 +150,12 @@ Controls, focus, tooltips, semantics
       aria-roledescription="globe"`; Escape with a route open clears it (UX-32).
       Check: `document.querySelectorAll("[tabindex='0'],button,input,summary,a")`
       from `#q` to the Route summary is under 10 stops.
+      CORRECTION (C13-11 / V13-12, 2026-10-02): `aria-activedescendant` was
+      never built. It appears nowhere in `web/`, `tests/` or the repository
+      history. The results use a roving tabindex instead
+      (`role="listbox"`/`"option"`), which supersedes it. The `aria-live` on
+      `#where`/`#pins` was likewise replaced by one `#status role="status"`
+      region (`87fd7e1`). Both parts are struck as superseded, not done.
 - [x] **N14** Above ~250 km show coordinates only; when unreachable print "No
       scheduled route · <place>" without "door to door" (UX-34).
 - [x] **N17** `<link rel="icon">` with an inline SVG (UX-38).
@@ -209,19 +215,38 @@ Controls, focus, tooltips, semantics
       wrap (UX-36). **N16** Show the one-line description from 600 px (UX-37).
       **N19** `.results{max-height:min(40vh,280px)}` and 22vh with a route open
       (UX-40).
+      (2026-10-02, verified against the code; the box stays open. N15 is NOT
+      done: there is no `max-width:479px` rule, a 320x256 screen still gets
+      the landscape right rail, and result rows truncate with an ellipsis
+      instead of wrapping. N16 is done in substance, in `9536f75`, but only at
+      700 px of height and above (`min-width:601px and max-width:860px and
+      min-height:700px`); no test pins it. N19 is NOT done: `.results` is
+      still `max-height:40vh`, with no route-open rule.)
 - [x] **N23** (confirmed shipped, cycle 4: `index.html:84-85`, in `9d0a401`)
       `modulepreload` for `fflate.js`; preload the 500 face (PR-10,
       PR-11) -- already shipped in `9d0a401` (`index.html:84-85`); the cycle-3
-      perf review found it done and the box unticked. **N24** Solid scrim on `.tip` instead of `backdrop-filter`; trace
-      before/after (PR-13).
+      perf review found it done and the box unticked.
+      CORRECTION (C13-11 / V13-11, 2026-10-02): N24 was inside this ticked box
+      and was never done. It is split out below as its own open item.
+- [ ] **N24** Solid scrim on `.tip` instead of `backdrop-filter`; trace
+      before/after (PR-13). (2026-10-02: verified not done. `.tip` still
+      carries `backdrop-filter:blur(6px)` in `web/index.html`.)
 - [x] **M10** (2026-10-02: `nearestPlace` wraps its longitude difference,
       run in node by `tests/web/test_nearest_place.py`; the hover ring was
       already unwrapped at `app.js` `unwrap(h3.cellToBoundary(...))`.)
       Unwrap the hover ring across ±180 and wrap `dx` in `nearestPlace`
       (DBG-8). **M15** Hover-cell copy for Shenzhen/Hong Kong (DBG-11) — C3
       removes the value half.
-- [ ] **N22** Owner judgement: a permanent one-line credit under the legend or
+- [x] **N22** Owner judgement: a permanent one-line credit under the legend or
       the panel renamed "Sources, licences and method" (DOC-12).
+      (2026-10-02: DONE. It was rescheduled as U18 in cycle 4 (`deferred.md`:
+      "N22 is withdrawn as a deferral and scheduled as U18") and shipped in
+      `099f55b` as the first option, a permanent credit. The legend's
+      `<p class="legend-credit">` reads "Map data © OpenStreetMap contributors
+      · Privacy", and the folded sheet keeps it visible
+      (`:not(.legend-credit){display:none}`). Pinned by
+      `tests/web/test_attribution_and_privacy.py::test_the_credit_lives_in_the_block_the_design_policy_keeps_visible`.
+      The panel kept the name "Sources and method".)
 - [x] **R8 (page)** `nearestPlace` once per frame; grid-bucketed label
       collision; pre-lower-cased search lists (PR-12, PR-17, PR-18).
       (2026-10-02, measured in node on the real `places.json` (34,135 rows)
@@ -264,6 +289,11 @@ Controls, focus, tooltips, semantics
       decide with the owner whether 1.8–2.7 between adjacent interpolated
       bands is the intended gradient (VER-29 refuted the wording half: CLAUDE.md
       already says anchors ≥ 6).
+      (2026-10-02, verified against the code; still open. `scripts/check_ramps.py`
+      measures adjacent ΔE between the eleven anchors only. The 37
+      interpolated bands are used only for the grey-against-band check, and no
+      owner decision on the 1.8–2.7 gradient is recorded. `e11c830` did the
+      wording half only.)
 - [x] **P4 (node harness)** (2026-10-02: see the gates plan; the formatters
       run in node from `tests/web/test_time_format.py`.)
       `web/tests/app_pure.test.mjs` run from pytest when

@@ -434,28 +434,79 @@ Built this cycle:
 
 Not built, in the order they must happen:
 
-- [ ] **C13-F2.5** Put the two measurements above in front of the owner before
+- [x] **C13-F2.5** Put the two measurements above in front of the owner before
   any resident process is written. Blocked on the owner.
-- [ ] **C13-F2.6** Fix ARCH13-2 — the build's concurrency guard and the deploy
+  (2026-10-02: **decided, build it.** The owner chose to run the solver on
+  the web host. The rest of this list follows from that choice.)
+- [~] **C13-F2.6** Fix ARCH13-2 — the build's concurrency guard and the deploy
   script's both match the literal `build-all` and cannot see a solver. This is
   a prerequisite for anything resident, not a follow-up.
-- [ ] **C13-F2.7** Persist the graph (`save_npz` + an int64 cell array) so a
+  (2026-10-02: **OBSOLETE.** The premise was a resident solver on the build
+  machine, competing with a build for its memory. As built, the solver runs
+  on the web host (atik.kr, 5 GB, 3 cores) and the build runs on the owner's
+  Mac, so the two never share a machine, and a guard on either one could not
+  see the other anyway. The resource limits that matter on the web host are
+  the unit's own (`CPUQuota=150%`, `MemoryMax=2500M`). The same disposition
+  applies to C13-8 in the findings file.)
+- [x] **C13-F2.7** Persist the graph (`save_npz` + an int64 cell array) so a
   start is seconds and 1.04 GB is memory-mapped rather than rebuilt. C13-18,
   PR13-2, PR13-3. The single highest-value piece behind the service.
+  (2026-10-02: done as plain `.npy` arrays rather than `save_npz`, because
+  `np.load(mmap_mode="r")` maps those and an npz has to be decompressed.
+  `service/bundle.py` writes `cells`, `sorted_ids`, `sorted_pos`, `split` and
+  the CSR triple, plus `meta.json` with the build identity, under `FORMAT`
+  1 (`f6aa6ed`). Every full `build-all` writes it to `data/build/solver/`
+  (`74ce63c`). Measured on the web host: 1.1 s to map, 1.2 GB peak.)
 - [ ] **C13-F2.8** Extract the edge-classification rules from `emit/modes.py`
   and `emit/itinerary.py` into a per-destination backward walk, so a response
   can be an itinerary rather than a number.
-- [ ] **C13-F2.9** The resident process itself: FIFO depth 1, a separate
+  (2026-10-02: **still open.** The service answers a number only, `minutes`
+  plus the snapped departure (`GraphSolver.solve`). The page's on-demand
+  line says so. With carry-on on, it says the figure assumes a checked bag,
+  because there are no legs to apply the saving to.)
+- [x] **C13-F2.9** The resident process itself: FIFO depth 1, a separate
   killable solve process for the deadline, a health endpoint NOT served by the
   solving process, and `limit=` as the first-line bound.
-- [ ] **C13-F2.10** The nginx `location ^~ /api/` block, with the header
+  (2026-10-02: built as `service/server.py` (`f6aa6ed`), simpler than
+  specified, and the differences are deliberate and recorded here. It is one
+  single-threaded process that answers one solve at a time, with a listen
+  backlog of 4 (`_Server.request_queue_size`); scipy holds the GIL for the
+  whole solve, so threads would only queue. nginx rate-limits each address
+  to 6 a minute with a burst of 3 and answers `busy` itself, so the depth
+  bound sits in front of the process rather than inside it. It has **no
+  killable solve subprocess and no in-process deadline.** nginx's
+  `proxy_read_timeout 60s` is the only one, and a solve that overruns
+  finishes unseen; at a measured 6-7 s that is a margin of about nine. It has
+  **no separate health endpoint**: `scripts/deploy_solver.sh` probes a real
+  Seoul -> Gumi solve through nginx, and the runbook does the same. It passes
+  **no `limit=`** to dijkstra; the destination is not known to scipy as a
+  bound. Each of these is the next thing to add if a solve is ever measured
+  near 60 s. The wire version, the error taxonomy and the never-throw handler
+  are F2.1's, unchanged.)
+- [x] **C13-F2.10** The nginx `location ^~ /api/` block, with the header
   include and no file extension in the path. **Owner's call.**
-- [ ] **C13-F2.11** The operator runbook, to `deploy/README.md`'s shape: start
+  (2026-10-02: done as the narrower exact match `location = /api/solve` in
+  `deploy/worldmap.atik.kr.conf` (`dfd1ef7`). It includes the header snippet,
+  has `access_log off` because the query is the visitor's two points,
+  rate-limits through `limit_req zone=worldmap_solver` (6 a minute, burst 3),
+  and maps 429 and 502/503/504 to `busy` and `unavailable` bodies in the wire
+  format. Installed by `scripts/deploy_solver.sh` only after `nginx -t`.)
+- [x] **C13-F2.11** The operator runbook, to `deploy/README.md`'s shape: start
   and stop, working directory, ordering against `dist/.build.lock`, measured
   RSS and cores, the down-contract, the log path and level — logging only
   service-produced values (cell id, outcome class, duration), never a raw body,
   header or `str(exc)`, and never a coordinate finer than the ~110 m the page's
   Privacy section promises.
+  (2026-10-02: `deploy/README.md`, "The on-demand solver". It covers the
+  host, the unit and its limits, the directory layout with only `current/`
+  kept, the measured 1.1 s map, 6-7 s solve and 1.2 GB peak, the nginx block,
+  the ship order (`deploy_solver.sh` before `deploy_verify.sh`, enforced by
+  `solver_gate`), restart, stop, status, logs and rollback, including why a
+  bundle rollback alone breaks the same-build rule. The "ordering against
+  `dist/.build.lock`" part does not apply, because the build and the solver
+  are on different machines (F2.6). The logging is stricter than asked: the
+  unit logs the HTTP status and the duration, no cell id and no coordinate
+  at any precision, and nginx keeps no access log for the path.)
 - [x] **C13-F2.12** The page becomes a **third** runtime service. `index.html:1036`
   and `llms.txt:113` say "two external services" and
   `tests/web/test_attribution_and_privacy.py` pins it. They change in the same
@@ -518,3 +569,9 @@ touched, as instructed.
 wired (C13-F2.12, C13-F2.13): armed only by `index.json`, one extra line, the
 map unchanged. With carry-on on, the line says the figure assumes a checked
 bag, since the service returns no legs to apply it to.
+
+2026-10-02, later: the service half is built and running on the web host.
+That covers F2.5 (decided), F2.7 (the bundle), F2.9 (the process), F2.10
+(nginx) and F2.11 (the runbook, `deploy/README.md`). F2.6 is obsolete,
+because the build and the solver never share a machine. **F2.8 is the one
+open task**: a response is a number, not an itinerary.

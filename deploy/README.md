@@ -138,14 +138,142 @@ and verify on a page asset, not on the root alone:
 
     curl -sI https://worldmap.atik.kr/app.js | grep -iE 'content-security|strict-transport|x-frame|x-content'
 
-The CSP names exactly the two runtime calls the page makes — Nominatim (address
-search, only on request) and the Google tag (loader by host, inline bootstrap by
-hash, collection endpoints in `connect-src`/`img-src`) — plus `blob:` for
-MapLibre's workers. Changing the inline gtag snippet in `web/index.html` changes
+The CSP names exactly the two third-party runtime calls the page makes:
+Nominatim (address search, only on request) and the Google tag (loader by host,
+inline bootstrap by hash, collection endpoints in `connect-src`/`img-src`). The
+page's third call, `/api/solve`, is same-origin and is covered by `'self'`. The
+CSP also allows `blob:`, which MapLibre 5 needed for its workers. MapLibre 6
+does not, and dropping it is a separate change, to be made and verified on the
+server (`deploy/worldmap-security-headers.conf`). Changing the inline gtag snippet in `web/index.html` changes
 its hash; recompute it (`sha256` of the exact script text, base64) and update
 the snippet, or the tag stops loading silently. Google signals are off; enabling
 them would need the extra hosts `https://*.g.doubleclick.net
 https://*.google.com` in the CSP, which does not list them.
+
+## The on-demand solver
+
+The page can time a journey from the exact point the visitor dropped, not only
+from the nearest charted city. That number comes from a resident solver on the
+web host (`src/transport_maps/service/`). It returns minutes only, with no legs
+(`plan/2026-09-14-c13-solver-service.md`, C13-F2.8). The map, the bands and
+every charted time are static files and do not depend on it. When the solver
+is down, the page says the service is not ready and keeps working.
+
+### Where it runs
+
+- **Host:** atik.kr, the web host itself, with 5 GB of RAM and 3 aarch64
+  cores. The build never runs here; it runs on the owner's Mac. The solver
+  and a build therefore never share a machine.
+- **Unit:** systemd `worldmap-solver`, from `deploy/worldmap-solver.service`,
+  installed to `/etc/systemd/system/`. It runs as `ubuntu` at `Nice=10`,
+  capped at `CPUQuota=150%` and `MemoryMax=2500M`, with `Restart=on-failure`.
+  It listens on `127.0.0.1:8787` only.
+- **Files:** everything lives under `/home/ubuntu/worldmap-solver`:
+  - `app/transport_maps/` holds the service code: `__init__.py`,
+    `config.py`, `snap.py` and `service/`. Nothing in it imports the graph
+    package.
+  - `.venv/` holds numpy, scipy and h3, pinned to the versions the build
+    checkout runs.
+  - `current/` is the solver bundle (`service/bundle.py`): the CSR graph and
+    cell ids as `.npy`, about 1.2 GB, plus `meta.json`, which carries the
+    build's `buildId`. **Only `current/` is kept.** A deploy stages the next
+    bundle as `bundle.new/` beside it, so allow about twice the bundle's size
+    in free disk.
+- **Measured on this host, 2026-10-02:** 1.1 s to map the bundle at start,
+  6-7 s per solve, 1.2 GB peak resident. It answers one solve at a time.
+  Other requests wait in a listen backlog of 4.
+
+### nginx
+
+`location = /api/solve` in `deploy/worldmap.atik.kr.conf` proxies to the unit:
+
+- `limit_req zone=worldmap_solver` allows 6 requests a minute per address,
+  with a burst of 3 (`nodelay`). Past that, nginx answers `busy` itself, as
+  `503` with `Retry-After: 15`, in the wire format the page reads
+  (`@solver_busy`). The solver never sees those requests.
+- A `502`, `503` or `504` from upstream becomes `unavailable`, `503` with
+  `Retry-After: 60` (`@solver_unavailable`). That covers the unit being
+  stopped, starting, or past the backlog.
+- `proxy_connect_timeout 2s` and `proxy_read_timeout 60s`. The 60 s read
+  timeout is the only deadline: the process has none of its own, so a solve
+  that runs past it finishes unseen while nginx has already answered
+  `unavailable`.
+- `access_log off`. The query string is the visitor's departure point and
+  destination, to about a metre, and the page's Privacy section promises they
+  go to this server and no further. The unit logs no points either (below).
+- The security-header snippet is included here as in every other location.
+
+### Shipping it, and the order relative to the site
+
+    bash scripts/deploy_solver.sh [BUNDLE_DIR]    # default: data/build/solver
+
+The script ships four things, then proves a solve:
+
+1. the service code;
+2. the pinned dependencies, into the host's venv;
+3. the bundle, to `bundle.new/`;
+4. the unit and the nginx site, each only when it differs. nginx is
+   installed only after `nginx -t` passes, and rolled back if it fails.
+
+It then swaps `bundle.new/` in as `current/` and restarts the unit. It polls
+Seoul -> Gumi through nginx until `"status":"ok"` and a number come back. If
+they do not, it restores the previous bundle and fails. Once the solve
+succeeds it deletes the previous bundle.
+
+**`index.json` arms the page only for a bundle from the same build.**
+`build-all` writes `data/build/solver/` and, only if that bundle's `buildId`
+is its own, a `solver` field in `index.json` (`emit/index._solver_matches`).
+`deploy_verify.sh`'s `solver_gate` then refuses to publish an `index.json`
+that offers the solver while the host's `current/meta.json` names another
+build. After a full build the order is therefore:
+
+    bash scripts/deploy_solver.sh       # first: the bundle the new index.json names
+    bash scripts/deploy_verify.sh       # then the site; solver_gate checks the pair
+
+A `--page-only` deploy does not touch `index.json`, so it needs neither step.
+
+### Operating it
+
+    ssh atik.kr systemctl status worldmap-solver
+    ssh atik.kr sudo systemctl restart worldmap-solver     # re-maps current/, ~1 s
+    ssh atik.kr sudo systemctl stop worldmap-solver        # page says "not ready"; map unaffected
+    ssh atik.kr sudo journalctl -u worldmap-solver -n 100  # add -f to follow
+
+**What the log holds.** One line when the bundle is mapped, with its time and
+`meta.json`. One line when it starts serving. Then one line per request,
+`solve <status> in <seconds> s`. **That is the status and the duration only.**
+The handler overrides `http.server`'s default request logging, which would
+print the URL and with it both points. Keep it that way: a log line with a
+coordinate in it would break the Privacy promise just as an access log would.
+
+**A health check** is a real solve, because no separate health endpoint
+exists:
+
+    curl -s 'https://worldmap.atik.kr/api/solve?from=37.56650,126.97800&to=36.10000,128.40000'
+
+Expect `"status":"ok"` and a `"minutes"` value. Each call uses one of the six a
+minute that nginx allows your address.
+
+### Rolling back
+
+Re-run the deploy with an older bundle:
+
+    bash scripts/deploy_solver.sh /path/to/older/solver
+
+The host keeps only `current/`, and every full build overwrites
+`data/build/solver/`. So a bundle you may want to return to has to be copied
+aside before the next build, for example to
+`data/build/solver-<buildId>/`.
+
+**A bundle rollback alone breaks the same-build rule.** The live
+`index.json` still names the newer build in `solver`, so the page would
+offer exact departures computed on a different graph from the map beside
+them. Do one of two things:
+
+- roll the site back to the `dist/` that bundle came from, so the two
+  `buildId`s match again; `solver_gate` checks that on the way out; or
+- stop the unit until a matching pair is ready. The page then reports the
+  service as not ready, and everything else keeps working.
 
 ## Range requests
 

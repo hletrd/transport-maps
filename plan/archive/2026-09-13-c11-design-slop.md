@@ -95,6 +95,11 @@ OSMF Attribution Guideline or the owner. They are merged into two lines rather
 than four: caption with liability notice, credit with build date.
 
 - [x] Four `<p>` to two; all four statements intact; `#built` keeps its id.
+      CORRECTION (C13-11 / V13-10, 2026-10-02): shipped as THREE paragraphs, paired
+      differently. They are the caption alone; the OpenStreetMap credit with
+      Privacy, since the OSMF credit kept its own line; and the liability
+      notice with `#built`. All four statements are intact and `#built`
+      kept its id. Only the count and the pairing differ from the text.
 
 ## C11-5 — Three false or stale statements in the visible prose (DOC11-1..3, CRIT11-2..3). HIGH
 
@@ -245,7 +250,7 @@ cost multiplier only and did not re-raise it, which is correct.
 | C11-1 invitation said once | done |
 | C11-2 "Showing <city>." cut; rail overflow closed | done |
 | C11-3 six type sizes to four tokens | done |
-| C11-4 four closing paragraphs to two | done |
+| C11-4 four closing paragraphs to two | done, as three (C13-11 / V13-10) |
 | C11-5 three false statements corrected | done |
 | C11-6 two help blocks trimmed | done |
 | C11-7 detail row's last tick anchored | done |
