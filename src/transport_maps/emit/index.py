@@ -172,6 +172,18 @@ def carry_on_saving() -> dict[str, float]:
             "arrivalMin": float(raw["arrival_saving_min"])}
 
 
+def urban_slowdown(factor: float) -> str:
+    """How the road prose says what the urban congestion factor does to speed.
+
+    "halved" only when the factor is exactly 2. Any other value is stated as
+    the number itself, so the sentence cannot claim a halving the model does
+    not apply. The loader refuses a factor below 1.
+    """
+    if factor == 2.0:
+        return "halved"
+    return f"divided by {factor:g}"
+
+
 def mode_detail() -> dict[str, str]:
     """One sentence per surface mode, with the calibrated speeds it uses.
 
@@ -193,7 +205,13 @@ def mode_detail() -> dict[str, str]:
     tier_lo = rc.tiers["commuter"]
     tier_hi = rc.tiers["high_speed"]
     tier_heritage = rc.tiers["tourism"]
-    halved = (f"halved inside cities (within {urban.URBAN_RADIUS_KM:.0f} km of a city "
+    # The congestion factor divides the free-flow speed inside the urban mask
+    # (graph/ground.cell_speed_kmh). This was the literal word "halved", which
+    # was true only because calibration.toml [urban] congestion_factor happens
+    # to be 2.0: refit it and every road tooltip would still say "halved"
+    # (CR3-7). The word is now derived from the number.
+    in_cities = (f"{urban_slowdown(urban.URBAN_CONGESTION_FACTOR)} inside cities "
+              f"(within {urban.URBAN_RADIUS_KM:.0f} km of a city "
               f"over {urban.URBAN_POP_MIN:,.0f} people)")
     return {
         # Three corrections live in this one string. It named two speeds when
@@ -239,20 +257,20 @@ def mode_detail() -> dict[str, str]:
                  "published-figure default, and the expected wait for the next sailing "
                  "-- from the timetabled interval where OSM gives one, otherwise from a "
                  "headway fitted to eight published crossings.",
-        "highway": f"Motorways and expressways, fitted at {kmh[1]:.0f} km/h free-flow, {halved}.",
+        "highway": f"Motorways and expressways, fitted at {kmh[1]:.0f} km/h free-flow, {in_cities}.",
         # sorted(): the table is ordered by road class, not by speed, so
         # classes 2 and 3 (57 and 50 km/h) printed "fitted at 57-50 km/h" --
         # a backwards range, shipped in index.json and read out in the page's
         # route tooltip beside an ascending "18-25".
         "major road": f"Primary and secondary roads, fitted at "
-                      f"{min(kmh[2], kmh[3]):.0f}-{max(kmh[2], kmh[3]):.0f} km/h, {halved}.",
+                      f"{min(kmh[2], kmh[3]):.0f}-{max(kmh[2], kmh[3]):.0f} km/h, {in_cities}.",
         # NOT "fitted at 18-25": class 4 (tertiary) is fitted, class 5 (local)
         # keeps a published-figure default because the fit drew 116 km across
         # four journeys -- graph/ground.py says so in as many words, and
         # CLAUDE.md requires each constant to say which it is. This sentence
         # ships into index.json and is read out in the page's route tooltip.
         "minor road": f"Tertiary roads, fitted at {kmh[4]:.0f} km/h; local roads at "
-                      f"{kmh[5]:.0f} km/h, a published-figure default. Both {halved}.",
+                      f"{kmh[5]:.0f} km/h, a published-figure default. Both {in_cities}.",
         # Class 0 was the last speed in this table with no provenance on it.
         # graph/ground.py keeps it as a published-figure default because the
         # fit returned a negative time per kilometre for roadless terrain

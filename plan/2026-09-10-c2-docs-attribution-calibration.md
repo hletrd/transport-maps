@@ -198,6 +198,38 @@ build.
       move: 1411 passed, 25 skipped, 53 deselected, exit 0. The pre-move
       baseline was 1397 passed, and the 14 new tests account for the
       difference.)
+- [x] **CR3-7 (pipeline half)** Derive the road prose's "halved inside cities"
+      from `calibration.toml [urban] congestion_factor` instead of typing the
+      word. (2026-10-02, DONE. `emit/index.urban_slowdown(factor)` returns
+      "halved" only when the factor is exactly 2.0 and otherwise
+      "divided by {factor:g}". `mode_detail()` passes it
+      `urban.URBAN_CONGESTION_FACTOR`, the value the graph divides speeds by
+      in `graph/ground.cell_speed_kmh`. At today's 2.0 the shipped prose is
+      byte-identical. The test is
+      `tests/emit/test_index.py::test_the_road_prose_says_halved_only_when_the_factor_is_two`,
+      which sets the factor to 2.5 and requires "divided by 2.5 inside
+      cities" in the highway, major-road and minor-road sentences, with no
+      "halved". Three mutations, all RED: the literal back; `urban_slowdown`
+      returning "halved" whatever the factor; `mode_detail` passing a frozen
+      2.0.)
+- [ ] **CR3-7b (page half)** `web/app.js` `MODE_FALLBACK` still says "halved
+      inside cities" three times. It was outside this lane, which could not
+      edit `web/`. The fallback is used only for an `index.json` with no
+      `modeDetail`, so it cannot know the factor. Re-typing "halved" or
+      "divided by 2" is the same drift CR3-7 removed from the pipeline.
+      `MODE_FALLBACK` must therefore drop the quantity, not restate it. Use
+      exactly these three entries, and leave the other three alone:
+      ```js
+      "highway": "Motorways and expressways at a fitted free-flow speed, slowed inside cities by a fitted congestion factor.",
+      "major road": "Primary and secondary roads at fitted speeds, slowed inside cities by a fitted congestion factor.",
+      "minor road": "Tertiary roads at a fitted speed; local roads at a published-figure "
+                    + "default. Both slowed inside cities by a fitted congestion factor.",
+      ```
+      Add a `tests/web/` source test, run over the comment-stripped
+      `MODE_FALLBACK` literal, that fails on `halved` and on any digit. Mutate
+      it by putting "halved" back, and confirm it goes red. A browser check is
+      not needed: the fallback is reached only on an `index.json` older than
+      `modeDetail`.
 - [ ] **B2b** One calibration loader threaded through the build context
       (`calibrate.load()`), replacing the per-module loaders: air, rail,
       ferry, ground, urban and carry-on each still open `calibration.toml`

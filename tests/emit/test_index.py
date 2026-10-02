@@ -188,6 +188,35 @@ def test_mode_detail_reads_the_calibration_it_describes(monkeypatch):
     assert "321 km/h" in index.mode_detail()["rail"]
 
 
+def test_the_road_prose_says_halved_only_when_the_factor_is_two(monkeypatch):
+    """CR3-7. "halved inside cities" was a literal rendering of the fitted
+    calibration.toml [urban] congestion_factor, true only while it is 2.0.
+    The word is now derived from the number.
+
+    Mutations performed (2026-10-02), each RED, each restored:
+      - the literal "halved inside cities" back in mode_detail()        -> RED
+      - urban_slowdown() returning "halved" whatever the factor         -> RED
+      - mode_detail() reading a frozen 2.0 instead of the urban module  -> RED
+    """
+    from transport_maps.sources import urban
+
+    roads = ("highway", "major road", "minor road")
+    assert urban.URBAN_CONGESTION_FACTOR == 2.0, "re-derive: the shipped factor moved"
+    prose = index.mode_detail()
+    for key in roads:
+        assert "halved inside cities" in prose[key], (key, prose[key])
+
+    monkeypatch.setattr(urban, "URBAN_CONGESTION_FACTOR", 2.5)
+    prose = index.mode_detail()
+    for key in roads:
+        assert "halved" not in prose[key], (key, prose[key])
+        assert "divided by 2.5 inside cities" in prose[key], (key, prose[key])
+    # The roadless track is not in the urban regime and says nothing about it.
+    assert "inside cities" not in prose["track"]
+    assert index.urban_slowdown(1.75) == "divided by 1.75"
+    assert index.urban_slowdown(2.0) == "halved"
+
+
 def test_origin_slugs_are_validated_where_they_are_read(tmp_path):
     import pytest
 
