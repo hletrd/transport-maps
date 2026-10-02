@@ -970,3 +970,70 @@ def test_a_deploy_offering_the_solver_checks_the_servers_bundle(tmp_path):
     assert "PASSED" in run({"buildId": "b1", "solver": {"wire": 1}}, "b1").stdout
     bad = run({"buildId": "b1", "solver": {"wire": 1}}, "b0")
     assert bad.returncode == 1 and "deploy_solver.sh" in bad.stdout
+
+
+def _bash_fn(name: str) -> str:
+    fn = re.search(r"\n" + name + r"\(\) \{.*?\n\}\n", DEPLOY, re.S)
+    assert fn, f"{name} has moved; re-derive this test"
+    return fn.group(0)
+
+
+def test_each_batch_carries_an_origins_map_and_its_variants_together(tmp_path):
+    """A batch swaps whole origins: a departure's full-map files and its
+    avoid-a-mode files from one build, never split across batches.
+
+    Mutation performed and reverted: drop `v/*/origins/"$slug".*` from the
+    list -> red.
+    """
+    import subprocess
+
+    d = tmp_path / "dist"
+    for slug in ("a", "b", "c"):
+        for sub in ("origins", "v/no-air/origins", "v/no-rail/origins"):
+            (d / sub).mkdir(parents=True, exist_ok=True)
+            for ext in (".pmtiles", ".bin", ".r6.bin"):
+                (d / sub / f"{slug}{ext}").write_bytes(b"x")
+    out = tmp_path / "lists"
+    out.mkdir()
+    script = "CHUNK=2\n" + _bash_fn("chunk_lists") + f"chunk_lists {out}\n"
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, cwd=tmp_path)
+    assert done.returncode == 0, done.stderr
+    lists = sorted(out.iterdir())
+    assert [p.name for p in lists] == ["chunk-0001", "chunk-0002"]
+    first = lists[0].read_text().split()
+    assert len(first) == 2 * 9 and all(p.split("/")[-1][0] in "ab" for p in first)
+    assert "v/no-rail/origins/b.r6.bin" in first
+    assert sorted(lists[1].read_text().split()) == sorted(
+        f"{sub}/c{ext}" for sub in ("origins", "v/no-air/origins", "v/no-rail/origins")
+        for ext in (".bin", ".pmtiles", ".r6.bin"))
+
+
+def test_batches_are_refused_when_the_cell_layout_changed(tmp_path):
+    """Origins from two builds can share a page only if both were made against
+    the same hover_cells.bin and reading_parents.bin.
+
+    Mutation performed and reverted: make layouts_identical `return 0` first
+    -> red.
+    """
+    import subprocess
+
+    d = tmp_path / "dist"
+    d.mkdir()
+    for f in ("hover_cells.bin", "reading_parents.bin"):
+        (d / f).write_bytes(b"layout")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    def run(remote_hash: str) -> int:
+        ssh = bin_dir / "ssh"
+        ssh.write_text(f"#!/bin/bash\necho '{remote_hash}  x'\n")
+        ssh.chmod(0o755)
+        script = "DEPLOY_HOST=h\nDEPLOY_ROOT=/r\n" + _bash_fn("layouts_identical") + "layouts_identical\n"
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True, cwd=tmp_path,
+                              env={"PATH": f"{bin_dir}:/usr/bin:/bin"}).returncode
+
+    import hashlib
+
+    same = hashlib.sha256(b"layout").hexdigest()
+    assert run(same) == 0
+    assert run("0" * 64) == 1

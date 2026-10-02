@@ -53,6 +53,64 @@ solver_gate() {
   echo "  solver bundle on the server matches build $want"
 }
 
+# A full rebuild changes every origin's files, which on the web host is more
+# than it has free to stage in one --delay-updates pass (2026-10: ~145 GB
+# changed against 70 GB free). It can still go a batch of origins at a time,
+# each batch staged and renamed together, PROVIDED the files every origin is
+# read against -- hover_cells.bin and reading_parents.bin -- are byte-identical
+# on both sides: then an origin from the new build and one from the old are
+# each consistent with the one layout the page holds, and index.json (last)
+# only changes what is listed. A changed layout refuses instead (above).
+layouts_identical() {
+  local f l r
+  for f in hover_cells.bin reading_parents.bin; do
+    l=$(shasum -a 256 "dist/$f" 2>/dev/null | awk '{print $1}')
+    r=$(ssh -o BatchMode=yes "$DEPLOY_HOST" "sha256sum '$DEPLOY_ROOT/$f'" 2>/dev/null | awk '{print $1}')
+    if [ -z "$l" ] || [ "$l" != "$r" ]; then
+      echo "  $f differs from the server's (or is missing)"
+      return 1
+    fi
+  done
+  echo "  hover_cells.bin and reading_parents.bin match the server's: origins can go in batches"
+}
+
+# The files of each batch of CHUNK origins, relative to dist/: the full set's
+# and every variant's for the same slugs, so a departure never pairs its map
+# with another build's avoid-a-mode files.
+CHUNK=${CHUNK:-150}
+chunk_lists() {  # chunk_lists <outdir>: writes <outdir>/chunk-NNNN, one per batch
+  local out=$1 slugs n=0 i=0 list
+  slugs=$(ls dist/origins | sed -n 's/\.pmtiles$//p' | sort)
+  for slug in $slugs; do
+    if [ $((n % CHUNK)) -eq 0 ]; then i=$((i + 1)); list=$(printf '%s/chunk-%04d' "$out" "$i"); : > "$list"; fi
+    (cd dist && ls -d origins/"$slug".* v/*/origins/"$slug".* 2>/dev/null) >> "$list"
+    n=$((n + 1))
+  done
+}
+
+chunked_sync() {
+  local dir list kb free
+  dir=$(mktemp -d)
+  chunk_lists "$dir"
+  for list in "$dir"/chunk-*; do
+    kb=$( (cd dist && xargs /usr/bin/du -ck < "$list") | awk 'END{print $1}')
+    free=$(ssh -o BatchMode=yes "$DEPLOY_HOST" "df -Pk '$DEPLOY_ROOT' | awk 'NR==2{print \$4}'" 2>/dev/null || true)
+    case ${free:-x} in *[!0-9]*) echo "  could not read free space; stopping between batches"; exit 1 ;; esac
+    if [ "$free" -lt $((kb * 13 / 10)) ]; then
+      echo "  $(basename "$list"): needs $((kb/1024)) MB staged, $((free/1024)) MB free; stopping between batches"
+      exit 1
+    fi
+    if ! rsync "${RSYNC_COMMON[@]}" --delay-updates --files-from="$list" \
+          dist/ "$DEPLOY_HOST:$DEPLOY_ROOT/" >>"$LOG" 2>&1; then
+      echo "  rsync failed in $(basename "$list"); log: $LOG"; tail -20 "$LOG"; exit 1
+    fi
+    echo "  $(basename "$list"): $(wc -l < "$list" | tr -d ' ') files, $((kb/1024)) MB"
+  done
+  rm -rf "$dir"
+  # What is left is small: index.json, the variant markers, the page, and
+  # deletions. The ordinary single pass below finishes it.
+}
+
 transfer_kb() {
   local bytes
   bytes=$(rsync "${RSYNC_COMMON[@]}" --delete --dry-run --stats \
@@ -298,9 +356,15 @@ if [ "$MODE" = full ]; then
   elif [ "$free_kb" -lt "$want_kb" ]; then
     echo "  $DEPLOY_HOST:$DEPLOY_ROOT has $((free_kb/1024/1024)) GiB free; --delay-updates stages"
     echo "  the changed files ($((need_kb/1024/1024)) GiB) beside the old ones, so it needs about"
-    echo "  $((want_kb/1024/1024)) GiB. Refusing before any byte moves: an rsync that runs out"
-    echo "  mid-rename leaves the mixed dist/ this script exists to prevent."
-    exit 1
+    echo "  $((want_kb/1024/1024)) GiB -- more than is free, so not in one pass."
+    if layouts_identical; then
+      chunked_sync
+    else
+      echo "  Refusing before any byte moves: the cell layout changed, so origins cannot"
+      echo "  be swapped a batch at a time, and an rsync that runs out mid-rename leaves"
+      echo "  the mixed dist/ this script exists to prevent."
+      exit 1
+    fi
   else
     echo "  free space ok: $((free_kb/1024/1024)) GiB available, about $((want_kb/1024/1024)) GiB needed"
   fi
