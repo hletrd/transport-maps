@@ -119,6 +119,29 @@ def test_index_json_can_carry_the_build_identity_the_hover_count_and_the_graph_f
     assert payload["modeChannels"] == list(modes.CHANNELS)
 
 
+def test_index_json_carries_the_contract_version_the_contract_names(tmp_path):
+    """`contractVersion` is in every index.json, as a plain integer, and it is
+    the number docs/contract.md says is current -- the expectation comes from
+    the document, not from the constant under test.
+
+    Mutations performed (2026-10-02), each RED: drop the payload entry
+    (KeyError); set CONTRACT_VERSION = 3 (disagrees with the document); write
+    it as the string "2" (not an int).
+    """
+    import re
+
+    doc = (config.ROOT / "docs" / "contract.md").read_text(encoding="utf-8")
+    m = re.search(r"`emit/index\.py:CONTRACT_VERSION`, now \*\*(\d+)\*\*", doc)
+    assert m, "docs/contract.md no longer states the current contract version"
+    payload = _written_index(tmp_path)
+    version = payload["contractVersion"]
+    assert type(version) is int, f"contractVersion is {type(version).__name__}, not int"
+    assert version == int(m.group(1))
+    # Version 1 is what an index.json WITHOUT the field means; a writer that
+    # emits 1 (or less) claims the pre-version layout for a file that has it.
+    assert version >= 2
+
+
 def test_the_build_identity_moves_with_the_inputs(monkeypatch):
     before = index.build_identity()["inputsHash"]
     monkeypatch.setattr(index.config, "HOVER_RES", 3)

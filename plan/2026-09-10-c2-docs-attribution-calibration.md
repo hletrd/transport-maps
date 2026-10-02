@@ -82,7 +82,7 @@ build.
 
 ## Cycle 3
 
-- [ ] **J1 / S1 (document)** `docs/contract.md`: file set and suffix table,
+- [x] **J1 / S1 (document)** `docs/contract.md`: file set and suffix table,
       `index.json` schema by `contractVersion`, binary layouts (widths,
       ordering, sentinels, clamp), PMTiles layer/props/LODs, the rendering
       invariants (faster band on top; water above bands), node-offset
@@ -92,6 +92,41 @@ build.
       derives widths from `modeChannels`; a contract test (design in
       `architect.md` §4 J1). The S parts (`buildId`, `builtAt`,
       `hoverCellCount`, `modeChannels`, `graph`) land in cycle 2 (build plan).
+      (2026-10-02, the document half and the version field are DONE; the
+      code half is split out as J1b below. `docs/contract.md` now covers the
+      owners (pipeline, page, service), versioning, the shared files, the nine
+      per-origin files with widths, orderings and sentinels, the variants, what
+      is never deployed (`.progress/`, the solver bundle), every `index.json`
+      field with the page's fallback, the node-offset arithmetic, byte order,
+      and the S6 rules. `places.json`'s largest-first row order is recorded
+      there too, which was ARCH3-4's exit criterion. `index.json` carries
+      `contractVersion: 2`. It is defined as `emit/index.py:CONTRACT_VERSION`,
+      not in `config`, because a `config`-derived payload field joins the
+      reindex refusal set and that is J1b's change to make. The new tests are
+      `tests/emit/test_index.py::test_index_json_carries_the_contract_version_the_contract_names`,
+      whose expected value is read from the document, and
+      `tests/test_contract_doc.py`, which compares the document's tables with
+      `write_index`'s keys, `progress.SUFFIXES` and `check_dist.REQUIRED_EXTRAS`
+      in both directions. All eight mutations listed in those files went RED.
+      One deviation from the text above: the page must **warn** on an unknown
+      version, never `fatal()`. That is the owner's standing rule that the page
+      never goes blank, and every field already has a fallback.)
+- [ ] **J1b (code half of J1)**, not doc-only and outside the 2026-10-02
+      lane, which could not touch `web/`, `cli.py` or `scripts/`:
+      (a) the page reads `meta.contractVersion` and, when it is greater
+      than the version it knows, calls `console.warn` with the two numbers
+      and carries on. That is one guarded line after the `meta` load in
+      `web/app.js`, plus a `tests/web/` source test that strips comments and
+      fails on any `fatal(` in that guard. It needs a browser check before it
+      ships (CLAUDE.md).
+      (b) Add `"contractVersion": lambda: index.CONTRACT_VERSION` to
+      `cli._CURRENT_INDEX_CONSTANTS`, so `reindex` refuses to stamp today's
+      version over a dist/ built under another one. An absent field still
+      passes, as for the other keys.
+      (c) One `NodeIndex.offsets` to replace the seven hand-derived sites
+      (`docs/contract.md`, "Node-offset arithmetic"). This was ARCH3-3.
+      (d) `check_dist` should take the channel width from `index.json`'s
+      `modeChannels` rather than the emitter's `CHANNELS`. This was AA44/AA34.
 - [ ] **B2 (table move)** `[ground]`, `[urban]` and the air-bound constants
       into `calibration.toml` with labels; one `calibrate.load()` threaded
       through the build context; `_land_border_min` no longer parsed per origin
