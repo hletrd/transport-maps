@@ -1,0 +1,30 @@
+# The on-demand solver for worldmap.atik.kr (src/transport_maps/service/).
+# Installed to /etc/systemd/system/ by scripts/deploy_solver.sh.
+#
+# It maps one build's graph (~1.2 GB of .npy, mostly shared page cache) and
+# answers one solve at a time on loopback; nginx proxies /api/solve to it.
+# Measured on this host 2026-10-02: 1.1 s to map, 6-7 s per solve, 1.2 GB
+# peak resident. The limits keep it a good neighbour on a 5 GB, 3-core box:
+# a solve can never take more than one and a half cores or 2.5 GB.
+[Unit]
+Description=worldmap.atik.kr on-demand solver
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/worldmap-solver
+Environment=PYTHONPATH=/home/ubuntu/worldmap-solver/app
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/ubuntu/worldmap-solver/.venv/bin/python -m transport_maps.service.server --bundle /home/ubuntu/worldmap-solver/current --port 8787
+Restart=on-failure
+RestartSec=5
+Nice=10
+CPUQuota=150%
+MemoryMax=2500M
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

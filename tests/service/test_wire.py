@@ -377,3 +377,26 @@ def test_the_page_and_the_service_agree_on_the_error_codes():
     assert in_page == set(wire.ERRORS), (
         f"only the service knows {set(wire.ERRORS) - in_page}; "
         f"only the page knows {in_page - set(wire.ERRORS)}")
+
+
+def test_the_bodies_nginx_answers_for_the_solver_are_the_wire_format():
+    """nginx answers `busy` (rate limit) and `unavailable` (solver down) itself,
+    so the page never sees an HTML error page from /api/solve. Those two
+    bodies are typed into deploy/worldmap.atik.kr.conf by hand; they must be
+    exactly what the service would have sent, or the page reads them as an
+    unknown shape.
+
+    Mutation performed and reverted: change a word of the conf's busy message
+    -> red.
+    """
+    import re
+
+    from transport_maps import config
+
+    conf = (config.ROOT / "deploy" / "worldmap.atik.kr.conf").read_text()
+    for code in ("busy", "unavailable"):
+        m = re.search(r"location @solver_" + code + r" \{.*?return 503 '(\{.*?\})';", conf, re.S)
+        assert m, f"no @solver_{code} location answering in the wire format"
+        assert json.loads(m.group(1)) == wire.error_body(code)
+        retry = re.search(r"location @solver_" + code + r" \{.*?Retry-After (\d+)", conf, re.S)
+        assert retry and int(retry.group(1)) == wire.RETRY_AFTER_S[code]
