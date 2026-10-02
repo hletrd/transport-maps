@@ -254,6 +254,60 @@ def test_the_success_shape_is_exactly_these_fields():
                          "snappedKm", "snappedLat", "snappedLon"}
     assert body["v"] == wire.WIRE_VERSION and body["status"] == "ok"
     assert body["minutes"] == 618 and body["reachable"] is True
+    # `legs` is the one optional field, and it is absent rather than empty.
+    with_legs = wire.ok_body(minutes=618, snapped_km=4.2, snapped_lat=5.98,
+                             snapped_lon=116.1, legs=LEGS)
+    assert set(with_legs) == set(body) | {"legs"}
+    assert with_legs["legs"] == LEGS
+
+
+# Seoul to New York in the wire's own terms: to the airport (part of it by
+# train), a flight, a connection, a flight, and the way out.
+LEGS = [
+    {"kind": "surface", "min": 140, "railMin": 52},
+    {"kind": "fly", "from": 812, "to": 1450, "min": 230},
+    {"kind": "connect", "at": 1450, "min": 95},
+    {"kind": "fly", "from": 1450, "to": 991, "min": 61},
+    {"kind": "surface", "min": 92, "railMin": 0},
+]
+
+
+def test_legs_keep_the_wire_version_because_they_are_optional():
+    """An additive optional field does not move the version; a page written
+    before `legs` reads the same `minutes` it always did. If this fails, the
+    shape changed in a way the page's version check exists to catch.
+    """
+    assert wire.WIRE_VERSION == 1
+    assert sum(leg["min"] for leg in LEGS) == 618
+
+
+@pytest.mark.parametrize("why,legs,minutes", [
+    ("short by a minute", [dict(LEGS[0], min=139), *LEGS[1:]], 618),
+    ("unreachable", LEGS, None),
+    ("empty", [], 0),
+    ("ends in the air", LEGS[:-1], 618 - 92),
+    ("unknown kind", [{"kind": "swim", "min": 618 - 92}, LEGS[-1]], 618),
+    ("missing field", [{"kind": "surface", "min": 618}], 618),
+    ("extra field", [dict(LEGS[-1], min=618, road=600)], 618),
+    ("a float", [{"kind": "surface", "min": 618.0, "railMin": 0}], 618),
+    ("a bool", [{"kind": "surface", "min": 618, "railMin": True}], 618),
+    ("negative", [*LEGS[:-1], dict(LEGS[-1], min=-92)], 618 - 184),
+    ("more rail than surface", [{"kind": "surface", "min": 618, "railMin": 619}], 618),
+])
+def test_legs_that_do_not_describe_the_figure_are_refused(why, legs, minutes):
+    """The page prints the legs as the breakdown of `minutes`. Ones that do
+    not add up, describe no journey, or carry a field the page does not read
+    are a bug in the solver, refused before they reach a visitor.
+
+    Mutations performed and reverted, each RED on its row: drop the sum test
+    ("short by a minute" and "unreachable"); drop the last-leg test ("ends in the air"); compare fields with `<=`
+    instead of `==` ("extra field"); `type(...) is not int` ->
+    `not isinstance(..., int)` ("a bool"); drop the railMin bound ("more
+    rail than surface").
+    """
+    with pytest.raises(ValueError):
+        wire.ok_body(minutes=minutes, snapped_km=0.0, snapped_lat=0.0, snapped_lon=0.0,
+                     legs=legs)
 
 
 def test_unreachable_is_null_and_not_the_binary_sentinel():
@@ -291,6 +345,8 @@ def test_every_response_is_json_serialisable_with_no_nan():
     """
     for body in (wire.ok_body(minutes=None, snapped_km=0.0, snapped_lat=0.0, snapped_lon=0.0),
                  wire.ok_body(minutes=618, snapped_km=4.2, snapped_lat=1.0, snapped_lon=2.0),
+                 wire.ok_body(minutes=618, snapped_km=4.2, snapped_lat=1.0, snapped_lon=2.0,
+                              legs=LEGS),
                  wire.error_body("not_on_land")):
         json.dumps(body, allow_nan=False)
 

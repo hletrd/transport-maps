@@ -232,6 +232,16 @@ build. After a full build the order is therefore:
 
 A `--page-only` deploy does not touch `index.json`, so it needs neither step.
 
+**Legs need the node counts.** A bundle's `meta.json` carries `nAirports` and
+`nStations` from 2026-10-02 on, and the service then answers each solve with
+its legs as well as its minutes. A bundle written before that (the
+`52660de5` rebuild's among them) has neither: it still answers the number,
+with no legs. Before shipping one, give it the counts from the dist/ of the
+same build, which refuses a dist/ whose `buildId` or node offsets do not
+match:
+
+    uv run python -m transport_maps.service.bundle add-counts data/build/solver dist
+
 ### Operating it
 
     ssh atik.kr systemctl status worldmap-solver

@@ -101,8 +101,8 @@ def test_the_fork_warning_filter_matches_that_warning_and_no_other():
     assert survives(str(real[0].message), RuntimeWarning), "the filter ignores the category"
 
 
-# Where the stubbed solver-bundle writer records its calls (kept out of
-# `written`, whose length several tests count).
+# Where the stubbed solver-bundle writer records its calls, as (out, keyword
+# arguments) -- kept out of `written`, whose length several tests count.
 BUNDLES: list = []
 
 
@@ -118,6 +118,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
         n_cells = 1
         cells: ClassVar[list[str]] = ["dummy"]
         airports: ClassVar[list[str]] = []  # check_airport_connectivity runs for real below
+        stations: ClassVar[tuple[str, ...]] = ()
         # The reading tier is indexed on the uniform res-READING_RES grid and
         # refuses to guess one, because the digits it reads are identical for
         # a res-7 cell and its res-6 parent -- so a fallback to `cells` would
@@ -139,7 +140,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
 
     BUNDLES.clear()
     monkeypatch.setattr(solver_bundle, "write_bundle",
-                        lambda out, *a, **k: BUNDLES.append(out))
+                        lambda out, *a, **k: BUNDLES.append((out, k)))
     # The staging sweep touches a directory shared with every build on the
     # machine; the sequencing tests must never reach it.
     monkeypatch.setattr(cli.tiles, "sweep_scratch", lambda: 0)
@@ -495,6 +496,10 @@ def test_a_full_build_stamps_identity_count_and_graph_flags_into_index_json(monk
     assert kw["hover_cell_count"] == 1
     assert kw["graph"] == {"rail": False, "ferry": False}
     assert set(kw["identity"]) == {"inputsHash", "buildId", "builtAt", "gitHead"}
+    # The solver bundle is told the node layout, so the service can read an
+    # itinerary off it (service/bundle.py, journey_legs). Mutation performed
+    # and reverted: drop the two keywords from cli's write_bundle call -> red.
+    assert [k for _out, k in BUNDLES] == [{"n_airports": 0, "n_stations": 0}]
 
 
 def test_each_origin_row_logs_its_process_and_peak_memory(monkeypatch, tmp_path, capsys):

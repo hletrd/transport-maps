@@ -589,7 +589,8 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
         from transport_maps.service import bundle
 
         bundle.write_bundle(config.BUILD / "solver", idx.cells, idx._split, csr.shape[0],
-                            csr, identity)
+                            csr, identity, n_airports=len(idx.airports),
+                            n_stations=len(idx.stations))
         logging.getLogger(__name__).info("solver bundle written to %s", config.BUILD / "solver")
     # The render grid (land + sea fringe, neighbour table) is the same for
     # every origin; computed once here, inherited copy-on-write.

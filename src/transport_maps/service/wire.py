@@ -170,6 +170,43 @@ def parse_query(query: str, getter=None) -> SolveRequest:
     return SolveRequest(from_lat, from_lon, to_lat, to_lon)
 
 
+# The three kinds of leg and the integer fields each carries, all of them
+# required. `min` is whole minutes; `from`, `to` and `at` are airport ordinals,
+# the positions `.air.bin` uses (docs/contract.md). `legs` is optional and
+# additive -- a page written before it ignores it, and a server that cannot
+# read its bundle's node layout leaves it out -- so it did not move
+# WIRE_VERSION.
+LEG_FIELDS: dict[str, tuple[str, ...]] = {
+    "surface": ("min", "railMin"),
+    "fly": ("from", "to", "min"),
+    "connect": ("at", "min"),
+}
+
+
+def _check_legs(legs: list[dict[str, Any]], minutes: int | None) -> None:
+    """The legs describe the journey the figure measures, or ValueError.
+
+    They must sum to `minutes` exactly: the page prints them under that figure
+    as its breakdown, and a breakdown that does not add up is the one thing a
+    reader cannot be asked to reconcile -- and an unreachable destination,
+    `minutes` None, has nothing for them to sum to. They end on the surface,
+    because the destination is a cell and every way into a cell is a surface
+    edge.
+    """
+    if not legs or legs[-1].get("kind") != "surface":
+        raise ValueError("a journey ends with a surface leg")
+    for leg in legs:
+        fields = LEG_FIELDS.get(leg.get("kind"))
+        if fields is None or set(leg) != {"kind", *fields}:
+            raise ValueError(f"not a leg: {leg!r}")
+        if any(type(leg[f]) is not int or leg[f] < 0 for f in fields):
+            raise ValueError(f"a leg's fields are non-negative integers: {leg!r}")
+        if leg["kind"] == "surface" and leg["railMin"] > leg["min"]:
+            raise ValueError(f"more rail than surface: {leg!r}")
+    if sum(leg["min"] for leg in legs) != minutes:
+        raise ValueError(f"the legs come to {sum(leg['min'] for leg in legs)}, not {minutes}")
+
+
 def ok_body(*, minutes: int | None, snapped_km: float, snapped_lat: float,
             snapped_lon: float, legs: list[dict[str, Any]] | None = None,
             ) -> dict[str, Any]:
@@ -190,7 +227,12 @@ def ok_body(*, minutes: int | None, snapped_km: float, snapped_lat: float,
     presence test, and a presence test silently reads a renamed field as "it
     did not move" -- which would print a time measured somewhere else with no
     disclosure at all.
+
+    `legs`, when given, is the journey as `LEG_FIELDS` describes it, checked
+    by `_check_legs`. It is absent, not empty, when there is none to give.
     """
+    if legs is not None:
+        _check_legs(legs, minutes)
     body: dict[str, Any] = {
         "v": WIRE_VERSION,
         "status": "ok",

@@ -132,10 +132,18 @@ each origin has `pmtiles`, `bin`, `json`, `air.bin`, `modes.bin`, `r6.bin` and
   `sorted_ids.npy`, `sorted_pos.npy`, `split.npy` and the CSR graph in
   `indptr.npy` (int32), `indices.npy` (int32) and `data.npy` (float64,
   minutes), plus `meta.json` with the counts, resolutions and the build's
-  `identity`. It is never under `dist/`. `scripts/deploy_solver.sh` ships it
-  straight to the web host's `/home/ubuntu/worldmap-solver/current/`. The
-  service maps it and answers wire version `WIRE_VERSION`
-  (`service/wire.py`).
+  `identity`. The counts include `nAirports` and `nStations`, the node
+  layout above (`nNodes = nCells + 2 × nAirports + nStations`, checked at
+  load). Bundles written before 2026-10-02 lack those two: they still load
+  and answer a number with no legs, and `python -m
+  transport_maps.service.bundle add-counts BUNDLE DIST` adds them from the
+  same build's `dist/` (`counts_from_dist`). It is never under `dist/`.
+  `scripts/deploy_solver.sh` ships it straight to the web host's
+  `/home/ubuntu/worldmap-solver/current/`. The service maps it and answers
+  wire version `WIRE_VERSION` (`service/wire.py`). With the counts, a
+  response carries `legs`: surface (with its rail minutes), fly and connect,
+  airport ordinals as in `.air.bin`, summing to `minutes`
+  (`service/bundle.py:journey_legs`, `wire.LEG_FIELDS`).
 - `.build.lock`, and every stray an aborted writer leaves (`*-journal`,
   `*.tmp`, `*.part`, `tmp*`). `check_dist` refuses a dist/ that contains them.
 
