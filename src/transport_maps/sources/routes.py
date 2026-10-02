@@ -32,7 +32,12 @@ MAX_RETRIES = 6
 _SECTION_RE = re.compile(r"^(==+)\s*Airlines and destinations\s*==+\s*$", re.IGNORECASE | re.MULTILINE)
 # Cargo routes carry no passengers, so they must not become graph edges.
 _CARGO_RE = re.compile(r"^(===+)\s*(?:Cargo|Freight)[^=]*=+\s*$", re.IGNORECASE | re.MULTILINE)
-_LINK_RE = re.compile(r"\[\[([^\]|#]+?)(?:\|[^\]]*)?\]\]")
+# Captures the article title, stopping at a "#Section" fragment, which may
+# precede the "|label". Without the fragment group a link such as
+# [[Tokyo International Airport#Terminal 3|Haneda]] matched nothing at all
+# and the destination was silently dropped (CR13-6). A same-page link,
+# [[#Ground transport]], has no title and still matches nothing.
+_LINK_RE = re.compile(r"\[\[([^\]|#]+?)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 _SKIP_PREFIXES = (
     "File:", "Category:", "Help:", "Template:", "Special:", "Portal:", "Wikipedia:",
     "Image:",

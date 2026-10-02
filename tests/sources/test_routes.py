@@ -103,6 +103,24 @@ def test_a_level_2_section_keeps_its_own_subsections():
     assert routes.parse_destinations(wikitext) == ["Alpha_Airport", "Beta_Airport"]
 
 
+def test_a_link_with_a_section_fragment_keeps_its_destination():
+    """CR13-6. `[[Article#Section|label]]` used to match nothing: the title
+    capture stops at "#", and the regex then demanded "|" or "]]". Three of
+    the four destination airports below were silently dropped. The fragment is not
+    part of the title Wikidata resolves, so it is cut, not kept.
+
+    Mutation, measured: restoring the old `_LINK_RE` turns this red.
+    """
+    titles = routes.parse_destinations((FIXTURES / "fragment_links.wikitext").read_text())
+    assert titles == [
+        "Air_Example", "Hub_International_Airport", "Tokyo_International_Airport",
+        "London_Heathrow_Airport", "Seasonal_Air", "Lake_Airport", "Example_Connect",
+    ]
+    # A same-page anchor names no article, and the link under "Ground
+    # transport" is outside the section.
+    assert "" not in titles and "Example_City" not in titles
+
+
 @pytest.mark.network
 def test_resolves_article_titles_to_iata_codes(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CACHE", tmp_path)

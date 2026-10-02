@@ -1,0 +1,12 @@
+'''Example International Airport''' is the main airport of [[Example City]].
+
+== Airlines and destinations ==
+=== Passenger ===
+{{Airport destination list
+| [[Air Example]] | [[Hub International Airport]], [[Tokyo International Airport#Terminal 3|Tokyo–Haneda]], [[London Heathrow Airport#Terminal 5|London–Heathrow]]
+| [[Seasonal Air]] | '''Seasonal:''' [[Lake Airport#Seasonal service]]
+| [[Example Connect]] | [[#Ground transport|see below]]
+}}
+
+== Ground transport ==
+Buses run to [[Example City#Transport|the city centre]].
