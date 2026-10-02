@@ -309,6 +309,11 @@ def _run_page_gate(tmp, pytest_summary: str, pytest_rc: int = 0,
     (work / "dist").mkdir(parents=True, exist_ok=True)
     if dist_present:
         (work / "dist" / "index.json").write_text("{}")
+    # The summary is read from a file rather than spliced into the stub's
+    # source: a REAL pytest run's output carries quotes and `$` that a
+    # double-quoted shell string would mangle.
+    summary = bin_dir / "pytest_output.txt"
+    summary.write_text(pytest_summary + "\n", encoding="utf-8")
     uv = bin_dir / "uv"
     uv.write_text(
         "#!/bin/sh\n"
@@ -316,7 +321,7 @@ def _run_page_gate(tmp, pytest_summary: str, pytest_rc: int = 0,
         f"  *'ruff check'*) exit {ruff_rc} ;;\n"
         f'  *--collect-only*) echo "{collected} tests collected in 0.42s"; exit 0 ;;\n'
         "esac\n"
-        f'printf "%s\\n" "{pytest_summary}"\nexit {pytest_rc}\n')
+        f'cat "{summary}"\nexit {pytest_rc}\n')
     uv.chmod(0o755)
     if with_node:
         node = bin_dir / "node"
@@ -327,6 +332,26 @@ def _run_page_gate(tmp, pytest_summary: str, pytest_rc: int = 0,
     script = (f'set -euo pipefail\nPATH="{bin_dir}:/usr/bin:/bin"\ncd "{work}"\n'
               f"{_page_gate_source()}\npage_gate\necho GATE_RETURNED_OK\n")
     return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+
+
+def _stopped_by(done, phrase: str) -> None:
+    """The gate refused, and THIS refusal is the one that stopped it.
+
+    `exit != 0` plus "the message is in stdout" is not that. Each refusal
+    echoes its message and then exits, and the checks overlap on purpose, so
+    with one refusal's `exit 1` turned into `true` its message still prints
+    and a LATER check (the collected floor, the skip count) still refuses:
+    measured 2026-10-02, the skip refusal could be neutered that way with all
+    40 tests in this file green. So the phrase must sit in the LAST `!!`
+    block the gate printed, and nothing may follow the gate's refusal.
+    """
+    out = done.stdout
+    assert done.returncode != 0, f"the gate accepted:\n{out}{done.stderr}"
+    assert "GATE_RETURNED_OK" not in out, out
+    last = out.rfind("  !! ")
+    assert last >= 0, f"the gate refused without saying why:\n{out}"
+    assert phrase in out[last:], (
+        f"the gate went on past {phrase!r}; a later check stopped it:\n{out}")
 
 
 def test_the_page_gate_refuses_a_run_whose_tests_skipped(tmp_path):
@@ -346,11 +371,7 @@ def test_the_page_gate_refuses_a_run_whose_tests_skipped(tmp_path):
     for summary in ("421 passed, 3 skipped in 30.00s",
                     "19 skipped in 0.12s"):
         done = _run_page_gate(tmp_path, summary)
-        assert done.returncode != 0, (
-            f"the page gate accepted {summary!r}:\n{done.stdout}{done.stderr}")
-        assert "SKIPPED" in done.stdout, done.stdout
-        assert "GATE_RETURNED_OK" not in done.stdout, (
-            "the gate carried on past a skipped run")
+        _stopped_by(done, "in the page gate SKIPPED")
 
 
 def test_the_page_gate_still_accepts_a_clean_run(tmp_path):
@@ -370,9 +391,77 @@ def test_the_page_gate_refuses_when_node_is_absent(tmp_path):
     up front so the operator reads one sentence instead of counting dots.
     """
     done = _run_page_gate(tmp_path, "424 passed in 34.98s", with_node=False)
-    assert done.returncode != 0, done.stdout
-    assert "node is not on PATH" in done.stdout, done.stdout
-    assert "GATE_RETURNED_OK" not in done.stdout
+    _stopped_by(done, "node is not on PATH")
+
+
+def _real_run_without_node(tmp_path) -> tuple[str, int]:
+    """A REAL pytest run over two of the page gate's own files, on a PATH that
+    holds no `node` at all -- the host V13-27 describes.
+
+    test_parses.py is the file the gate exists for (the only parse of app.js)
+    and skips whole without node; test_ramps.py half-runs, so the summary has
+    the "N passed, M skipped" shape as well as the -rs reason lines. Real
+    output, because the refusals below key on pytest's wording and a
+    hand-typed summary only proves the gate agrees with whoever typed it.
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    empty = tmp_path / "no-node-bin"
+    empty.mkdir()
+    assert shutil.which("node", path=str(empty)) is None
+    files = ["tests/web/test_parses.py", "tests/web/test_ramps.py"]
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider", *files],
+        cwd=ROOT, env={"PATH": str(empty), "HOME": str(tmp_path)},
+        capture_output=True, text=True, timeout=300)
+    out = run.stdout + run.stderr
+    assert run.returncode == 0, f"pytest without node did not exit 0, which is the hole:\n{out}"
+    assert "node is not on PATH" in out and " skipped" in out, out
+    m = re.search(r"(\d+) passed, (\d+) skipped", out)
+    assert m, out
+    return out, int(m.group(1)) + int(m.group(2))
+
+
+def test_a_real_run_without_node_is_refused_by_the_pre_flight(tmp_path):
+    """C13-9 / V13-27 re-verified on real output, not a typed summary: the
+    run above exits 0 having parsed nothing, and the gate must refuse it.
+
+    Mutation performed and reverted: the pre-flight's `exit 1` -> `true` ->
+    red here and in test_the_page_gate_refuses_when_node_is_absent (the gate
+    then goes on and refuses through the skip check, with the wrong message).
+    """
+    out, collected = _real_run_without_node(tmp_path)
+    done = _run_page_gate(tmp_path, out, collected=collected, with_node=False,
+                          dist_present=False)
+    _stopped_by(done, "node is not on PATH")
+    assert "ruff check" not in done.stdout, "the gate went on to lint after refusing"
+
+
+def test_a_real_run_without_node_is_refused_even_past_the_pre_flight(tmp_path):
+    """The second gate, the one that does not depend on knowing WHY a test
+    skipped. The pre-flight asks the gate's own shell about node; the tests
+    ask again, each in its own way, inside `uv run`; any skip the pre-flight
+    did not foresee puts the stage back where V13-27 found it. So the same
+    real no-node output, with a `node` the pre-flight CAN see, must be
+    refused by the skip check on its own.
+
+    Proved end to end on 2026-10-02 against the real gate (real uv, real
+    pytest, a balanced syntax error `const = 1;` appended to app.js): with
+    node, refused by test_parses (`SyntaxError: Unexpected token '='`);
+    without node, refused by the pre-flight; without node and with the
+    pre-flight disabled, refused by this check (316 passed, 294 skipped).
+
+    Mutations performed and reverted, each -> red: the skip refusal's
+    `exit 1` -> `true` (the collected floor then refuses instead, with the
+    wrong message); the dist sentinel grep widened to count every skip as a
+    dist skip (the gate returns OK).
+    """
+    out, collected = _real_run_without_node(tmp_path)
+    done = _run_page_gate(tmp_path, out, collected=collected, with_node=True,
+                          dist_present=False)
+    _stopped_by(done, "other than an unbuilt dist/")
 
 
 def test_the_page_gate_still_fails_on_a_real_test_failure(tmp_path):
@@ -380,11 +469,14 @@ def test_the_page_gate_still_fails_on_a_real_test_failure(tmp_path):
     `set -e` a bare failing pipeline would have aborted before the skip check
     ran, so the two refusals are sequenced with `|| rc=$?` -- this proves they
     compose rather than shadow each other.
+
+    `_stopped_by`, not "the message is somewhere": with this refusal's
+    `exit "$rc"` turned into `true` the gate went on, the collected floor
+    refused instead, and the old three assertions stayed green (2026-10-02).
+    This is the refusal a syntax error in app.js reaches, via test_parses.py.
     """
     done = _run_page_gate(tmp_path, "2 failed, 419 passed in 31.00s", pytest_rc=1)
-    assert done.returncode != 0, done.stdout
-    assert "page-asset gate failed" in done.stdout, done.stdout
-    assert "GATE_RETURNED_OK" not in done.stdout
+    _stopped_by(done, "page-asset gate failed (pytest exit 1)")
 
 
 # --- C16-2 / C16-3: the holes cycle 15's skip refusal left ------------------
@@ -510,9 +602,7 @@ def test_a_skip_that_is_not_about_dist_still_refuses(tmp_path):
              "SKIPPED [1] tests/web/test_vendor.py:9: node is not on PATH\n"
              "443 passed, 7 skipped in 11.00s")
     done = _run_page_gate(tmp_path, mixed, dist_present=False)
-    assert done.returncode != 0, done.stdout
-    assert "other than an unbuilt dist/" in done.stdout, done.stdout
-    assert "GATE_RETURNED_OK" not in done.stdout
+    _stopped_by(done, "other than an unbuilt dist/")
 
 
 def test_a_dist_skip_refuses_when_dist_is_actually_built(tmp_path):

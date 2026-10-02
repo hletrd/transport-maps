@@ -123,7 +123,7 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
   `cli.py:175` and `deploy_verify.sh:74` both detect concurrency by matching
   the literal string `build-all`. Tracked as C13-F2.6 in the solver document.
 
-- [ ] **C13-9 — two gates that cannot fail.** V13-27 (HIGH):
+- [x] **C13-9 — two gates that cannot fail.** V13-27 (HIGH):
   `deploy_verify.sh:56-57` exits 0 when `node` is absent, so a syntactically
   broken `app.js` ships; reproduced, though with `228 passed, 143 skipped`
   rather than the counts first reported, and `node` **is** on PATH here so it
@@ -136,6 +136,33 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
   *2026-10-02:* V13-28 is done (see C12-8: polls in place of both sleeps,
   proved against the live build). V13-27 is not re-verified here, so the box
   stays empty until someone confirms `page_gate`'s node pre-flight closes it.
+  *2026-10-02, V13-27 re-verified and closed.* The cycle-13 review text is
+  not in the tree (`.context/reviews/` is untracked), so this works from the
+  row above, the index row and the code. The defect itself was fixed in
+  70bc472 (C15-2: node pre-flight plus "a skip is a failure"), and later
+  cycles added the deselect/xfail, dist-sentinel and collected-floor checks.
+  End to end, against the real `page_gate` (real `uv`, real pytest, real
+  node) with a balanced syntax error (`const = 1;`) appended to `app.js`:
+  with node, refused by test_parses.py (`SyntaxError: Unexpected token
+  '='`); on a PATH with no node, refused by the pre-flight; with no node and
+  the pre-flight's `exit 1` disabled, refused by the skip check (316 passed,
+  294 skipped). (An unbalanced `{ {` is a weaker probe: the JS slicer test
+  fails on it without node.) The tests, though, were weaker than the gate:
+  every refusal echoes its message and then exits, the checks overlap, so
+  turning the skip refusal's `exit 1` -- or the pytest-failure `exit "$rc"`,
+  the one a broken app.js reaches -- into `true` left all 40 tests in
+  `tests/test_deploy_script.py` green while a later check refused with a
+  different message. `_stopped_by` now requires the named refusal to be the
+  LAST one printed, and two new tests feed the real gate a REAL no-node
+  pytest run (test_parses.py + test_ramps.py, `-rs`, empty PATH) instead of
+  a typed summary: once with no node (pre-flight must stop it, before ruff)
+  and once with a node the pre-flight can see (the skip check must stop it).
+  Mutations, each red: each of the eight `page_gate` refusals turned into
+  `true` (pre-flight, ruff, pytest failure, deselect/xfail, skip, dist
+  present, floor -- and the dist sentinel grep widened to every skip).
+  V13-28's mutations re-run the same day, each red on
+  `test_the_browser_stage_waits_for_the_page_not_for_a_clock`: `; sleep 15`
+  back on the first cold load; either `wait_until` removed.
 
 - [x] **C13-10 — the fourteen documentation HIGHs.** DOC13-1…DOC13-14. Two are
   visitor-facing and go first: DOC13-1, the page telling readers the fit wanted
