@@ -112,7 +112,21 @@ def test_stale_means_behind_by_the_max_age(monkeypatch):
     assert not geofabrik.Extract("asia", "rail", _dt(OCT01), _dt(OCT01)).stale, \
         "an extract at the upstream's snapshot is current even at 0 (mutation: >= alone -> red)"
     assert not geofabrik.Extract("asia", "rail", _dt(SEP20), None).stale, "unchecked is not stale"
-    assert geofabrik.Extract("asia", "rail", None, _dt(OCT01)).stale, "absent is stale"
+    assert geofabrik.Extract("asia", "rail", None, _dt(OCT01)).stale, \
+        "on disk with no snapshot: its age is unknown, so it is refreshed"
+    assert not geofabrik.Extract("asia", "rail", None, _dt(OCT01), present=False).stale, \
+        "absent is an install step, not a refresh"
+
+
+def test_an_absent_extract_is_never_downloaded_by_a_build(tmp_path, geofabrik_says, runs,
+                                                          monkeypatch):
+    """A fresh clone's `build-all --only seoul` must not start 85 GB of
+    downloads. Mutation: count an absent extract as stale -> red."""
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    monkeypatch.setattr(geofabrik.shutil, "which", lambda tool: "/usr/bin/osmium")
+    geofabrik_says(OCT01)
+    found = geofabrik.refresh(tmp_path / "osm", regions=("europe", "asia"))
+    assert runs == [] and not any(e.present for e in found)
 
 
 # --- refresh(): which scripts run ---------------------------------------------

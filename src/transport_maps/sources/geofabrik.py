@@ -28,6 +28,11 @@ A failed check, a missing tool (osm_rail.sh needs the `osmium` command-line
 tool, which the build host does not have) or a failed script leaves the
 extract on disk in use and says so, like a mirror being down for `_fetch`.
 Offline, nothing is asked.
+
+An extract that is not on disk at all is NOT downloaded here. That is an
+install step, tens of gigabytes, and the build has always reported it rather
+than done it ("rail: EXCLUDED -- ... run scripts/osm_rail.sh first"); a fresh
+clone running `build-all --only seoul` must not start an 85 GB download.
 """
 
 from __future__ import annotations
@@ -107,30 +112,35 @@ class Extract:
     kind: str                    # "rail" (osm_rail.sh) or "full" (osm_fixed_links.sh)
     local: datetime | None       # None: absent, or no timestamp in its header
     upstream: datetime | None    # None: not checked
+    present: bool = True         # on disk (a full extract: or a parse of it)
 
     @property
     def stale(self) -> bool:
-        if self.upstream is None:
+        if self.upstream is None or not self.present:
             return False
         if self.local is None:
+            # On disk with no snapshot in its header: its age is unknown.
             return True
         # Strictly newer first: at a max age of 0 an extract already at the
         # upstream's snapshot must not be downloaded again every build.
         return self.upstream > self.local and self.upstream - self.local >= max_age()
 
 
-def _local(extracts_dir: pathlib.Path, region: str, kind: str) -> datetime | None:
+def _local(extracts_dir: pathlib.Path, region: str, kind: str,
+           up: datetime | None = None) -> Extract:
     if kind == "rail":
         path = extracts_dir / f"{region}-rail.osm.pbf"
-        return snapshot(path) if path.exists() else None
+        present = path.exists()
+        return Extract(region, kind, snapshot(path) if present else None, up, present)
     path = extracts_dir / f"{region}.osm.pbf"
     if path.exists():
-        return snapshot(path)
+        return Extract(region, kind, snapshot(path), up)
     # The full extracts exist only to feed the fixed-link parse and may be
     # deleted once it is cached; the cache's name then carries the snapshot.
     from transport_maps.sources import fixed_links
 
-    return fixed_links.cached_snapshot(region)
+    snap = fixed_links.cached_snapshot(region)
+    return Extract(region, kind, snap, up, present=snap is not None)
 
 
 def survey(extracts_dir: pathlib.Path, regions=REGIONS) -> list[Extract]:
@@ -139,7 +149,7 @@ def survey(extracts_dir: pathlib.Path, regions=REGIONS) -> list[Extract]:
     for region in regions:
         up = upstream(region)
         for kind in ("full", "rail"):
-            out.append(Extract(region, kind, _local(extracts_dir, region, kind), up))
+            out.append(_local(extracts_dir, region, kind, up))
     return out
 
 
@@ -163,13 +173,15 @@ def refresh(extracts_dir: pathlib.Path | None = None, regions=REGIONS) -> list[E
     """
     extracts_dir = extracts_dir or (config.CACHE / "osm")
     if _fetch.offline():
-        found = [Extract(r, k, _local(extracts_dir, r, k), None)
-                 for r in regions for k in ("full", "rail")]
+        found = [_local(extracts_dir, r, k) for r in regions for k in ("full", "rail")]
         _record(found)
         return found
 
     found = survey(extracts_dir, regions)
     for e in found:
+        if not e.present:
+            logger.info("%s %s extract: not on disk, so not refreshed; the build reports it "
+                        "missing (install it with its script)", e.region, e.kind)
         if e.stale:
             logger.info("%s %s extract: local %s, Geofabrik %s -- older than %s, re-extracting",
                         e.region, e.kind, e.local, e.upstream, max_age())
@@ -189,8 +201,7 @@ def refresh(extracts_dir: pathlib.Path | None = None, regions=REGIONS) -> list[E
             _run("osm_rail.sh", rail, extracts_dir)
     if full or rail:
         ups = {e.region: e.upstream for e in found}
-        found = [Extract(e.region, e.kind, _local(extracts_dir, e.region, e.kind), ups[e.region])
-                 for e in found]
+        found = [_local(extracts_dir, e.region, e.kind, ups[e.region]) for e in found]
         # The scripts report a failed region and go on to the next, exiting 0;
         # the snapshot on disk is what says whether a refresh happened.
         behind = [f"{e.region} {e.kind}" for e in found if e.stale]
