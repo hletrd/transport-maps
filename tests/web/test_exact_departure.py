@@ -45,9 +45,10 @@ CONST_SRC = CONST_SRC[:CONST_SRC.index("\n", CONST_SRC.index("let solverEnabled 
 FN = {name: _js.function(name, with_async=True) for name in (
     "solvePoint", "exactReading", "refreshExact", "paintExact", "forgetExactFrom",
     "parseDep", "originDragEnd", "paintOrigin", "nearestOrigin", "haversineKm",
-    "fmtKm", "fmtTime")}
+    "fmtKm", "fmtTime", "paintExactLegs", "exactLegRows", "solverAirport")}
 CONSTS = "\n".join(_js.statement(a) for a in (
-    "const EXACT_MIN_KM = ", "const EXACT_NOTE = ", "const fmtDur = ", "const AVOIDABLE = "))
+    "const EXACT_MIN_KM = ", "const EXACT_NOTE = ", "const fmtDur = ", "const AVOIDABLE = ",
+    "const MODE_FALLBACK = "))
 
 CITIES = [
     {"slug": "seoul", "name": "Seoul", "lat": 37.5665, "lon": 126.978},
@@ -76,16 +77,28 @@ def _run(node: str, tmp_path, body: str) -> dict:
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
-# A DOM just big enough for paintExact and snapNotice-shaped parts.
+# A DOM just big enough for paintExact, paintExactLegs and snapNotice-shaped
+# parts. `html()` serialises a subtree, so a test reads what was built --
+# element, class, attributes, text -- rather than what a helper returned.
 _DOM = """
 class El {
-  constructor(){ this.hidden = true; this.kids = []; }
-  replaceChildren(...k){ this.kids = k; }
-  get textContent(){ return this.kids.map((k) => k.textContent ?? k.text).join(""); }
+  constructor(tag = "p"){ this.tag = tag; this.hidden = true; this.kids = []; this.attrs = {};
+    this.className = ""; this._text = null; }
+  replaceChildren(...k){ this.kids = k; this._text = null; }
+  append(...k){ this.kids.push(...k); }
+  setAttribute(k, v){ this.attrs[k] = String(v); }
+  set textContent(t){ this._text = t; this.kids = []; }
+  get textContent(){ return this._text ?? this.kids.map((k) => k.textContent ?? k.text).join(""); }
 }
+const html = (n) => {
+  if (n.text !== undefined) return n.text;
+  const attrs = (n.className ? ` class="${n.className}"` : "")
+    + Object.entries(n.attrs).map(([k, v]) => ` ${k}="${v}"`).join("");
+  return `<${n.tag}${attrs}>${n._text ?? n.kids.map(html).join("")}</${n.tag}>`;
+};
 globalThis.document = {
   createTextNode: (text) => ({ text }),
-  createElement: () => ({ textContent: "" }),
+  createElement: (tag) => { const e = new El(tag); e.hidden = false; return e; },
 };
 const _els = {};
 const $ = (id) => (_els[id] ||= new El());
@@ -117,6 +130,16 @@ globalThis.fetch = (url, opts) => new Promise((resolve, reject) => {{
   requests.push(r);
 }});
 const tick = () => new Promise((r) => setTimeout(r, 0));
+// The city's routes file and airports.json, as the page holds them: two
+// airports, ICN (ordinal 0) and EWR (ordinal 2) after 100 cells, with four
+// airports in the build, so the arrival nodes start at 104. JFK (ordinal 1)
+// is in the build but not in this city's routes file.
+const origin = {{ routes: {{ offsets: {{ cells: 0, airports: 100, stations: 108 }},
+  byId: new Map([[100, {{ id: 100, kind: "dep", code: "ICN" }}],
+                 [106, {{ id: 106, kind: "arr", code: "EWR" }}]]) }} }};
+let airports = [["ICN", "Incheon International Airport", "KR", 37.46, 126.44, "large"],
+                ["EWR", "Newark Liberty International Airport", "US", 40.69, -74.17, "large"]];
+const countryName = (cc) => ({{ KR: "South Korea", US: "United States" }})[cc] ?? cc;
 {CONSTS}
 {CONST_SRC}
 {FN["fmtTime"]}
@@ -125,6 +148,9 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 {FN["exactReading"]}
 {FN["refreshExact"]}
 {FN["paintExact"]}
+{FN["solverAirport"]}
+{FN["exactLegRows"]}
+{FN["paintExactLegs"]}
 """
 
 
@@ -341,6 +367,232 @@ await tick(); await tick(); await tick();
 console.log(JSON.stringify({ text: $("exact").textContent }));
 """)
     assert "did not answer" in got["text"] and FALLBACK_SEOUL in got["text"]
+
+
+# ------------------------------------------------------- the legs ---
+
+# Seoul to New York as the service sends it: ordinals 0 (ICN), 2 (EWR) and 1
+# (JFK, which this city's routes file does not list). 140 + 830 + 95 + 61 +
+# 92 = 1,218 minutes, 20 h 18 min.
+LEGS = [
+    {"kind": "surface", "min": 140, "railMin": 52},
+    {"kind": "fly", "from": 0, "to": 2, "min": 830},
+    {"kind": "connect", "at": 2, "min": 95},
+    {"kind": "fly", "from": 2, "to": 1, "min": 61},
+    {"kind": "surface", "min": 92, "railMin": 0},
+]
+WITH_LEGS = dict(OK, minutes=1218, legs=LEGS)
+ICN = ('<span class="ap" tabindex="0" '
+       'data-tip="Incheon International Airport, South Korea">ICN</span>')
+EWR = ('<span class="ap" tabindex="0" '
+       'data-tip="Newark Liberty International Airport, United States">EWR</span>')
+
+
+def _answered(node, tmp_path, body, setup="") -> dict:
+    """refreshExact through the real solvePoint, answered with `body`; what
+    the line and the legs box hold afterwards."""
+    return _run(node, tmp_path, _page(armed=True) + f"""
+exactFrom = {{ lat: 37.60, lon: 127.10 }};
+pinB = {{ lat: 40.71, lon: -74.01, label: "New York" }};
+active = meta.origins[0];
+{setup}
+refreshExact();
+const loadingHidden = $("exactlegs").hidden;
+requests[0].answer({json.dumps(body)});
+await tick(); await tick();
+const box = $("exactlegs");
+console.log(JSON.stringify({{ line: $("exact").textContent, hidden: box.hidden,
+  loadingHidden, rows: box.kids.map(html), text: box.kids.map((r) => r.textContent) }}));
+""")
+
+
+def test_the_legs_are_printed_under_the_line_in_the_itinerarys_words(node, tmp_path):
+    """Airport codes glossed with their names from airports.json, the flight
+    as "Fly ICN → EWR", the connection, the rail share under the leg it
+    belongs to, and an airport the city's routes file does not list named as
+    "an airport" rather than guessed.
+
+    Mutations performed and reverted, each RED: drop the `legs:` line from
+    solvePoint's result (the box stays hidden); read ordinal k as arrival
+    node `a + k` in solverAirport (EWR is not found); print `leg.min` for the
+    rail line instead of `leg.railMin`; swap the `landed`/`boards` tests so
+    the first leg reads "Onward from".
+    """
+    got = _answered(node, tmp_path, WITH_LEGS)
+    assert got["line"] == ("From the exact point you chose: 20 h 18 min door to door, "
+                           "computed on demand.")
+    assert got["loadingHidden"] is True, "legs were shown while the answer was computing"
+    assert got["hidden"] is False
+    assert got["text"] == [
+        "2 h 20 minTo ICN, and through the airport52 min of it by rail",
+        "13 h 50 minFly ICN → EWR",
+        "1 h 35 minConnect at EWR",
+        "1 h 1 minFly EWR → an airport",
+        "1 h 32 minOnward from an airport",
+    ]
+    # The rail line is the itinerary's own .via line, and "rail" carries the
+    # mode's gloss (MODE_FALLBACK here: this index.json has no modeDetail).
+    assert got["rows"][0] == (
+        '<div class="leg"><span class="t">2 h 20 min</span>'
+        f'<span class="d">To <b>{ICN}</b>, and through the airport'
+        '<span class="via">52 min of it by <span class="mode" tabindex="0" data-tip="'
+        'Scheduled trains from OpenStreetMap route relations, stop to stop, plus boarding time.'
+        '">rail</span></span></span></div>')
+    assert got["rows"][1] == ('<div class="leg"><span class="t">13 h 50 min</span>'
+                              f'<span class="d">Fly <b>{ICN} → {EWR}</b></span></div>')
+    assert got["rows"][2].endswith(f"Connect at <b>{EWR}</b></span></div>")
+
+
+def test_without_legs_the_line_is_the_figure_alone(node, tmp_path):
+    """An older server, or a bundle with no node layout: exactly the line it
+    printed before legs existed, and no box.
+
+    Mutation performed and reverted: `res?.ok && res.reachable ? res.legs :
+    null` -> `res?.legs ?? []` -> RED (an empty box is shown).
+    """
+    got = _answered(node, tmp_path, OK)
+    assert got["line"] == ("From the exact point you chose: 7 h 12 min door to door, "
+                           "computed on demand.")
+    assert got["hidden"] is True and got["rows"] == []
+
+
+def test_no_scheduled_route_has_no_legs(node, tmp_path):
+    """Legs under "no scheduled route" would describe a journey that does not
+    exist. Two guards, each tested alone: solvePoint gives an unreachable
+    answer no legs, and paintExactLegs prints none for one.
+
+    Mutations performed and reverted, each RED: `legs: reachable ?
+    solverLegs(...) : null` -> `legs: body.legs`; `res?.ok && res.reachable ?`
+    -> `res?.ok ?` in paintExactLegs.
+    """
+    body = dict(OK, reachable=False, minutes=None, legs=LEGS)
+    got = _answered(node, tmp_path, body)
+    assert "no scheduled route" in got["line"]
+    assert got["hidden"] is True and got["rows"] == []
+    alone = _run(node, tmp_path, _page(armed=True) + f"""
+const res = await (async () => {{
+  const p = solvePoint({{ lat: 1, lon: 2 }}, {{ lat: 3, lon: 4 }});
+  requests[0].answer({json.dumps(body)});
+  return p;
+}})();
+paintExactLegs({{ ok: true, reachable: false, minutes: null, legs: {json.dumps(LEGS)} }});
+console.log(JSON.stringify({{ legs: res.legs, hidden: $("exactlegs").hidden }}));
+""")
+    assert alone == {"legs": None, "hidden": True}
+
+
+@pytest.mark.parametrize("why,legs", [
+    ("short by a minute", [dict(LEGS[0], min=139), *LEGS[1:]]),
+    ("ends in the air", LEGS[:-1] + [dict(LEGS[-2], min=92)]),
+    ("unknown kind", [dict(LEGS[0], kind="teleport"), *LEGS[1:]]),
+    # Not summed, and "52" > 140 is false: only the integer test sees it.
+    ("a string", [dict(LEGS[0], railMin="52"), *LEGS[1:]]),
+    ("more rail than surface", [dict(LEGS[0], railMin=141), *LEGS[1:]]),
+    # Has a length, so only Array.isArray stands between it and a for...of
+    # that throws -- which solvePoint would report as an outage, figure lost.
+    ("not a list", {"length": 5, "0": LEGS[0]}),
+])
+def test_legs_that_do_not_add_up_cost_the_breakdown_not_the_figure(node, tmp_path, why, legs):
+    """The page checks the legs as the service does (wire._check_legs). A
+    breakdown that does not sum to the figure above it is dropped; the figure,
+    which was validated on its own, still prints.
+
+    Mutations performed and reverted, each RED on its row: drop the
+    `sum === minutes` test ("short by a minute"); drop the last-leg test
+    ("ends in the air"); drop the `Object.hasOwn` kind test ("unknown
+    kind"); drop the per-field `Number.isInteger` test ("a string"); drop the
+    railMin bound ("more rail than surface"); drop `Array.isArray` ("not a
+    list").
+    """
+    got = _answered(node, tmp_path, dict(WITH_LEGS, legs=legs))
+    assert "20 h 18 min door to door" in got["line"]
+    assert got["hidden"] is True, f"{why}: printed anyway"
+
+
+def test_the_legs_go_with_the_line(node, tmp_path):
+    """A new pair, a dropped point and an avoided mode each take the legs
+    away with the answer they belonged to.
+
+    Mutations performed and reverted, each RED: delete `paintExactLegs(null)`
+    from paintExact's hidden branch (the legs outlive the point); delete the
+    `box.replaceChildren()` in the empty branch (the rows survive, hidden).
+    """
+    got = _run(node, tmp_path, _page(armed=True) + f"""
+exactFrom = {{ lat: 37.60, lon: 127.10 }};
+pinB = {{ lat: 40.71, lon: -74.01, label: "New York" }};
+active = meta.origins[0];
+refreshExact();
+requests[0].answer({json.dumps(WITH_LEGS)});
+await tick(); await tick();
+const shown = !$("exactlegs").hidden;
+pinB = {{ lat: 35.68, lon: 139.65, label: "Tokyo" }};
+refreshExact();
+const whileComputing = [$("exactlegs").hidden, $("exactlegs").kids.length];
+requests[1].answer({json.dumps(WITH_LEGS)});
+await tick(); await tick();
+exactFrom = null;
+refreshExact();
+const afterDrop = [$("exactlegs").hidden, $("exactlegs").kids.length];
+console.log(JSON.stringify({{ shown, whileComputing, afterDrop }}));
+""")
+    assert got["shown"] is True
+    assert got["whileComputing"] == [True, 0]
+    assert got["afterDrop"] == [True, 0]
+
+
+@pytest.mark.parametrize("legs,expected", [
+    # Overland the whole way, all of it by train.
+    ([{"kind": "surface", "min": 75, "railMin": 75}],
+     ["1 h 15 min|No flight on this journey: surface travel|All of it by rail"]),
+    # Overland, partly by train.
+    ([{"kind": "surface", "min": 75, "railMin": 30}],
+     ["1 h 15 min|No flight on this journey: surface travel|30 min of it by rail"]),
+    # Land at one airport, cross town, fly out of another.
+    ([{"kind": "surface", "min": 60, "railMin": 0},
+      {"kind": "fly", "from": 0, "to": 2, "min": 600},
+      {"kind": "surface", "min": 120, "railMin": 0},
+      {"kind": "fly", "from": 1, "to": 0, "min": 300},
+      {"kind": "surface", "min": 50, "railMin": 0}],
+     ["1 h|To ICN, and through the airport",
+      "10 h|Fly ICN → EWR",
+      "2 h|From EWR to an airport, and through both airports",
+      "5 h|Fly an airport → ICN",
+      "50 min|Onward from ICN"]),
+])
+def test_each_surface_leg_is_named_by_the_flights_around_it(node, tmp_path, legs, expected):
+    """exactLegRows alone, every surface branch, with the city's routes file
+    resolving the codes. Rail under a surface leg, never road or ferry.
+
+    Mutation performed and reverted: `leg.railMin >= leg.min` -> `>` -> RED on
+    the first row.
+    """
+    got = _run(node, tmp_path, _page(armed=True) + f"""
+const flat = (p) => typeof p === "string" ? p
+  : p.ap ?? p.mode ?? (p.via ? "|" + p.via.map(flat).join("") : [].concat(p.b).map(flat).join(""));
+console.log(JSON.stringify(exactLegRows({json.dumps(legs)}).map(
+  (r) => r.t + "|" + r.d.map(flat).join(""))));
+""")
+    assert got == expected
+
+
+def test_a_late_airports_json_names_the_exact_legs_too():
+    """The itinerary is repainted when airports.json lands; the exact legs
+    read the same table for their glosses, so they are repainted with it."""
+    handler = _js.APP[_js.APP.index('fetch("./airports.json")'):]
+    handler = handler[:handler.index(".catch(")]
+    assert "if (pinB) { renderLegs(); paintExact(false); }" in handler
+
+
+def test_the_exact_legs_box_has_the_tooltips_the_itinerary_has():
+    """The .ap and .mode glosses are shown by listeners on their container;
+    a second container needs them too, and a missing element must not throw
+    at module load (a blank page, twice in this project)."""
+    block = _js.APP[_js.APP.index("const legTip = $(\"legtip\");"):]
+    block = block[:block.index("const lockBox")]
+    assert 'for (const legs of [$("legs"), $("exactlegs")]) {' in block
+    assert "if (!legs) continue;" in block
+    html = (config.ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    assert html.index('id="exact"') < html.index('id="exactlegs"') < html.index('class="legend"')
 
 
 # ------------------------------------------------------- the drag ---

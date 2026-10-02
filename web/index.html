@@ -294,6 +294,10 @@ body.crowded .depart-card{display:none}
 .reading .exact{margin:6px 0 0;padding:2px 8px;font-size:var(--t-ui);line-height:1.4;
   color:var(--text-2);border-left:2px solid rgba(228,143,53,.55)}
 .reading .exact b{color:var(--text);font-weight:500}
+/* Its legs continue the same rule, so they read as that line's breakdown and
+   not as the city's itinerary further down. Rows are the itinerary's own
+   .leg, .t and .d. */
+.reading .exactlegs{margin:0;padding:1px 8px 3px;border-left:2px solid rgba(228,143,53,.55)}
 
 .legend{margin-top:14px}
 .tints{display:flex;height:9px;border-radius:1px;overflow:hidden;position:relative}
@@ -887,6 +891,10 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
        and this adds one number beside them. Shown only when index.json arms
        the solver. -->
   <p class="exact" id="exact" hidden></p>
+  <!-- How that journey went, one row per leg, when the service says: the
+       same rows as the itinerary below, airports glossed the same way. The
+       line above is their total, so they carry none of their own. -->
+  <div class="exactlegs" id="exactlegs" hidden></div>
 
   <div class="legend">
     <div class="tints" id="tints"></div>

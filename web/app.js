@@ -1307,13 +1307,43 @@ const SOLVER_CODES = {
 const SOLVER_FALLBACK = (name) => name
   ? ` The times on the map are still measured from ${name}, the nearest charted departure city.`
   : " The charted departure cities are unaffected; pick one from the list.";
+// The legs a response may carry and the integer fields of each, as
+// LEG_FIELDS in src/transport_maps/service/wire.py; tests/service/test_wire.py
+// asserts the two tables equal. `legs` is optional: a server whose bundle
+// does not name its node layout sends the figure alone, and the page then
+// prints the figure alone, as it did before legs existed.
+const SOLVER_LEG_FIELDS = {
+  surface: ["min", "railMin"],
+  fly: ["from", "to", "min"],
+  connect: ["at", "min"],
+};
+// A journey longer than this is not one the service produces; refusing it
+// bounds the DOM a response can make.
+const SOLVER_MAX_LEGS = 48;
+// The legs, or null when there are none to print. Checked rather than
+// trusted, like every other field: printed under the figure as its
+// breakdown, legs that do not add up to it would be the one thing on the
+// page a reader cannot reconcile. A bad `legs` costs the breakdown, never
+// the figure, which was validated on its own.
+const solverLegs = (legs, minutes) => {
+  if (!Array.isArray(legs) || !legs.length || legs.length > SOLVER_MAX_LEGS) return null;
+  let sum = 0;
+  for (const leg of legs) {
+    const fields = leg && Object.hasOwn(SOLVER_LEG_FIELDS, leg.kind) ? SOLVER_LEG_FIELDS[leg.kind] : null;
+    if (!fields || !fields.every((f) => Number.isInteger(leg[f]) && leg[f] >= 0)) return null;
+    if (leg.kind === "surface" && leg.railMin > leg.min) return null;
+    sum += leg.min;
+  }
+  return sum === minutes && legs[legs.length - 1].kind === "surface" ? legs : null;
+};
 let solverEnabled = meta.solver?.wire === SOLVER_WIRE_VERSION;
 
 // Returns a result object and NEVER throws, so no caller can turn a network
 // hiccup into an unhandled rejection -- which on this page reaches boot.js's
 // capturing listener and paints "The page could not start" over a globe that
 // is drawing perfectly. Shape: {ok: true, minutes, reachable, snappedKm,
-// snappedLat, snappedLon} or {ok: false, code, message}.
+// snappedLat, snappedLon, legs} or {ok: false, code, message}, where `legs`
+// is null when the service sent none or none that checked out.
 async function solvePoint(from, to, signal) {
   if (!solverEnabled) return { ok: false, code: "unavailable", message: SOLVER_CODES.unavailable };
   const ctl = new AbortController();
@@ -1351,6 +1381,7 @@ async function solvePoint(from, to, signal) {
       snappedKm: body.snappedKm,
       snappedLat: body.snappedLat,
       snappedLon: body.snappedLon,
+      legs: reachable ? solverLegs(body.legs, body.minutes) : null,
     };
   } catch {
     // The timeout firing, the caller cancelling, a DNS failure, a CSP refusal,
@@ -1416,7 +1447,8 @@ function exactReading(res, { city = null, carryOnOn = false, avoided = null } = 
             ` to this destination, computed on demand.${moved}`];
   }
   // Carry-on comes off the city's figures through their airport legs. The
-  // service's answer carries no legs, so it cannot be applied, and that is said.
+  // service solves with a checked bag and its figure is printed as solved --
+  // the legs under it must still add up to it -- so that is said.
   const bag = carryOnOn ? " It assumes a checked bag." : "";
   return ["From the exact point you chose: ", { b: fmtDur(res.minutes) },
           ` door to door, computed on demand.${moved}${bag}`];
@@ -1454,7 +1486,11 @@ function refreshExact() {
 function paintExact(say) {
   const el = $("exact");
   if (!el) return;
-  if (!(solverEnabled && exactFrom && pinB)) { el.hidden = true; el.replaceChildren(); return; }
+  if (!(solverEnabled && exactFrom && pinB)) {
+    el.hidden = true; el.replaceChildren();
+    paintExactLegs(null);
+    return;
+  }
   const parts = exactReading(exactResult, {
     city: active?.name ?? null, carryOnOn: carryOn,
     avoided: avoid ? AVOIDABLE[avoid] : null,
@@ -1467,8 +1503,94 @@ function paintExact(say) {
     return b;
   }));
   el.hidden = false;
+  paintExactLegs(avoid ? null : exactResult);
   // An answer is a committed reading; "Computing…" is not.
   if (say) announce(el.textContent);
+}
+
+//: The airport a solver leg's ordinal names, as an IATA code, or null. The
+//: ordinals are the build's airport positions, the ones .air.bin carries
+//: (docs/contract.md), so the departure city's own routes file -- from the
+//: same build, which is the only build index.json arms the solver for --
+//: turns one into a code: ordinal k is departure node `airports + k` and
+//: arrival node `airports + n + k`. The file lists the airports the city's
+//: journeys reach; one it does not list prints as "an airport", not a guess.
+function solverAirport(k) {
+  const r = origin.routes;
+  if (!r || !Number.isInteger(k)) return null;
+  const { airports: a, stations: s } = r.offsets;
+  const n = (s - a) / 2;
+  if (!(k >= 0 && k < n)) return null;
+  return (r.byId.get(a + k) ?? r.byId.get(a + n + k))?.code ?? null;
+}
+
+//: The rows under the exact-point line, one per leg, in the words of the
+//: map's own itinerary (renderLegsInto): "To ICN, and through the airport",
+//: "Fly ICN → EWR", "Connect at EWR", "Onward from EWR". A surface leg says
+//: how much of it was rail on a line beneath, and never road or ferry: the
+//: service cannot tell those two apart (service/bundle.py, journey_legs).
+//: Parts as exactReading's, plus {b: [parts]}, {ap: code} for an airport,
+//: {mode: name} for a mode and {via: [parts]} for the line beneath. Pure, so
+//: tests/web/test_exact_departure.py runs every branch.
+function exactLegRows(legs, codeOf = solverAirport) {
+  const ap = (k) => { const code = codeOf(k); return code ? { ap: code } : "an airport"; };
+  return legs.map((leg, i) => {
+    let d;
+    if (leg.kind === "fly") d = ["Fly ", { b: [ap(leg.from), " → ", ap(leg.to)] }];
+    else if (leg.kind === "connect") d = ["Connect at ", { b: [ap(leg.at)] }];
+    else {
+      const landed = legs[i - 1]?.kind === "fly" ? legs[i - 1].to : null;
+      const boards = legs[i + 1]?.kind === "fly" ? legs[i + 1].from : null;
+      if (landed != null && boards != null) {
+        d = ["From ", { b: [ap(landed)] }, " to ", { b: [ap(boards)] }, ", and through both airports"];
+      } else if (boards != null) d = ["To ", { b: [ap(boards)] }, ", and through the airport"];
+      else if (landed != null) d = ["Onward from ", { b: [ap(landed)] }];
+      else d = ["No flight on this journey: surface travel"];
+      if (leg.railMin >= 1) {
+        d.push({ via: [leg.railMin >= leg.min ? "All of it by " : `${fmtDur(leg.railMin)} of it by `,
+                       { mode: "rail" }] });
+      }
+    }
+    return { t: fmtDur(leg.min), d };
+  });
+}
+
+//: The legs under the exact-point line, or nothing: no answer yet, a
+//: failure, no route, or a server that sent the figure alone. Built from
+//: DOM nodes, never markup, for the reason snapNotice gives; the airport
+//: and mode glosses are the same `data-tip` spans the itinerary uses.
+function paintExactLegs(res) {
+  const box = $("exactlegs");
+  if (!box) return;
+  const legs = res?.ok && res.reachable ? res.legs : null;
+  if (!legs) { box.hidden = true; box.replaceChildren(); return; }
+  const span = (cls, text, tip) => {
+    const s = document.createElement("span");
+    s.className = cls; s.textContent = text;
+    if (tip) { s.setAttribute("tabindex", "0"); s.setAttribute("data-tip", tip); }
+    return s;
+  };
+  const node = (part) => {
+    if (typeof part === "string") return document.createTextNode(part);
+    if (part.ap) {
+      const a = airports.find((x) => x[0] === part.ap);
+      return a ? span("ap", part.ap, `${a[1]}, ${countryName(a[2])}`) : document.createTextNode(part.ap);
+    }
+    if (part.mode) return span("mode", part.mode, meta.modeDetail?.[part.mode] ?? MODE_FALLBACK[part.mode]);
+    const el = document.createElement(part.via ? "span" : "b");
+    if (part.via) el.className = "via";
+    el.append(...[].concat(part.via ?? part.b).map(node));
+    return el;
+  };
+  box.replaceChildren(...exactLegRows(legs).map(({ t, d }) => {
+    const row = document.createElement("div");
+    row.className = "leg";
+    const ts = document.createElement("span"); ts.className = "t"; ts.textContent = t;
+    const ds = document.createElement("span"); ds.className = "d"; ds.append(...d.map(node));
+    row.append(ts, ds);
+    return row;
+  }));
+  box.hidden = false;
 }
 
 //: A dropped point belongs to one drag, like the snap notice that names it.
@@ -3960,7 +4082,8 @@ fetch("./airports.json")
     // renderLegs, not the drawing half alone: it redraws BOTH from one walk of
     // the chain, which is the invariant test_app_constants.py pins (one call
     // site, so the line and the text can never be two interpretations).
-    if (pinB) renderLegs();
+    // The exact point's legs name their airports through the same table.
+    if (pinB) { renderLegs(); paintExact(false); }
   })
   .catch(() => {});
 // How many departure cities the list shows when nothing is being searched.
@@ -4684,8 +4807,9 @@ function showLegTip(el) {
   legTip.style.left = `${Math.min(Math.max(8, r.left), Math.max(8, innerWidth - w - 8))}px`;
   legTip.style.top = `${r.top - h - 6 < 8 ? r.bottom + 6 : r.top - h - 6}px`;
 }
-{
-  const legs = $("legs");
+// The exact point's legs (paintExactLegs) carry the same glosses.
+for (const legs of [$("legs"), $("exactlegs")]) {
+  if (!legs) continue;
   legs.addEventListener("mouseover", (e) => {
     const el = e.target.closest?.("[data-tip]");
     if (el) showLegTip(el); else hideLegTip();
@@ -4697,8 +4821,8 @@ function showLegTip(el) {
   });
   legs.addEventListener("focusout", hideLegTip);
   legs.addEventListener("scroll", hideLegTip, { passive: true });
-  addEventListener("resize", hideLegTip);
 }
+addEventListener("resize", hideLegTip);
 
 const lockBox = $("lock-north");
 lockBox.checked = lockNorth;

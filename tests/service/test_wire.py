@@ -435,6 +435,28 @@ def test_the_page_and_the_service_agree_on_the_error_codes():
         f"only the page knows {in_page - set(wire.ERRORS)}")
 
 
+def test_the_page_reads_the_leg_fields_the_service_writes():
+    """Both ends name the kinds of leg and their fields. A kind only the
+    service knows is a breakdown the page refuses; a field only the page
+    checks is one it waits for and never gets, which also costs the
+    breakdown.
+
+    Mutations performed and reverted, each RED: add "ferryMin" to the
+    service's surface fields; delete the page's `connect` row.
+    """
+    import pathlib
+    import re
+
+    from transport_maps import config
+
+    app = (pathlib.Path(config.ROOT) / "web" / "app.js").read_text()
+    block = re.search(r"const SOLVER_LEG_FIELDS = \{(.*?)\n\};", app, re.S)
+    assert block, "web/app.js has no SOLVER_LEG_FIELDS table to compare against"
+    in_page = {kind: tuple(re.findall(r'"(\w+)"', fields))
+               for kind, fields in re.findall(r"^\s*(\w+): \[(.*?)\]", block.group(1), re.M)}
+    assert in_page == wire.LEG_FIELDS
+
+
 def test_the_bodies_nginx_answers_for_the_solver_are_the_wire_format():
     """nginx answers `busy` (rate limit) and `unavailable` (solver down) itself,
     so the page never sees an HTML error page from /api/solve. Those two
