@@ -25,6 +25,9 @@ import h3
 import numpy as np
 
 from transport_maps import config
+from transport_maps.snap import (
+    _nearest_land,  # noqa: F401 -- re-exported; one implementation
+)
 from transport_maps.sources import airports, landmask
 
 # An airport whose containing H3 cell is absent from the land mask is snapped
@@ -128,43 +131,6 @@ class NodeIndex:
     def station_cell_index(self, station: str) -> int:
         """The land cell a station sits in, which is how you reach it."""
         return self._station_cell[station]
-
-
-def _nearest_land(cell: str, cell_pos: dict[str, int], lat: float, lon: float,
-                  split: frozenset | set = frozenset()) -> tuple[int, float] | None:
-    """The nearest indexed cell within two rings of `cell`: (position, km), or None.
-
-    Ring neighbours are looked up at `cell`'s own resolution. A neighbour that
-    is absent from the index because it was SPLIT (it is present only as its
-    FINE_RES children) contributes those children instead; a fine neighbour
-    whose base cell was not split contributes that base cell. Without the
-    split case every dense coastal cell -- exactly the land beside a
-    reclaimed-island airport -- was invisible to the search: Kitakyushu was
-    dropped with land 5 km away and Bodø was wired to a cell 11 km off past six
-    adjacent land cells. Every candidate across both rings is compared by
-    distance, so "nearest" means nearest and not first-found. Two rings reach
-    about 13 km from a res-6 cell (the case that arises: an off-mask cell is
-    never split) and about 5 km from a res-7 one.
-    """
-    best: tuple[int, float] | None = None
-    for ring in (1, 2):
-        for n in h3.grid_ring(cell, ring):
-            if n in cell_pos:
-                candidates = (n,)
-            elif n in split:
-                candidates = h3.cell_to_children(n, config.FINE_RES)
-            elif h3.get_resolution(n) > config.SOLVE_RES:
-                candidates = (h3.cell_to_parent(n, config.SOLVE_RES),)
-            else:
-                continue
-            for candidate in candidates:
-                pos = cell_pos.get(candidate)
-                if pos is None:
-                    continue
-                km = h3.great_circle_distance((lat, lon), h3.cell_to_latlng(candidate), unit="km")
-                if best is None or km < best[1]:
-                    best = (pos, km)
-    return best
 
 
 def _place_airports(apts, cell_pos: dict[str, int], split_set: set | frozenset
