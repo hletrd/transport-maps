@@ -22,7 +22,7 @@ def _run_variant(monkeypatch, tmp_path, exclude, coverages=(1.0, 1.0)):
     monkeypatch.setattr(cli.index, "write_index",
                         lambda *a, **k: calls.__setitem__("index", calls["index"] + 1))
     monkeypatch.setattr(cli.index, "write_hover_cells",
-                        lambda idx, out: calls.__setitem__("hover_cells", calls["hover_cells"] + 1))
+                        lambda idx, out, **kw: calls.__setitem__("hover_cells", calls["hover_cells"] + 1))
 
     def pmtiles(fc, out, **kw):
         calls["max_zoom"].append(kw.get("max_zoom"))

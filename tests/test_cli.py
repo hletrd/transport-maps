@@ -91,7 +91,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
             {"slug": "second", "name": "Second", "lat": 1.0, "lon": 0.0},
         ],
     )
-    monkeypatch.setattr(cli.index, "write_hover_cells", lambda idx, out: None)
+    monkeypatch.setattr(cli.index, "write_hover_cells", lambda idx, out, **kw: None)
     monkeypatch.setattr(cli.hover, "hover_cells", lambda idx: ["dummy-parent"])
     # cell_speed_kmh would otherwise call h3.cell_to_boundary("dummy") for real
     # and blow up; _build_all now computes it once and threads it through to
@@ -125,7 +125,9 @@ def _stub_pipeline(monkeypatch, written, coverages):
         lambda csr, source, with_predecessors=False: (np.array([float(source)]), np.array([-9999])),
     )
     monkeypatch.setattr(cli.validate, "check_coverage",
-                        lambda minutes, idx: coverages[int(minutes[0])])
+                        lambda minutes, idx, reachable=None: coverages[int(minutes[0])])
+    # Computed once in the parent from each cell's latitude; "dummy" has none.
+    monkeypatch.setattr(cli.validate, "reachable_in_principle", lambda idx: np.ones(1, bool))
     monkeypatch.setattr(
         cli.validate, "check_monotonic_ground", lambda idx, minutes, speeds, **kw: None
     )
@@ -342,7 +344,7 @@ def test_a_worker_killed_by_a_signal_aborts_the_run_instead_of_hanging(monkeypat
     written: list = []
     _stub_pipeline(monkeypatch, written, coverages=[1.0, 1.0])
 
-    def die_on_second(minutes, idx):
+    def die_on_second(minutes, idx, reachable=None):
         if int(minutes[0]) == 1:
             os.kill(os.getpid(), signal.SIGKILL)
         return 1.0
@@ -623,3 +625,62 @@ def test_a_bad_origin_aborts_before_the_graph_is_built_and_names_every_one(
     assert "2 of 2" in message, f"the count is missing or wrong: {message}"
     assert graph == [], "the graph was assembled before the coordinates were checked"
     assert written == [], "a file was written for a run that could never publish"
+
+
+def test_what_the_grid_alone_decides_is_computed_once_and_handed_to_every_origin(
+        monkeypatch, tmp_path):
+    """R3 / H2: the per-origin gates and writers read three things that depend
+    on the grid alone, and the parent computes each ONCE: the cells outside
+    Antarctica that `check_coverage` counts (13.8 million h3 calls per origin
+    before), the land-border minute `check_monotonic_ground` charges, and the
+    hover parent list -- which `hover_cells.bin`, `index.json`'s
+    `hoverCellCount` and every per-origin writer must share, so it is the
+    same list object, not a recomputation that merely agrees (F7).
+
+    Mutations performed and reverted, each red: `_solve_one` passing no mask
+    (`check_coverage` gets None); no `crossing_min`; `write_hover_cells`
+    called without `parents`; `hover_cell_count` from a fresh `hover_cells`.
+    """
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    monkeypatch.setattr(cli, "_worker_count", lambda n_origins: 1)
+    _stub_pipeline(monkeypatch, [], coverages=[1.0, 1.0])
+    seen: dict = {"mask_calls": 0, "mask": [], "crossing": [], "parents": [], "hover_cells": 0}
+    mask = np.ones(1, bool)
+
+    def reachable(idx):
+        seen["mask_calls"] += 1
+        return mask
+
+    def coverage(minutes, idx, reachable=None):
+        seen["mask"].append(reachable)
+        return 1.0
+
+    def hover_cells(idx):
+        seen["hover_cells"] += 1
+        return ["dummy-parent"]
+
+    def write_hover(idx, minutes, out, parents=None, **kw):
+        seen["parents"].append(parents)
+        out.write_bytes(b"x")
+
+    monkeypatch.setattr(cli.validate, "reachable_in_principle", reachable)
+    monkeypatch.setattr(cli.ground, "_land_border_min", lambda: 45.0)
+    monkeypatch.setattr(cli.validate, "check_coverage", coverage)
+    monkeypatch.setattr(cli.validate, "check_monotonic_ground",
+                        lambda idx, minutes, speeds, **kw: seen["crossing"].append(kw.get("crossing_min")))
+    monkeypatch.setattr(cli.hover, "hover_cells", hover_cells)
+    monkeypatch.setattr(cli.index, "write_hover_cells",
+                        lambda idx, out, parents=None: seen.__setitem__("cells_file", parents))
+    monkeypatch.setattr(cli.hover, "write_hover", write_hover)
+    monkeypatch.setattr(cli.index, "write_index",
+                        lambda origins, out, **kw: seen.__setitem__("count", kw["hover_cell_count"]))
+
+    cli._build_all()
+
+    assert seen["mask_calls"] == 1 and seen["hover_cells"] == 1
+    assert len(seen["mask"]) == 2 and all(m is mask for m in seen["mask"])
+    assert seen["crossing"] == [45.0, 45.0]
+    one = seen["parents"][0]
+    assert one is not None and all(p is one for p in seen["parents"])
+    assert seen["cells_file"] is one, "hover_cells.bin was written from another list"
+    assert seen["count"] == len(one)

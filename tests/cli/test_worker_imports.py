@@ -87,6 +87,8 @@ def test_a_forked_worker_solves_an_origin_without_polars_gdal_or_rasterio(
               "hover_parents": parents,
               "hover_groups": hover.hover_groups(idx, parents),
               "base_hover": hover.base_hover_index(idx, parents),
+              "reachable": cli.validate.reachable_in_principle(idx),
+              "border_min": ground._land_border_min(),
               "out_root": tmp_path}
     context = cli.BuildContext(idx, None, np.full(idx.n_cells, 1.0),
                                types.MappingProxyType(shared))

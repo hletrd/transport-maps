@@ -125,13 +125,18 @@ def load_origins(path: Path | None = None) -> list[dict]:
     return origins
 
 
-def write_hover_cells(idx, out: Path) -> None:
+def write_hover_cells(idx, out: Path, parents: list[str] | None = None) -> None:
     """Sorted res-4 cell ids as little-endian uint64, matching the .bin ordering.
 
     The frontend computes h3.latLngToCell(lat, lon, 4), converts it to its integer
     form, and binary-searches this array to get the index into each origin's .bin.
+
+    `parents` is `hover.hover_cells(idx)`: the build passes the one list it
+    hands every per-origin writer, so this file and theirs share one ordering
+    by construction rather than by recomputing it (R3, F7).
     """
-    ids = np.array([h3.str_to_int(c) for c in hover.hover_cells(idx)], dtype="<u8")
+    parents = parents if parents is not None else hover.hover_cells(idx)
+    ids = np.array([h3.str_to_int(c) for c in parents], dtype="<u8")
     _io.write_bytes(out, ids.tobytes())
 
 

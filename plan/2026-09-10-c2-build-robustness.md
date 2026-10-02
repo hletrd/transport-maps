@@ -258,12 +258,33 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
         the fallbacks changes the signatures several tests and callers rely
         on, which is beyond a contained refactor. With S2's context half in,
         CR3-10 and TE3-10's "S2 lands" exits are met for the worker shape.
-- [ ] **R3 / H2 (hover grid)** `emit/hover.HoverGrid` built once in the parent
+- [x] **R3 / H2 (hover grid)** `emit/hover.HoverGrid` built once in the parent
       (`parents`, `parent_of`, `centre_pos`, vectorised `pick`); the four
       writers and `write_hover_cells` take it so the five files provably share
       one ordering (F7); `reachable_in_principle` and the land-border minute
       into the context (PR-3, ARCH-6, PR-16). Mutation: `centre_pos[:] = -1` →
       the centre-child test goes red.
+      *(2026-10-02: the grid itself landed in 59a3597 under another name --
+      `hover.HoverGroups` (`parent_of_cell`, `centre`) built once in
+      `_build_all` beside `hover_parents`, and `representative_array` the
+      vectorised pick, held against the old loop in
+      `tests/emit/test_hover_groups.py`; `centre[:] = -1` turns it red,
+      re-checked today. The F7 ordering test is 6e97391. What was left lands
+      now: `write_hover_cells(parents=)` and `index.json`'s `hoverCellCount`
+      take the same `hover_parents` list every writer gets (two more
+      recomputations gone, ~7 s each); `validate.reachable_in_principle` is
+      computed once into `shared["reachable"]` for `check_coverage` (~9 s of
+      h3 per origin); the land-border minute once into `shared["border_min"]`
+      for `check_monotonic_ground(crossing_min=)`. Each keeps its old
+      default, so standalone callers are unchanged. Outputs identical on
+      fixtures: `hover_cells.bin` bytes with and without the list, coverage
+      with and without the mask (hand-written mask, Antarctic cells in), the
+      gate's verdict with and without the minute. A wiring test checks the
+      parent computes each once and every origin gets the same object; four
+      wiring mutations and the mask's `>` -> `<` and an ignored
+      `crossing_min` each turn one red. A single `HoverGrid` object in place
+      of the three `shared` entries was not done: it would rename what the
+      tests build by hand and change no file.)*
 - [x] **R2** Precompute a `wraps` mask once per build; `_dissolve` loops only
       over wrapping cells (PR-2). Mutation: `wraps` all-False → the Fiji band
       test goes red. *(2026-10-02: `bands.precompute_flags` -- wraps and

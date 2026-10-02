@@ -288,7 +288,7 @@ def test_forked_workers_report_each_origin_as_it_finishes(monkeypatch, tmp_path,
     _stub_pipeline(monkeypatch, [], coverages=[1.0, 1.0])
     monkeypatch.setattr(cli.index, "write_index", lambda *a, **k: None)
 
-    def slow_first(minutes, idx):
+    def slow_first(minutes, idx, reachable=None):
         if int(minutes[0]) == 0:
             time.sleep(1.5)
         return 1.0

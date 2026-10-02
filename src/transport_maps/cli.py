@@ -311,7 +311,7 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     minutes, predecessors = dijkstra.solve_from(csr, source, with_predecessors=True)
 
     variant = shared.get("variant")
-    coverage = validate.check_coverage(minutes, idx)
+    coverage = validate.check_coverage(minutes, idx, shared["reachable"])
     # An exclusion variant has no coverage floor to speak of: without flights
     # Honolulu reaches Hawaii and nothing else, correctly. What it must still
     # do is reach SOMETHING -- a solve that reached no land at all is broken
@@ -323,7 +323,8 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
             + (f" in the no-{variant} variant" if variant else "")
         )
     validate.check_monotonic_ground(idx, minutes, speeds,
-                                    country=shared["country"], zone=shared["zone"])
+                                    country=shared["country"], zone=shared["zone"],
+                                    crossing_min=shared["border_min"])
 
     # The variants are built without the zoom-7+ level: three quarters of
     # every origin's band tiles, and three full sets would not fit on the web
@@ -618,6 +619,11 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
               "hover_parents": hover_parents,
               "hover_groups": hover.hover_groups(idx, hover_parents),
               "base_hover": hover.base_hover_index(idx, hover_parents),
+              # What the two per-origin gates read of the grid and of
+              # calibration.toml: the cells outside Antarctica, ~9 s of h3
+              # calls per origin, and the land-border minute (R3, PR-16).
+              "reachable": validate.reachable_in_principle(idx),
+              "border_min": ground._land_border_min(),
               "out_root": variants.variant_dir(config.DIST, exclude)}
     # What each origin's completion record is keyed on (transport_maps.progress):
     # the identity sampled at the start plus a digest of the graph itself,
@@ -634,7 +640,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # A variant shares these with the full set -- same cells, same order --
     # and must not rewrite files the live full set is being served from.
     if exclude is None:
-        index.write_hover_cells(idx, config.DIST / "hover_cells.bin")
+        index.write_hover_cells(idx, config.DIST / "hover_cells.bin", parents=hover_parents)
     # Same reasoning: the block ordering depends only on the graph, and it is
     # ONE file for every origin rather than one per origin, because the set
     # of res-3 parents holding land does not vary with the departure city.
@@ -714,7 +720,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
         print(f"variant no-{exclude} complete: {len(origins)} origins")
         return
     index.write_index(origins, config.DIST / "index.json",
-                      hover_cell_count=len(hover.hover_cells(idx)),
+                      hover_cell_count=len(hover_parents),
                       reading_parent_count=len(shared["reading"].parents),
                       graph={"rail": bool(getattr(idx, "has_rail", False)),
                              "ferry": ferry_links is not None and len(ferry_links) > 0},

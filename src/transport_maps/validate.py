@@ -44,7 +44,21 @@ KNOWN_ISOLATED_AIRPORTS = frozenset({
 })
 
 
-def check_coverage(minutes: np.ndarray, idx) -> float:
+def reachable_in_principle(idx) -> np.ndarray:
+    """(n_cells,) bool: the cells `check_coverage` counts, every one outside
+    Antarctica (see there). It depends only on the grid, so the build computes
+    it ONCE in the parent: per origin it was 13.8 million `cell_to_latlng`
+    calls for the same answer (PR-16, R3)."""
+    import h3
+
+    return np.fromiter(
+        (h3.cell_to_latlng(c)[0] > KNOWN_UNREACHABLE_MAX_LAT for c in idx.cells),
+        dtype=bool,
+        count=idx.n_cells,
+    )
+
+
+def check_coverage(minutes: np.ndarray, idx, reachable: np.ndarray | None = None) -> float:
     """Fraction of REACHABLE-IN-PRINCIPLE land cells that a route actually reaches.
 
     Antarctica is excluded from the denominator. It is charted so the globe has
@@ -56,15 +70,13 @@ def check_coverage(minutes: np.ndarray, idx) -> float:
     not by any route -- and every regression the gate exists to catch would be
     measured against it. (This said ~43,500 cells and a 92% ceiling, a res-5
     figure that the res-6 grid made wrong in both numbers.)
-    """
-    import h3
 
-    reachable_in_principle = np.fromiter(
-        (h3.cell_to_latlng(c)[0] > KNOWN_UNREACHABLE_MAX_LAT for c in idx.cells),
-        dtype=bool,
-        count=idx.n_cells,
-    )
-    considered = minutes[: idx.n_cells][reachable_in_principle]
+    `reachable` is `reachable_in_principle(idx)`, passed by a caller that
+    computed it once; without it it is derived here, identically.
+    """
+    if reachable is None:
+        reachable = reachable_in_principle(idx)
+    considered = minutes[: idx.n_cells][reachable]
     # A universe with no reachable-in-principle cell at all cannot be measured.
     # The mean of nothing is NaN, and `NaN < MIN_COVERAGE` is False, so the
     # gate in cli._solve_one would wave such an origin through; zero fails it.
@@ -292,7 +304,8 @@ def _ground_neighbours(idx, pos: int, cell: str, fine: np.ndarray,
 
 
 def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray, *,
-                           country, zone, stride: int = MONOTONIC_STRIDE) -> None:
+                           country, zone, stride: int = MONOTONIC_STRIDE,
+                           crossing_min: float | None = None) -> None:
     """Dijkstra's invariant: no cell beats reaching it via an adjacent cell.
 
     For adjacent p and q, minutes[q] must not exceed minutes[p] plus the ACTUAL
@@ -327,7 +340,8 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray, *,
     gate runs once per origin (every origin of a full build), and the grid it is
     derived from does not change between origins; recomputing it here cost
     ~4.8s of `roads.cell_class` work per origin for a value the caller already
-    has.
+    has. `crossing_min`, the land-border minute, likewise: the build reads it
+    from calibration.toml once; without it it is read here.
     """
     import h3
 
@@ -349,7 +363,7 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray, *,
     if country is None or zone is None:
         raise TypeError("check_monotonic_ground needs country and zone; they are "
                         "computed once in the parent, never inside a worker")
-    crossing = ground._land_border_min()
+    crossing = ground._land_border_min() if crossing_min is None else crossing_min
     severed = getattr(idx, "severed", frozenset())
     fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))
     fine = (fine_attr if len(fine_attr) == idx.n_cells

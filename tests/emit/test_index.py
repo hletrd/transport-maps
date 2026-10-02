@@ -20,6 +20,17 @@ def test_hover_cell_ids_are_sorted_ascending(tmp_path):
     assert (np.diff(ids.astype(object)) > 0).all()
 
 
+def test_hover_cells_from_the_builds_list_are_the_same_bytes(tmp_path):
+    """R3: the build writes hover_cells.bin from the parent list it hands
+    every writer instead of recomputing it; the file must not change."""
+    from transport_maps.emit import hover
+
+    index.write_hover_cells(FakeIndex(), tmp_path / "derived.bin")
+    index.write_hover_cells(FakeIndex(), tmp_path / "passed.bin",
+                            parents=hover.hover_cells(FakeIndex()))
+    assert (tmp_path / "passed.bin").read_bytes() == (tmp_path / "derived.bin").read_bytes()
+
+
 # --- Attribution (C2) --------------------------------------------------------
 #
 # The licence firewall proves only that no commercial flight records leaked

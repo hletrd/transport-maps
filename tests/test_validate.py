@@ -19,6 +19,22 @@ def test_coverage_is_the_reachable_fraction():
     assert validate.check_coverage(minutes, Idx()) == 0.5
 
 
+def test_the_mask_built_once_gives_the_coverage_derived_per_origin():
+    """R3: the build computes `reachable_in_principle` once and hands it to
+    every origin. Two temperate cells and two Antarctic ones, one of each
+    reached: the mask is the hand-written one and the coverage is the same
+    whether the mask is passed or derived. Mutation performed and reverted:
+    the mask's `>` turned to `<` -> red."""
+    class Idx:
+        n_cells = 4
+        cells: ClassVar[list[str]] = [h3.latlng_to_cell(lat, 0.0, 5)
+                                      for lat in (10.0, 20.0, -75.0, -89.0)]
+    minutes = np.array([1.0, np.inf, np.inf, 5.0])
+    mask = validate.reachable_in_principle(Idx())
+    assert mask.tolist() == [True, True, False, False]
+    assert validate.check_coverage(minutes, Idx(), mask) == validate.check_coverage(minutes, Idx()) == 0.5
+
+
 def test_low_coverage_trips_the_publish_threshold():
     """build-all compares check_coverage's return against MIN_COVERAGE before
     shipping (see cli._build_all). A gate that always reports full coverage
@@ -161,6 +177,27 @@ def test_a_severed_pair_is_exempt_like_a_closed_border():
     # must not raise
     validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx),
                                     **_ONE_COUNTRY)
+
+
+def test_the_border_minute_handed_in_is_the_one_charged():
+    """R3: the build reads the land-border minute once and passes it as
+    `crossing_min`. Across a zone change at 50 km/h, a neighbour 30 minutes
+    later than the hop is within the calibrated crossing whether the minute
+    is passed or read here, and outside it when the caller says 0. Mutation
+    performed and reverted: `crossing_min` ignored -> red."""
+    cell, neighbour = _adjacent_pair()
+    idx = _TwoCellIdx(cell, neighbour)
+    hop = float(ground.haversine_km(np.array([h3.cell_to_latlng(cell)]),
+                                    np.array([h3.cell_to_latlng(neighbour)]))[0]) / 50.0 * 60.0
+    minutes = np.array([0.0, hop + 30.0])
+    zones = {"country": np.array(["KOR", "KOR"]), "zone": ["a", "b"]}
+    speeds = np.full(2, 50.0)
+    assert ground._land_border_min() > 30.0, "fixture: the crossing must exceed 30 min"
+    validate.check_monotonic_ground(idx, minutes, speeds, stride=1, **zones)
+    validate.check_monotonic_ground(idx, minutes, speeds, stride=1,
+                                    crossing_min=ground._land_border_min(), **zones)
+    with pytest.raises(ValueError, match="inconsistent"):
+        validate.check_monotonic_ground(idx, minutes, speeds, stride=1, crossing_min=0.0, **zones)
 
 
 # --- Graph connectivity gate (I3) --------------------------------------------
