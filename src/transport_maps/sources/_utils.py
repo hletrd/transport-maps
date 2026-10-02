@@ -1,6 +1,6 @@
 """Shared utilities for sources modules."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 
 from transport_maps._io import atomic_write, params_hash
@@ -32,6 +32,17 @@ def _retry_after_seconds(value: str | None, attempt: int) -> float:
         except (TypeError, ValueError):
             pass
     return min(float(2**attempt), MAX_RETRY_AFTER_S)
+
+
+def _stale(at: str | None, now: datetime, max_age: timedelta) -> bool:
+    """Whether a crawl answer stamped `at` (ISO, UTC) must be asked for again:
+    older than `max_age`, or never stamped -- every answer cached before G2."""
+    if not at:
+        return True
+    try:
+        return now - datetime.fromisoformat(at) >= max_age
+    except ValueError:
+        return True
 
 
 class IncompleteResponse(RuntimeError):

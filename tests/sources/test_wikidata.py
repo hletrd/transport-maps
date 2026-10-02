@@ -13,6 +13,14 @@ from transport_maps import config
 from transport_maps.sources import wikidata
 
 
+@pytest.fixture(autouse=True)
+def _online():
+    """The client is stubbed in every test here (G2: the suite runs offline)."""
+    from transport_maps.sources import _fetch
+
+    _fetch.set_offline(False)
+
+
 def _stub_client(monkeypatch):
     """Neutralise the real HTTP client; _resolve_batch is stubbed per test."""
     class _NoopClient:
@@ -81,3 +89,53 @@ def test_a_fully_resolved_run_returns_normally(tmp_path, monkeypatch):
     got = wikidata.iata_for_titles(["Alpha", "Beta"])
 
     assert got == {"Alpha": "AAA"}  # Beta confirmed not an airport, so omitted
+
+
+# --- G2: titles are re-resolved after TITLE_MAX_AGE --------------------------
+
+
+def _ago(**kw) -> str:
+    from datetime import UTC, datetime, timedelta
+
+    return (datetime.now(UTC) - timedelta(**kw)).replace(microsecond=0).isoformat()
+
+
+def test_a_title_older_than_the_max_age_is_resolved_again(tmp_path, monkeypatch):
+    """Mutation: resolve only the uncached titles (the pre-G2 rule) -> red."""
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    _stub_client(monkeypatch)
+    wikidata._save_cache({"Old": "OLD", "New": "NEW"},
+                         {"Old": _ago(days=31), "New": _ago(days=1)})
+    asked: list[list[str]] = []
+    monkeypatch.setattr(wikidata, "_resolve_batch",
+                        lambda client, batch: asked.append(list(batch)) or {"Old": "MOV"})
+    got = wikidata.iata_for_titles(["Old", "New"])
+    assert asked == [["Old"]]
+    assert got == {"Old": "MOV", "New": "NEW"}
+
+
+def test_a_legacy_cache_is_re_resolved_and_a_failure_keeps_its_codes(tmp_path, monkeypatch):
+    """A flat pre-version cache has no times; every title is due. Wikidata
+    failing must not fail a build that has a code for every title.
+    Mutation: count a failed refresh as unresolved -> red (refusal)."""
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    _stub_client(monkeypatch)
+    (tmp_path / "wikidata_iata.json").write_text('{"Narita International Airport": "NRT"}')
+
+    def boom(client, batch):
+        raise RuntimeError("API error: maxlag")
+    monkeypatch.setattr(wikidata, "_resolve_batch", boom)
+    assert wikidata.iata_for_titles(["Narita International Airport"]) == {
+        "Narita International Airport": "NRT"}
+
+
+def test_offline_asks_nothing_and_refuses_what_was_never_resolved(tmp_path, monkeypatch):
+    from transport_maps.sources import _fetch
+
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    wikidata._save_cache({"Old": "OLD"}, {"Old": _ago(days=90)})
+    _fetch.set_offline(True)
+    monkeypatch.setattr(wikidata.httpx, "Client", lambda **kw: pytest.fail("a client offline"))
+    assert wikidata.iata_for_titles(["Old"]) == {"Old": "OLD"}
+    with pytest.raises(RuntimeError, match="Never"):
+        wikidata.iata_for_titles(["Old", "Never"])

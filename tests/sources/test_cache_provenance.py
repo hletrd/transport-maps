@@ -183,7 +183,7 @@ def test_land_cells_reads_the_stamped_path(tmp_path, monkeypatch):
      lambda: landmask._cells_cache_path(5, SRCS[:3]),
      lambda: landmask._landmasses_cache_path(5, SRCS[:3]),
      lambda: fixed_links._cache_path("north-america", "0123abcd"),
-     lambda: routes._network_cache_path(["AAA"], {"AAA": "Alpha_Airport"})],
+     lambda: routes._network_cache_path(["AAA"], {"AAA": "Alpha_Airport"}, SRC)],
 )
 def test_every_stamped_path_carries_a_hash(path_fn):
     """A stamp silently dropped from the f-string would leave the old bare
@@ -239,7 +239,7 @@ def test_atomically_written_files_are_readable_by_other_users(tmp_path):
 
 def _routes_path():
     """The route network's path for one fixed pair of inputs."""
-    return routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"})
+    return routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"}, SRC)
 
 
 STAMPED = [
@@ -332,6 +332,7 @@ INPUT_KEYED = [
     ("landmask.landmasses", lambda s: landmask._landmasses_cache_path(6, [s, SRC, SRC])),
     ("urban.mask", lambda s: urban._mask_cache_path(["a", "b"], s)),
     ("countries.cell_country", lambda s: countries._cache_path(["a", "b"], s)),
+    ("routes.network", lambda s: routes._network_cache_path(["AAA"], {"AAA": "A"}, s)),
 ]
 
 
@@ -567,15 +568,15 @@ def test_the_route_network_path_moves_with_its_inputs(iatas, titles):
     article crawled for each are the other half (CLAUDE.md: constants AND
     inputs). Mutation, measured: dropping `sorted(titles_by_iata.items())`
     from the stamp turns the last two cases red."""
-    assert routes._network_cache_path(iatas, titles) != _routes_path()
+    assert routes._network_cache_path(iatas, titles, SRC) != _routes_path()
 
 
 def test_the_route_network_path_is_stable_when_nothing_changes():
     assert _routes_path() == _routes_path()
     assert _routes_path().name != "routes.parquet"
     # Insertion order is not an input.
-    assert (routes._network_cache_path(["BBB", "AAA"], {"BBB": "B", "AAA": "A"})
-            == routes._network_cache_path(["AAA", "BBB"], {"AAA": "A", "BBB": "B"}))
+    assert (routes._network_cache_path(["BBB", "AAA"], {"BBB": "B", "AAA": "A"}, SRC)
+            == routes._network_cache_path(["AAA", "BBB"], {"AAA": "A", "BBB": "B"}, SRC))
 
 
 def test_a_section_regex_FLAG_change_moves_the_parser_key(monkeypatch):

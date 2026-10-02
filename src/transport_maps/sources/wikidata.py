@@ -2,14 +2,17 @@
 
 import json
 import time
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
 from transport_maps import config
+from transport_maps.sources import _fetch
 from transport_maps.sources._utils import (
     _atomic_write,
     _refuse_partial,
     _retry_after_seconds,
+    _stale,
     _validated_json,
 )
 
@@ -26,6 +29,12 @@ MAX_RETRIES = 6
 SAVE_EVERY = 5
 # Courtesy pacing between requests, on top of per-request retry/backoff.
 BATCH_DELAY_S = 0.1
+# A title resolved longer ago than this is resolved again (G2). Thirty days,
+# not one like the article crawl (routes.ARTICLE_MAX_AGE): an airport's IATA
+# code almost never changes, and the destination titles number in the
+# thousands -- two requests per BATCH of them, so a full pass is a few hundred
+# requests. A title whose refresh fails keeps its cached code.
+TITLE_MAX_AGE = timedelta(days=30)
 
 
 def _chunks(items: list[str], size: int):
@@ -165,11 +174,17 @@ def _cache_path():
     return config.CACHE / "wikidata_iata.json"
 
 
-def _load_cache() -> dict[str, str]:
+def _load_raw() -> dict:
     path = _cache_path()
     if not path.exists():
         return {}
-    raw = json.loads(path.read_text())
+    return json.loads(path.read_text())
+
+
+def _load_cache() -> dict[str, str]:
+    raw = _load_raw()
+    if not raw:
+        return {}
     if "_resolver_version" not in raw:
         return raw                                   # legacy flat format == version 1
     if raw["_resolver_version"] != RESOLVER_VERSION:
@@ -179,8 +194,18 @@ def _load_cache() -> dict[str, str]:
     return raw["titles"]
 
 
-def _save_cache(cache: dict[str, str]) -> None:
-    payload = {"_resolver_version": RESOLVER_VERSION, "titles": cache}
+def _load_resolved_at() -> dict[str, str]:
+    """Title -> when it was resolved (ISO, UTC). A title with no entry -- every
+    title in a cache written before G2 -- counts as older than TITLE_MAX_AGE."""
+    raw = _load_raw()
+    if raw.get("_resolver_version") != RESOLVER_VERSION:
+        return {}
+    return raw.get("resolved_at", {})
+
+
+def _save_cache(cache: dict[str, str], resolved_at: dict[str, str] | None = None) -> None:
+    payload = {"_resolver_version": RESOLVER_VERSION, "titles": cache,
+               "resolved_at": {t: at for t, at in (resolved_at or {}).items() if t in cache}}
     _atomic_write(_cache_path(), lambda tmp: tmp.write_text(json.dumps(payload, sort_keys=True)))
 
 
@@ -201,38 +226,69 @@ def iata_for_titles(titles: list[str]) -> dict[str, str]:
     next call" never happens: a title silently omitted here is a route
     permanently missing from the shipped network. The flush above still runs
     first, so the re-run this forces is cheap.
+
+    A cached title older than TITLE_MAX_AGE is asked again (G2); one whose
+    refresh fails keeps its cached code with a warning, since it is not
+    missing, only unconfirmed for another month. Offline nothing is asked.
     """
     config.ensure_dirs()
     cache: dict[str, str] = _load_cache()
+    resolved_at = _load_resolved_at()
+    now = datetime.now(UTC)
+    stamp = now.replace(microsecond=0).isoformat()
 
-    unknown = [t for t in titles if t not in cache]
+    # Every build asks again for what it has not asked about in TITLE_MAX_AGE
+    # (G2); offline, only for nothing -- a title never resolved is then
+    # unresolved, and refused below like any other.
+    if _fetch.offline():
+        unknown = []
+        failed_titles = [t for t in titles if t not in cache]
+    else:
+        unknown = [t for t in titles
+                   if t not in cache or _stale(resolved_at.get(t), now, TITLE_MAX_AGE)]
+        failed_titles = []
+    kept = 0
     if unknown:
         batches = list(_chunks(unknown, BATCH))
-        failed_titles: list[str] = []
+        print(f"wikidata: {len(unknown)} of {len(titles)} titles to resolve "
+              f"({sum(t in cache for t in unknown)} of them to refresh)", flush=True)
         with httpx.Client(timeout=60, headers=HEADERS, follow_redirects=True) as client:
             for n, batch in enumerate(batches, start=1):
                 try:
                     resolved = _resolve_batch(client, batch)
                 except (httpx.HTTPStatusError, httpx.TransportError, RuntimeError) as e:
-                    failed_titles.extend(batch)
+                    resolved = {}
                     print(f"wikidata: batch {n}/{len(batches)} failed: {e!r}")
-                else:
-                    for title in batch:
-                        if title in resolved:
-                            cache[title] = resolved[title]
-                        else:
-                            # Unconfirmed this round -- left un-cached so a
-                            # re-run retries it, and counted so this run
-                            # refuses to hand back a partial mapping.
-                            failed_titles.append(title)
+                for title in batch:
+                    if title in resolved:
+                        cache[title] = resolved[title]
+                        resolved_at[title] = stamp
+                    elif title in cache:
+                        # A refresh that did not come back: the cached code
+                        # stands, and stays stale, so the next build asks again.
+                        kept += 1
+                    else:
+                        # Unconfirmed this round -- left un-cached so a re-run
+                        # retries it, and counted so this run refuses to hand
+                        # back a partial mapping.
+                        failed_titles.append(title)
                 if n % SAVE_EVERY == 0 or n == len(batches):
-                    _save_cache(cache)
+                    _save_cache(cache, resolved_at)
                 if n % 20 == 0 or n == len(batches):
                     print(f"wikidata: batch {n}/{len(batches)} done ({len(cache)} titles cached)")
                 time.sleep(BATCH_DELAY_S)
-        _refuse_partial(
-            "Wikidata IATA resolution", failed_titles,
-            "the resolved titles are already cached, so a re-run retries only these",
-        )
+    if kept:
+        print(f"wikidata: WARNING {kept} titles could not be re-resolved; "
+              "using their cached codes", flush=True)
+    _refuse_partial(
+        "Wikidata IATA resolution", failed_titles,
+        "the resolved titles are already cached, so a re-run retries only these",
+    )
+    times = sorted(resolved_at[t] for t in titles if t in resolved_at)
+    _fetch.record("wikidata:P238", {
+        "titles": len(titles),
+        "resolvedFrom": times[0] if times else None,
+        "resolvedTo": times[-1] if times else None,
+    })
 
     return {t: cache[t] for t in titles if cache.get(t)}
