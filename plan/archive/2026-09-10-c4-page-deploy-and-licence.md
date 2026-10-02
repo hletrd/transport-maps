@@ -364,6 +364,20 @@ whose output only changes at the next build; both say so.
       Since the res-6/7 refinement, `n_cells` is the refined universe, which a
       bound written for one solve resolution does not describe. Re-derive it
       before adding it.
+      MADE TRUE (2026-10-02, C13-11 follow-up), with the bound re-derived.
+      `hover_cells.bin` is the set of `hoverRes` parents of the solver cells
+      (`emit/hover.hover_cells`). Every solver cell is at `solveRes` or, where
+      split, at `fineRes`. So each hover cell holds between 1 and
+      7^(fineRes − hoverRes) = 343 cells: `H ≤ offsets.airports ≤ 343·H`.
+      U22's lower bound of 49·H was false, because a coastal hover cell can
+      hold a single land cell. The shipped build sits at 151.5 cells per hover
+      cell (13,751,643 / 90,740). `scripts/check_dist.py` now applies the
+      bound, reading `fineRes` and `hoverRes` from `index.json` with `config`
+      as the fallback.
+      `tests/web/test_check_dist.py::test_the_node_universe_must_fit_the_hover_cells`
+      accepts both ends of the range, refuses one outside each end, and checks
+      with h3 that 343 is attained. Three mutations, all RED: delete the bound;
+      U22's 49·H lower bound; a ceiling one resolution short.
       Mutation: perturb one origin's `offsets.airports` in a fixture → red.
       **TE4-3** rides along, being the same file: the summary test asserted
       `bands == 1` from an expression it computed the same way the code does,

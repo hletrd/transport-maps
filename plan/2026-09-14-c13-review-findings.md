@@ -262,6 +262,10 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
   - [x] V13-3 made true (2026-10-02): both missing objections are in
     `calibration.toml`'s ferry comment, and a test re-derives their figures.
     The correction note in the archived c8 plan (T1.9) has the details.
+  - [x] V13-4 made true (2026-10-02): `check_dist` enforces the re-derived
+    bound `H ≤ offsets.airports ≤ 7^(fineRes − hoverRes)·H`, not U22's
+    `49·H` lower bound, which was false. The derivation, the test and the
+    mutations are in the archived c4 plan (U22).
 
 ---
 

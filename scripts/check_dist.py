@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 from transport_maps import progress, variants
-from transport_maps.config import READING_SLOTS
+from transport_maps.config import FINE_RES, HOVER_RES, READING_SLOTS
 
 REQUIRED_EXTRAS = ("places.json", "airports.json", "borders.json", "water.pmtiles")
 # Evidence of an aborted writer; a deploy that merely excluded them would ship
@@ -575,6 +575,28 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
             f"{a:,} cells / {(t - a) // 2:,} airports in {len(v)} origin(s) e.g. {v[0]}"
             for (a, t), v in sorted(n_nodes.items(), key=lambda kv: -len(kv[1]))[:3])
         bad.append(f"origins disagree on the node universe ({groups}): dist/ mixes two builds")
+
+    # ...and the universe they agree on must be one hover_cells.bin can have
+    # come from. hover_cells.bin is the set of hoverRes parents of the solver
+    # cells (emit/hover.hover_cells), and every solver cell is at solveRes or,
+    # where split, at fineRes. So each hover cell holds at least one solver
+    # cell and at most all 7^(fineRes - hoverRes) of its fineRes descendants:
+    #     H <= offsets.airports <= 7^(fineRes - hoverRes) * H.
+    # The bound U22 named, 49·H <= n <= 343·H, was written for an unrefined
+    # res-6 grid and is false for coastal hover cells with one land child, so
+    # it never landed (C13-11 / V13-4). Shipped: 13,751,643 cells over
+    # 90,740 hover cells, 151.5 per cell. The cross-origin check above cannot
+    # see a dist/ whose origins all come from one build while
+    # hover_cells.bin comes from another; this can, when the two are far
+    # enough apart.
+    fine = idx.get("fineRes", FINE_RES)
+    hover_res = idx.get("hoverRes", HOVER_RES)
+    most = 7 ** max(fine - hover_res, 0)
+    for (a, _), v in n_nodes.items():
+        if not n_cells <= a <= most * n_cells:
+            bad.append(f"{v[0]}.json offsets.airports {a:,} is not between {n_cells:,} and "
+                       f"{most} x {n_cells:,} hover cells: the per-origin arrays and "
+                       "hover_cells.bin come from different builds")
 
     for extra in REQUIRED_EXTRAS:
         p = dist / extra

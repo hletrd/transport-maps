@@ -99,7 +99,9 @@ pipeline hand-derives these offsets at seven sites today: two in
 `emit/itinerary.py`, two in `emit/rail_detail.py`, and one each in
 `emit/modes.py`, `emit/override.py` and `emit/routes_json.py`. `check_dist` uses the
 `(A, S)` pair of every origin as the build's fingerprint: two pairs mean two
-builds are mixed.
+builds are mixed. It also requires `H ≤ A ≤ 7^(fineRes − hoverRes) · H`,
+where *H* is `hoverCellCount`. Every hover cell is the `hoverRes` parent of
+at least one solver cell and of at most 343 `fineRes` ones.
 
 ### Per exclusion variant: `dist/v/no-<mode>/`
 

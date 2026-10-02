@@ -364,6 +364,44 @@ def test_origins_from_two_builds_are_refused(check_dist, tmp_path):
     assert any("mixes two builds" in m for m in problems), problems
 
 
+def _universe(d, airports):
+    (d / "origins" / "seoul.json").write_text(json.dumps(
+        {"offsets": {"airports": airports, "stations": airports + 200}, "nodes": []}))
+
+
+def test_the_node_universe_must_fit_the_hover_cells(check_dist, tmp_path):
+    """C13-11 / V13-4. U22 named the bound 49·H <= n_cells <= 343·H and it
+    never landed. Re-derived: hover_cells.bin is the set of hoverRes parents
+    of the solver cells, and every solver cell is at solveRes or fineRes, so
+    each hover cell holds between 1 and 7^(fineRes - hoverRes) of them:
+    H <= offsets.airports <= 343·H. The 49·H lower bound was false: a
+    coastal hover cell can hold a single land cell.
+
+    Mutations performed (2026-10-02), each RED, each restored:
+      - delete the bound                          -> RED (both refusals pass)
+      - lower bound 49 * n_cells (U22's original)  -> RED (H itself refused)
+      - upper bound 7 ** (fine - hover - 1)       -> RED (343·H refused)
+    """
+    import h3
+
+    d = _good_dist(tmp_path)
+    most = 7 ** (config.FINE_RES - config.HOVER_RES)
+    # The ceiling is attained: a hexagonal hover cell has exactly that many
+    # fineRes descendants.
+    hexagon = h3.latlng_to_cell(37.5, 127.0, config.HOVER_RES)
+    assert not h3.is_pentagon(hexagon)
+    assert len(h3.cell_to_children(hexagon, config.FINE_RES)) == most == 343
+
+    for good in (N_CELLS, most * N_CELLS):
+        _universe(d, good)
+        assert check_dist.check_dist(d) == [], good
+    for wrong in (N_CELLS - 1, most * N_CELLS + 1):
+        _universe(d, wrong)
+        problems = check_dist.check_dist(d)
+        assert any("hover_cells.bin come from different builds" in m for m in problems), (
+            wrong, problems)
+
+
 def test_origins_that_disagree_on_the_airport_count_alone_are_refused(
         check_dist, tmp_path):
     """offsets.airports is idx.n_cells, so it moves only with the SOLVE
