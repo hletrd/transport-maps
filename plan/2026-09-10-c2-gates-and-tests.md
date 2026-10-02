@@ -125,14 +125,33 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
         (29 at res 6); dropping one name -> red.
   - [x] TE-19 (2026-10-02): the golden coverage test uses
         `validate.check_coverage`, as the gate does (99.5% gated, 96.9% raw).
-- [ ] **F13 rest** TE-18 c1 (implied assertion, double graph build), TE-19 c1
+- [x] **F13 rest** TE-18 c1 (implied assertion, double graph build), TE-19 c1
       (Antarctica in the golden threshold), TE-20 c1 (ramps parser count
       guard), TE-26 c1 (44-second bound tests); **S5** `native_edges` cache
-      branch reachable by a `cache=` parameter (ARCH-13).
+      branch reachable by a `cache=` parameter (ARCH-13). (2026-10-02: all
+      five parts done -- TE-18 and TE-19 are ticked under F10 above.)
   - [x] TE-26 (2026-10-02): the abort proof moved to
         `tests/graph/test_nodes_bounds.py`, `build_index` on a stubbed
         19-cell world (44 s -> <1 s, no data/ needed) plus a counted-drop
         case. Raise removed / `dropped` not reported -> each red.
+  - [x] TE-20 (2026-10-02; the cycle-1 finding text is not in the tree, so
+        this is reconstructed from the row and the code): `check_ramps.ramps()`
+        now counts the declared keys a second, looser way and raises unless
+        the strict parse read every one; `tests/web/test_ramps.py` holds the
+        parse against node's own evaluation of `RAMPS` (keys, order, name,
+        sea, grey, anchors) instead of the literal `== 12`, and measures the
+        37 PAINTED bands, `painted()` checked colour-for-colour against
+        `expandRamp` run in node. Asserted on the bands: lightness strictly
+        decreasing after hex rounding and no two adjacent identical -- what
+        the anchor rules guarantee; no ΔE floor is claimed. Measured minimum
+        adjacent band ΔE: mono 1.61, warm 1.65, lavender 1.67, forest and sand
+        1.69, muted 1.70, twilight 1.77, copper 1.78, rose 1.81, ice 1.83,
+        ember 2.12, vivid 2.38 (anchors 6.5-8.9). Mutations, each red: one
+        scheme with `grey` before `sea` (parser raises); that plus the looser
+        count disabled (node parity red, every other ramp test green -- the
+        old failure); anchors truncated to ten; `(n - 1)` -> `n` in `expand`
+        and in `expandRamp`; `round` -> `int` in `oklab_to_srgb`; `painted()`
+        returning the anchors; either `band_problems` check disabled.
   - [x] S5 (2026-10-02): `grid.native_edges(idx, cache=None|True|False)`;
         tests read back a doctored file and pin the size rule. Read branch
         off, `rows` key renamed, write skipped, always-cache -> each red.

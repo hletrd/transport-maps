@@ -4,7 +4,9 @@ strictly from the first anchor to the last, and adjacent anchors must be at
 least MIN_DELTA_E apart (OKLab distance x100), or two bands read as one.
 Each scheme's "no scheduled route" grey must be at least MIN_GREY_DELTA_E
 from every one of the painted bands (one shared grey sat 0.9 from a Mono
-band), and its sea must lie between space and its darkest band. The band count
+band), and its sea must lie between space and its darkest band. The painted
+bands themselves -- the anchors interpolated and rounded to hex as app.js
+does it -- must fall strictly in lightness too. The band count
 comes from BAND_EDGES_MIN, which is the emitter's, and is deliberately NOT
 written here: the literal this docstring used to carry is the exact thing the
 module below exists to stop anyone hard-coding.
@@ -75,6 +77,16 @@ def srgb_to_oklab(hex_colour: str) -> tuple[float, float, float]:
 
 
 def ramps(source: str = None) -> dict[str, dict]:
+    """Every scheme in app.js's RAMPS, or a ValueError -- never fewer.
+
+    The reading regex is strict about field order, so an entry written any
+    other way (a new field, `grey` before `sea`, a quoted key) simply did not
+    match, and every measurement in this module then ran over the schemes it
+    happened to read (TE-20). So the keys are also counted a second, looser
+    way -- every non-comment line in the block that opens `key: {` -- and
+    the two must agree. tests/web/test_ramps.py checks both against the
+    object node itself evaluates.
+    """
     src = source if source is not None else APP.read_text(encoding="utf-8")
     block = src[src.index("const RAMPS = {"):]
     block = block[: block.index("\n};") + 3]
@@ -82,6 +94,14 @@ def ramps(source: str = None) -> dict[str, dict]:
     for m in re.finditer(r'(\w+):\s*\{\s*name:\s*"([^"]+)",\s*sea:\s*"(#[0-9a-fA-F]{6})",\s*grey:\s*"(#[0-9a-fA-F]{6})",\s*c:\s*\[([^\]]+)\]', block):
         out[m.group(1)] = {"name": m.group(2), "sea": m.group(3), "grey": m.group(4),
                            "c": re.findall(r'"(#[0-9a-fA-F]{6})"', m.group(5))}
+    code = "\n".join(ln for ln in block.splitlines()[1:] if not ln.lstrip().startswith("//"))
+    declared = re.findall(r'^\s*["\']?(\w+)["\']?\s*:\s*\{', code, re.M)
+    if not declared or declared != list(out):
+        missed = [k for k in declared if k not in out]
+        raise ValueError(
+            f"RAMPS declares {len(declared)} scheme(s) but the parser read {len(out)}"
+            f"{' -- unread: ' + ', '.join(missed) if missed else ''}; "
+            "a scheme the parser skips is a scheme nothing measures")
     return out
 
 
@@ -144,6 +164,39 @@ def expand(control: list[str], n: int | None = None) -> list[tuple[float, float,
 
 def delta_e(p, q) -> float:
     return 100 * sum((a - b) ** 2 for a, b in zip(p, q)) ** 0.5
+
+
+def painted(control: list[str], n: int | None = None) -> list[str]:
+    """The band colours the page actually paints: expand() rounded to hex the
+    way app.js's oklabToHex rounds them. tests/web/test_ramps.py checks this
+    against expandRamp itself, run in node, so what is measured here is what
+    ships rather than a copy of it."""
+    return [oklab_to_srgb(p) for p in expand(control, n)]
+
+
+def band_problems(bands: list[str]) -> list[str]:
+    """The painted bands themselves, adjacent pair by adjacent pair.
+
+    CLAUDE.md's ΔE >= 6 is a rule about ANCHORS; eleven of them interpolated
+    to the band count put each band about (11-1)/(n-1) of an anchor step from
+    its neighbour -- 10/36 of at least 6, so roughly 1.7 -- and rounding to
+    8-bit hex moves that by a few tenths either way. That 1.7 is not a
+    guarantee: a pair that straddles an anchor where the path bends can sit
+    closer, and rounding can take any pair below it. What the anchor rules DO
+    guarantee, in exact arithmetic, is that lightness falls strictly from band
+    to band, which also makes every adjacent pair distinct -- so that is what
+    is asserted, on the rounded colours the page paints. The measured minimum
+    is printed by the script and recorded in the test, not enforced.
+    """
+    lightness, delta = measure(bands)
+    out = []
+    flat = [f"{i}-{i + 1}" for i, (a, b) in enumerate(pairwise(lightness)) if b >= a]
+    if flat:
+        out.append("painted-band lightness is not strictly decreasing at " + ", ".join(flat))
+    same = [f"{i}-{i + 1}" for i, d in enumerate(delta) if d <= 0]
+    if same:
+        out.append("adjacent painted bands are identical at " + ", ".join(same))
+    return out
 
 
 def scheme_problems(r: dict, space: str, bands: int | None = None) -> list[str]:
@@ -238,9 +291,12 @@ if __name__ == "__main__":
         lightness, delta = measure(r["c"])
         sea_l = srgb_to_oklab(r["sea"])[0]
         grey_d = min(delta_e(srgb_to_oklab(r["grey"]), b) for b in expand(r["c"]))
-        issues = problems(r["c"]) + scheme_problems(r, space)
+        bands = painted(r["c"])
+        _, band_delta = measure(bands)
+        issues = problems(r["c"]) + scheme_problems(r, space) + band_problems(bands)
         bad += bool(issues)
         print(f"{key:9} {len(r['c'])} anchors  L {lightness[0]:.2f}->{lightness[-1]:.2f}  "
-              f"min dE {min(delta):5.1f}  grey dE {grey_d:5.1f}  sea L {sea_l:.2f}  "
+              f"min dE {min(delta):5.1f}  {len(bands)} bands min dE {min(band_delta):4.2f}  "
+              f"grey dE {grey_d:5.1f}  sea L {sea_l:.2f}  "
               f"{'OK' if not issues else 'FAIL: ' + '; '.join(issues)}")
     sys.exit(1 if bad else 0)
