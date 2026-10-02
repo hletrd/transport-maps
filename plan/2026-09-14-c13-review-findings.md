@@ -87,7 +87,7 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
 
   This also closes C10-6 in `deferred.md`, whose stated premise is now false.
 
-- [ ] **C13-7 — `route_network()` returns the legacy parquet on a bare
+- [x] **C13-7 — `route_network()` returns the legacy parquet on a bare
   `.exists()`.** HIGH. CR13-3, DBG13-6, and the running build's own log says
   `using legacy routes.parquet whose inputs are unknown`. `debugger` refined
   the mechanism: the stamped path is checked first and is correctly keyed, but
@@ -98,6 +98,25 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
   cache stamp omits `_LINK_RE`, so correcting the section parser would no-op.
   **Fix CR13-3, CR13-13, CR13-2 and CR13-6 together or not at all.** Exit
   criterion: the same, the build must not be re-crawling while it runs.
+  *2026-10-02:* all four, in four commits, no build holding the lock. The
+  cycle-13 review text is not on disk, so each finding was reconstructed from
+  its index row below and the code. CR13-13 `20fe9ea`: `routes._parser_key`
+  hashes `PARSER_VERSION`, `_SKIP_PREFIXES` and every regex's pattern and
+  flags; the parsed-destination cache is stamped with it, and its two older
+  formats (flat, `_parser_version`) are now misses instead of being adopted.
+  CR13-3 `11678fc`: the legacy branch is gone (the file is named and
+  ignored); the network path also hashes its inputs, the airport codes and
+  the article per code, and the destination cache is keyed by article, so a
+  re-pointed OurAirports link is refetched (CR13-24 rides along:
+  `_wikipedia_titles` reads through `airports._download()`). CR13-2
+  `86d35cc`: the section closes at the next heading of its own level or
+  shallower, `PARSER_VERSION` 2. CR13-6 `4d2dc4d`: `_LINK_RE` skips a
+  `#fragment`, and the key moves with no version bump. Fixtures in
+  `tests/fixtures/routes/`; every new test mutated red. **Open:** nothing
+  has been re-crawled. Until someone runs `routes.route_network()` once,
+  any `build-all` or integration test on a machine holding only the legacy
+  `routes.parquet` starts the crawl itself (80 Action API batches plus the
+  Wikidata titles not yet cached), so do that first, outside any build.
 
 - [ ] **C13-8 — a build can start beside a resident solver and neither can see
   the other.** ARCH13-2, and a prerequisite for anything resident.

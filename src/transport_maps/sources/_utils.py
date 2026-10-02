@@ -68,8 +68,9 @@ _atomic_write = atomic_write
 def _refuse_partial(what: str, unresolved: list[str], remedy: str) -> None:
     """Abort rather than let a partially-crawled result become the cached one.
 
-    `routes.parquet` is returned verbatim by every later call, so a network
-    written while part of the crawl was still unresolved is not a temporary
+    The route network's parquet is returned verbatim by every later call with
+    the same inputs, so a network written while part of the crawl was still
+    unresolved is not a temporary
     state that a "retry next run" ever revisits -- it is permanent, and the
     only gates downstream (a 20,000-pair floor against ~68,000 real pairs, and
     the ICN-NRT sanity pair) would let roughly 70% of the crawl go missing

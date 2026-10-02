@@ -169,7 +169,8 @@ def test_land_cells_reads_the_stamped_path(tmp_path, monkeypatch):
     "path_fn",
     [roads._grid_cache_path, airports._table_cache_path, lambda: landmask._cells_cache_path(5),
      lambda: landmask._landmasses_cache_path(5),
-     lambda: fixed_links._cache_path("north-america", "0123abcd")],
+     lambda: fixed_links._cache_path("north-america", "0123abcd"),
+     lambda: routes._network_cache_path(["AAA"], {"AAA": "Alpha_Airport"})],
 )
 def test_every_stamped_path_carries_a_hash(path_fn):
     """A stamp silently dropped from the f-string would leave the old bare
@@ -222,6 +223,12 @@ def test_atomically_written_files_are_readable_by_other_users(tmp_path):
 # name dropped from a stamp turns its case red (the older tests covered five
 # of fourteen). `new` must differ from the current value.
 
+
+def _routes_path():
+    """The route network's path for one fixed pair of inputs."""
+    return routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"})
+
+
 STAMPED = [
     (roads, "GRIP4_URL", "https://example.invalid/grip4_{n}.zip", roads._grid_cache_path),
     (roads, "DENSITY_THRESHOLD", 0.5, roads._grid_cache_path),
@@ -263,9 +270,9 @@ STAMPED = [
     (osm, "RAIL_TIERS", ("slow", "fast"), lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
     (osm, "DEFAULT_TIER", "unknown", lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
     (osm, "_TIER_BY_SERVICE", {"maglev": "fast"}, lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
-    (routes, "PARSER_VERSION", 999, routes._network_cache_path),
-    (routes, "_SANITY_PAIRS", (("AAA", "BBB"),), routes._network_cache_path),
-    (routes, "_SKIP_PREFIXES", ("Nowhere:",), routes._network_cache_path),
+    (routes, "PARSER_VERSION", 999, _routes_path),
+    (routes, "_SANITY_PAIRS", (("AAA", "BBB"),), _routes_path),
+    (routes, "_SKIP_PREFIXES", ("Nowhere:",), _routes_path),
     # Both regexes reach the stamp as `.pattern`, and neither had a row until
     # the completeness check below was made to read the CODE rather than the
     # table. They are exactly the constants routes.PARSER_VERSION's own comment
@@ -273,9 +280,15 @@ STAMPED = [
     # _SKIP_PREFIXES, _CARGO_RE or _SECTION_RE change") -- so a change to
     # either that forgot the version bump was relying on a stamp nothing
     # checked.
-    (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), routes._network_cache_path),
-    (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), routes._network_cache_path),
-    (wikidata, "RESOLVER_VERSION", 999, routes._network_cache_path),
+    (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), _routes_path),
+    (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), _routes_path),
+    # The link regex was the one parse_destinations applied with no row and
+    # no place in the key (CR13-13). It reaches the network path through
+    # routes._parser_key, so this row proves the constant is in that key AND
+    # that the key is in the path. (_NEXT_TOP_HEADING_RE, the fourth, is gone:
+    # the section now closes at its own level -- see routes._section_end.)
+    (routes, "_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]"), _routes_path),
+    (wikidata, "RESOLVER_VERSION", 999, _routes_path),
     # The landmass ids are computed over the land universe, so anything that
     # moves `land_cells` must move them too. They reach the key through
     # `_cells_cache_path(res).name`, a call the AST reader rightly drops as
@@ -323,6 +336,7 @@ _COVERED_BY_TABLE = {
     "osm._ferry_cache_path",
     "osm._rail_cache_path",
     "routes._network_cache_path",
+    "routes._parser_key",
     "landmask._landmasses_cache_path",
     "fixed_links._params_key",
 }
@@ -506,23 +520,73 @@ def test_the_country_key_covers_the_whole_cell_list(monkeypatch, tmp_path):
     assert seen == [["KOR"] * 3] * 2
 
 
-def test_the_route_network_path_carries_a_stamp_and_adopts_the_legacy_file(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(config, "BUILD", tmp_path)
-    assert routes._network_cache_path().name != "routes.parquet"
-    pl.DataFrame({"src": ["AAA"], "dst": ["BBB"]}).write_parquet(tmp_path / "routes.parquet")
-    df = routes.route_network()
-    assert df["src"].to_list() == ["AAA"]
-    assert "legacy" in capsys.readouterr().out
+@pytest.mark.parametrize("iatas,titles", [
+    (["AAA", "BBB", "CCC"], {"AAA": "Alpha_Airport"}),        # an airport added
+    (["AAA", "BBB"], {"AAA": "Alpha_International_Airport"}),  # an article re-pointed
+    (["AAA", "BBB"], {"AAA": "Alpha_Airport", "BBB": "B"}),    # a link added
+])
+def test_the_route_network_path_moves_with_its_inputs(iatas, titles):
+    """The constants are half the key; the airports a pair may join and the
+    article crawled for each are the other half (CLAUDE.md: constants AND
+    inputs). Mutation, measured: dropping `sorted(titles_by_iata.items())`
+    from the stamp turns the last two cases red."""
+    assert routes._network_cache_path(iatas, titles) != _routes_path()
 
 
-def test_a_parser_version_change_empties_the_destination_cache_but_a_legacy_file_is_adopted(monkeypatch, tmp_path):
+def test_the_route_network_path_is_stable_when_nothing_changes():
+    assert _routes_path() == _routes_path()
+    assert _routes_path().name != "routes.parquet"
+    # Insertion order is not an input.
+    assert (routes._network_cache_path(["BBB", "AAA"], {"BBB": "B", "AAA": "A"})
+            == routes._network_cache_path(["AAA", "BBB"], {"AAA": "A", "BBB": "B"}))
+
+
+def test_a_section_regex_FLAG_change_moves_the_parser_key(monkeypatch):
+    """`.pattern` alone would not see this: same text, different headings
+    matched ("== AIRLINES AND DESTINATIONS ==" stops matching)."""
+    before = routes._parser_key()
+    monkeypatch.setattr(routes, "_SECTION_RE", re.compile(routes._SECTION_RE.pattern, re.MULTILINE))
+    assert routes._parser_key() != before
+
+
+@pytest.mark.parametrize("name,new", [
+    ("PARSER_VERSION", 999),
+    ("_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]")),
+    ("_SECTION_RE", re.compile(r"^(==)\s*Destinations\s*==\s*$", re.MULTILINE)),
+])
+def test_a_parser_change_empties_the_destination_cache(monkeypatch, tmp_path, name, new):
+    """The per-airport cache stores PARSED titles, so it is the cache a parser
+    fix has to get past. CR13-13: `_LINK_RE` never reached its version check,
+    so the fragment-link fix (CR13-6) would have been read back as a hit.
+
+    Mutation, measured: dropping `_LINK_RE.pattern, _LINK_RE.flags` from
+    `routes._parser_key` turns the `_LINK_RE` case red (and the STAMPED row).
+    """
     monkeypatch.setattr(config, "CACHE", tmp_path)
-    (tmp_path / "airline_destinations.json").write_text('{"ICN": ["Tokyo"]}')   # legacy flat
-    assert routes._load_destination_cache() == {"ICN": ["Tokyo"]}
     routes._save_destination_cache({"ICN": ["Tokyo"]})
     assert routes._load_destination_cache() == {"ICN": ["Tokyo"]}
-    monkeypatch.setattr(routes, "PARSER_VERSION", routes.PARSER_VERSION + 1)
+    monkeypatch.setattr(routes, name, new)
     assert routes._load_destination_cache() == {}
+
+
+@pytest.mark.parametrize("legacy", [
+    '{"ICN": ["Tokyo"]}',                                          # flat, pre-versioning
+    '{"_parser_version": 1, "airports": {"ICN": ["Tokyo"]}}',      # PARSER_VERSION era
+])
+def test_a_destination_cache_from_before_the_parser_key_is_a_miss(monkeypatch, tmp_path, legacy):
+    """Both older formats used to be adopted as "version 1". Neither records
+    which regexes produced it, so neither can be trusted under a fixed parser.
+
+    Mutation, measured: restoring the flat-format adoption (`return raw` when
+    the file carries no stamp at all) turns the flat case red.
+    """
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    (tmp_path / "airline_destinations.json").write_text(legacy)
+    assert routes._load_destination_cache() == {}
+
+
+def test_the_resolver_cache_still_adopts_its_legacy_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "CACHE", tmp_path)
     (tmp_path / "wikidata_iata.json").write_text('{"Narita International Airport": "NRT"}')
     assert wikidata._load_cache() == {"Narita International Airport": "NRT"}
     wikidata._save_cache({"X": "XXX"})
