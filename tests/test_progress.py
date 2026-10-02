@@ -155,3 +155,154 @@ def test_the_graph_digest_covers_the_edges_the_ordering_the_classes_and_the_rail
                   (csr, args[1], np.array([1, 3]), args[3]),
                   (*args[:3], {"stop_names": {"k": "B"}})):
         assert progress.graph_hash(*moved) != base
+
+
+# --- A6e: build-all --skip-existing ------------------------------------------
+
+def _resume(monkeypatch, dist, coverages=(1.0, 1.0), identity=None, csr=None, **kw):
+    """One stub run, returning (origins solved, index.json calls)."""
+    from scipy.sparse import csr_matrix
+
+    monkeypatch.setattr(cli.config, "DIST", dist)
+    _stub_pipeline(monkeypatch, [], coverages=list(coverages))
+    if identity is not None:
+        monkeypatch.setattr(cli.index, "build_identity", lambda started=None: dict(identity))
+    if csr is not None:
+        monkeypatch.setattr(cli.build, "build_graph", lambda idx, **k: csr_matrix(csr))
+    calls: list = []
+    monkeypatch.setattr(cli.index, "write_index",
+                        lambda origins, out, **k: calls.append(
+                            ([o["slug"] for o in origins],
+                             {n: v for n, v in k.items() if n != "identity"},
+                             k["identity"]["inputsHash"])))
+    solved: list = []
+    real = cli._solve_one
+    monkeypatch.setattr(cli, "_solve_one",
+                        lambda o, *a: (solved.append(o["slug"]), real(o, *a))[1])
+    cli._build_all(**kw)
+    return solved, calls
+
+
+IDENT = {"inputsHash": "in-1", "buildId": "in-1-t0", "builtAt": "t0", "gitHead": "h"}
+
+
+def test_a_resumed_build_skips_only_what_is_complete_for_the_current_inputs(monkeypatch, tmp_path):
+    """Skipped only under the same inputsHash AND the same graph; without the
+    flag nothing is skipped at all.
+
+    Mutations performed and reverted, each red: `_still_to_build` returning
+    every origin (nothing skipped); returning none (a moved inputsHash still
+    skipped); the stamp built from a constant graph digest instead of
+    `progress.graph_hash(csr, ...)` (a changed graph still skipped).
+    """
+    solved, _ = _resume(monkeypatch, tmp_path, identity=IDENT)
+    assert solved == ["first", "second"]
+    solved, calls = _resume(monkeypatch, tmp_path, identity=IDENT, skip_existing=True)
+    assert solved == [] and calls[0][0] == ["first", "second"]
+    solved, _ = _resume(monkeypatch, tmp_path, identity=IDENT)
+    assert solved == ["first", "second"], "without --skip-existing every origin is built"
+
+    solved, _ = _resume(monkeypatch, tmp_path, identity=IDENT, skip_existing=True,
+                        csr=[[0.0, 1.0], [1.0, 0.0]])
+    assert solved == ["first", "second"], "skipped over another graph"
+    moved = {**IDENT, "inputsHash": "in-2", "buildId": "in-2-t1"}
+    solved, _ = _resume(monkeypatch, tmp_path, identity=moved, skip_existing=True,
+                        csr=[[0.0, 1.0], [1.0, 0.0]])
+    assert solved == ["first", "second"], "skipped under another inputsHash"
+
+
+def test_a_missing_resized_or_half_written_origin_is_rebuilt(monkeypatch, tmp_path):
+    """Mutation performed and reverted: `files_problem` returning None (the
+    file checks skipped) -> red."""
+    _resume(monkeypatch, tmp_path, identity=IDENT)
+    (tmp_path / "origins" / "first.air.bin").unlink()
+    solved, _ = _resume(monkeypatch, tmp_path, identity=IDENT, skip_existing=True)
+    assert solved == ["first"]
+    p = tmp_path / "origins" / "second.json"
+    p.write_bytes(p.read_bytes() + b" ")
+    solved, _ = _resume(monkeypatch, tmp_path, identity=IDENT, skip_existing=True)
+    assert solved == ["second"]
+    rec = _record(tmp_path, "first")
+    progress.record_path(tmp_path, "first").write_text(json.dumps({**rec, "state": "writing"}))
+    solved, _ = _resume(monkeypatch, tmp_path, identity=IDENT, skip_existing=True)
+    assert solved == ["first"]
+
+
+def test_a_resumed_run_publishes_what_a_full_run_publishes(monkeypatch, tmp_path):
+    """index.json from a run that skipped everything is the one a run that
+    built everything writes: same origins, same counts, same inputs."""
+    _, full = _resume(monkeypatch, tmp_path, identity=IDENT)
+    solved, resumed = _resume(monkeypatch, tmp_path, identity=IDENT, skip_existing=True)
+    assert solved == [] and resumed == full
+
+
+def test_a_variant_that_died_is_resumed_and_offered_again(monkeypatch, tmp_path):
+    """The 2026-09-28 case: a variant build dies part way. The marker went at
+    the start and must come back only when every origin is complete -- from
+    the resumed run, which builds only what the dead one did not finish.
+
+    Mutation performed and reverted: the withdraw at the start of a full
+    variant run skipped when --skip-existing is given -> red (the old marker
+    survives the second failed run).
+    """
+    root = variants.variant_dir(tmp_path, "air")
+    variants.write_marker(root, "air", ["first", "second"], {"inputsHash": "older"})
+    with pytest.raises(SystemExit, match="second"):
+        _resume(monkeypatch, tmp_path, coverages=(1.0, 0.0), identity=IDENT, exclude="air")
+    assert not (root / variants.MARKER).exists()
+    variants.write_marker(root, "air", ["first", "second"], {"inputsHash": "older"})
+    with pytest.raises(SystemExit, match="second"):
+        _resume(monkeypatch, tmp_path, coverages=(1.0, 0.0), identity=IDENT, exclude="air",
+                skip_existing=True)
+    assert not (root / variants.MARKER).exists(), "a resumed run that failed left it offered"
+
+    solved, calls = _resume(monkeypatch, tmp_path, identity=IDENT, exclude="air",
+                            skip_existing=True)
+    assert solved == ["second"] and calls == []
+    marker = json.loads((root / variants.MARKER).read_text())
+    assert marker["origins"] == ["first", "second"]
+    assert marker["identity"]["inputsHash"] == "in-1"
+    assert not (tmp_path / "origins").exists(), "a variant resumed into the full set's tree"
+
+
+@pytest.mark.parametrize("partial", [{"only": ["first"]}, {"limit": 1}])
+def test_a_partial_resumed_run_still_never_publishes(monkeypatch, tmp_path, partial):
+    _resume(monkeypatch, tmp_path, identity=IDENT)
+    progress.record_path(tmp_path, "first").unlink()
+    solved, calls = _resume(monkeypatch, tmp_path, identity=IDENT, skip_existing=True, **partial)
+    assert solved == ["first"] and calls == []
+
+
+def test_forked_workers_report_each_origin_as_it_finishes(monkeypatch, tmp_path, capsys):
+    """imap_unordered: a slow first origin does not hold back the row of one
+    that finished behind it.
+
+    Mutation performed and reverted: `pool.imap` back -> red ("second" waits
+    for "first").
+    """
+    import signal
+    import time
+
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    monkeypatch.setattr(cli, "_worker_count", lambda n_origins: 2)
+    _stub_pipeline(monkeypatch, [], coverages=[1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda *a, **k: None)
+
+    def slow_first(minutes, idx):
+        if int(minutes[0]) == 0:
+            time.sleep(1.5)
+        return 1.0
+    monkeypatch.setattr(cli.validate, "check_coverage", slow_first)
+
+    def hung(signum, frame):
+        raise TimeoutError("the forked build hung")
+    previous = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(15)
+    try:
+        cli._build_all()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+    rows = [ln.split()[0] for ln in capsys.readouterr().out.splitlines()
+            if ln.split()[:1] in (["first"], ["second"])]
+    assert rows == ["second", "first"], rows

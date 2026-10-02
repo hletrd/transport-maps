@@ -32,6 +32,7 @@ uv run ruff check .
 uv run pytest                              # the gate; -m "not integration" for a fast loop
 uv run transport-maps build-all            # every origin -> dist/ (one build per dist/ at a time)
 uv run transport-maps build-all --only seoul,tokyo   # a smoke test through every gate; index.json untouched
+uv run transport-maps build-all --skip-existing     # resume a build that died: rebuild only unfinished origins
 uv run transport-maps reindex              # rewrite dist/index.json from the artifacts on disk
 uv run transport-maps assets               # places.json, airports.json, borders.json -> dist/
 uv run python scripts/check_dist.py        # is dist/ consistent enough to deploy?
@@ -48,6 +49,19 @@ build lock as `build-all` and `reindex`.
 `dist/hover_cells.bin` and the named origins under `dist/origins/` **are**
 rewritten, so a smoke test against a published `dist/` mixes generations. Point
 it at a scratch `dist/` unless you mean to replace those origins.
+
+Each origin's files carry a completion record, `.progress/<slug>.json` beside
+`origins/` (never deployed). It says "writing" from before the origin's first
+file is replaced until after its last, then "complete" with every file's size,
+keyed on the run's `inputsHash` (code by content, `calibration.toml`,
+`origins.toml`, format constants) and a digest of the graph (the data inputs).
+`--skip-existing` leaves alone an origin whose record is complete under the
+current key with its files at the recorded sizes and builds the rest, so a run
+that died is resumed with the same command plus the flag (`--exclude <mode>`
+for a variant). The graph is rebuilt either way: skipping saves the per-origin
+solves, not the graph build. `index.json` and a variant's `variant.json` are
+written only once every origin is complete for the run, whichever run built it.
+`scripts/check_dist.py` refuses an origin whose record still says "writing".
 
 `reindex` writes `index.json` and nothing else. It is for the case where a build
 outlives a change to the index emitter: the parent process writes `index.json`

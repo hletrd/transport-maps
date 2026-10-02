@@ -423,6 +423,32 @@ def _solve_one_forked(origin: dict) -> str:
     return _solve_one(origin, context.idx, context.csr, context.speeds, context.shared)
 
 
+def _still_to_build(origins: list[dict], shared: dict) -> list[dict]:
+    """The origins `--skip-existing` must still build, in roster order.
+
+    An origin is left alone only when its completion record is "complete"
+    under this run's key -- the same inputsHash and the same graph -- and
+    every file it lists is still there at the recorded size
+    (`progress.problem`). Everything else is built again: no record, a run
+    that stopped inside it, other inputs, a file gone or resized.
+    """
+    root, stamp = shared["out_root"], shared["stamp"]
+    todo, why = [], []
+    for origin in origins:
+        problem = progress.problem(root, origin, stamp)
+        if problem is not None:
+            todo.append(origin)
+            why.append(f"{origin['slug']}: {problem}")
+    print(f"--skip-existing: {len(origins) - len(todo):,} of {len(origins):,} origin(s) are "
+          f"complete for inputs {stamp.inputs_hash} / graph {stamp.graph_hash}; "
+          f"{len(todo):,} to build", flush=True)
+    for line in why[:5]:
+        print(f"  rebuilding {line}", flush=True)
+    if len(why) > 5:
+        print(f"  ... and {len(why) - 5:,} more", flush=True)
+    return todo
+
+
 def _log_reading_cost(path: Path) -> None:
     """What one origin's reading array costs raw and on the wire.
 
@@ -463,12 +489,15 @@ def _load_ferries():
 
 
 def _build_all(limit: int | None = None, only: list[str] | None = None,
-               exclude: str | None = None) -> None:
+               exclude: str | None = None, skip_existing: bool = False) -> None:
     """Build the graph once, then solve, validate and emit every origin.
 
     Aborts on the first failing gate -- a partially written dist/ is worse
     than none. `limit` restricts to the first N origins and `only` to the
     named slugs; either makes a PARTIAL build that never rewrites index.json.
+    `skip_existing` leaves alone every origin already complete for this
+    build's inputs (transport_maps.progress), which is how a run that died is
+    resumed; what it publishes is what a run from scratch would.
     """
     lock = _acquire_lock(config.DIST)
     try:
@@ -482,13 +511,13 @@ def _build_all(limit: int | None = None, only: list[str] | None = None,
                 "%d other build-all process(es) are running on this machine (pids %s); "
                 "if they are orphans of a killed build, reap them -- they hold graph memory",
                 len(others), ", ".join(map(str, others)))
-        _build_all_locked(limit, only, exclude)
+        _build_all_locked(limit, only, exclude, skip_existing)
     finally:
         lock.unlink(missing_ok=True)
 
 
 def _build_all_locked(limit: int | None, only: list[str] | None = None,
-                      exclude: str | None = None) -> None:
+                      exclude: str | None = None, skip_existing: bool = False) -> None:
     started = datetime.now(UTC)
     # Sampled here, not at the end. index.json is written as the last statement
     # of this function, and build_identity()/mode_detail() read the git head,
@@ -618,11 +647,12 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # than one core. Serially this build took nearly eight hours; the graph is
     # ~1 GB of scipy arrays, so workers are FORKED to inherit it copy-on-write
     # rather than spawned, which would rebuild it once per worker.
-    workers = min(_worker_cap(len(idx.cells)), _worker_count(len(origins)))
+    todo = _still_to_build(origins, shared) if skip_existing else origins
+    workers = min(_worker_cap(len(idx.cells)), _worker_count(len(todo)))
     shared["workers"] = workers
     try:
         if workers <= 1:
-            for origin in origins:
+            for origin in todo:
                 print(_solve_one(origin, idx, csr, speeds, shared))
         else:
             ctx = multiprocessing.get_context("fork")
@@ -633,7 +663,11 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
                 # the class); leaving the block then runs Pool.__exit__, which
                 # is terminate(): the other workers are stopped mid-origin
                 # rather than left writing into dist/ while this exits.
-                for line in _consume(pool, pool.imap(_solve_one_forked, origins)):
+                # Unordered: a row is printed when its origin finishes, so one
+                # slow origin no longer hides the dozens finished behind it.
+                # Nothing published depends on the order -- index.json and
+                # the marker are written from `origins`, after the loop.
+                for line in _consume(pool, pool.imap_unordered(_solve_one_forked, todo)):
                     print(line, flush=True)
     except GateFailure as exc:
         # The same exit from either path: the origin's message, status 1,
@@ -994,6 +1028,14 @@ def main() -> None:
              "dist/origins; index.json is left untouched, so the site does not advertise them)",
     )
 
+    build_all.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="resume: leave alone every origin whose completion record (<root>/.progress/) "
+             "is complete for this build's inputs and graph with its files at the recorded "
+             "sizes; build the rest, then publish as a full run would",
+    )
+
     # Not a second way to publish: reindex writes index.json and nothing else,
     # from artifacts a build already produced. It exists because index.json is
     # emitted by the parent at the end of a long build, using the emitter that
@@ -1016,7 +1058,8 @@ def main() -> None:
     config.ensure_dirs()
 
     if args.command == "build-all":
-        _build_all(limit=args.limit, only=args.only, exclude=args.exclude)
+        _build_all(limit=args.limit, only=args.only, exclude=args.exclude,
+                   skip_existing=args.skip_existing)
     elif args.command == "reindex":
         _reindex()
     elif args.command == "assets":
