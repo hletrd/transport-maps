@@ -1467,12 +1467,36 @@ function exactReading(res, { city = null, carryOnOn = false, avoided = null } = 
     return ["From the exact point you chose: ", { b: "no scheduled route" },
             ` to this destination, computed on demand.${moved}`];
   }
-  // Carry-on comes off the city's figures through their airport legs. The
-  // service solves with a checked bag and its figure is printed as solved --
-  // the legs under it must still add up to it -- so that is said.
-  const bag = carryOnOn ? " It assumes a checked bag." : "";
+  // Carry-on: carryOnExact has already taken the bag minutes off when the
+  // legs show a flight. Without legs (an older service) there is no telling
+  // whether the journey flew, so the figure is printed as solved and that is
+  // said; a journey the legs show never flew has no bag to drop.
+  const flew = Array.isArray(res.legs) ? res.legs.some((l) => l.kind === "fly") : null;
+  const bag = res.carryOn ? " Carry-on only."
+    : carryOnOn && flew !== false ? " It assumes a checked bag." : "";
   return ["From the exact point you chose: ", { b: fmtDur(res.minutes) },
           ` door to door, computed on demand.${moved}${bag}`];
+}
+
+//: The on-demand answer with carry-on applied the way the map's own panel
+//: applies it: the departure minutes off the leg into the first airport, the
+//: arrival minutes off the leg out of the last, and both off the total, so the
+//: legs still add up to the figure printed above them. Returned unchanged
+//: when it cannot be done honestly -- no legs, no flight, or legs not shaped
+//: surface-fly...fly-surface. `save` is {dep, arr} in minutes, or null.
+function carryOnExact(res, save) {
+  if (!save || !res?.ok || !res.reachable || !Array.isArray(res.legs)) return res;
+  const flights = res.legs.flatMap((l, i) => (l.kind === "fly" ? [i] : []));
+  if (!flights.length) return res;
+  const legs = res.legs.map((l) => ({ ...l }));
+  const before = legs[flights[0] - 1], after = legs[flights[flights.length - 1] + 1];
+  if (before?.kind !== "surface" || after?.kind !== "surface") return res;
+  const dep = Math.min(save.dep, before.min), arr = Math.min(save.arr, after.min);
+  before.min -= dep; after.min -= arr;
+  // The bag minutes are airport time, never rail; a leg cannot have more rail
+  // in it than it has minutes.
+  for (const l of [before, after]) l.railMin = Math.min(l.railMin ?? 0, l.min);
+  return { ...res, minutes: res.minutes - dep - arr, legs, carryOn: true };
 }
 
 // The line itself. Called from renderPins(), which runs whenever the
@@ -1512,7 +1536,10 @@ function paintExact(say) {
     paintExactLegs(null);
     return;
   }
-  const parts = exactReading(exactResult, {
+  const shown = carryOn && meta.carryOn
+    ? carryOnExact(exactResult, { dep: meta.carryOn.departureMin, arr: meta.carryOn.arrivalMin })
+    : exactResult;
+  const parts = exactReading(shown, {
     city: active?.name ?? null, carryOnOn: carryOn,
     avoided: avoid ? AVOIDABLE[avoid] : null,
   });
@@ -1524,7 +1551,7 @@ function paintExact(say) {
     return b;
   }));
   el.hidden = false;
-  paintExactLegs(avoid ? null : exactResult);
+  paintExactLegs(avoid ? null : shown);
   // An answer is a committed reading; "Computing…" is not.
   if (say) announce(el.textContent);
 }

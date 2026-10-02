@@ -45,7 +45,7 @@ CONST_SRC = CONST_SRC[:CONST_SRC.index("\n", CONST_SRC.index("let solverEnabled 
 FN = {name: _js.function(name, with_async=True) for name in (
     "solvePoint", "exactReading", "refreshExact", "paintExact", "forgetExactFrom",
     "parseDep", "originDragEnd", "paintOrigin", "nearestOrigin", "haversineKm",
-    "fmtKm", "fmtTime", "paintExactLegs", "exactLegRows", "solverAirport")}
+    "fmtKm", "fmtTime", "paintExactLegs", "exactLegRows", "solverAirport", "carryOnExact")}
 CONSTS = "\n".join(_js.statement(a) for a in (
     "const EXACT_MIN_KM = ", "const EXACT_NOTE = ", "const fmtDur = ", "const AVOIDABLE = ",
     "const MODE_FALLBACK = "))
@@ -146,6 +146,7 @@ const countryName = (cc) => ({{ KR: "South Korea", US: "United States" }})[cc] ?
 {FN["fmtKm"]}
 {FN["solvePoint"]}
 {FN["exactReading"]}
+{FN["carryOnExact"]}
 {FN["refreshExact"]}
 {FN["paintExact"]}
 {FN["solverAirport"]}
@@ -828,3 +829,73 @@ def test_the_writer_puts_dep_only_beside_from():
     dep = dep[:dep.index(");") + 2]
     assert "exactFrom && active" in dep
     assert "toFixed(5)" in dep
+
+
+# ------------------------------------------------------- carry-on ---
+
+# solvePoint's result, not the wire body: what carryOnExact and exactReading take.
+RES = {"ok": True, "reachable": True, "minutes": 432, "snappedKm": 0.0}
+FLOWN = {**RES, "minutes": 1080, "legs": [
+    {"kind": "surface", "min": 150, "railMin": 40},
+    {"kind": "fly", "from": 0, "to": 2, "min": 873},
+    {"kind": "surface", "min": 57, "railMin": 0}]}
+SAVE = {"dep": 15, "arr": 10}
+
+
+def _carry(node, tmp_path, res, save) -> dict:
+    return _run(node, tmp_path, _page(armed=True) + f"""
+console.log(JSON.stringify(carryOnExact({json.dumps(res)}, {json.dumps(save)})));
+""")
+
+
+def test_carry_on_comes_off_the_airport_legs_and_the_total_alike(node, tmp_path):
+    """The map's panel takes the bag-drop minutes off the leg into the first
+    airport and the belt minutes off the leg out of the last; the on-demand
+    answer must do the same, and its legs must still add up to its figure.
+
+    Mutations performed and reverted, each -> red: the total left unchanged;
+    `arr` taken off the first leg instead of the last; railMin not clamped.
+    """
+    got = _carry(node, tmp_path, FLOWN, SAVE)
+    assert got["minutes"] == 1080 - 25 and got["carryOn"] is True
+    assert [leg["min"] for leg in got["legs"]] == [135, 873, 47]
+    assert sum(leg["min"] for leg in got["legs"]) == got["minutes"]
+    assert got["legs"][0]["railMin"] == 40
+    tight = {**FLOWN, "legs": [{**FLOWN["legs"][0], "min": 20, "railMin": 18},
+                               FLOWN["legs"][1], FLOWN["legs"][2]], "minutes": 950}
+    t = _carry(node, tmp_path, tight, SAVE)
+    assert t["legs"][0]["min"] == 5 and t["legs"][0]["railMin"] == 5
+
+
+@pytest.mark.parametrize("res", [
+    {**RES},                                                      # an older service: no legs
+    {**RES, "legs": [{"kind": "surface", "min": 432, "railMin": 0}]},  # never flew
+    {**RES, "reachable": False, "minutes": None},
+    # Not surface-fly...fly-surface: there is no leg to take the bag-drop off.
+    {**RES, "minutes": 900, "legs": [{"kind": "fly", "from": 0, "to": 2, "min": 873},
+                                     {"kind": "surface", "min": 27, "railMin": 0}]},
+])
+def test_carry_on_leaves_what_it_cannot_honestly_change(node, tmp_path, res):
+    """A surface-only journey must not lose bag minutes it never spent.
+
+    Mutation performed and reverted: dropping the `!flights.length` return
+    stays GREEN, and is equivalent -- with no flight there is no leg before the
+    first one, and the shape check returns the answer unchanged. Making the
+    shape check pass anything (`return res` removed) -> red.
+    """
+    assert _carry(node, tmp_path, res, SAVE) == res
+
+
+def test_the_line_says_which_bag_its_figure_assumes(node, tmp_path):
+    """Carry-on applied says so; no legs keeps the checked-bag caveat; a
+    journey that never flew carries neither.
+
+    Mutation performed and reverted: always append " It assumes a checked
+    bag." when carry-on is on -> red.
+    """
+    applied = _carry(node, tmp_path, FLOWN, SAVE)
+    assert _reading(node, tmp_path, applied, carryOnOn=True).endswith(" Carry-on only.")
+    assert "assumes a checked bag" in _reading(node, tmp_path, RES, carryOnOn=True)
+    overland = {**RES, "legs": [{"kind": "surface", "min": 432, "railMin": 0}]}
+    said = _reading(node, tmp_path, overland, carryOnOn=True)
+    assert "checked bag" not in said and "Carry-on" not in said
