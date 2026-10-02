@@ -275,6 +275,11 @@ has shipped a blank live site twice.
   parameter would let a pasted link turn on an experimental network dependency
   in someone else's browser, and spend their share of a rate limit doing it. It
   is a stored preference, like the two Settings switches.
+  **2026-10-02, superseded by the owner's call to build it:** the stored
+  preference is gone. The page arms itself only when `index.json` carries
+  `"solver": {"wire": 1}` matching `SOLVER_WIRE_VERSION`, which `write_index`
+  writes only beside a solver bundle from the same build. The address still
+  cannot arm it, and neither can localStorage.
 - **`solvePoint()` cannot reach `fatal()`, and a test reads the source to prove
   it.** `fatal()` sets `body.fatal`, which hides the rail — so a solver outage
   reaching it would delete the city list, the legend and a static map that is
@@ -301,6 +306,24 @@ still snaps instantly to the nearest charted city and says so, and the exact
 point is *offered* in that notice as an extra reading. The map keeps belonging
 to a charted city; the service adds one number. Flag off, nothing changes;
 service down, a correct answer is already on screen.
+
+**Made, 2026-10-02 — built as adopted.** A drop more than 1 km from the city
+it snaps to keeps the point as `exactFrom`; the notice says the map is the
+city's and that the point's own time is computed on demand. With a destination
+pinned, `refreshExact()` asks `/api/solve` once per from/to pair (abandoning
+the request for the previous pair) and prints a separate line under the notice
+— "From the exact point you chose: 7 h 12 min door to door, computed on
+demand", plus "The point was moved N km to the nearest land" past 0.5 km — or
+the wire code's sentence and "The times on the map are still measured from
+<City>". The headline stays the city's. No request while the map avoids a
+mode (the service solves the full network). The list, a permalink, "Depart
+from" and a city label all drop the point, in `paintOrigin` before its
+same-city guard. `?dep=lat,lon` carries the point, only beside a `from=` that
+names the city nearest to it, and never arms anything. The client timeout is
+45 s, not 30: `service/server.py` solves one at a time with a listen backlog of
+four, so an accepted request can wait behind six 6-7 s solves, and nginx's own
+`proxy_read_timeout` is 60 s. `tests/web/test_exact_departure.py`, every guard
+mutated red.
 
 ---
 
@@ -403,6 +426,8 @@ Built this cycle:
   graph — `src/transport_maps/service/wire.py`, 39 tests, every branch mutated.
 - [x] **C13-F2.2** The page's solver client behind a flag that is off by default
   and that the address cannot arm — `web/app.js`, 20 node-run tests.
+  (2026-10-02: the flag is now `index.json`'s `solver.wire`, not a stored
+  preference; see "How the page degrades".)
 - [x] **C13-F2.3** The fallback contract: never `fatal()`, never throw, always
   name the city the times are still measured from.
 - [x] **C13-F2.4** This document, superseding the cycle-10 analysis.
@@ -431,10 +456,20 @@ Not built, in the order they must happen:
   service-produced values (cell id, outcome class, duration), never a raw body,
   header or `str(exc)`, and never a coordinate finer than the ~110 m the page's
   Privacy section promises.
-- [ ] **C13-F2.12** The page becomes a **third** runtime service. `index.html:1036`
+- [x] **C13-F2.12** The page becomes a **third** runtime service. `index.html:1036`
   and `llms.txt:113` say "two external services" and
   `tests/web/test_attribution_and_privacy.py` pins it. They change in the same
   commit that ships the fetch, not later.
+  **Done 2026-10-02**, in the commit that wires the fetch into the page. The
+  solver is this site's own server, so "two external services" stays true;
+  what changed is "everything else is computed in the browser". The Privacy
+  section now says the exact point and the destination are sent to this
+  site's own server, to about a metre, once a destination is chosen, and that
+  the address bar carries the point as `dep=`; `llms.txt` and the "How it is
+  computed" paragraph say the same.
+- [x] **C13-F2.13** The page wiring (2026-10-02): arming from `index.json`,
+  `exactFrom` kept from a drag, the on-demand line, `?dep=` in the address.
+  See "How the page degrades".
 
 ## The owner's decisions, 2026-09-15 — recorded in full elsewhere
 
@@ -478,3 +513,8 @@ Cycle 14: no code. Two owner decisions recorded above — preferred-mode
 weighting (which makes filtering a solver feature rather than a static one) and
 a carry-on-only option. Neither was implemented and `service/wire.py` was not
 touched, as instructed.
+
+2026-10-02: the owner decided to build the on-demand solver. The page half is
+wired (C13-F2.12, C13-F2.13): armed only by `index.json`, one extra line, the
+map unchanged. With carry-on on, the line says the figure assumes a checked
+bag, since the service returns no legs to apply it to.
