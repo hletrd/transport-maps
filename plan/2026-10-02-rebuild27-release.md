@@ -25,6 +25,10 @@ no-rail; log `data/build/rebuild27.log`).
       (the batched deploy requires it; it refuses otherwise).
 - [ ] `uv run transport-maps reindex`; index.json lists the variants and
       `solver: {wire: 1}`.
+- [ ] Give the bundle its node counts (rebuild 27's bundle predates them, so
+      the service would answer without legs):
+      `uv run python -m transport_maps.service.bundle add-counts data/build/solver dist`
+      -- refuses unless dist/index.json's buildId is the bundle's.
 - [ ] `bash scripts/deploy_solver.sh` (bundle from this build; proves a solve).
 - [ ] `bash scripts/deploy_verify.sh` (batched if space is short) -- ALL CHECKS.
 - [ ] Browser: four viewports; Avoid options; Tinian; a dragged exact point with
