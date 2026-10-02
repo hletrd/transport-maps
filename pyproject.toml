@@ -40,6 +40,7 @@ markers = [
     "network: hits a live API",
     "real_multi_band: solves a real origin over the full graph (minutes, and needs the built caches)",
     "integration: builds the full node index or graph from the cached universe (minutes each); part of the gate, skippable with -m 'not integration' for a fast loop",
+    "needs_inputs: reads a real raw input (Natural Earth, GRIP4) from data/cache; skipped, with the input named, where the cache does not hold it -- never downloaded (G2)",
 ]
 # network and real_multi_band are excluded by default so a plain `uv run
 # pytest` is the gate; run them on purpose with `-m network` /

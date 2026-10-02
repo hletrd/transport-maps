@@ -117,9 +117,14 @@ def test_an_origins_file_with_no_origins_is_refused(tmp_path):
 
 
 def test_index_json_can_carry_the_build_identity_the_hover_count_and_the_graph_flags(tmp_path):
+    from transport_maps.sources import _fetch
+
     out = tmp_path / "index.json"
+    # What the build read (G2): every input it checked, as sources/_fetch
+    # recorded it. Mutation: drop "inputs" from build_identity -> red.
+    _fetch.record("https://example.invalid/land.zip", {"sha256": "ab" * 32, "size": 3})
     identity = index.build_identity()
-    assert set(identity) == {"inputsHash", "buildId", "builtAt", "gitHead"}
+    assert set(identity) == {"inputsHash", "buildId", "builtAt", "gitHead", "inputs"}
     assert identity["buildId"].startswith(identity["inputsHash"] + "-")
     index.write_index([{"slug": "seoul", "name": "Seoul", "lat": 37.5, "lon": 127.0}], out,
                       hover_cell_count=90_740, graph={"rail": True, "ferry": False}, identity=identity)
@@ -128,6 +133,20 @@ def test_index_json_can_carry_the_build_identity_the_hover_count_and_the_graph_f
     assert payload["graph"] == {"rail": True, "ferry": False}
     assert payload["buildId"] == identity["buildId"] and payload["builtAt"] == identity["builtAt"]
     assert payload["modeChannels"] == list(modes.CHANNELS)
+    assert payload["inputs"] == {"https://example.invalid/land.zip": {"sha256": "ab" * 32, "size": 3}}
+
+
+def test_the_input_fingerprints_do_not_move_the_resume_key():
+    """`inputsHash` is what `--skip-existing` trusts; the data reach that key
+    through the graph digest. A refetched crawl must not by itself void a
+    resume. Mutation: hash `_fetch.used()` into inputsHash -> red."""
+    from transport_maps.sources import _fetch
+
+    before = index.build_identity()["inputsHash"]
+    _fetch.record("wikipedia:airline-destinations", {"fetchedTo": "2026-10-03T00:00:00+00:00"})
+    after = index.build_identity()
+    assert after["inputsHash"] == before
+    assert "wikipedia:airline-destinations" in after["inputs"]
 
 
 def test_index_json_carries_the_contract_version_the_contract_names(tmp_path):

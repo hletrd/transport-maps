@@ -259,9 +259,9 @@ def test_the_cache_stamp_moves_when_the_rules_move(hermetic_build, monkeypatch) 
     which is the same class of defect as the one that made this whole file
     vacuous.
     """
-    before = airports._table_cache_path()
+    before = airports._table_cache_path("sha")
     monkeypatch.setitem(airports.SIZE_BY_TYPE, "seaplane_base", "small")
-    after = airports._table_cache_path()
+    after = airports._table_cache_path("sha")
     assert before != after, (
         "changing SIZE_BY_TYPE did not move the cache path, so a rebuild would "
         f"read back the table built under the old rules ({before.name})")

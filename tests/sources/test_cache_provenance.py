@@ -82,17 +82,23 @@ def test_hash_separates_values_that_repr_alike():
 # --- road grid ---------------------------------------------------------------
 
 
+#: Stand-ins for the inputs' sha256 (G2), so a path can be computed without
+#: fetching anything.
+SRC = "0" * 64
+SRCS = [SRC] * 5
+
+
 def test_road_grid_path_moves_when_the_density_threshold_moves(monkeypatch):
-    before = roads._grid_cache_path()
+    before = roads._grid_cache_path(SRCS)
     monkeypatch.setattr(roads, "DENSITY_THRESHOLD", roads.DENSITY_THRESHOLD / 2)
-    assert roads._grid_cache_path() != before
+    assert roads._grid_cache_path(SRCS) != before
 
 
 def test_road_grid_path_is_stable_when_nothing_changes():
     """The other half: a stamp that changed on every call would pass the test
     above while destroying the cache entirely.
     """
-    assert roads._grid_cache_path() == roads._grid_cache_path()
+    assert roads._grid_cache_path(SRCS) == roads._grid_cache_path(list(SRCS))
 
 
 def test_road_grid_reads_the_stamped_path(tmp_path, monkeypatch):
@@ -101,8 +107,9 @@ def test_road_grid_reads_the_stamped_path(tmp_path, monkeypatch):
     """
     monkeypatch.setattr(config, "BUILD", tmp_path)
     monkeypatch.setattr(roads, "_grid_cache", None)
+    monkeypatch.setattr(roads, "_sources", lambda: SRCS)
     sentinel = np.full((roads.GRID_ROWS, roads.GRID_COLS), 3, dtype=np.uint8)
-    with roads._grid_cache_path().open("wb") as fh:
+    with roads._grid_cache_path(SRCS).open("wb") as fh:
         np.save(fh, sentinel)
 
     assert roads.road_class_grid()[0, 0] == 3
@@ -110,67 +117,73 @@ def test_road_grid_reads_the_stamped_path(tmp_path, monkeypatch):
     # Now move the governing constant: the sentinel must no longer be found.
     monkeypatch.setattr(roads, "_grid_cache", None)
     monkeypatch.setattr(roads, "DENSITY_THRESHOLD", 99.0)
-    assert not roads._grid_cache_path().exists()
+    assert not roads._grid_cache_path(SRCS).exists()
 
 
 # --- airport table -----------------------------------------------------------
 
 
 def test_airport_table_path_moves_when_the_size_mapping_moves(monkeypatch):
-    before = airports._table_cache_path()
+    before = airports._table_cache_path(SRC)
     monkeypatch.setattr(
         airports, "SIZE_BY_TYPE", {**airports.SIZE_BY_TYPE, "seaplane_base": "small"}
     )
-    assert airports._table_cache_path() != before
+    assert airports._table_cache_path(SRC) != before
 
 
 def test_airport_table_path_moves_when_required_columns_move(monkeypatch):
-    before = airports._table_cache_path()
+    before = airports._table_cache_path(SRC)
     monkeypatch.setattr(
         airports, "REQUIRED_SOURCE_COLUMNS", airports.REQUIRED_SOURCE_COLUMNS | {"elevation_ft"}
     )
-    assert airports._table_cache_path() != before
+    assert airports._table_cache_path(SRC) != before
 
 
 def test_airport_table_reads_the_stamped_path(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "BUILD", tmp_path)
-    pl.DataFrame({"iata": ["ZZZ"]}).write_parquet(airports._table_cache_path())
+    csv = b"iata_code\nZZZ\n"
+    monkeypatch.setattr(airports, "_download", lambda: csv)
+    key = hashlib.sha256(csv).hexdigest()
+    pl.DataFrame({"iata": ["ZZZ"]}).write_parquet(airports._table_cache_path(key))
 
     assert airports.scheduled_airports()["iata"].to_list() == ["ZZZ"]
 
     monkeypatch.setattr(airports, "SIZE_BY_TYPE", {"large_airport": "large"})
-    assert not airports._table_cache_path().exists()
+    assert not airports._table_cache_path(key).exists()
 
 
 # --- land mask ---------------------------------------------------------------
 
 
 def test_land_cells_path_still_separates_resolutions():
-    assert landmask._cells_cache_path(4) != landmask._cells_cache_path(5)
+    assert landmask._cells_cache_path(4, SRCS[:3]) != landmask._cells_cache_path(5, SRCS[:3])
 
 
 def test_land_cells_path_moves_when_the_antarctica_cutoff_moves(monkeypatch):
-    before = landmask._cells_cache_path(5)
+    before = landmask._cells_cache_path(5, SRCS[:3])
     monkeypatch.setattr(landmask, "ANTARCTICA_MAX_LAT", -55.0)
-    assert landmask._cells_cache_path(5) != before
+    assert landmask._cells_cache_path(5, SRCS[:3]) != before
 
 
 def test_land_cells_reads_the_stamped_path(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "BUILD", tmp_path)
-    pl.DataFrame({"cell": ["8530e08ffffffff"]}).write_parquet(landmask._cells_cache_path(5))
+    monkeypatch.setattr(landmask, "_sources", lambda: SRCS[:3])
+    pl.DataFrame({"cell": ["8530e08ffffffff"]}).write_parquet(
+        landmask._cells_cache_path(5, SRCS[:3]))
 
     assert landmask.land_cells(5) == ["8530e08ffffffff"]
 
     monkeypatch.setattr(landmask, "ANTARCTICA_MAX_LAT", -55.0)
-    assert not landmask._cells_cache_path(5).exists()
+    assert not landmask._cells_cache_path(5, SRCS[:3]).exists()
 
 
 @pytest.mark.parametrize(
     "path_fn",
-    [roads._grid_cache_path, airports._table_cache_path, lambda: landmask._cells_cache_path(5),
-     lambda: landmask._landmasses_cache_path(5),
+    [lambda: roads._grid_cache_path(SRCS), lambda: airports._table_cache_path(SRC),
+     lambda: landmask._cells_cache_path(5, SRCS[:3]),
+     lambda: landmask._landmasses_cache_path(5, SRCS[:3]),
      lambda: fixed_links._cache_path("north-america", "0123abcd"),
-     lambda: routes._network_cache_path(["AAA"], {"AAA": "Alpha_Airport"})],
+     lambda: routes._network_cache_path(["AAA"], {"AAA": "Alpha_Airport"}, SRC)],
 )
 def test_every_stamped_path_carries_a_hash(path_fn):
     """A stamp silently dropped from the f-string would leave the old bare
@@ -226,28 +239,28 @@ def test_atomically_written_files_are_readable_by_other_users(tmp_path):
 
 def _routes_path():
     """The route network's path for one fixed pair of inputs."""
-    return routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"})
+    return routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"}, SRC)
 
 
 STAMPED = [
-    (roads, "GRIP4_URL", "https://example.invalid/grip4_{n}.zip", roads._grid_cache_path),
-    (roads, "DENSITY_THRESHOLD", 0.5, roads._grid_cache_path),
-    (roads, "GRID_ROWS", 2159, roads._grid_cache_path),
-    (roads, "GRID_COLS", 4319, roads._grid_cache_path),
-    (roads, "N_TYPES", 4, roads._grid_cache_path),
-    (airports, "AIRPORTS_URL", "https://example.invalid/airports.csv", airports._table_cache_path),
-    (airports, "SIZE_BY_TYPE", {"large_airport": "large"}, airports._table_cache_path),
-    (airports, "REQUIRED_SOURCE_COLUMNS", frozenset({"iata_code"}), airports._table_cache_path),
-    (landmask, "LAND_URL", "https://example.invalid/land.zip", lambda: landmask._cells_cache_path(6)),
-    (landmask, "ICE_URL", "https://example.invalid/ice.zip", lambda: landmask._cells_cache_path(6)),
-    (landmask, "LAKES_URL", "https://example.invalid/lakes.zip", lambda: landmask._cells_cache_path(6)),
-    (landmask, "ANTARCTICA_MAX_LAT", -55.0, lambda: landmask._cells_cache_path(6)),
-    (landmask, "POLE_CLIP_LAT", -89.5, lambda: landmask._cells_cache_path(6)),
-    (landmask, "WEDGE_COUNT", 6, lambda: landmask._cells_cache_path(6)),
-    (landmask, "POLYFILL_METHOD", "centre-containment", lambda: landmask._cells_cache_path(6)),
-    (urban, "URBAN_POP_MIN", 100_000.0, lambda: urban._mask_cache_path(["a", "b"])),
-    (urban, "URBAN_RADIUS_KM", 20.0, lambda: urban._mask_cache_path(["a", "b"])),
-    (urban, "PLACES_URL", "https://example.invalid/places.zip", lambda: urban._mask_cache_path(["a", "b"])),
+    (roads, "GRIP4_URL", "https://example.invalid/grip4_{n}.zip", lambda: roads._grid_cache_path(SRCS)),
+    (roads, "DENSITY_THRESHOLD", 0.5, lambda: roads._grid_cache_path(SRCS)),
+    (roads, "GRID_ROWS", 2159, lambda: roads._grid_cache_path(SRCS)),
+    (roads, "GRID_COLS", 4319, lambda: roads._grid_cache_path(SRCS)),
+    (roads, "N_TYPES", 4, lambda: roads._grid_cache_path(SRCS)),
+    (airports, "AIRPORTS_URL", "https://example.invalid/airports.csv", lambda: airports._table_cache_path(SRC)),
+    (airports, "SIZE_BY_TYPE", {"large_airport": "large"}, lambda: airports._table_cache_path(SRC)),
+    (airports, "REQUIRED_SOURCE_COLUMNS", frozenset({"iata_code"}), lambda: airports._table_cache_path(SRC)),
+    (landmask, "LAND_URL", "https://example.invalid/land.zip", lambda: landmask._cells_cache_path(6, SRCS[:3])),
+    (landmask, "ICE_URL", "https://example.invalid/ice.zip", lambda: landmask._cells_cache_path(6, SRCS[:3])),
+    (landmask, "LAKES_URL", "https://example.invalid/lakes.zip", lambda: landmask._cells_cache_path(6, SRCS[:3])),
+    (landmask, "ANTARCTICA_MAX_LAT", -55.0, lambda: landmask._cells_cache_path(6, SRCS[:3])),
+    (landmask, "POLE_CLIP_LAT", -89.5, lambda: landmask._cells_cache_path(6, SRCS[:3])),
+    (landmask, "WEDGE_COUNT", 6, lambda: landmask._cells_cache_path(6, SRCS[:3])),
+    (landmask, "POLYFILL_METHOD", "centre-containment", lambda: landmask._cells_cache_path(6, SRCS[:3])),
+    (urban, "URBAN_POP_MIN", 100_000.0, lambda: urban._mask_cache_path(["a", "b"], SRC)),
+    (urban, "URBAN_RADIUS_KM", 20.0, lambda: urban._mask_cache_path(["a", "b"], SRC)),
+    (urban, "PLACES_URL", "https://example.invalid/places.zip", lambda: urban._mask_cache_path(["a", "b"], SRC)),
     (osm, "ANTIMERIDIAN_EPS_DEG", 1e-3, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
     # MIN_FERRY_KM / MAX_FERRY_KM used to be stamped here. They never governed
     # the parquet's content -- nothing in sources/osm.py filters by length; the
@@ -293,15 +306,42 @@ STAMPED = [
     # moves `land_cells` must move them too. They reach the key through
     # `_cells_cache_path(res).name`, a call the AST reader rightly drops as
     # "how the key is computed" -- so this row is what proves the dependency.
-    (landmask, "LAND_URL", "https://example.invalid/land2.zip", lambda: landmask._landmasses_cache_path(6)),
-    (landmask, "ANTARCTICA_LANDMASS", -2, lambda: landmask._landmasses_cache_path(6)),
-    (landmask, "LANDMASS_VERSION", 999, lambda: landmask._landmasses_cache_path(6)),
+    (landmask, "LAND_URL", "https://example.invalid/land2.zip", lambda: landmask._landmasses_cache_path(6, SRCS[:3])),
+    (landmask, "ANTARCTICA_LANDMASS", -2, lambda: landmask._landmasses_cache_path(6, SRCS[:3])),
+    (landmask, "LANDMASS_VERSION", 999, lambda: landmask._landmasses_cache_path(6, SRCS[:3])),
+    # Closed the "key built inline" gap the table used to record: the country
+    # key now has a path helper, so its URL is mutation-tested like the rest.
+    (countries, "COUNTRIES_URL", "https://example.invalid/countries.zip",
+     lambda: countries._cache_path(["a", "b"], SRC)),
     (fixed_links, "_ABSENT", frozenset({"no", "none"}), lambda: fixed_links._cache_path("asia", "k")),
     (fixed_links, "_NOT_BUILT", frozenset({"proposed"}), lambda: fixed_links._cache_path("asia", "k")),
     (fixed_links, "KEEP_RES", 8, lambda: fixed_links._cache_path("asia", "k")),
     (fixed_links, "SCHEMA", {"way_id": pl.Int64}, lambda: fixed_links._cache_path("asia", "k")),
     (fixed_links, "FIXED_LINK_PARSER_VERSION", 999, lambda: fixed_links._cache_path("asia", "k")),
 ]
+
+
+#: Every derived cache built from a fetched raw input, as (name, path given
+#: the inputs' hashes). G2: the input's CONTENT is half the key, beside the
+#: constants above -- a URL names where an archive lives, not which release of
+#: it was read, and every one of these upstreams republishes under one URL.
+INPUT_KEYED = [
+    ("roads.grid", lambda s: roads._grid_cache_path([SRC] * 4 + [s])),
+    ("airports.table", lambda s: airports._table_cache_path(s)),
+    ("landmask.cells", lambda s: landmask._cells_cache_path(6, [SRC, SRC, s])),
+    ("landmask.landmasses", lambda s: landmask._landmasses_cache_path(6, [s, SRC, SRC])),
+    ("urban.mask", lambda s: urban._mask_cache_path(["a", "b"], s)),
+    ("countries.cell_country", lambda s: countries._cache_path(["a", "b"], s)),
+    ("routes.network", lambda s: routes._network_cache_path(["AAA"], {"AAA": "A"}, s)),
+]
+
+
+@pytest.mark.parametrize("path_fn", [f for _, f in INPUT_KEYED], ids=[n for n, _ in INPUT_KEYED])
+def test_the_cache_path_moves_when_its_input_content_moves(path_fn):
+    """Mutation: drop `sources`/`source` from any of the six stamps -> its
+    case is red."""
+    assert path_fn(SRC) != path_fn("1" * 64)
+    assert path_fn(SRC) == path_fn(SRC)
 
 
 @pytest.mark.parametrize("module,name,new,path_fn", STAMPED,
@@ -339,22 +379,20 @@ _COVERED_BY_TABLE = {
     "routes._parser_key",
     "landmask._landmasses_cache_path",
     "fixed_links._params_key",
+    "countries._cache_path",
 }
 #: Stamping functions deliberately outside it, each with the reason. A new
 #: entry here is a decision someone has to write down, not a silent omission.
 _NOT_IN_THIS_TABLE = {
-    # `countries.cell_country` computes its key inline and has no path helper
-    # to parametrise, so there is nothing to call with a monkeypatched
-    # constant. KNOWN GAP: COUNTRIES_URL therefore has no mutation test.
-    # `test_the_country_key_covers_the_whole_cell_list` below covers only the
-    # cell-list half of that key, and it does so by re-typing the key
-    # construction rather than calling the code.
-    "countries.cell_country": "key built inline; no path helper to parametrise",
     # The INPUT half of the fixed-link key: the extract's own name, size and
-    # mtime, and no module constant at all -- there is no row to write.
-    # `tests/sources/test_fixed_links.py::test_a_newer_download_is_a_cache_miss`
-    # pins it instead, and goes red when the source key is ignored.
-    "fixed_links._source_key": "hashes the extract's name/size/mtime, no constant",
+    # replication snapshot (G2), and no module constant at all -- there is no
+    # row to write. `tests/sources/test_fixed_links.py` pins it instead:
+    # `test_a_newer_download_is_a_cache_miss` and the snapshot tests go red
+    # when the source key is ignored.
+    "fixed_links._source_key": "hashes the extract's name/size/snapshot, no constant",
+    # The pre-G2 name/size/mtime key, kept for header-less extracts and to
+    # adopt a cache built from the same file (geofabrik.adopt).
+    "fixed_links._mtime_key": "hashes the extract's name/size/mtime, no constant",
 }
 
 
@@ -503,21 +541,25 @@ def test_a_rail_schema_DTYPE_change_moves_the_key(monkeypatch):
 def test_the_urban_mask_key_covers_the_whole_cell_list():
     """Same length, same first and last cell, different middle: the old key
     (len, first, last) served one universe's mask to the other."""
-    a = urban._mask_cache_path(["c1", "c2", "c3"])
-    b = urban._mask_cache_path(["c1", "cX", "c3"])
+    a = urban._mask_cache_path(["c1", "c2", "c3"], SRC)
+    b = urban._mask_cache_path(["c1", "cX", "c3"], SRC)
     assert a != b
 
 
 def test_the_country_key_covers_the_whole_cell_list(monkeypatch, tmp_path):
+    """Through `countries._cache_path`, the helper `cell_country` reads -- this
+    used to re-type the key construction, so it could not see the code drop a
+    term from it."""
+    import types
+
     monkeypatch.setattr(config, "CACHE", tmp_path)
+    monkeypatch.setattr(countries, "_source", lambda: types.SimpleNamespace(sha256=SRC))
     seen = []
     monkeypatch.setattr(countries, "_polygons", lambda: (_ for _ in ()).throw(AssertionError("computed")))
-    for cells in (["c1", "c2", "c3"], ["c1", "cX", "c3"]):
-        key = countries._params_hash(countries.COUNTRIES_URL, "filled-blanks-nearest",
-                                     hashlib.sha256("".join(cells).encode()).hexdigest())
-        pl.DataFrame({"country": ["KOR"] * 3}).write_parquet(tmp_path / f"cell_country-{key}.parquet")
+    for cells, code in ((["c1", "c2", "c3"], "KOR"), (["c1", "cX", "c3"], "JPN")):
+        pl.DataFrame({"country": [code] * 3}).write_parquet(countries._cache_path(cells, SRC))
         seen.append(countries.cell_country(cells).tolist())
-    assert seen == [["KOR"] * 3] * 2
+    assert seen == [["KOR"] * 3, ["JPN"] * 3]
 
 
 @pytest.mark.parametrize("iatas,titles", [
@@ -530,15 +572,15 @@ def test_the_route_network_path_moves_with_its_inputs(iatas, titles):
     article crawled for each are the other half (CLAUDE.md: constants AND
     inputs). Mutation, measured: dropping `sorted(titles_by_iata.items())`
     from the stamp turns the last two cases red."""
-    assert routes._network_cache_path(iatas, titles) != _routes_path()
+    assert routes._network_cache_path(iatas, titles, SRC) != _routes_path()
 
 
 def test_the_route_network_path_is_stable_when_nothing_changes():
     assert _routes_path() == _routes_path()
     assert _routes_path().name != "routes.parquet"
     # Insertion order is not an input.
-    assert (routes._network_cache_path(["BBB", "AAA"], {"BBB": "B", "AAA": "A"})
-            == routes._network_cache_path(["AAA", "BBB"], {"AAA": "A", "BBB": "B"}))
+    assert (routes._network_cache_path(["BBB", "AAA"], {"BBB": "B", "AAA": "A"}, SRC)
+            == routes._network_cache_path(["AAA", "BBB"], {"AAA": "A", "BBB": "B"}, SRC))
 
 
 def test_a_section_regex_FLAG_change_moves_the_parser_key(monkeypatch):
@@ -639,9 +681,10 @@ def test_the_real_cache_path_names_are_stable_across_interpreter_hash_seeds():
     code = (
         "import sys; sys.path.insert(0, 'src');"
         "from transport_maps.sources import airports, landmask, roads;"
-        "print(airports._table_cache_path().name);"
-        "print(landmask._cells_cache_path(6).name);"
-        "print(roads._grid_cache_path().name)"
+        "s = '0' * 64;"
+        "print(airports._table_cache_path(s).name);"
+        "print(landmask._cells_cache_path(6, [s] * 3).name);"
+        "print(roads._grid_cache_path([s] * 5).name)"
     )
     out = set()
     for seed in (0, 1, 2, 7, 31):

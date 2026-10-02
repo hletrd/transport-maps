@@ -1,23 +1,26 @@
 """Wikipedia 'Airlines and destinations' sections -> airline route network."""
 
 import collections
+import hashlib
 import itertools
 import json
 import re
 import time
 import urllib.parse
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import polars as pl
 
 from transport_maps import config
-from transport_maps.sources import airports, wikidata
+from transport_maps.sources import _fetch, airports, wikidata
 from transport_maps.sources._utils import (
     IncompleteResponse,
     _atomic_write,
     _params_hash,
     _refuse_partial,
     _retry_after_seconds,
+    _stale,
     _validated_json,
 )
 
@@ -25,6 +28,15 @@ ACTION_API = "https://en.wikipedia.org/w/api.php"
 TITLES_PER_REQUEST = 50
 HEADERS = {"User-Agent": "transport-maps/0.1 (open-data isochrone build; https://worldmap.atik.kr/)"}
 MAX_RETRIES = 6
+# An article fetched longer ago than this is fetched again (G2: every build
+# checks its inputs). The crawl is not one file with an ETag but ~4,000
+# articles, fifty to a request, so "check" means "fetch again": about 80
+# requests, which the owner accepted per build (2026-10-02). A day rather than
+# zero so that a build restarted the same day -- after a crash, say -- reads
+# the crawl the first attempt read instead of a slightly different one, which
+# would change the graph and void `--skip-existing`. An article whose refetch
+# fails keeps its cached parse, and stays stale, so the next build asks again.
+ARTICLE_MAX_AGE = timedelta(hours=24)
 
 # Both heading patterns capture the leading "=" run so the section can be
 # closed at the next heading of the same level or shallower (_section_end).
@@ -203,6 +215,11 @@ def _destination_cache_path():
     return config.CACHE / "airline_destinations.json"
 
 
+def _load_raw_destination_cache() -> dict:
+    path = _destination_cache_path()
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
 def _load_destination_cache() -> dict[str, list[str] | None]:
     """Article title -> parsed destination titles, or None for an absent article.
 
@@ -217,10 +234,9 @@ def _load_destination_cache() -> dict[str, list[str] | None]:
     `_parser_version` one, both keyed by IATA): nothing in it says which parser
     produced it.
     """
-    path = _destination_cache_path()
-    if not path.exists():
+    raw = _load_raw_destination_cache()
+    if not raw:
         return {}
-    raw = json.loads(path.read_text())
     stamp = raw.get("_parser_key")
     if stamp != _parser_key() or "articles" not in raw:
         print(f"routes: destination cache was parsed under key {stamp}, parser is "
@@ -229,9 +245,21 @@ def _load_destination_cache() -> dict[str, list[str] | None]:
     return raw["articles"]
 
 
-def _save_destination_cache(cache: dict[str, list[str] | None]) -> None:
+def _load_fetched_at() -> dict[str, str]:
+    """Article title -> when it was fetched (ISO, UTC). An article with no
+    entry -- every article in a cache written before G2 -- counts as older
+    than ARTICLE_MAX_AGE, so the first build after G2 refetches the lot."""
+    raw = _load_raw_destination_cache()
+    if raw.get("_parser_key") != _parser_key():
+        return {}
+    return raw.get("fetched_at", {})
+
+
+def _save_destination_cache(cache: dict[str, list[str] | None],
+                            fetched_at: dict[str, str] | None = None) -> None:
     path = _destination_cache_path()
-    payload = {"_parser_key": _parser_key(), "articles": cache}
+    payload = {"_parser_key": _parser_key(), "articles": cache,
+               "fetched_at": {t: at for t, at in (fetched_at or {}).items() if t in cache}}
     _atomic_write(path, lambda tmp: tmp.write_text(json.dumps(payload)))
 
 
@@ -251,13 +279,26 @@ def _crawl_destinations(
     so a re-run refetches exactly them and nothing else; the caller must refuse
     to persist a route network while the list is non-empty (see
     `route_network`).
+
+    A cached article older than ARTICLE_MAX_AGE is fetched again (G2), and if
+    that fails its cached parse is used with a warning rather than counted
+    unresolved: the crawl is refreshed when Wikipedia answers and does not
+    fail the build when it does not. Offline (`build-all --offline`) nothing is
+    fetched at all.
     """
     config.ensure_dirs()
     cache = _load_destination_cache()
-    todo = list(dict.fromkeys(t for t in titles_by_iata.values() if t not in cache))
+    fetched_at = _load_fetched_at()
+    now = datetime.now(UTC)
+    stamp = now.replace(microsecond=0).isoformat()
+    wanted = list(dict.fromkeys(titles_by_iata.values()))
+    stale = [] if _fetch.offline() else [
+        t for t in wanted if t in cache and _stale(fetched_at.get(t), now, ARTICLE_MAX_AGE)]
+    todo = [] if _fetch.offline() else [t for t in wanted if t not in cache] + stale
     if todo:
         pending = collections.deque(itertools.batched(todo, TITLES_PER_REQUEST))
-        print(f"routes: {len(cache)} articles cached, {len(todo)} to fetch in {len(pending)} batches")
+        print(f"routes: {len(cache)} articles cached, {len(todo)} to fetch "
+              f"({len(stale)} older than {ARTICLE_MAX_AGE}) in {len(pending)} batches")
         n = 0
         with httpx.Client(timeout=60, headers=HEADERS, follow_redirects=True) as client:
             while pending:
@@ -286,10 +327,12 @@ def _crawl_destinations(
                         wikitext = wikitext_by_title.get(title)
                         if wikitext is not None:
                             cache[title] = parse_destinations(wikitext)
+                            fetched_at[title] = stamp
                         elif title in confirmed_absent:
                             # enwiki has no such article; nothing to fetch, ever.
                             cache[title] = None
-                    _save_destination_cache(cache)
+                            fetched_at[title] = stamp
+                    _save_destination_cache(cache, fetched_at)
                 print(f"routes: batch {n} done ({len(cache)} articles cached, "
                       f"{len(pending)} batches left)")
 
@@ -297,45 +340,58 @@ def _crawl_destinations(
     unresolved = [iata for iata, t in titles_by_iata.items() if t not in cache]
     if unresolved:
         print(f"routes: {len(unresolved)} airports unresolved this run")
+    kept = [t for t in stale if fetched_at.get(t) != stamp]
+    if kept:
+        print(f"routes: WARNING {len(kept)} articles could not be refetched; using their "
+              "cached parse, and the next build will ask again", flush=True)
+    times = sorted(fetched_at[t] for t in wanted if t in fetched_at)
+    _fetch.record("wikipedia:airline-destinations", {
+        "articles": len(wanted),
+        "fetchedFrom": times[0] if times else None,
+        "fetchedTo": times[-1] if times else None,
+    })
     return destinations, unresolved
 
 
-def _network_cache_path(iatas: list[str], titles_by_iata: dict[str, str]):
+def _crawl_digest(destinations: dict[str, list[str] | None],
+                  resolved: dict[str, str]) -> str:
+    """sha256 of what the crawl and the resolver answered: each airport's
+    parsed destinations and each destination title's IATA code."""
+    payload = json.dumps({"destinations": destinations, "resolved": resolved},
+                         sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _network_cache_path(iatas: list[str], titles_by_iata: dict[str, str], crawl: str):
     """Stamped with everything that shapes the pair set: the parser and the
-    resolver, the sanity pairs, and both inputs -- the airports a pair may
-    join and the article crawled for each.
+    resolver, the sanity pairs, and the inputs -- the airports a pair may
+    join, the article crawled for each, and what those articles said
+    (`crawl`, `_crawl_digest`).
 
     The inputs are hashed whole. The airport table's stamped name, which this
     used to carry instead, records the rules the table was built under but not
     the OurAirports download it was built from, and says nothing about the
     article links. The bare routes.parquet before that was keyed on
-    `.exists()` and is no longer read at all (CR13-3)."""
+    `.exists()` and is no longer read at all (CR13-3). The crawl's content
+    joined the key with G2: once articles are refetched, the same airports and
+    links can carry different destinations, and a key without them would read
+    back the network the old articles made."""
     stamp = _params_hash(_parser_key(), wikidata.RESOLVER_VERSION, _SANITY_PAIRS,
-                         sorted(iatas), sorted(titles_by_iata.items()))
+                         sorted(iatas), sorted(titles_by_iata.items()), crawl)
     return config.BUILD / f"routes_{stamp}.parquet"
 
 
 def route_network() -> pl.DataFrame:
     """Directed airport pairs with scheduled service. Cached to parquet.
 
-    The airport table and the article links are read before the cache is
-    consulted because they are part of its key; both are local files.
+    The airport table, the article links and the crawl itself are settled
+    before the cache is consulted because all three are part of its key. With
+    the article cache fresh (ARTICLE_MAX_AGE) and the resolver's too, that
+    costs no request.
     """
     apts = airports.scheduled_airports()
     valid = set(apts["iata"].to_list())
     titles_by_iata = _wikipedia_titles(apts)
-
-    out = _network_cache_path(sorted(valid), titles_by_iata)
-    if out.exists():
-        return pl.read_parquet(out)
-    legacy = config.BUILD / "routes.parquet"
-    if legacy.exists():
-        # CR13-3: this file used to be returned here, and since this branch
-        # never wrote `out`, it won on every later run too -- so no parser,
-        # resolver or airport-table change could ever reach the network. It
-        # records no inputs, so it is not evidence of anything; say so once.
-        print(f"routes: ignoring legacy {legacy.name}, whose inputs are unknown; "
-              f"building {out.name}", flush=True)
 
     destinations, unresolved = _crawl_destinations(titles_by_iata)
     _refuse_partial(
@@ -349,6 +405,19 @@ def route_network() -> pl.DataFrame:
     # (Narita, Los Angeles, ...) thousands of times over.
     all_titles = sorted({t for titles in destinations.values() if titles for t in titles})
     resolved = wikidata.iata_for_titles(all_titles)
+
+    out = _network_cache_path(sorted(valid), titles_by_iata,
+                              _crawl_digest(destinations, resolved))
+    if out.exists():
+        return pl.read_parquet(out)
+    legacy = config.BUILD / "routes.parquet"
+    if legacy.exists():
+        # CR13-3: this file used to be returned here, and since this branch
+        # never wrote `out`, it won on every later run too -- so no parser,
+        # resolver or airport-table change could ever reach the network. It
+        # records no inputs, so it is not evidence of anything; say so once.
+        print(f"routes: ignoring legacy {legacy.name}, whose inputs are unknown; "
+              f"building {out.name}", flush=True)
 
     pairs: set[tuple[str, str]] = set()
     for iata, dest_titles in destinations.items():

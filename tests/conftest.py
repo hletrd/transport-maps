@@ -56,6 +56,67 @@ def _hermetic_cache(request, monkeypatch, scratch_cache):
     monkeypatch.setattr(config, "CACHE", scratch_cache)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _offline_session():
+    """Offline from the first fixture of the session to the last.
+
+    Per test was not enough: pytest builds a module-scoped fixture BEFORE the
+    function-scoped ones of the test that first needs it, so
+    tests/sources/test_airports.py's module `df` ran between one test's
+    teardown and the next test's setup -- online -- and fetched OurAirports
+    live. Integration tests read the REAL data/cache, so in the main checkout
+    that was a test run refreshing the build's inputs.
+    """
+    from transport_maps.sources import _fetch
+
+    _fetch.set_offline(True)
+    yield
+    _fetch.set_offline(None)
+
+
+@pytest.fixture(autouse=True)
+def _offline_inputs(_offline_session):
+    """No test asks an upstream whether a raw input changed (G2).
+
+    `sources._fetch` checks every input once per process; under pytest that
+    would be a live request from any test that reaches a download, and the
+    per-process memo would carry one test's answer into the next. Every test
+    starts offline with an empty memo, and ends offline whatever it set;
+    tests/sources/test_fetch.py turns the network back on against a stub.
+    """
+    from transport_maps.sources import _fetch
+
+    _fetch.reset()
+    _fetch.set_offline(True)
+    yield
+    _fetch.set_offline(True)
+    _fetch.reset()
+
+
+#: Reason prefix for a test skipped because a raw input it reads is not in the
+#: cache. Before G2 such a test downloaded the input live -- in a fresh
+#: worktree the country and urban tests fetched Natural Earth on every run --
+#: which a test suite must not do.
+NEEDS_INPUT = "needs a cached raw input"
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    """A test MARKED `needs_inputs` whose input is absent from the cache is
+    SKIPPED, and says which input. Only the mark makes it a skip: unmarked,
+    the same `MissingInput` is a failure. A blanket rule turned sixteen
+    `_build_all` tests into silent skips the moment the build learned to check
+    its inputs -- which is the change they exist to catch."""
+    from transport_maps.sources import _fetch
+
+    try:
+        return (yield)
+    except _fetch.MissingInput as exc:
+        if not (str(exc).startswith("offline") and item.get_closest_marker("needs_inputs")):
+            raise
+        pytest.skip(f"{NEEDS_INPUT}: {exc}")
+
+
 @pytest.fixture
 def hermetic_build(monkeypatch, tmp_path):
     """Redirect `config.BUILD` at a scratch directory for one test.

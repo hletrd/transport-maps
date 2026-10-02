@@ -4,16 +4,15 @@ GRIP4 ships one density grid per road type at 5 arcmin. We reduce them to a sing
 "best grade present" grid: 1 = highway, 5 = local road, 0 = roadless.
 """
 
-import io
 import zipfile
 from pathlib import Path
 
 import h3
-import httpx
 import numpy as np
 import rasterio
 
 from transport_maps import config
+from transport_maps.sources import _fetch
 from transport_maps.sources._utils import _atomic_write, _params_hash
 
 GRIP4_URL = "https://dataportaal.pbl.nl/downloads/GRIP4/GRIP4_density_tp{n}.zip"
@@ -26,39 +25,64 @@ DENSITY_THRESHOLD = 1.0
 _grid_cache: np.ndarray | None = None
 
 
+def _archive(road_type: int) -> _fetch.Fingerprint:
+    """One GRIP4 density archive, checked against the upstream once per build.
+
+    The archive itself is kept, not only the raster extracted from it: without
+    it there is nothing to ask the upstream about (G2). Streamed to disk by
+    `_fetch`; the old in-memory download held the whole zip as bytes.
+    """
+    url = GRIP4_URL.format(n=road_type)
+    return _fetch.fetch(url, config.CACHE / "grip4" / url.rsplit("/", 1)[-1], timeout=300)
+
+
 def _ensure_raster(road_type: int) -> Path:
-    """Download and extract one GRIP4 density raster, cached under config.CACHE."""
-    target = config.CACHE / "grip4" / f"grip4_tp{road_type}_dens_m_km2.asc"
+    """One GRIP4 density raster, extracted from its archive into config.CACHE.
+
+    Named by the archive's hash, so a new archive is a new raster rather than
+    the old one found by name.
+    """
+    archive = _archive(road_type)
+    target = (config.CACHE / "grip4"
+              / f"grip4_tp{road_type}_dens_m_km2-{archive.sha256[:12]}.asc")
     if target.exists():
         return target
 
-    target.parent.mkdir(parents=True, exist_ok=True)
-    url = GRIP4_URL.format(n=road_type)
-    r = httpx.get(url, follow_redirects=True, timeout=300)
-    r.raise_for_status()
-
-    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+    with zipfile.ZipFile(archive.path) as z:
         member = next(
             (n for n in z.namelist() if n.lower().endswith(f"tp{road_type}_dens_m_km2.asc")),
             None,
         )
         if member is None:
-            raise RuntimeError(f"{url} has no tp{road_type} density raster: {z.namelist()}")
-        _atomic_write(target, lambda tmp: tmp.write_bytes(z.read(member)))
+            raise RuntimeError(f"{archive.url} has no tp{road_type} density raster: "
+                               f"{z.namelist()}")
+
+        def _extract(tmp: Path) -> None:
+            with z.open(member) as src, tmp.open("wb") as dst:
+                while chunk := src.read(1 << 20):
+                    dst.write(chunk)
+        _atomic_write(target, _extract)
 
     return target
 
 
-def _grid_cache_path():
-    """Cache path stamped with the constants that determine the grid's content.
+def _sources() -> list[str]:
+    """The sha256 of every GRIP4 archive, best grade first, after checking each."""
+    return [_archive(n).sha256 for n in range(1, N_TYPES + 1)]
+
+
+def _grid_cache_path(sources: list[str]):
+    """Cache path stamped with the constants that determine the grid's content,
+    and with `sources`, the archives' hashes (`_sources()`).
 
     Without the stamp, lowering DENSITY_THRESHOLD and re-running `build-all`
     reads back the grid built under the old threshold, so the change silently
     no-ops and every test still passes against the stale file.
     """
     # GRIP4_URL too: a new host or dataset version must miss, not read back
-    # the grid built from the old rasters.
-    stamp = _params_hash(GRIP4_URL, DENSITY_THRESHOLD, GRID_ROWS, GRID_COLS, N_TYPES)
+    # the grid built from the old rasters. And the archives' content: a new
+    # release under the same URL is a new grid (G2).
+    stamp = _params_hash(GRIP4_URL, DENSITY_THRESHOLD, GRID_ROWS, GRID_COLS, N_TYPES, sources)
     return config.BUILD / f"road_class_grid_{stamp}.npy"
 
 
@@ -68,7 +92,7 @@ def road_class_grid() -> np.ndarray:
     if _grid_cache is not None:
         return _grid_cache
 
-    cached = _grid_cache_path()
+    cached = _grid_cache_path(_sources())
     if cached.exists():
         _grid_cache = np.load(cached)
         return _grid_cache

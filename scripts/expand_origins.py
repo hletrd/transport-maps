@@ -26,12 +26,11 @@ import unicodedata
 import zipfile
 
 import h3
-import httpx
 import pyarrow.parquet as pq
 
-from transport_maps import _io, config
+from transport_maps import config
 from transport_maps.emit.index import _SLUG_RE
-from transport_maps.sources import landmask
+from transport_maps.sources import _fetch, landmask
 
 NEAR_KM = 40.0
 GEONAMES_URL = "https://download.geonames.org/export/dump/cities15000.zip"
@@ -43,11 +42,9 @@ COLS = ("id", "name", "ascii", "alt", "lat", "lon", "fclass", "fcode", "cc", "cc
 
 
 def geonames() -> list[dict]:
-    cached = config.CACHE / "cities15000.zip"
-    if not cached.exists():
-        r = httpx.get(GEONAMES_URL, follow_redirects=True, timeout=120)
-        r.raise_for_status()
-        _io.write_bytes(cached, r.content)
+    # Checked against GeoNames on every run (G2); the same cache file the
+    # page's gazetteer (emit/places.py) reads.
+    cached = _fetch.fetch(GEONAMES_URL, config.CACHE / "cities15000.zip", timeout=120).path
     with zipfile.ZipFile(cached) as z:
         text = z.read("cities15000.txt").decode("utf-8")
     return [dict(zip(COLS, row)) for row in csv.reader(io.StringIO(text), delimiter="\t", quoting=csv.QUOTE_NONE)]
@@ -67,7 +64,11 @@ def _land_cells_if_built() -> set[str] | None:
     the mask is absent the check is SKIPPED AND SAID SO -- a silent skip here
     would be the same vacuous pass CLAUDE.md's testing rule warns about.
     """
-    path = landmask._cells_cache_path(config.SOLVE_RES)
+    sources = landmask._known_sources()
+    if sources is None:
+        print("  land check SKIPPED: the Natural Earth archives have not been fetched")
+        return None
+    path = landmask._cells_cache_path(config.SOLVE_RES, sources)
     if not path.exists():
         print(f"  land check SKIPPED: {path.name} has not been built")
         return None

@@ -113,7 +113,12 @@ def _stub_pipeline(monkeypatch, written, coverages):
     return value for each BY ORIGIN, in origins order. `written` records every
     emitted file path (in the calling process only: a forked worker's appends
     never reach the parent).
+
+    The input check (G2) is stubbed too: it reads every raw input, and these
+    tests have none. tests/cli/test_check_inputs.py tests it.
     """
+    monkeypatch.setattr(cli, "_check_inputs", lambda exclude=None: None)
+
     class FakeIdx:
         n_cells = 1
         cells: ClassVar[list[str]] = ["dummy"]
@@ -495,7 +500,7 @@ def test_a_full_build_stamps_identity_count_and_graph_flags_into_index_json(monk
     kw = calls[0]
     assert kw["hover_cell_count"] == 1
     assert kw["graph"] == {"rail": False, "ferry": False}
-    assert set(kw["identity"]) == {"inputsHash", "buildId", "builtAt", "gitHead"}
+    assert set(kw["identity"]) == {"inputsHash", "buildId", "builtAt", "gitHead", "inputs"}
     # The solver bundle is told the node layout, so the service can read an
     # itinerary off it (service/bundle.py, journey_legs). Mutation performed
     # and reverted: drop the two keywords from cli's write_bundle call -> red.

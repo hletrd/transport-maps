@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import pathlib
 
-import httpx
 import numpy as np
 import polars as pl
 import pyogrio
@@ -19,6 +18,7 @@ import shapely
 from shapely import STRtree
 
 from .. import config
+from . import _fetch
 from ._utils import _atomic_write, _params_hash
 
 COUNTRIES_URL = (
@@ -58,13 +58,17 @@ CLOSED_BORDERS: frozenset[frozenset[str]] = frozenset({
 UNKNOWN = ""
 
 
+COUNTRIES_ZIP = "ne_10m_admin_0_countries.zip"
+
+
+def _source() -> _fetch.Fingerprint:
+    """The countries archive, checked against the upstream once per build (G2)."""
+    config.ensure_dirs()
+    return _fetch.fetch(COUNTRIES_URL, config.CACHE / COUNTRIES_ZIP)
+
+
 def _download() -> pathlib.Path:
-    cached = config.CACHE / "ne_10m_admin_0_countries.zip"
-    if not cached.exists():
-        r = httpx.get(COUNTRIES_URL, follow_redirects=True, timeout=180)
-        r.raise_for_status()
-        _atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
-    return cached
+    return _source().path
 
 
 # Natural Earth's ISO_A2 is -99 for a handful of territories; ADM0_A3 never is,
@@ -94,11 +98,7 @@ def cell_country(cells: list[str]) -> np.ndarray:
     which at resolution 6 is about 6.5 km (2.4 km where refined) -- finer than
     the feature it models.
     """
-    # Hash every cell, not just the count and the ends: two different cell
-    # universes of the same length would otherwise share a cache entry, which
-    # is the exact failure this helper exists to prevent elsewhere.
-    key = _params_hash(COUNTRIES_URL, "filled-blanks-nearest", hashlib.sha256("".join(cells).encode()).hexdigest())
-    cached = config.CACHE / f"cell_country-{key}.parquet"
+    cached = _cache_path(cells, _source().sha256)
     if cached.exists():
         return pl.read_parquet(cached)["country"].to_numpy()
 
@@ -122,6 +122,21 @@ def cell_country(cells: list[str]) -> np.ndarray:
     df = pl.DataFrame({"country": out.astype(str)})
     _atomic_write(cached, lambda tmp: df.write_parquet(tmp))
     return df["country"].to_numpy()
+
+
+def _cache_path(cells: list[str], source: str) -> pathlib.Path:
+    """Keyed on the archive's URL and its hash (`source`), the blank-filling
+    rule, and every cell.
+
+    Hash every cell, not just the count and the ends: two different cell
+    universes of the same length would otherwise share a cache entry, which
+    is the exact failure this helper exists to prevent elsewhere. And the
+    archive's content, not only its URL: Natural Earth republishes under the
+    same name, and a moved border must reach the closed-border cut (G2).
+    """
+    key = _params_hash(COUNTRIES_URL, "filled-blanks-nearest",
+                       hashlib.sha256("".join(cells).encode()).hexdigest(), source)
+    return config.CACHE / f"cell_country-{key}.parquet"
 
 
 def _fill_blanks(cells: list[str], out: np.ndarray, passes: int = 3) -> np.ndarray:

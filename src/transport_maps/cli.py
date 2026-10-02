@@ -37,7 +37,7 @@ from transport_maps.emit import (
 )
 from transport_maps.graph import build, ground, nodes
 from transport_maps.solve import dijkstra
-from transport_maps.sources import countries, osm
+from transport_maps.sources import _fetch, countries, osm
 
 # One slug grammar, owned by emit.index (where origins.toml is read).
 _SLUG_RE = index._SLUG_RE
@@ -489,6 +489,49 @@ def _load_ferries():
     return links
 
 
+def _check_inputs(exclude: str | None = None) -> None:
+    """Ask every upstream whether the raw inputs this build reads have changed,
+    and fetch what has, before anything reads one (G2).
+
+    Explicit and up front, rather than left to whichever module reads an input
+    first, for three reasons: the build log says in one place what each input
+    is; a refused crawl or an unreachable input with no cached copy stops the
+    build in its first minutes instead of hours in; and every input is settled
+    before `build_identity` records them, so index.json names the snapshot the
+    build read. Each check happens once per process (sources/_fetch.py), so
+    the modules reading these later get the same answer.
+
+    Offline (`--offline`, TRANSPORT_MAPS_OFFLINE=1) every one of these reads
+    its cache and nothing is asked.
+    """
+    from transport_maps.sources import (
+        airports,
+        geofabrik,
+        landmask,
+        roads,
+        routes,
+        urban,
+    )
+
+    print("inputs:   " + ("offline -- cached copies only, no upstream asked" if _fetch.offline()
+                          else "checking each raw input against its upstream"), flush=True)
+    airports._download()          # OurAirports
+    landmask._sources()           # Natural Earth land, lakes, ice shelves
+    countries._source()           # Natural Earth countries
+    urban._source()               # Natural Earth populated places
+    roads._sources()              # the five GRIP4 archives
+    geofabrik.refresh()           # the OSM extracts, against Geofabrik's state.txt
+    if exclude != "air":
+        # The Wikipedia crawl and the Wikidata resolution: articles and titles
+        # past their max age are fetched again (sources/routes.py). A no-air
+        # variant never reads the route network, so it does not ask.
+        routes.route_network()
+    changed = [f"{fp.path.name} ({fp.status})" for fp in _fetch.checked()
+               if fp.status in ("downloaded", "updated", "kept")]
+    if changed:
+        print("inputs:   " + ", ".join(changed), flush=True)
+
+
 def _build_all(limit: int | None = None, only: list[str] | None = None,
                exclude: str | None = None, skip_existing: bool = False) -> None:
     """Build the graph once, then solve, validate and emit every origin.
@@ -525,6 +568,8 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # calibration.toml and origins.toml at call time -- so a long build stamped
     # itself with the tree as it stood when it FINISHED, not with the inputs it
     # actually used.
+    # Inputs before identity: build_identity records what they were.
+    _check_inputs(exclude)
     identity = index.build_identity(started)
     modes_detail = index.mode_detail()
     rail_routes = _load_rail()
@@ -883,7 +928,8 @@ def _reindex(dist: Path | None = None) -> None:
         # assert that this checkout produced files it did not. `builtAt` is the
         # exception -- hover_cells.bin is written before the first origin, so
         # its mtime IS when the build started.
-        identity = {k: previous[k] for k in ("inputsHash", "buildId", "builtAt", "gitHead")
+        identity = {k: previous[k]
+                    for k in ("inputsHash", "buildId", "builtAt", "gitHead", "inputs")
                     if k in previous}
         identity.setdefault(
             "builtAt",
@@ -1047,7 +1093,16 @@ def main() -> None:
         action="store_true",
         help="resume: leave alone every origin whose completion record (<root>/.progress/) "
              "is complete for this build's inputs and graph with its files at the recorded "
-             "sizes; build the rest, then publish as a full run would",
+             "sizes; build the rest, then publish as a full run would. Pair it with "
+             "--offline to resume on the inputs the dead run read: a changed upstream "
+             "changes the graph, and then nothing is skipped",
+    )
+    build_all.add_argument(
+        "--offline",
+        action="store_true",
+        help="ask no upstream whether a raw input changed: read every input from "
+             "data/cache as it is, and fail on one that is not there. For reproducing a "
+             f"past build or resuming one (also: {_fetch.OFFLINE_ENV}=1)",
     )
 
     # Not a second way to publish: reindex writes index.json and nothing else,
@@ -1067,9 +1122,14 @@ def main() -> None:
     )
     assets.add_argument("names", nargs="*", metavar="NAME",
                         help=f"which to write, of {', '.join(ASSETS)} (default: all)")
+    assets.add_argument("--offline", action="store_true",
+                        help="read GeoNames and the boundary lines from data/cache as they "
+                             "are, asking no upstream")
 
     args = parser.parse_args()
     config.ensure_dirs()
+    if getattr(args, "offline", False):
+        _fetch.set_offline(True)
 
     if args.command == "build-all":
         _build_all(limit=args.limit, only=args.only, exclude=args.exclude,

@@ -113,12 +113,15 @@ def test_identity_is_carried_forward_not_restamped(dist, monkeypatch):
     (dist / "index.json").write_text(json.dumps({
         "inputsHash": "deadbeef", "buildId": "deadbeef-20260910T042333Z",
         "builtAt": "2026-09-10T04:23:33+00:00", "gitHead": "abc1234",
+        "inputs": {"https://example.invalid/land.zip": {"sha256": "ab" * 32}},
         "origins": [], "graph": {"ferry": True}}))
     idx = _reindex(dist, [_origin("seoul")], monkeypatch)
     assert idx["inputsHash"] == "deadbeef"
     assert idx["buildId"] == "deadbeef-20260910T042333Z"
     assert idx["builtAt"] == "2026-09-10T04:23:33+00:00"
     assert idx["gitHead"] == "abc1234", "the commit that built the files, not this checkout's"
+    assert idx["inputs"] == {"https://example.invalid/land.zip": {"sha256": "ab" * 32}}, \
+        "the upstream snapshot the files were built from (G2), not today's"
     assert idx["graph"]["ferry"] is True, "what the artifacts cannot show is carried, not dropped"
     assert idx["reindexedAt"] != idx["builtAt"]
 

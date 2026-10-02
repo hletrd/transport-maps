@@ -3,7 +3,6 @@
 import pathlib
 
 import h3
-import httpx
 import polars as pl
 import pyogrio
 import shapely
@@ -11,6 +10,7 @@ from shapely import STRtree
 from shapely.geometry import box
 
 from transport_maps import config
+from transport_maps.sources import _fetch
 from transport_maps.sources._utils import _atomic_write, _params_hash
 
 LAND_URL = "https://naturalearth.s3.amazonaws.com/10m_physical/ne_10m_land.zip"
@@ -48,19 +48,44 @@ POLYFILL_METHOD = "pole-cells+shelves-lakes; h3shape_to_cells_experimental(overl
 _MULTIPOLYGON_TYPE_ID = 6
 
 
-def _download(url: str = LAND_URL, name: str = "ne_10m_land.zip") -> pathlib.Path:
+LAND_ZIP = "ne_10m_land.zip"
+ICE_ZIP = "ne_10m_antarctic_ice_shelves_polys.zip"
+LAKES_ZIP = "ne_10m_lakes.zip"
+
+
+def _download(url: str = LAND_URL, name: str = LAND_ZIP) -> pathlib.Path:
+    """One Natural Earth archive, checked against the upstream once per build (G2)."""
     config.ensure_dirs()
-    cached = config.CACHE / name
-    if not cached.exists():
-        r = httpx.get(url, follow_redirects=True, timeout=180)
-        r.raise_for_status()
-        _atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
-    return cached
+    return _fetch.fetch(url, config.CACHE / name).path
+
+
+def _archives() -> list[tuple[str, str]]:
+    """(url, cache name) of every archive the land universe is cut from."""
+    return [(LAND_URL, LAND_ZIP), (ICE_URL, ICE_ZIP), (LAKES_URL, LAKES_ZIP)]
+
+
+def _sources() -> list[str]:
+    """The sha256 of each archive in `_archives()`, after checking each one.
+
+    What the land-cell and landmass keys are stamped with: the URLs named
+    where the archives came from, not which release of them was read, and
+    Natural Earth republishes under the same URL.
+    """
+    config.ensure_dirs()
+    return [_fetch.fetch(url, config.CACHE / name).sha256 for url, name in _archives()]
+
+
+def _known_sources() -> list[str] | None:
+    """`_sources()` as recorded on disk, with no request: None unless every
+    archive has a sidecar matching it. For tools that must find the land
+    cells without building them (scripts/expand_origins.py)."""
+    found = [_fetch.peek(config.CACHE / name) for _url, name in _archives()]
+    return None if None in found else found
 
 
 def _ice_shelf_parts() -> list[shapely.Geometry]:
     """Antarctic ice shelves, which the land layer omits."""
-    path = _download(ICE_URL, "ne_10m_antarctic_ice_shelves_polys.zip").resolve()
+    path = _download(ICE_URL, ICE_ZIP).resolve()
     _meta, table = pyogrio.read_arrow(f"/vsizip/{path}")
     geom_column = next(c for c in table.schema.names if "geom" in c.lower())
     geoms = shapely.from_wkb(table.column(geom_column).to_pylist())
@@ -68,7 +93,7 @@ def _ice_shelf_parts() -> list[shapely.Geometry]:
 
 
 def _lake_union() -> shapely.Geometry:
-    path = _download(LAKES_URL, "ne_10m_lakes.zip").resolve()
+    path = _download(LAKES_URL, LAKES_ZIP).resolve()
     _meta, table = pyogrio.read_arrow(f"/vsizip/{path}")
     geom_column = next(c for c in table.schema.names if "geom" in c.lower())
     geoms = [g for g in shapely.from_wkb(table.column(geom_column).to_pylist())
@@ -171,15 +196,18 @@ def _antarctic_wedges(antarctic: list) -> list:
     return wedges
 
 
-def _cells_cache_path(res: int):
-    """Cache path for `res`, stamped with the other constants that shape it.
+def _cells_cache_path(res: int, sources: list[str]):
+    """Cache path for `res`, stamped with the other constants that shape it
+    and with `sources`, the archives' hashes (`_sources()`).
 
     The resolution was already encoded in the filename; ANTARCTICA_MAX_LAT and
     the source archive were not, so changing either would have been read back
-    from the file built under the old value.
+    from the file built under the old value. The URLs were, but a URL is not a
+    release: a new Natural Earth archive under the same name read back the
+    cells cut from the old one (G2).
     """
     stamp = _params_hash(LAND_URL, ICE_URL, LAKES_URL, ANTARCTICA_MAX_LAT,
-                         POLE_CLIP_LAT, WEDGE_COUNT, POLYFILL_METHOD)
+                         POLE_CLIP_LAT, WEDGE_COUNT, POLYFILL_METHOD, sources)
     return config.BUILD / f"land_cells_r{res}_{stamp}.parquet"
 
 
@@ -194,7 +222,7 @@ ANTARCTICA_LANDMASS = -1
 LANDMASS_VERSION = 1
 
 
-def _landmasses_cache_path(res: int):
+def _landmasses_cache_path(res: int, sources: list[str]):
     """Stamped with the land universe it was computed over, so a change to
     anything that governs `land_cells` -- the land, ice or lake source, the
     Antarctic handling, the polyfill -- also misses here, and with the two
@@ -204,7 +232,8 @@ def _landmasses_cache_path(res: int):
     mutation-test it; `countries.cell_country` builds its key inline and is a
     recorded gap for exactly that reason.
     """
-    stamp = _params_hash(_cells_cache_path(res).name, ANTARCTICA_LANDMASS, LANDMASS_VERSION)
+    stamp = _params_hash(_cells_cache_path(res, sources).name, ANTARCTICA_LANDMASS,
+                         LANDMASS_VERSION)
     return config.BUILD / f"land_landmasses_r{res}_{stamp}.parquet"
 
 
@@ -222,7 +251,7 @@ def land_cell_landmasses(res: int) -> list[tuple[int, ...]]:
     """
     config.ensure_dirs()
     cells = land_cells(res)
-    out = _landmasses_cache_path(res)
+    out = _landmasses_cache_path(res, _sources())
     if out.exists():
         return [tuple(p) for p in pl.read_parquet(out)["parts"].to_list()]
 
@@ -254,7 +283,7 @@ def land_cells(res: int) -> list[str]:
     so a change of method is a cache miss, not a silent reuse.
     """
     config.ensure_dirs()
-    out = _cells_cache_path(res)
+    out = _cells_cache_path(res, _sources())
     if out.exists():
         return pl.read_parquet(out)["cell"].to_list()
 

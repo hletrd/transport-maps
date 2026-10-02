@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+from datetime import datetime
 
 import h3
 import osmium
@@ -131,9 +132,45 @@ def _params_key() -> str:
                         FIXED_LINK_PARSER_VERSION)
 
 
-def _source_key(raw: pathlib.Path) -> str:
+def _mtime_key(raw: pathlib.Path) -> str:
+    """The pre-G2 identity of an extract: its name, size and mtime. Still the
+    key for an extract whose header carries no snapshot."""
     st = raw.stat()
     return _params_hash(raw.name, st.st_size, st.st_mtime_ns)
+
+
+def _source_key(raw: pathlib.Path) -> str:
+    """The extract's identity: the replication snapshot in its header, with
+    its name and size (G2). The snapshot leads the key, readable, so a cache
+    still says which snapshot it was parsed from once the 70 GB of raw
+    extracts are gone -- which is what the freshness check reads then
+    (`cached_snapshot`). An mtime said only when the file was last touched."""
+    from transport_maps.sources import geofabrik
+
+    snap = geofabrik.snapshot(raw)
+    if snap is None:
+        return _mtime_key(raw)
+    return (f"{geofabrik.stamp(snap)}-"
+            f"{_params_hash(raw.name, raw.stat().st_size, snap.isoformat())}")
+
+
+def _snapshot_of(cache: pathlib.Path) -> datetime | None:
+    """The snapshot a cache's name records, if its key leads with one."""
+    from datetime import UTC
+
+    head = cache.stem.rsplit("_", 1)[-1].split("-", 1)[0]
+    try:
+        return datetime.strptime(head, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def cached_snapshot(region: str) -> datetime | None:
+    """The newest snapshot any cache under the current parser constants was
+    parsed from; None when none records one."""
+    snaps = [s for p in config.CACHE.glob(f"fixed_links_{region}_{_params_key()}_*.parquet")
+             if (s := _snapshot_of(p)) is not None]
+    return max(snaps, default=None)
 
 
 def _cache_path(region: str, source_key: str) -> pathlib.Path:
@@ -154,10 +191,15 @@ def _source(region: str, extracts_dir: pathlib.Path) -> pathlib.Path | None:
     """
     raw = extracts_dir / f"{region}.osm.pbf"
     if raw.exists():
+        from transport_maps.sources import geofabrik
+
         cached = _cache_path(region, _source_key(raw))
+        geofabrik.adopt(cached, _cache_path(region, _mtime_key(raw)))
         return cached if cached.exists() else raw
+    # The newest snapshot first; mtime only among caches that record none.
     found = sorted(config.CACHE.glob(f"fixed_links_{region}_{_params_key()}_*.parquet"),
-                   key=lambda p: p.stat().st_mtime)
+                   key=lambda p: (_snapshot_of(p) is not None,
+                                  _snapshot_of(p) or datetime.min, p.stat().st_mtime))
     return found[-1] if found else None
 
 

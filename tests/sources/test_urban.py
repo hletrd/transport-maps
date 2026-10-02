@@ -2,6 +2,7 @@
 
 import h3
 import numpy as np
+import pytest
 
 from transport_maps import config
 from transport_maps.graph import ground
@@ -15,6 +16,7 @@ def _idx(points):
     return NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, ())
 
 
+@pytest.mark.needs_inputs
 def test_cities_are_marked_and_empty_country_is_not():
     pts = [(51.5074, -0.1278),    # London
            (35.6762, 139.6503),   # Tokyo
@@ -26,6 +28,7 @@ def test_cities_are_marked_and_empty_country_is_not():
     assert not mask[2] and not mask[3], "empty country was marked urban"
 
 
+@pytest.mark.needs_inputs
 def test_an_urban_cell_is_slower_than_the_same_class_in_open_country():
     """The whole point: GRIP4 gives both the grade of their best road."""
     idx = _idx([(51.5074, -0.1278), (-25.0, 132.0)])
@@ -36,6 +39,7 @@ def test_an_urban_cell_is_slower_than_the_same_class_in_open_country():
     assert speeds[0] <= ground.SPEED_BY_ROAD_CLASS_KMH[1] / urban.URBAN_CONGESTION_FACTOR + 1e-9
 
 
+@pytest.mark.needs_inputs
 def test_the_factor_actually_divides():
     idx = _idx([(51.5074, -0.1278)])
     from transport_maps.sources import roads
@@ -45,6 +49,7 @@ def test_the_factor_actually_divides():
     assert np.isclose(got, raw / urban.URBAN_CONGESTION_FACTOR)
 
 
+@pytest.mark.needs_inputs
 def test_roadless_terrain_is_never_slowed_by_traffic():
     """A roadless cell is already at walking pace.
 
@@ -101,27 +106,39 @@ def test_places_reads_the_archive_it_downloaded(tmp_path, monkeypatch):
     fresh clone died with TypeError in the index preamble; it only worked
     here because the zip happened to be in data/cache already.
     """
+    import contextlib
+
+    import httpx
+
+    from transport_maps.sources import _fetch
+
     payload = _places_archive(tmp_path)
     monkeypatch.setattr(config, "CACHE", tmp_path / "cache")   # does not exist yet
     fetched: list[str] = []
 
     class Response:
-        content = payload
+        status_code = 200
+        headers = httpx.Headers({})
+
+        def iter_bytes(self, _n):
+            yield payload
 
         def raise_for_status(self):
             pass
 
-    def fake_get(url, **kwargs):
+    def fake_stream(url, headers, timeout):
         fetched.append(url)
-        return Response()
-    monkeypatch.setattr(urban.httpx, "get", fake_get)
+        return contextlib.nullcontext(Response())
+    _fetch.set_offline(False)
+    monkeypatch.setattr(_fetch, "_stream", fake_stream)
 
     lat, lon = urban._places()
     assert fetched == [urban.PLACES_URL]
     assert (tmp_path / "cache" / urban.PLACES_ZIP).read_bytes() == payload
     # Only the place above the threshold, read back from the fetched archive.
     assert lat.tolist() == [10.0] and lon.tolist() == [20.0]
-    # The second call is served from the archive it just wrote.
+    # The second call is served from the archive it just wrote: one check per
+    # build (sources/_fetch.py), not one per call.
     urban._places()
     assert fetched == [urban.PLACES_URL]
 
@@ -129,10 +146,19 @@ def test_places_reads_the_archive_it_downloaded(tmp_path, monkeypatch):
 def test_urban_mask_cache_key_includes_the_source_archive(tmp_path, monkeypatch):
     """Changing the gazetteer must miss the cache rather than read back the
     mask built from the old one."""
+    import types
+
     monkeypatch.setattr(config, "CACHE", tmp_path)
     monkeypatch.setattr(urban, "_places", lambda: (np.array([51.5]), np.array([-0.1])))
+    source = types.SimpleNamespace(sha256="a" * 64)
+    monkeypatch.setattr(urban, "_source", lambda: source)
     cells = [h3.latlng_to_cell(51.5074, -0.1278, config.SOLVE_RES)]
     urban.urban_mask(cells)
     monkeypatch.setattr(urban, "PLACES_URL", "https://example.invalid/other_places.zip")
     urban.urban_mask(cells)
     assert len(list(tmp_path.glob("urban_mask-*.parquet"))) == 2, "a different archive hit the cache"
+    # The same URL with new content (G2): a re-downloaded release must miss
+    # too. Mutation: drop `source` from _mask_cache_path's key -> red.
+    source.sha256 = "b" * 64
+    urban.urban_mask(cells)
+    assert len(list(tmp_path.glob("urban_mask-*.parquet"))) == 3, "new content hit the cache"
