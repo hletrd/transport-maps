@@ -287,6 +287,12 @@ body.crowded .depart-card{display:none}
   color:var(--text-2);background:rgba(228,143,53,.10);
   border-left:2px solid rgba(228,143,53,.55);border-radius:3px}
 .reading .snapped b{color:var(--text);font-weight:500}
+/* The exact point's own reading. The snap notice's accent rule on the left,
+   because it is that notice's sequel, without its fill: it is a reading, not
+   a substitution being announced. */
+.reading .exact{margin:6px 0 0;padding:2px 8px;font-size:var(--t-ui);line-height:1.4;
+  color:var(--text-2);border-left:2px solid rgba(228,143,53,.55)}
+.reading .exact b{color:var(--text);font-weight:500}
 
 .legend{margin-top:14px}
 .tints{display:flex;height:9px;border-radius:1px;overflow:hidden;position:relative}
@@ -873,6 +879,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
        reason #tiletrouble has one -- showReading rewrites #where on every
        pointer frame and would erase it at the first mouse move. -->
   <p class="snapped" id="snapped" hidden></p>
+  <!-- The time from the exact point a dragged departure was dropped on, asked
+       of this site's own server once a destination is pinned. Under the
+       notice it is the sequel to, and a separate line from the headline: the
+       headline and everything under it stay the charted city's map reading,
+       and this adds one number beside them. Shown only when index.json arms
+       the solver. -->
+  <p class="exact" id="exact" hidden></p>
 
   <div class="legend">
     <div class="tints" id="tints"></div>
@@ -1090,7 +1103,9 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
       <p>Address search and click-to-address send the typed text or the clicked
          coordinates to OpenStreetMap’s Nominatim service (no more than one request
          a second, and never as you type). Page views are counted
-         by Google Analytics. Everything else is computed in the browser from
+         by Google Analytics. Where the page offers it, the time from the exact
+         point you drag the departure marker to is computed on demand by this
+         site&rsquo;s own server. Everything else is computed in the browser from
          files on this site. What each of those collects is set out under
          <a href="#privacy" class="inline-link">Privacy</a> below.</p>
       <h3 id="limits">What this does not know</h3>
@@ -1207,6 +1222,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          there, so it is never reported as the page location — only a place
          name from this site&rsquo;s own gazetteer is — and a clicked point is
          rounded to about 110 m before it is sent to Nominatim.</p>
+      <p><b>A dragged departure point.</b> Where the page offers it, the time
+         from the exact point you drop the departure marker on is computed by
+         this site&rsquo;s own server rather than in your browser. Once you
+         choose a destination, that point and the destination are sent to it,
+         to about a metre, along with the usual request metadata. It computes
+         that one time from them and passes them to no one else. Picking a
+         city from the list, or dropping the marker on a city, sends nothing.</p>
       <p><b>Google Analytics.</b> Page views are counted by Google Analytics,
          which sets cookies and identifiers in your browser and sends Google
          your approximate location (derived from your IP address), your
@@ -1233,7 +1255,8 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          colour scheme, your ocean colour, the two Settings switches and the
          carry-on choice are kept in this browser&rsquo;s local storage and go
          no further.
-         Everything else the map does is computed in your browser from files
+         Everything else the map does, apart from the dragged departure point
+         above, is computed in your browser from files
          on this site.</p>
       <p class="disclaimer-long"><b>For reference only.</b> Every figure is an
          estimate from open data and a simplified model. It carries no warranty of

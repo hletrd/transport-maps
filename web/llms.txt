@@ -129,8 +129,11 @@ disagree about which child speaks for a cell.
 
 At runtime the page calls two external services: OpenStreetMap's Nominatim
 for address search and click-to-address (only when a search is submitted or a
-point is clicked), and Google Analytics for page-view counting. Everything else
-is computed in the browser from files on this site.
+point is clicked), and Google Analytics for page-view counting. Where the
+build enables it, the time from the exact point a departure marker was dragged
+to is computed on demand by this site's own server (`/api/solve`); the map
+itself is still measured from the nearest charted city. Everything else is
+computed in the browser from files on this site.
 
 ## Links
 

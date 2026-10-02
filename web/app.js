@@ -291,6 +291,15 @@ let pinB = null;                // the destination, once one is set
 let airports = [];              // OurAirports rows, for search and the route
 let addressSeq = 0, reverseSeq = 0;
 let active = null;              // the departure city
+// The point the departure marker was actually dropped on, {lat, lon}, when
+// that is not the city the map snapped to. The map stays the city's; this is
+// the one extra number the on-demand solver adds (plan/2026-09-14-c13-solver-
+// service.md, "How the page degrades"). `exactAbort` is the request in
+// flight, `exactKey` the from/to pair it was issued for, and `exactResult`
+// what came back for that pair -- so a re-render that changes neither point
+// repaints the line instead of asking the server again.
+let exactFrom = null;
+let exactAbort = null, exactKey = "", exactResult;
 // Everything fetched per departure. One object, replaced on every switch and
 // guarded by a generation counter: a slow earlier origin's response can no
 // longer land on top of the newer one's arrays (it used to, for four of the
@@ -1341,6 +1350,119 @@ async function solvePoint(from, to, signal) {
   }
 }
 
+// ---- the exact departure point ----
+//
+// The interaction the plan adopted: a drag still snaps the map to the nearest
+// charted city at once and says so, and the point it was dropped on is kept
+// as `exactFrom`. Once a destination is pinned, the service is asked for that
+// one journey and the answer is printed as a separate line under the notice.
+// The headline stays the city's map reading; this adds a number and replaces
+// none.
+//
+// Closer than this to the city it snapped to, a dropped point IS the city as
+// far as anyone dragging a marker means it: the marker's own dot is wider at
+// any zoom the drag is made at.
+const EXACT_MIN_KM = 1;
+// Appended to the snap notice when a point is kept, so the notice that says
+// "not from that point" also says where that point's own number will come
+// from. Only when the solver is armed: unarmed, the notice is unchanged.
+const EXACT_NOTE = " The time from that exact point to a destination you choose is computed on demand.";
+
+//: What the extra line says, as snapNotice-style parts (a string, or {b} for
+//: bold). Pure -- every input is an argument -- so each branch runs under
+//: node in tests/web/test_exact_departure.py. `res` is solvePoint's result,
+//: `undefined` while the request is in flight. `avoided` is the plural mode
+//: name when the map avoids one: the service solves the full network, so a
+//: figure from it under a no-flights map would measure a different journey
+//: from every other number on screen, and none is asked for.
+function exactReading(res, { city = null, carryOnOn = false, avoided = null } = {}) {
+  if (avoided) {
+    return ["No time is computed from the exact point you chose while the map avoids "
+      + `${avoided}: the service that computes it uses every mode.`];
+  }
+  if (res === undefined) return ["Computing the time from the exact point you chose…"];
+  if (!res.ok) {
+    return ["The time from the exact point you chose could not be computed. "
+      + res.message + SOLVER_FALLBACK(city)];
+  }
+  // The server moves a point in the sea to the nearest land and always says
+  // how far. Half a kilometre is well inside one solve cell; past it, the
+  // figure is measured from somewhere the marker was not dropped.
+  const moved = res.snappedKm > 0.5
+    ? ` The point was moved ${fmtKm(res.snappedKm)} to the nearest land.` : "";
+  if (!res.reachable) {
+    return ["From the exact point you chose: ", { b: "no scheduled route" },
+            ` to this destination, computed on demand.${moved}`];
+  }
+  // Carry-on comes off the city's figures through their airport legs. The
+  // service's answer carries no legs, so it cannot be applied, and that is said.
+  const bag = carryOnOn ? " It assumes a checked bag." : "";
+  return ["From the exact point you chose: ", { b: fmtDur(res.minutes) },
+          ` door to door, computed on demand.${moved}${bag}`];
+}
+
+// The line itself. Called from renderPins(), which runs whenever the
+// destination, the departure, the carry-on choice or the avoided mode
+// changes; a request goes out only when the from/to PAIR changes, and the one
+// in flight for the previous pair is abandoned.
+function refreshExact() {
+  const key = solverEnabled && exactFrom && pinB && !avoid
+    ? `${exactFrom.lat.toFixed(5)},${exactFrom.lon.toFixed(5)}>${pinB.lat.toFixed(5)},${pinB.lon.toFixed(5)}`
+    : "";
+  if (key !== exactKey) {
+    exactAbort?.abort("cancelled");
+    exactAbort = null; exactResult = undefined; exactKey = key;
+    if (key) {
+      const ctl = exactAbort = new AbortController();
+      solvePoint(exactFrom, pinB, ctl.signal).then((res) => {
+        // A newer pair has been asked for since: this answer is for a journey
+        // nobody is looking at any more.
+        if (exactAbort !== ctl) return;
+        exactAbort = null; exactResult = res;
+        paintExact(true);
+        fitReading();
+      // solvePoint never rejects. This catch is for a defect in the painting
+      // above, which must not reach boot.js's capturing listener and paint
+      // "The page could not start" over a map that is drawing perfectly.
+      }).catch(() => {});
+    }
+  }
+  paintExact(false);
+}
+
+function paintExact(say) {
+  const el = $("exact");
+  if (!el) return;
+  if (!(solverEnabled && exactFrom && pinB)) { el.hidden = true; el.replaceChildren(); return; }
+  const parts = exactReading(exactResult, {
+    city: active?.name ?? null, carryOnOn: carryOn,
+    avoided: avoid ? AVOIDABLE[avoid] : null,
+  });
+  // Text nodes and <b> only, for the reason snapNotice gives below.
+  el.replaceChildren(...parts.map((part) => {
+    if (typeof part === "string") return document.createTextNode(part);
+    const b = document.createElement("b");
+    b.textContent = part.b;
+    return b;
+  }));
+  el.hidden = false;
+  // An answer is a committed reading; "Computing…" is not.
+  if (say) announce(el.textContent);
+}
+
+//: A dropped point belongs to one drag, like the snap notice that names it.
+//: Every other route to a departure -- the list, a permalink's `from=`, a
+//: "Depart from" button, a city's own label -- means the city itself.
+//: paintOrigin calls this before its same-city guard, so picking the city
+//: you are already departing from still drops the point.
+function forgetExactFrom() {
+  if (!exactFrom) return;
+  exactFrom = null;
+  snapNotice();
+  refreshExact();
+  syncPermalink();
+}
+
 // The first version took an HTML string and relied on every call site
 // remembering esc() -- which is exactly the shape that made railVia() a stored
 // XSS waiting for a second caller, fixed three commits ago. Writing it the
@@ -1390,9 +1512,18 @@ function originDragEnd() {
   // sits on a point the numbers do not describe. paintOrigin sets it again for
   // a real switch; this covers the case where it does not switch at all.
   originMarker.setLngLat([o.lon, o.lat]);
+  // The point itself, kept only when the solver can do something with it and
+  // only when it is not the city: unarmed, a drag behaves exactly as before.
+  const exact = solverEnabled && km > EXACT_MIN_KM ? { lat, lon: lng } : null;
+  const note = exact ? EXACT_NOTE : "";
   if (o.slug === active?.slug) {
+    // Assigned, not only set: a drop back onto the city itself replaces the
+    // point an earlier drag kept.
+    exactFrom = exact;
+    refreshExact();
+    syncPermalink();
     snapNotice("Kept ", { b: o.name }, " — still the nearest departure city, "
-      + `${fmtKm(km)} from where you dropped the marker.`);
+      + `${fmtKm(km)} from where you dropped the marker.${note}`);
     announce(`Departure unchanged: ${o.name} is still the nearest departure city.`);
     return;
   }
@@ -1402,13 +1533,16 @@ function originDragEnd() {
   // are looking and flying the camera away discards it.
   dropDestination();
   paintOrigin(o, { keepZoom: true });
-  // AFTER paintOrigin, which clears the notice: every other route to a new
-  // departure should drop a stale snap message, and this is the one route
-  // that must write one. Ordering it the other way round showed the message
-  // for a single frame and then erased it.
+  // AFTER paintOrigin, which clears the notice and the exact point: every
+  // other route to a new departure should drop both, and this is the one
+  // route that must write them. Ordering it the other way round showed the
+  // message for a single frame and then erased it.
+  exactFrom = exact;
+  refreshExact();
+  syncPermalink();
   snapNotice("Moved to ", { b: o.name }, " — the nearest departure city, "
     + `${fmtKm(km)} from where you dropped the marker. `
-    + `Times are measured from ${o.name}, not from that point.`);
+    + `Times are measured from ${o.name}, not from that point.${note}`);
   // On a phone the readout is inside the bottom sheet; folded, the notice
   // would be written somewhere nothing can see it.
   unfoldSheet();
@@ -1495,7 +1629,9 @@ fetch("./places.json")
         el.addEventListener("click", (ev) => {
           ev.stopPropagation();            // not a destination pin
           $("here").textContent = "";
-          if (cityHere.slug !== active?.slug) paintOrigin(cityHere, { keepZoom: true });
+          // Unconditional: paintOrigin's own guard makes the current city a
+          // no-op, after it has dropped any exact point dragged near it.
+          paintOrigin(cityHere, { keepZoom: true });
         });
       } else {
         el.textContent = name;
@@ -1880,6 +2016,11 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
   // case where re-picking the active city has something to do.
   // `force`: the SAME city from a different map -- avoiding a mode reloads
   // every array while the departure stays put.
+  //
+  // A kept exact point goes with any route here except `force`, and goes
+  // BEFORE the guard: clicking the row you are already departing from is a
+  // statement that you mean the city, not the point you dragged near it.
+  if (!force) forgetExactFrom();
   if (o.slug === active?.slug && !origin.failed && !force) return;
   // A snap notice describes ONE drag. Picking a city from the list, following
   // a permalink or clicking "Depart from" all make it false, so it goes with
@@ -3269,6 +3410,8 @@ pinHandle.on("dragend", () => {
 
 function renderPins() {
   drawPin();
+  // The exact point's line follows every change this function follows.
+  refreshExact();
   const box = $("pins");
   if (!active) { box.replaceChildren(); return; }
   const rows = [["From", active.name]];
