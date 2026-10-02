@@ -148,6 +148,21 @@ build.
       which is a separate refactor. The width table is still typed in both
       `cli.py` and `check_dist.py`, but `check_dist`'s copy now follows the
       index and no longer follows the emitter.)
+      (2026-10-02, later: (a) DONE; only (c) is open, so the box stays open.
+      `web/app.js` has `PAGE_CONTRACT_VERSION = 2` and `contractWarning()`,
+      called once right after the index.json shape check, inside a `try` so
+      that not even a throwing console can stop the page. It warns, naming
+      both numbers, for a greater version and for one that is not an integer;
+      an absent field is version 1. `tests/web/test_contract_version.py` runs
+      the guard under node, strips comments and fails on `fatal(` or `throw`
+      in it, checks its position (after the meta load, before the first
+      field read), and pins the page's number to `emit/index.py`'s
+      `CONTRACT_VERSION`. Seven mutations, all RED: version 3 in the page;
+      `<` for `<=`; drop `?? 1`; drop `Number.isInteger`; `fatal` for
+      `console.warn`; the `catch` removed; the guard moved above the meta
+      load. Browser-checked against a local preview with `contractVersion: 3`:
+      one console warning, the city list populated, the canvas present.
+      `docs/contract.md` "Versioning" now describes the warning.)
 - [x] **B2 (table move)** `[ground]`, `[urban]` and the air-bound constants
       into `calibration.toml` with labels; one `calibrate.load()` threaded
       through the build context; `_land_border_min` no longer parsed per origin

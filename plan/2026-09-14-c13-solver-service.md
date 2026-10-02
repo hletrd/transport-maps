@@ -457,13 +457,37 @@ Not built, in the order they must happen:
   the CSR triple, plus `meta.json` with the build identity, under `FORMAT`
   1 (`f6aa6ed`). Every full `build-all` writes it to `data/build/solver/`
   (`74ce63c`). Measured on the web host: 1.1 s to map, 1.2 GB peak.)
-- [ ] **C13-F2.8** Extract the edge-classification rules from `emit/modes.py`
+- [x] **C13-F2.8** Extract the edge-classification rules from `emit/modes.py`
   and `emit/itinerary.py` into a per-destination backward walk, so a response
   can be an itinerary rather than a number.
   (2026-10-02: **still open.** The service answers a number only, `minutes`
   plus the snapped departure (`GraphSolver.solve`). The page's on-demand
   line says so. With carry-on on, it says the figure assumes a checked bag,
   because there are no legs to apply the saving to.)
+  (2026-10-02, later: **DONE.** `GraphSolver.solve` asks dijkstra for
+  predecessors, `walk_back` reads the path from the destination, and
+  `journey_legs` classifies each edge by node range: dep -> arr is
+  `{"kind":"fly","from","to","min"}`, arr -> dep is
+  `{"kind":"connect","at","min"}`, everything else is surface,
+  `{"kind":"surface","min","railMin"}`, with rail the time on edges touching
+  a station. Ordinals are `.air.bin`'s. Minutes are rounded per node, so the
+  legs sum to `minutes` exactly. Road and ferry are NOT told apart: that
+  needs the landmass data (`severed`, `spans`) the bundle does not carry.
+  `meta.json` gains `nAirports` and `nStations`; a FORMAT-1 bundle without
+  them still loads and answers the number alone, and `add_counts` (CLI
+  `python -m transport_maps.service.bundle add-counts BUNDLE DIST`, which
+  checks `buildId` and the offsets) gives it the counts. `legs` is optional
+  and additive, so `WIRE_VERSION` stays 1; `wire.ok_body` refuses legs that
+  do not sum, do not end on the surface, or carry unknown fields. The page
+  checks them the same way (`solverLegs`), drops a bad breakdown without
+  losing the figure, and prints them under the on-demand line in the
+  itinerary's own words and glosses ("To ICN, and through the airport",
+  "Fly ICN → EWR", "Connect at EWR", "Onward from EWR", the rail share on
+  a line beneath). Measured: walk + legs 0.04-0.05 ms on the real bundle;
+  predecessors cost within the noise of a 4-6 s solve on a loaded machine
+  (+2 % on the warm pair). The carry-on saving is still not applied to the
+  on-demand figure, and the line still says it assumes a checked bag.
+  Mutation-checked: 22 service and 20 page mutations, each RED.)
 - [x] **C13-F2.9** The resident process itself: FIFO depth 1, a separate
   killable solve process for the deadline, a health endpoint NOT served by the
   solving process, and `limit=` as the first-line bound.
@@ -575,3 +599,9 @@ That covers F2.5 (decided), F2.7 (the bundle), F2.9 (the process), F2.10
 (nginx) and F2.11 (the runbook, `deploy/README.md`). F2.6 is obsolete,
 because the build and the solver never share a machine. **F2.8 is the one
 open task**: a response is a number, not an itinerary.
+
+2026-10-02, later still: F2.8 is done. A response carries its legs when the
+bundle's `meta.json` names its node layout, and the page prints them under
+the on-demand line. The bundle the `52660de5` rebuild wrote predates the
+counts, so the deploy must run `add-counts` on it first
+(`deploy/README.md`, "Legs need the node counts").
