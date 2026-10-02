@@ -81,6 +81,24 @@ const meta = await loadJSON("./index.json");
 if (!Array.isArray(meta.origins) || !meta.origins.length
     || !Array.isArray(meta.bandEdgesMin) || !meta.bandEdgesMin.length)
   fatal("index.json lists no departure cities or band edges.");
+// The pipeline/page contract this page was written for (docs/contract.md,
+// "Versioning"; emit/index.py CONTRACT_VERSION). An index.json without the
+// field predates it and is version 1. A newer one is WARNED about and never
+// refused: every field below is read with a fallback, the deploy gates are
+// what refuse an inconsistent dist/, and a version check that called fatal()
+// would turn a harmless bump into the blank page this site has shipped twice.
+const PAGE_CONTRACT_VERSION = 2;
+//: The console warning for an index.json's contractVersion, or null. Pure.
+function contractWarning(version) {
+  const v = version ?? 1;
+  if (Number.isInteger(v) && v <= PAGE_CONTRACT_VERSION) return null;
+  return `index.json is contract version ${JSON.stringify(v)}; this page was written for `
+    + `${PAGE_CONTRACT_VERSION} and reads it with its fallbacks. See docs/contract.md.`;
+}
+try {
+  const warning = contractWarning(meta.contractVersion);
+  if (warning) console.warn(warning);
+} catch { /* a warning must never stop the page */ }
 const UNREACHABLE = meta.unreachable ?? 65535;
 // The emitter writes the sentinel for anything at or beyond 65,534 minutes
 // (45 days); read it the same way, so an old array never prints a duration.

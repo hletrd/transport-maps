@@ -43,12 +43,14 @@ over a dist/ whose `index.json` names another one, because that would tell the
 page that old arrays have the new layout. An `index.json` without the field
 still reindexes, as for every other frozen field.
 
-The page does not read `contractVersion` yet. When it does, an unknown
-version must produce a console warning, not `fatal()`. The page reads every
-field with a fallback, and the deploy gates (`scripts/check_dist.py`,
-`scripts/browser_verify.sh`) are what refuse a dist/ that is actually
-inconsistent. A version check that blanks the page would turn a harmless bump
-into an outage. The plan records this as a follow-up.
+The page knows the version it was written for (`web/app.js`,
+`PAGE_CONTRACT_VERSION`). When `index.json` carries a greater one, or one that
+is not an integer, it writes a console warning and carries on; it never calls
+`fatal()`. The page reads every field with a fallback, and the deploy gates
+(`scripts/check_dist.py`, `scripts/browser_verify.sh`) are what refuse a
+dist/ that is actually inconsistent. A version check that blanks the page
+would turn a harmless bump into an outage. `tests/web/test_contract_version.py`
+runs the guard and fails when the page's number trails `CONTRACT_VERSION`.
 
 ## The deployed file set
 
@@ -213,16 +215,18 @@ file when a field marked *frozen* no longer matches today's code
   `contractVersion`. `tests/test_contract_doc.py` keeps the *frozen* marks in
   this file equal to `cli._CURRENT_INDEX_CONSTANTS`.
 - `tests/emit/test_index.py`: `contractVersion` and the other fields.
-- The page itself: `hoverCellCount` and per-origin length checks.
+- The page itself: `hoverCellCount` and per-origin length checks, and a
+  console warning for a newer `contractVersion`.
+- `tests/web/test_contract_version.py`: that warning, and the page's version
+  against `emit/index.py`'s.
 
 `check_dist` measures `.modes.bin` and `.over.bin` against the channel count
 in `index.json`'s `modeChannels`, the list the page reads them by. It falls
 back to `emit/modes.py:CHANNELS` only when the field is absent, and reports
 the absence (J1b(d), 2026-10-02).
 
-Not done yet (J1's code half, recorded in the plan): the page warning on an
-unknown `contractVersion`, and one `NodeIndex.offsets` in place of the seven
-hand-derived sites.
+Not done yet (J1's code half, recorded in the plan): one `NodeIndex.offsets`
+in place of the seven hand-derived sites.
 
 ## Rules that cross the layer boundary
 
