@@ -167,9 +167,11 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       record; `check_dist` compares sidecar `buildId` with `index.json`'s and
       recorded sizes (design in `architect.md` §4 A6b/A6c). `--only` and
       `--limit` never publish.
-- [ ] **A6d** Versioned releases on the server (`releases/{buildId}` + `current`
+- [x] **A6d** ~~Versioned releases on the server (`releases/{buildId}` + `current`
       symlink; `root` change in the nginx conf is the owner's install step);
-      `deploy_verify.sh --rollback`.
+      `deploy_verify.sh --rollback`.~~ **Won't do** -- owner, 2026-10-02:
+      "release -> just keep one". One live copy; `--delay-updates` keeps the
+      swap to seconds, and the site has few users.
 - [ ] **A6e** `--skip-existing` trusting a sidecar with the current
       `inputsHash`; `imap_unordered` for progress (H11, PR-20).
 - [ ] **S2** `BuildContext` frozen dataclass via `Pool(initializer=…)`; remove
