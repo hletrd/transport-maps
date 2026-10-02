@@ -195,8 +195,9 @@ def iata_for_titles(titles: list[str]) -> dict[str, str]:
     after retries is skipped, not recorded as "not an airport".
 
     Raises rather than returning a partial mapping when anything was left
-    unresolved. The caller (`routes.route_network`) writes its result to
-    `routes.parquet` and returns that file forever after, so "retry on the
+    unresolved. The caller (`routes.route_network`) writes its result to a
+    stamped `routes_<key>.parquet` and returns that file for as long as its
+    inputs and constants hold, so "retry on the
     next call" never happens: a title silently omitted here is a route
     permanently missing from the shipped network. The flush above still runs
     first, so the re-run this forces is cheap.

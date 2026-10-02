@@ -169,7 +169,8 @@ def test_land_cells_reads_the_stamped_path(tmp_path, monkeypatch):
     "path_fn",
     [roads._grid_cache_path, airports._table_cache_path, lambda: landmask._cells_cache_path(5),
      lambda: landmask._landmasses_cache_path(5),
-     lambda: fixed_links._cache_path("north-america", "0123abcd")],
+     lambda: fixed_links._cache_path("north-america", "0123abcd"),
+     lambda: routes._network_cache_path(["AAA"], {"AAA": "Alpha_Airport"})],
 )
 def test_every_stamped_path_carries_a_hash(path_fn):
     """A stamp silently dropped from the f-string would leave the old bare
@@ -222,6 +223,12 @@ def test_atomically_written_files_are_readable_by_other_users(tmp_path):
 # name dropped from a stamp turns its case red (the older tests covered five
 # of fourteen). `new` must differ from the current value.
 
+
+def _routes_path():
+    """The route network's path for one fixed pair of inputs."""
+    return routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"})
+
+
 STAMPED = [
     (roads, "GRIP4_URL", "https://example.invalid/grip4_{n}.zip", roads._grid_cache_path),
     (roads, "DENSITY_THRESHOLD", 0.5, roads._grid_cache_path),
@@ -263,9 +270,9 @@ STAMPED = [
     (osm, "RAIL_TIERS", ("slow", "fast"), lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
     (osm, "DEFAULT_TIER", "unknown", lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
     (osm, "_TIER_BY_SERVICE", {"maglev": "fast"}, lambda: osm._rail_cache_path([("d", "x.pbf", 1, 2)])),
-    (routes, "PARSER_VERSION", 999, routes._network_cache_path),
-    (routes, "_SANITY_PAIRS", (("AAA", "BBB"),), routes._network_cache_path),
-    (routes, "_SKIP_PREFIXES", ("Nowhere:",), routes._network_cache_path),
+    (routes, "PARSER_VERSION", 999, _routes_path),
+    (routes, "_SANITY_PAIRS", (("AAA", "BBB"),), _routes_path),
+    (routes, "_SKIP_PREFIXES", ("Nowhere:",), _routes_path),
     # Both regexes reach the stamp as `.pattern`, and neither had a row until
     # the completeness check below was made to read the CODE rather than the
     # table. They are exactly the constants routes.PARSER_VERSION's own comment
@@ -273,14 +280,14 @@ STAMPED = [
     # _SKIP_PREFIXES, _CARGO_RE or _SECTION_RE change") -- so a change to
     # either that forgot the version bump was relying on a stamp nothing
     # checked.
-    (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), routes._network_cache_path),
-    (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), routes._network_cache_path),
+    (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), _routes_path),
+    (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), _routes_path),
     # The other two regexes parse_destinations applies (CR13-13). Both now
     # reach the network path through routes._parser_key, so each row proves
     # the constant is in that key AND that the key is in the path.
-    (routes, "_NEXT_TOP_HEADING_RE", re.compile(r"^=[^=]", re.MULTILINE), routes._network_cache_path),
-    (routes, "_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]"), routes._network_cache_path),
-    (wikidata, "RESOLVER_VERSION", 999, routes._network_cache_path),
+    (routes, "_NEXT_TOP_HEADING_RE", re.compile(r"^=[^=]", re.MULTILINE), _routes_path),
+    (routes, "_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]"), _routes_path),
+    (wikidata, "RESOLVER_VERSION", 999, _routes_path),
     # The landmass ids are computed over the land universe, so anything that
     # moves `land_cells` must move them too. They reach the key through
     # `_cells_cache_path(res).name`, a call the AST reader rightly drops as
@@ -512,13 +519,25 @@ def test_the_country_key_covers_the_whole_cell_list(monkeypatch, tmp_path):
     assert seen == [["KOR"] * 3] * 2
 
 
-def test_the_route_network_path_carries_a_stamp_and_adopts_the_legacy_file(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(config, "BUILD", tmp_path)
-    assert routes._network_cache_path().name != "routes.parquet"
-    pl.DataFrame({"src": ["AAA"], "dst": ["BBB"]}).write_parquet(tmp_path / "routes.parquet")
-    df = routes.route_network()
-    assert df["src"].to_list() == ["AAA"]
-    assert "legacy" in capsys.readouterr().out
+@pytest.mark.parametrize("iatas,titles", [
+    (["AAA", "BBB", "CCC"], {"AAA": "Alpha_Airport"}),        # an airport added
+    (["AAA", "BBB"], {"AAA": "Alpha_International_Airport"}),  # an article re-pointed
+    (["AAA", "BBB"], {"AAA": "Alpha_Airport", "BBB": "B"}),    # a link added
+])
+def test_the_route_network_path_moves_with_its_inputs(iatas, titles):
+    """The constants are half the key; the airports a pair may join and the
+    article crawled for each are the other half (CLAUDE.md: constants AND
+    inputs). Mutation, measured: dropping `sorted(titles_by_iata.items())`
+    from the stamp turns the last two cases red."""
+    assert routes._network_cache_path(iatas, titles) != _routes_path()
+
+
+def test_the_route_network_path_is_stable_when_nothing_changes():
+    assert _routes_path() == _routes_path()
+    assert _routes_path().name != "routes.parquet"
+    # Insertion order is not an input.
+    assert (routes._network_cache_path(["BBB", "AAA"], {"BBB": "B", "AAA": "A"})
+            == routes._network_cache_path(["AAA", "BBB"], {"AAA": "A", "BBB": "B"}))
 
 
 def test_a_section_regex_FLAG_change_moves_the_parser_key(monkeypatch):

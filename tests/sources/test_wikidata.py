@@ -1,7 +1,8 @@
 """Wikidata resolution must not hand back a partial mapping (C1).
 
-`routes.route_network` writes its result to routes.parquet and returns that
-file on every later call, so a title silently omitted here is a route
+`routes.route_network` writes its result to a stamped routes_<key>.parquet and
+returns that file on every later call with the same inputs, so a title
+silently omitted here is a route
 permanently missing from the shipped network -- the "retry on the next call"
 the old message promised structurally never happens.
 """
