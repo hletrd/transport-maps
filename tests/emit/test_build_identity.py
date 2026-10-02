@@ -158,3 +158,58 @@ def test_the_table_and_the_hash_cover_exactly_the_same_config_constants():
         f"STAMPED rows that params_hash does not hash: {unhashed}. Either the "
         "term was dropped from build_identity (two builds differing only in it "
         "now share a buildId) or the row is stale")
+
+
+def test_the_code_is_stamped_by_content_not_by_commit(monkeypatch):
+    """A resumed build (`build-all --skip-existing`) trusts an origin only under
+    the inputsHash it was built with. Keyed on the git head, any commit -- a
+    plan tick -- broke that, so a build that died on day two of three could
+    never resume in a checkout that takes commits daily. The head is still
+    recorded, as `gitHead`, and the code still moves the hash.
+
+    Mutations performed and reverted, each red: `_git_head()` back in the
+    params_hash call (the first assertion); `_code_hash()` dropped from it (the
+    last).
+    """
+    monkeypatch.setattr(index, "_git_head", lambda: "aaaaaaa")
+    a = index.build_identity()
+    monkeypatch.setattr(index, "_git_head", lambda: "bbbbbbb-dirty")
+    b = index.build_identity()
+    assert a["inputsHash"] == b["inputsHash"], "a commit that changes no code moved inputsHash"
+    assert (a["gitHead"], b["gitHead"]) == ("aaaaaaa", "bbbbbbb-dirty")
+    monkeypatch.setattr(index, "_code_hash", lambda: "edited")
+    assert index.build_identity()["inputsHash"] != a["inputsHash"], "a code edit did not move it"
+
+
+def test_the_code_hash_reads_every_package_file_and_nothing_else(monkeypatch, tmp_path):
+    """Every file of the package (nested ones too), pyproject.toml and uv.lock;
+    not bytecode, editor dotfiles or anything outside them.
+
+    Mutations performed and reverted, each red: `glob` for `rglob` (the nested
+    edit is missed); uv.lock dropped from CODE_PATHS; the `__pycache__` filter
+    removed (the bytecode moves it).
+    """
+    pkg = tmp_path / "src" / "transport_maps"
+    (pkg / "graph").mkdir(parents=True)
+    (pkg / "cli.py").write_text("x = 1\n")
+    (pkg / "graph" / "build.py").write_text("y = 2\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\n")
+    (tmp_path / "uv.lock").write_text("v1\n")
+    monkeypatch.setattr(index.config, "ROOT", tmp_path)
+    base = index._code_hash()
+
+    (pkg / "__pycache__").mkdir()
+    (pkg / "__pycache__" / "cli.cpython-314.pyc").write_bytes(b"\0")
+    (pkg / ".cli.py.swp").write_bytes(b"\0")
+    (tmp_path / "plan.md").write_text("tick\n")
+    assert index._code_hash() == base, "bytecode, a swap file or a plan note moved the code hash"
+
+    for f, edit in ((pkg / "graph" / "build.py", "y = 3\n"), (tmp_path / "uv.lock", "v2\n"),
+                    (tmp_path / "pyproject.toml", "[project]\nname = 'x'\n")):
+        old = f.read_text()
+        f.write_text(edit)
+        assert index._code_hash() != base, f"an edit to {f.name} did not move the code hash"
+        f.write_text(old)
+    assert index._code_hash() == base
+    (pkg / "new.py").write_text("")
+    assert index._code_hash() != base, "a new module, tracked or not, is code"

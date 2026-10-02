@@ -804,7 +804,8 @@ def _reindex(dist: Path | None = None) -> None:
         # assert that this checkout produced files it did not. `builtAt` is the
         # exception -- hover_cells.bin is written before the first origin, so
         # its mtime IS when the build started.
-        identity = {k: previous[k] for k in ("inputsHash", "buildId", "builtAt") if k in previous}
+        identity = {k: previous[k] for k in ("inputsHash", "buildId", "builtAt", "gitHead")
+                    if k in previous}
         identity.setdefault(
             "builtAt",
             datetime.fromtimestamp(cells.stat().st_mtime, UTC).replace(microsecond=0).isoformat())

@@ -108,7 +108,7 @@ def test_an_origins_file_with_no_origins_is_refused(tmp_path):
 def test_index_json_can_carry_the_build_identity_the_hover_count_and_the_graph_flags(tmp_path):
     out = tmp_path / "index.json"
     identity = index.build_identity()
-    assert set(identity) == {"inputsHash", "buildId", "builtAt"}
+    assert set(identity) == {"inputsHash", "buildId", "builtAt", "gitHead"}
     assert identity["buildId"].startswith(identity["inputsHash"] + "-")
     index.write_index([{"slug": "seoul", "name": "Seoul", "lat": 37.5, "lon": 127.0}], out,
                       hover_cell_count=90_740, graph={"rail": True, "ferry": False}, identity=identity)

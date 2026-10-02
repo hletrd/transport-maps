@@ -265,13 +265,48 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:12] if path.exists() else "absent"
 
 
+#: What computes the artifacts, hashed by CONTENT: the package itself and the
+#: pinned dependencies it runs on. Relative to config.ROOT.
+CODE_PATHS = ("src/transport_maps", "pyproject.toml", "uv.lock")
+
+
+def _code_hash() -> str:
+    """Digest of every file under CODE_PATHS as it stands in the working tree.
+
+    inputsHash used to take the git head and a dirty flag, which named the
+    commit rather than the code: a plan tick, a test or an uncommitted note in
+    any tracked file moved it, though no artifact could change. That made it
+    useless as the key a resumed build trusts (`build-all --skip-existing`,
+    transport_maps.progress): commits land in this checkout daily, so a
+    three-day build that died on day two could never resume under the same
+    inputsHash. Hashing the content keeps every real code change in the key --
+    an uncommitted edit to the solver included, which the dirty flag reduced to
+    one bit -- and nothing else. The head is still recorded, as `gitHead`.
+    """
+    h = hashlib.sha256()
+    for rel in CODE_PATHS:
+        top = config.ROOT / rel
+        files = ([top] if top.is_file() else
+                 sorted(f for f in top.rglob("*") if f.is_file()
+                        and "__pycache__" not in f.parts and not f.name.startswith(".")))
+        if not files:
+            h.update(f"{rel}\0absent\0".encode())
+        for f in files:
+            data = f.read_bytes()
+            h.update(f"{f.relative_to(config.ROOT).as_posix()}\0{len(data)}\0".encode())
+            h.update(data)
+    return h.hexdigest()[:12]
+
+
 def build_identity(started: datetime | None = None) -> dict[str, str]:
     """Which inputs and which run produced an artifact.
 
-    `inputsHash` covers the code (git head, dirty flag), the two hand-edited
-    inputs (calibration.toml, origins.toml) and the constants that shape the
-    grid, the bands, the unreachable sentinel and the mode channels; `buildId` adds the start time so
-    two runs of one input set (one of them aborted) stay distinguishable.
+    `inputsHash` covers the code (`_code_hash`: the package and its pinned
+    dependencies, by content), the two hand-edited inputs (calibration.toml,
+    origins.toml) and the constants that shape the grid, the bands, the
+    unreachable sentinel and the mode channels; `buildId` adds the start time so
+    two runs of one input set (one of them aborted) stay distinguishable;
+    `gitHead` names the commit, for provenance only.
     """
     started = started or datetime.now(UTC)
     # Everything below is sampled NOW, so this must be called when the build
@@ -282,7 +317,7 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
     # had already read them. `inputsHash` then named inputs the artifacts were
     # not built from -- the exact opposite of its purpose.
     inputs = _io.params_hash(
-        _git_head(), _sha256(config.ROOT / "calibration.toml"),
+        _code_hash(), _sha256(config.ROOT / "calibration.toml"),
         _sha256(config.DATA / "origins.toml"),
         config.SOLVE_RES, config.FINE_RES, config.HOVER_RES, config.BAND_EDGES_MIN,
         # The reading tier's grid and block stride. Without these a res-5
@@ -297,7 +332,8 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
         modes.CHANNELS)
     return {"inputsHash": inputs,
             "buildId": f"{inputs}-{started:%Y%m%dT%H%M%SZ}",
-            "builtAt": started.replace(microsecond=0).isoformat()}
+            "builtAt": started.replace(microsecond=0).isoformat(),
+            "gitHead": _git_head()}
 
 
 def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None = None,

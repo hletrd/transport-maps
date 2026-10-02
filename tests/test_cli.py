@@ -418,7 +418,7 @@ def test_a_full_build_stamps_identity_count_and_graph_flags_into_index_json(monk
     kw = calls[0]
     assert kw["hover_cell_count"] == 1
     assert kw["graph"] == {"rail": False, "ferry": False}
-    assert set(kw["identity"]) == {"inputsHash", "buildId", "builtAt"}
+    assert set(kw["identity"]) == {"inputsHash", "buildId", "builtAt", "gitHead"}
 
 
 def test_each_origin_row_logs_its_process_and_peak_memory(monkeypatch, tmp_path, capsys):
