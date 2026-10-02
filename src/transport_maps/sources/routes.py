@@ -167,12 +167,26 @@ def _fetch_wikitext_with_retry(
     raise RuntimeError("exhausted retries fetching a wikitext batch (HTTP 429)")
 
 
-# Bump when parse_destinations, _SKIP_PREFIXES, _CARGO_RE or _SECTION_RE
-# change: the per-airport cache below stores PARSED destinations, so a parser
-# fix never reaches an airport that is already cached unless the cache is
-# rebuilt. A version mismatch empties it (a deliberate re-crawl); a cache
-# written before versioning is adopted as version 1.
+# Bump when parse_destinations' own code changes. The per-airport cache below
+# stores PARSED destinations, so a parser fix never reaches an airport that is
+# already cached unless the cache is rebuilt. The regexes and _SKIP_PREFIXES
+# need no bump: _parser_key hashes them directly, so editing one is a miss on
+# its own (CR13-13: two of the four regexes used to be left out of the key,
+# so a fix to _LINK_RE would have been a silent cache hit).
 PARSER_VERSION = 1
+
+
+def _parser_key() -> str:
+    """Every constant that governs what `parse_destinations` returns.
+
+    Patterns and flags both: dropping re.IGNORECASE from _SECTION_RE changes
+    which headings match while `.pattern` stays byte-identical.
+    """
+    return _params_hash(PARSER_VERSION, _SKIP_PREFIXES,
+                        _SECTION_RE.pattern, _SECTION_RE.flags,
+                        _CARGO_RE.pattern, _CARGO_RE.flags,
+                        _NEXT_TOP_HEADING_RE.pattern, _NEXT_TOP_HEADING_RE.flags,
+                        _LINK_RE.pattern, _LINK_RE.flags)
 
 
 def _destination_cache_path():
@@ -183,24 +197,26 @@ def _load_destination_cache() -> dict[str, list[str] | None]:
     """IATA -> parsed destination titles, or None for an article with no revision.
 
     Persisted incrementally during the crawl so an interrupted run resumes
-    from the last completed batch instead of refetching from scratch.
+    from the last completed batch instead of refetching from scratch. A cache
+    parsed under any other `_parser_key` is a miss and the crawl starts over,
+    and so is one written before the key existed (the flat format and the
+    `_parser_version` one): nothing in it says which parser produced it.
     """
     path = _destination_cache_path()
     if not path.exists():
         return {}
     raw = json.loads(path.read_text())
-    if "_parser_version" not in raw:
-        return raw                                   # legacy flat format == version 1
-    if raw["_parser_version"] != PARSER_VERSION:
-        print(f"routes: destination cache was parsed by version {raw['_parser_version']}, "
-              f"parser is {PARSER_VERSION}; re-crawling", flush=True)
+    stamp = raw.get("_parser_key")
+    if stamp != _parser_key():
+        print(f"routes: destination cache was parsed under key {stamp}, parser is "
+              f"{_parser_key()}; re-crawling", flush=True)
         return {}
     return raw["airports"]
 
 
 def _save_destination_cache(cache: dict[str, list[str] | None]) -> None:
     path = _destination_cache_path()
-    payload = {"_parser_version": PARSER_VERSION, "airports": cache}
+    payload = {"_parser_key": _parser_key(), "airports": cache}
     _atomic_write(path, lambda tmp: tmp.write_text(json.dumps(payload)))
 
 
@@ -256,11 +272,11 @@ def _crawl_destinations(
 
 def _network_cache_path():
     """Stamped with everything that shapes the pair set: the airport table it
-    was crawled for (its own stamped name), the parser version and the sanity
-    pairs. The bare routes.parquet it replaces was keyed on `.exists()` and,
-    on disk today, predates the airport table it is used with."""
-    stamp = _params_hash(airports._table_cache_path().stem, PARSER_VERSION, wikidata.RESOLVER_VERSION,
-                         _SANITY_PAIRS, _SKIP_PREFIXES, _SECTION_RE.pattern, _CARGO_RE.pattern)
+    was crawled for (its own stamped name), the parser and resolver, and the
+    sanity pairs. The bare routes.parquet it replaces was keyed on `.exists()`
+    and, on disk today, predates the airport table it is used with."""
+    stamp = _params_hash(airports._table_cache_path().stem, _parser_key(), wikidata.RESOLVER_VERSION,
+                         _SANITY_PAIRS)
     return config.BUILD / f"routes_{stamp}.parquet"
 
 

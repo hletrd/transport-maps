@@ -275,6 +275,11 @@ STAMPED = [
     # checked.
     (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), routes._network_cache_path),
     (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), routes._network_cache_path),
+    # The other two regexes parse_destinations applies (CR13-13). Both now
+    # reach the network path through routes._parser_key, so each row proves
+    # the constant is in that key AND that the key is in the path.
+    (routes, "_NEXT_TOP_HEADING_RE", re.compile(r"^=[^=]", re.MULTILINE), routes._network_cache_path),
+    (routes, "_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]"), routes._network_cache_path),
     (wikidata, "RESOLVER_VERSION", 999, routes._network_cache_path),
     # The landmass ids are computed over the land universe, so anything that
     # moves `land_cells` must move them too. They reach the key through
@@ -323,6 +328,7 @@ _COVERED_BY_TABLE = {
     "osm._ferry_cache_path",
     "osm._rail_cache_path",
     "routes._network_cache_path",
+    "routes._parser_key",
     "landmask._landmasses_cache_path",
     "fixed_links._params_key",
 }
@@ -515,14 +521,52 @@ def test_the_route_network_path_carries_a_stamp_and_adopts_the_legacy_file(monke
     assert "legacy" in capsys.readouterr().out
 
 
-def test_a_parser_version_change_empties_the_destination_cache_but_a_legacy_file_is_adopted(monkeypatch, tmp_path):
+def test_a_section_regex_FLAG_change_moves_the_parser_key(monkeypatch):
+    """`.pattern` alone would not see this: same text, different headings
+    matched ("== AIRLINES AND DESTINATIONS ==" stops matching)."""
+    before = routes._parser_key()
+    monkeypatch.setattr(routes, "_SECTION_RE", re.compile(routes._SECTION_RE.pattern, re.MULTILINE))
+    assert routes._parser_key() != before
+
+
+@pytest.mark.parametrize("name,new", [
+    ("PARSER_VERSION", 999),
+    ("_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]")),
+    ("_NEXT_TOP_HEADING_RE", re.compile(r"^=[^=]", re.MULTILINE)),
+])
+def test_a_parser_change_empties_the_destination_cache(monkeypatch, tmp_path, name, new):
+    """The per-airport cache stores PARSED titles, so it is the cache a parser
+    fix has to get past. CR13-13: `_LINK_RE` never reached its version check,
+    so the fragment-link fix (CR13-6) would have been read back as a hit.
+
+    Mutation, measured: dropping `_LINK_RE.pattern, _LINK_RE.flags` from
+    `routes._parser_key` turns the `_LINK_RE` case red (and the STAMPED row).
+    """
     monkeypatch.setattr(config, "CACHE", tmp_path)
-    (tmp_path / "airline_destinations.json").write_text('{"ICN": ["Tokyo"]}')   # legacy flat
-    assert routes._load_destination_cache() == {"ICN": ["Tokyo"]}
     routes._save_destination_cache({"ICN": ["Tokyo"]})
     assert routes._load_destination_cache() == {"ICN": ["Tokyo"]}
-    monkeypatch.setattr(routes, "PARSER_VERSION", routes.PARSER_VERSION + 1)
+    monkeypatch.setattr(routes, name, new)
     assert routes._load_destination_cache() == {}
+
+
+@pytest.mark.parametrize("legacy", [
+    '{"ICN": ["Tokyo"]}',                                          # flat, pre-versioning
+    '{"_parser_version": 1, "airports": {"ICN": ["Tokyo"]}}',      # PARSER_VERSION era
+])
+def test_a_destination_cache_from_before_the_parser_key_is_a_miss(monkeypatch, tmp_path, legacy):
+    """Both older formats used to be adopted as "version 1". Neither records
+    which regexes produced it, so neither can be trusted under a fixed parser.
+
+    Mutation, measured: restoring the flat-format adoption (`return raw` when
+    the file carries no stamp at all) turns the flat case red.
+    """
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    (tmp_path / "airline_destinations.json").write_text(legacy)
+    assert routes._load_destination_cache() == {}
+
+
+def test_the_resolver_cache_still_adopts_its_legacy_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "CACHE", tmp_path)
     (tmp_path / "wikidata_iata.json").write_text('{"Narita International Airport": "NRT"}')
     assert wikidata._load_cache() == {"Narita International Airport": "NRT"}
     wikidata._save_cache({"X": "XXX"})
