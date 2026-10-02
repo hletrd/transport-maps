@@ -127,10 +127,66 @@ build.
       (`docs/contract.md`, "Node-offset arithmetic"). This was ARCH3-3.
       (d) `check_dist` should take the channel width from `index.json`'s
       `modeChannels` rather than the emitter's `CHANNELS`. This was AA44/AA34.
-- [ ] **B2 (table move)** `[ground]`, `[urban]` and the air-bound constants
+- [x] **B2 (table move)** `[ground]`, `[urban]` and the air-bound constants
       into `calibration.toml` with labels; one `calibrate.load()` threaded
       through the build context; `_land_border_min` no longer parsed per origin
       (ARCH-8). After the rebuild.
+      (2026-10-02, DONE except for the single threaded loader, which is
+      carried as B2b. `calibration.toml` gains `[ground]`
+      speeds with one key per GRIP4 class, `roadless_kmh` to `local_kmh`.
+      They are keys and not an array because the licence firewall refuses any
+      list in the file. The table is labelled as a mixture: classes 1-4 FITTED to
+      2,998 Google Routes journeys, 0 and 5 published-figure defaults, with
+      the reasons. It gains `[urban]` `pop_min`, `radius_km` and
+      `congestion_factor`, all FITTED jointly to the 112 + 1,383 journey sets.
+      `[frequency]` gains `knee_km` and `min_flights_per_week`, labelled NOT
+      fitted, as bounds chosen so no anchor moves. The derivations moved with
+      the values. `graph/ground.py`, `sources/urban.py` and `graph/air.py` each
+      read their table once, at import, through a loader that takes a path
+      (`load_ground_calibration`, `load_urban_calibration`,
+      `load_frequency_bounds`). The module constants keep their names, so no
+      caller changed. `_land_border_min()` now returns the value read at import
+      instead of re-parsing the file for every origin's monotonicity gate.
+      **The values are identical.** `tests/test_calibration_moved.py` pins
+      them against the old literals, typed into the test, and checks that each
+      loader follows an edit to the file and that each constant is assigned
+      only from its loader. Six mutations, all red.
+      **Caches.** The only derived cache any of these govern is the urban mask
+      (`urban._mask_cache_path`). It keys on `pop_min`, `radius_km`,
+      `PLACES_URL` and the cell list, as before. Its key value does NOT
+      change: `urban_mask-81727e55` for the pinned cells, before and after, and
+      the test pins that literal. The loader casts to float, because the key
+      is digested through json, where 200000 and 200000.0 differ. The ground
+      speeds, the congestion factor, the two air bounds and the land-border
+      time reach the artifacts only through the graph. No disk cache holds
+      them. The per-origin completion records key on `inputsHash`, which
+      hashes `calibration.toml` and the package source, so that key DOES
+      change. The cost is that `build-all --skip-existing` will not resume a
+      build started before this commit; it rebuilds those origins. Any commit
+      under `src/` has the same effect. The graph digest in the same records
+      is unchanged, because the edge weights are.
+      Not done here, and not doc-only: the page's `MODE_FALLBACK` and
+      `mode_detail()`'s "halved" still render the congestion factor as a
+      word (CR3-7, whose exit criterion "B2 lands" has now fired, in
+      `deferred.md`). Three texts still say the fitted values live in
+      `graph/ground.py` and `sources/urban.py`, and should name
+      `calibration.toml [ground]`/`[urban]` instead: `README.md`'s calibration
+      paragraph (around line 110), and the docstrings of
+      `scripts/calibrate_ground.py` (lines 12-13) and `scripts/ground_check.py`
+      (lines 7-8). All three files were outside this lane. Full gate after the
+      move: 1411 passed, 25 skipped, 53 deselected, exit 0. The pre-move
+      baseline was 1397 passed, and the 14 new tests account for the
+      difference.)
+- [ ] **B2b** One calibration loader threaded through the build context
+      (`calibrate.load()`), replacing the per-module loaders: air, rail,
+      ferry, ground, urban and carry-on each still open `calibration.toml`
+      themselves (AB46). `air.load_calibration()` alone is called three times
+      in `graph/build.py`, and the rail and ferry loaders again in
+      `emit/index.mode_detail()`. All of these run before the workers fork.
+      The per-origin parse that ARCH-8 named was `_land_border_min()` in
+      `validate.check_monotonic_ground`, and that one is gone, which was the
+      correctness half. What is left is the refactor half. It touches `cli.py` and `graph/build.py`, so it
+      waits for a lane that may edit them.
 - [ ] **E13** Owner decision on the `pyproject.toml` author email.
 - [x] **I5 (docs part)** The vendored JS hashes table (recorded by the security
       reviewer) in `web/README.md`, and a test that recomputes them (with Q6).

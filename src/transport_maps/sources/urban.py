@@ -25,12 +25,35 @@ import pyogrio
 from .. import config
 from ._utils import _atomic_write, _params_hash
 
-# Fitted jointly against both journey sets: this setting brings urban access
-# from 2.03x to 1.02x and inter-town from 1.12x to 1.06x, and marks 5.7% of
-# land as built up.
-URBAN_POP_MIN = 200_000.0
-URBAN_RADIUS_KM = 40.0
-URBAN_CONGESTION_FACTOR = 2.0
+
+def load_urban_calibration(path=None) -> tuple[float, float, float]:
+    """calibration.toml [urban]: (pop_min, radius_km, congestion_factor).
+
+    All three FITTED jointly against both journey sets: this setting brings
+    urban access from 2.03x to 1.02x and inter-town from 1.12x to 1.06x, and
+    marks 5.7% of land as built up. calibration.toml carries the provenance.
+    They lived here as literals until task B2 (2026-10-02), with the same
+    values; tests/test_calibration_moved.py pins them, and the urban-mask
+    cache key with them.
+    """
+    import tomllib
+
+    path = path or (config.ROOT / "calibration.toml")
+    with open(path, "rb") as fh:
+        raw = tomllib.load(fh)["urban"]
+    # float(): the cache key below digests these through json, which writes
+    # 200000 and 200000.0 differently. A TOML integer must not move the key.
+    pop_min, radius_km, factor = (float(raw["pop_min"]), float(raw["radius_km"]),
+                                  float(raw["congestion_factor"]))
+    if not (pop_min > 0 and radius_km > 0 and factor >= 1.0):
+        raise ValueError(f"{path} [urban] needs pop_min > 0, radius_km > 0 and "
+                         f"congestion_factor >= 1; got {pop_min}, {radius_km}, {factor}")
+    return pop_min, radius_km, factor
+
+
+# Read once, at import. The mask cache keys on the first two; the third only
+# divides speeds (graph/ground.cell_speed_kmh) and is in no cache.
+URBAN_POP_MIN, URBAN_RADIUS_KM, URBAN_CONGESTION_FACTOR = load_urban_calibration()
 
 # Natural Earth populated places, for the urban mask only. The page's
 # gazetteer (emit/places.py) moved to GeoNames; this stays on Natural Earth

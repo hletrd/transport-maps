@@ -56,23 +56,27 @@ def block_time_min(distance_km: float, dep_size: str, arr_size: str, cal: Calibr
     return round(total)
 
 
-MIN_FLIGHTS_PER_WEEK = 0.5
+def load_frequency_bounds(path=None) -> tuple[float, float]:
+    """calibration.toml [frequency] `knee_km` and `min_flights_per_week`.
 
-# Distance at which the gravity model's distance term stops rising. The decay
-# exponent is negative, so `distance_km ** decay` DIVERGES as distance goes to
-# zero: with the old 1 km floor, the 2.8 km Westray-Papa Westray hop came out
-# at 6,041 flights/week and a 1-minute expected wait, against a real ~14/week
-# and ~6 hours. This is the mirror image of the shallow-decay defect already
-# fixed at the long-haul end -- the model was simply unguarded on the other
-# side.
-#
-# 400 km is equivalently a 412 flights/week ceiling for a large-large pair
-# (12 minutes' expected wait), which no real route beats by much. It also sits
-# below every anchor the coefficients were fitted to, so none of them moves:
-# ICN-CJU 361.9/wk, ICN-NRT 116.8/wk, ICN-LHR 13.6/wk. Do NOT raise it past
-# ~450: at 500 km the knee clamps Seoul-Jeju and drags a fitted anchor from
-# 361.9 down to 322.3.
-KNEE_KM = 400.0
+    Both are bounds on the gravity model, not fits: calibration.toml says why
+    each value was chosen. They lived here as literals until task B2
+    (2026-10-02), with the same values; tests/test_calibration_moved.py pins
+    them.
+    """
+    path = path or (config.ROOT / "calibration.toml")
+    with open(path, "rb") as fh:
+        raw = tomllib.load(fh)["frequency"]
+    knee, floor = float(raw["knee_km"]), float(raw["min_flights_per_week"])
+    if not (knee > 0 and floor > 0):
+        raise ValueError(f"{path} [frequency] knee_km and min_flights_per_week must be "
+                         f"positive; got {knee}, {floor}")
+    return knee, floor
+
+
+# Distance at which the gravity model's distance term stops rising, and the
+# floor under its ultra-long-haul tail. Read once, at import.
+KNEE_KM, MIN_FLIGHTS_PER_WEEK = load_frequency_bounds()
 
 
 def frequency_model(dep_size: str, arr_size: str, distance_km: float, cal: Calibration) -> float:

@@ -12,19 +12,44 @@ from transport_maps.sources import countries, roads, urban
 
 logger = logging.getLogger(__name__)
 
+
+#: calibration.toml [ground] keys in GRIP4 class order, 0 roadless .. 5 local.
+GROUND_KEYS = ("roadless_kmh", "highway_kmh", "primary_kmh", "secondary_kmh",
+               "tertiary_kmh", "local_kmh")
+
+
+def load_ground_calibration(path=None) -> tuple[np.ndarray, float]:
+    """calibration.toml [ground] and [land_border]: the speed per GRIP4 road
+    class and the land-border crossing time, read once.
+
+    The speed table is a mixture -- classes 1-4 FITTED against 2,998 Google
+    Routes journeys, roadless (0) and local (5) published-figure defaults --
+    and calibration.toml says which is which and why. It lived here as a
+    literal until task B2 (2026-10-02), with the same values;
+    tests/test_calibration_moved.py pins them.
+    """
+    import tomllib
+
+    path = path or (config.ROOT / "calibration.toml")
+    with open(path, "rb") as fh:
+        raw = tomllib.load(fh)
+    table = raw["ground"]
+    missing = [k for k in GROUND_KEYS if k not in table]
+    if missing:
+        raise ValueError(f"{path} [ground] is missing {', '.join(missing)}")
+    speeds = np.array([float(table[k]) for k in GROUND_KEYS], dtype=np.float64)
+    if not (speeds > 0).all():
+        raise ValueError(f"{path} [ground] speeds must be positive; got {speeds.tolist()}")
+    return speeds, float(raw["land_border"]["crossing_min"])
+
+
 # Index by GRIP road class: 0 = roadless, 1 = highway .. 5 = local road.
-#
-# FITTED against 2,998 real driving journeys sampled from Google Routes between
-# populated places (scripts/calibrate_ground.py), with built-up cells weighted
-# by the urban factor so these are FREE-FLOW speeds and the two regimes do not
-# blend. Held-out median observed/predicted 0.977. Classes 1-4 are fitted;
-# roadless and local keep published-figure defaults. Roadless passed the
-# support guard (2,272 km across 55 journeys) but the fit returned a NEGATIVE
-# reciprocal, -0.00978 h/km (about -102 km/h), which the `recip > 0` sign
-# filter in calibrate/ground.py refuses; local drew 116 km across 4 journeys,
-# which the support guard refuses. An earlier unguarded fit returned
-# 58 km/h for ROADLESS terrain, which is not merely wrong but impossible.
-SPEED_BY_ROAD_CLASS_KMH = np.array([5.0, 104.0, 57.0, 50.0, 18.0, 25.0], dtype=np.float64)
+# Provenance per class is in calibration.toml [ground]. Read ONCE, at import:
+# the land-border time used to be re-parsed from the file by every caller,
+# including the per-origin monotonicity gate, so an edit to calibration.toml
+# during a build could check origins against a constant the graph was not
+# weighted with (ARCH-8).
+SPEED_BY_ROAD_CLASS_KMH, LAND_BORDER_MIN = load_ground_calibration()
 
 # Directed edge slots preallocated per cell: six ring neighbours plus the
 # cross-resolution pairs along split seams. Measured at 8.0 per cell over the
@@ -34,12 +59,8 @@ EDGE_SLOTS_PER_CELL = 8
 
 
 def _land_border_min() -> float:
-    import tomllib
-
-    from transport_maps import config
-
-    with open(config.ROOT / "calibration.toml", "rb") as fh:
-        return float(tomllib.load(fh)["land_border"]["crossing_min"])
+    """calibration.toml [land_border] crossing_min, as read at import."""
+    return LAND_BORDER_MIN
 
 
 def cell_class(idx: NodeIndex) -> np.ndarray:
