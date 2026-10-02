@@ -259,6 +259,9 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
       needs. **Scope:** the deferred table below lists this group as
       "V13-1…V13-26, V13-33…V13-44", but this task's own text names only
       V13-1…V13-17, and only those seventeen were re-verified.
+  - [x] V13-3 made true (2026-10-02): both missing objections are in
+    `calibration.toml`'s ferry comment, and a test re-derives their figures.
+    The correction note in the archived c8 plan (T1.9) has the details.
 
 ---
 

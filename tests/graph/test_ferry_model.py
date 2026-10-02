@@ -210,6 +210,44 @@ def test_the_prior_matches_its_anchors_within_the_documented_spread():
     assert ratios.max() == pytest.approx(2.34, abs=0.05)
 
 
+def test_the_critics_two_recorded_objections_hold_for_the_shipped_fit():
+    """c8 T1.9 recorded three of the critic's five objections in the [ferry]
+    comment and ticked all five (C13-11 / V13-3). The other two are now in the
+    comment with figures, and this test re-derives those figures from the
+    anchors so the comment cannot drift from the fit it describes.
+
+    Mutations performed (2026-10-02), each RED, each restored:
+      - interval_decay 1.5137 -> 1.40 in calibration.toml     -> RED
+      - "falls from 1.514 to 1.401" -> "to 1.45" in the comment -> RED
+      - "charges 35 h of the 84 h" -> "50 h" in the comment     -> RED
+    """
+    from transport_maps import config
+
+    text = (config.ROOT / "calibration.toml").read_text(encoding="utf-8")
+    x = np.log([max(km, ferry.KNEE_KM) for _, km, _ in ANCHORS])
+    y = np.log([hours for _, _, hours in ANCHORS])
+
+    # The shipped coefficients ARE the log-space least-squares fit to the eight.
+    decay, log_base = np.polyfit(x, y, 1)
+    assert CAL.interval_decay == pytest.approx(decay, abs=5e-4)
+    assert CAL.interval_base_h == pytest.approx(np.exp(log_base), rel=1e-3)
+
+    # Objection 1: on the Arctic Umiaq Line the prior charges 41% of the wait.
+    umiaq_h = ferry.prior_interval_min(372, CAL) / 60.0
+    assert round(umiaq_h) == 69 and round(umiaq_h / 168.0, 2) == 0.41
+    assert f"charges\n#   {round(umiaq_h / 2)} h of the {168 // 2} h expected wait" in text
+
+    # Objection 2: the three weekly anchors within 141 km carry the exponent.
+    weekly = [i for i, (_, _, h) in enumerate(ANCHORS) if h == 168.0]
+    kms = [ANCHORS[i][1] for i in weekly]
+    assert len(weekly) == 3 and max(kms) - min(kms) == 141
+    keep = [i for i in range(len(ANCHORS)) if i not in weekly]
+    decay_without, log_base_without = np.polyfit(x[keep], y[keep], 1)
+    at_372 = np.exp(log_base_without) * 372 ** decay_without
+    assert (f"the decay falls from {CAL.interval_decay:.3f}\n#   to {decay_without:.3f} "
+            f"and the 372 km interval from {umiaq_h:.0f} h to {at_372:.0f} h") in text
+
+
 def test_the_sailing_coefficients_are_the_ones_calibration_toml_documents():
     """calibration.toml prints a residual table for `berth_min = 11.2` and
     `speed_kmh = 29.1`. If the shipped values move, that table is describing a

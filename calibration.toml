@@ -466,6 +466,19 @@ stop_overhead_min = 0.90
 # 0.679, i.e. a factor of 1.97 at one sigma. Per anchor, predicted/published:
 # 0.52, 1.70, 2.34, 2.25, 0.41, 0.66, 0.67, 1.17.
 #
+# Two objections the cycle-8 critic raised against this fit, recorded here and
+# not overruled (c8 T1.9, the two its first pass left out; C13-11 / V13-3):
+#
+# - It fixes only 41% of the Greenland error. On the Arctic Umiaq Line the
+#   prior predicts a 69 h interval against the published 168 h, so it charges
+#   35 h of the 84 h expected wait. Door to door, that leg went from 11 h 08
+#   to 48 h 09 against a published 97 h 28, and 49 h are still unpriced.
+# - Three of the eight anchors (Umiaq, Norrona, Whittier-Yakutat) share the
+#   same 168 h, a weekly sailing, within 141 km of each other (372-513 km).
+#   They carry the exponent. Refit without them, the decay falls from 1.514
+#   to 1.401 and the 372 km interval from 69 h to 43 h. Three operators' habit
+#   of sailing weekly therefore sets the 150-500 km band's wait.
+#
 # ---- the honest part: an independent holdout, and it is not flattering ----
 #
 # 326 of the ferry ways carry a parseable `interval` tag, which is an

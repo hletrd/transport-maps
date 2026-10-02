@@ -132,6 +132,17 @@ mis-tagged; accepting an `HHH:MM` duration books a five-day sail. Reject, count,
       eight anchors share 168 h inside 140 km and so carry the exponent. The
       anchor table lists those three, but says nothing about the exponent.
       Partially done.
+      MADE TRUE (2026-10-02, C13-11 follow-up): the `[ferry]` comment now
+      records both, with figures re-derived from the anchors. The prior
+      predicts 69 h against Umiaq's 168 h, so it charges 35 h of the 84 h
+      wait. Refit without the three weekly anchors (372-513 km, a 141 km
+      span), the decay falls from 1.514 to 1.401 and the 372 km interval from
+      69 h to 43 h.
+      `tests/graph/test_ferry_model.py::test_the_critics_two_recorded_objections_hold_for_the_shipped_fit`
+      refits the anchors and requires the comment's figures. It also pins the
+      shipped coefficients as the least-squares fit of the eight. Three
+      mutations, all RED: the decay in the file, and each of the two figures
+      in the comment. All five objections are now recorded.
 - [x] **T1.10** Emit `ferry` in `index.json`'s `graph` block (L8-18) and regenerate the ferry
       sentence in `emit/index.py::mode_detail` from the new calibration so the page cannot
       drift from the model.
