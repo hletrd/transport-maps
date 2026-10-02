@@ -160,20 +160,78 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
 
 ## Cycle 3
 
-- [ ] **A6b / A6c (staging + sidecars)** `_build_all` writes into
+- [x] **A6b / A6c (staging + sidecars)** ~~`_build_all` writes into
       `dist/.build-{build_id}/`, publishes with same-filesystem renames
       (`origins`, then `hover_cells.bin`, then `index.json`), keeps one previous
-      generation; per-origin `{slug}.meta.json` written last as the commit
+      generation~~; per-origin `{slug}.meta.json` written last as the commit
       record; `check_dist` compares sidecar `buildId` with `index.json`'s and
       recorded sizes (design in `architect.md` §4 A6b/A6c). `--only` and
       `--limit` never publish.
+      *(2026-10-02: the sidecars landed, 4924efb; the staging is won't-do.)*
+      **Sidecars**, as `<root>/.progress/<slug>.json` (`transport_maps/progress.py`;
+      `<root>` is `dist/` or `dist/v/no-<mode>/`). Written as "writing" BEFORE
+      an origin's first file is replaced -- after its gates, so a refused origin
+      keeps its last build's record -- and as "complete", with every file's
+      size, after its last. Keyed on the run's `inputsHash`, a digest of the
+      graph (edge arrays, hover ordering, cell classes, rail tables: the data
+      inputs `inputsHash` is sampled too early to see), the excluded mode and
+      the origin's own row. `index.json` and `variant.json` are published only
+      when every origin is complete under the run's key, whichever run wrote
+      it. `check_dist` refuses a "writing" record and a complete one whose files
+      changed size since; it REPORTS, without refusing, a root with no records
+      (every dist/ built before today), an origin with none, and a record from
+      other inputs than `index.json` (or, for a variant, its marker) names --
+      compared on `inputsHash`, not `buildId`, because a resumed build spans
+      runs. Kept out of the served tree: a dot-directory the rsync filter
+      already drops (named in `deploy/rsync-excludes.txt` as well), which the
+      batch lists never name either; the test runs both. Mutation-checked, each
+      red: `begin` removed, moved below the first write, moved above the gates;
+      `finish` removed; a suffix dropped from `SUFFIXES`; the publish gate
+      removed; each `check_dist` branch; the variant held against `index.json`'s
+      hash; both exclude lines removed.
+      **Staging** (`dist/.build-{id}/`, rename-publish, one previous
+      generation): **won't do**, superseded. (1) One live copy (A6d, owner,
+      2026-10-02): staging's payoff was a deployable previous generation while
+      a build runs, but the local `dist/` is not deployable during a build
+      anyway (`check_dist` refuses the lock) and the server swaps in seconds
+      under `--delay-updates`. (2) Space: a full set is ~38.6 MB x 1,464
+      origins, about 56 GB before variants; staging doubles the peak on the
+      build host. (3) The defect it was for -- one origin half one build and
+      half another, passing every length check -- is closed by the "writing"
+      record, which `check_dist` refuses and `--skip-existing` rebuilds.
+      Two builds side by side, each origin whole, are reported rather than
+      refused: the batched deploy (6b739fa) already ships exactly that while
+      the cell layouts agree, which the length and node-universe checks
+      enforce. Deferred rows whose exit pointed at the staging directory --
+      S3 (shape), SEC3-5, ARCH3-10, ARCH3-11 -- are marked for a new exit in
+      `plan/deferred.md`; ARCH3-11 can now be checked against the records'
+      file lists.
 - [x] **A6d** ~~Versioned releases on the server (`releases/{buildId}` + `current`
       symlink; `root` change in the nginx conf is the owner's install step);
       `deploy_verify.sh --rollback`.~~ **Won't do** -- owner, 2026-10-02:
       "release -> just keep one". One live copy; `--delay-updates` keeps the
       swap to seconds, and the site has few users.
-- [ ] **A6e** `--skip-existing` trusting a sidecar with the current
+- [x] **A6e** `--skip-existing` trusting a sidecar with the current
       `inputsHash`; `imap_unordered` for progress (H11, PR-20).
+      *(2026-10-02: fa12fdd, 4d49eb8.)* An origin is skipped only when its
+      record is "complete" under the current key (above) and every listed file
+      is there at the recorded size; anything else is built. `inputsHash` first
+      had to stop naming the commit: it hashed the git head and a dirty flag,
+      so a plan tick between the crash and the resume invalidated every
+      record. It now hashes the package, `pyproject.toml` and `uv.lock` by
+      content (`index._code_hash`), with `gitHead` recorded beside it (and
+      carried forward by `reindex`). A full variant run still withdraws its
+      marker at the start, resumed or not, and the marker comes back only
+      through the publish gate. Forked workers report through
+      `imap_unordered`; nothing published depends on the order. To resume:
+      the same command plus `--skip-existing` (`uv run transport-maps
+      build-all --skip-existing`, or `... --exclude <mode> --skip-existing`),
+      after removing a stale `dist/.build.lock` once the dead run is confirmed
+      gone. The graph is rebuilt either way; what is saved is the per-origin
+      solves. A `dist/` written before records existed has none, so its first
+      resume rebuilds every origin. Tests: `tests/test_progress.py`,
+      `tests/emit/test_build_identity.py`; each mutation in their docstrings
+      red.
 - [ ] **S2** `BuildContext` frozen dataclass via `Pool(initializer=…)`; remove
       the rasterio/GDAL fallbacks in `modes.py:47-50` and `validate.py:149-153`;
       one poisoned-import fork test (ARCH-5).
