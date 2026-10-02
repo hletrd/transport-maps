@@ -206,8 +206,30 @@ def test_a_full_extract_deleted_after_its_parse_is_dated_by_its_cache(
     geofabrik_says(OCT01)
     monkeypatch.setattr(geofabrik.shutil, "which", lambda tool: None)
     found = geofabrik.refresh(tmp_path / "osm", regions=("europe",))
-    assert not next(e for e in found if e.kind == "full").stale
+    full = next(e for e in found if e.kind == "full")
+    assert full.local == _dt(OCT01) and not full.stale
     assert runs == [], "a current cache sent the region to osm_fixed_links.sh"
+
+
+def test_a_stale_cache_whose_raw_was_deleted_is_reported_not_re_downloaded(
+        tmp_path, monkeypatch, geofabrik_says, runs, caplog):
+    """Deleting the raw extract once it is parsed is a choice of disk over
+    freshness; a build must not reverse it with a 15 GB download. Mutation:
+    count a cache-only extract as present -> red (osm_fixed_links.sh runs)."""
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    (tmp_path / "osm").mkdir()
+    raw = tmp_path / "osm" / "europe.osm.pbf"
+    write_pbf(raw, ts=SEP20)
+    pl.DataFrame([], schema=fixed_links.SCHEMA).write_parquet(
+        fixed_links._cache_path("europe", fixed_links._source_key(raw)))
+    raw.unlink()
+    geofabrik_says(OCT01)
+    monkeypatch.setattr(geofabrik.shutil, "which", lambda tool: None)
+    with caplog.at_level(logging.WARNING):
+        geofabrik.refresh(tmp_path / "osm", regions=("europe",))
+    assert runs == []
+    assert any("OSM_REPLACE=1 scripts/osm_fixed_links.sh europe" in r.getMessage()
+               for r in caplog.records)
 
 
 # --- the derived caches key on the snapshot ------------------------------------

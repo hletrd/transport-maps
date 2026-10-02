@@ -33,6 +33,11 @@ An extract that is not on disk at all is NOT downloaded here. That is an
 install step, tens of gigabytes, and the build has always reported it rather
 than done it ("rail: EXCLUDED -- ... run scripts/osm_rail.sh first"); a fresh
 clone running `build-all --only seoul` must not start an 85 GB download.
+Nor is a full extract whose raw file was deleted after its bridge parse was
+cached (sources/fixed_links.py invites that, to free ~70 GB): re-downloading
+it would undo the operator's choice of disk over freshness. A cache behind
+Geofabrik is reported with the command that refreshes it, every build, and
+otherwise used as it is.
 """
 
 from __future__ import annotations
@@ -137,10 +142,10 @@ def _local(extracts_dir: pathlib.Path, region: str, kind: str,
         return Extract(region, kind, snapshot(path), up)
     # The full extracts exist only to feed the fixed-link parse and may be
     # deleted once it is cached; the cache's name then carries the snapshot.
+    # Not `present`: only a raw file on disk is ever replaced (module docstring).
     from transport_maps.sources import fixed_links
 
-    snap = fixed_links.cached_snapshot(region)
-    return Extract(region, kind, snap, up, present=snap is not None)
+    return Extract(region, kind, fixed_links.cached_snapshot(region), up, present=False)
 
 
 def survey(extracts_dir: pathlib.Path, regions=REGIONS) -> list[Extract]:
@@ -179,7 +184,15 @@ def refresh(extracts_dir: pathlib.Path | None = None, regions=REGIONS) -> list[E
 
     found = survey(extracts_dir, regions)
     for e in found:
-        if not e.present:
+        behind = (e.local is not None and e.upstream is not None
+                  and e.upstream - e.local >= max_age())
+        if not e.present and behind:
+            logger.warning(
+                "%s fixed links were parsed from the %s extract, %s behind Geofabrik's, and its "
+                "raw file is gone, so it is not re-downloaded automatically; refresh it with "
+                "OSM_REPLACE=1 scripts/osm_fixed_links.sh %s", e.region, e.local.date(),
+                e.upstream - e.local, e.region)
+        elif not e.present and e.local is None:
             logger.info("%s %s extract: not on disk, so not refreshed; the build reports it "
                         "missing (install it with its script)", e.region, e.kind)
         if e.stale:
