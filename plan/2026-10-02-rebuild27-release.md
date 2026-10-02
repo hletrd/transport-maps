@@ -18,6 +18,17 @@ no-rail; log `data/build/rebuild27.log`).
   more than the web host has free. The page already notes when the itemised
   modes and the total differ.
 
+## Code freeze while the chain runs
+Each step of the chain is a fresh `uv run` from the main checkout, so the
+variant builds use whatever `src/` holds when they start. The full build ran
+from `ee35274`; the variants will run with the commits merged since, all
+designed and tested output-identical (fa12fdd, 4924efb, 4d49eb8, 14b7d00,
+72e0163, 6a23da8, c97bdf4, c93c321, 48ca6bb, 353d7a7, 7db64fe, 3c94bfb,
+b3806b3 -- identity, progress records, speed, calibration values moved with
+values unchanged, wording). Nothing that changes the model or the inputs is
+merged until `ALL BUILDS DONE`: A15 waits on branch `rebuild28`, G2 likewise.
+The "no cell faster than the full map" check below is the backstop.
+
 ## Release checklist (in this order)
 - [ ] Chain finished: `ALL BUILDS DONE` in the log, no `CHAIN STOPPED`.
 - [ ] Every variant: no cell faster than the full map (all origins).
