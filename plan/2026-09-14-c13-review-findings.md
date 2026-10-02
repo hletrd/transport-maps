@@ -118,10 +118,12 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
   `routes.parquet` starts the crawl itself (80 Action API batches plus the
   Wikidata titles not yet cached), so do that first, outside any build.
 
-- [ ] **C13-8 — a build can start beside a resident solver and neither can see
+- [~] **C13-8 — a build can start beside a resident solver and neither can see
   the other.** ARCH13-2, and a prerequisite for anything resident.
   `cli.py:175` and `deploy_verify.sh:74` both detect concurrency by matching
   the literal string `build-all`. Tracked as C13-F2.6 in the solver document.
+  (2026-10-02: **OBSOLETE.** The solver runs on the web host and the build
+  runs on the owner's Mac, so they never share a machine. See C13-F2.6.)
 
 - [ ] **C13-9 — two gates that cannot fail.** V13-27 (HIGH):
   `deploy_verify.sh:56-57` exits 0 when `node` is absent, so a syntactically
