@@ -232,9 +232,21 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       resume rebuilds every origin. Tests: `tests/test_progress.py`,
       `tests/emit/test_build_identity.py`; each mutation in their docstrings
       red.
-- [ ] **S2** `BuildContext` frozen dataclass via `Pool(initializer=…)`; remove
+- [x] **S2** `BuildContext` frozen dataclass via `Pool(initializer=…)`; remove
       the rasterio/GDAL fallbacks in `modes.py:47-50` and `validate.py:149-153`;
       one poisoned-import fork test (ARCH-5).
+  - [x] **S2 (fallbacks half)** (2026-10-02) `modes.mode_minutes_per_node`
+        requires `cell_class` and `validate.check_monotonic_ground` requires
+        `country` and `zone` (keyword-only); `None` raises `TypeError` instead
+        of reloading through rasterio or pyogrio/polars. Every build caller
+        already passed them, so only three gate tests that leaned on the
+        fallback changed (they now pass KOR, as the build would). The test
+        (`tests/cli/test_worker_imports.py`) runs the real `_solve_one` --
+        every writer, the coverage and monotonic gates -- in a fork pool
+        worker whose polars, pyogrio and rasterio entry points and the two
+        in-repo loaders raise, on the layout-contract fixture. Each fallback
+        restored with `_solve_one` passing `None` turns it red. No output
+        change: same arrays, same calls.
   - [x] **S2 (context half)** (2026-10-02) `cli.BuildContext` (frozen,
         `shared` a `MappingProxyType`) is the pool initializer's argument;
         `_init_worker` watches the parent and keeps it, and the parent's

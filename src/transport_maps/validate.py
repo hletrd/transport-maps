@@ -291,8 +291,8 @@ def _ground_neighbours(idx, pos: int, cell: str, fine: np.ndarray,
     return out
 
 
-def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
-                           country=None, zone=None, stride: int = MONOTONIC_STRIDE) -> None:
+def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray, *,
+                           country, zone, stride: int = MONOTONIC_STRIDE) -> None:
     """Dijkstra's invariant: no cell beats reaching it via an adjacent cell.
 
     For adjacent p and q, minutes[q] must not exceed minutes[p] plus the ACTUAL
@@ -331,7 +331,7 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
     """
     import h3
 
-    from transport_maps.graph import ground, transfers
+    from transport_maps.graph import ground
     from transport_maps.sources import countries
 
     # The gate must charge what hex_edges charges. Three things it did not know
@@ -342,12 +342,13 @@ def check_monotonic_ground(idx, minutes: np.ndarray, speeds: np.ndarray,
     # (graph/landmass, `idx.severed`). The first build to sever them died here
     # on its first origin: Tinian-side cells were rightly far later than their
     # Saipan-side neighbours, with no edge between them to break the invariant.
-    # Callers running under fork pass these in; loading them here would call
-    # polars and pyogrio from a forked child, which deadlocks.
-    if country is None:
-        country = countries.cell_country(idx.cells)
-    if zone is None:
-        zone = [transfers.immigration_zone(countries.iso2(c)) if c else "" for c in country]
+    # `country` and `zone` are required, computed once in the parent
+    # (`countries.cell_country`, `ground.cell_zones`). Deriving them here was
+    # a pyogrio and polars call, and under fork a worker that took that path
+    # because a caller dropped the keyword deadlocks instead of failing (S2).
+    if country is None or zone is None:
+        raise TypeError("check_monotonic_ground needs country and zone; they are "
+                        "computed once in the parent, never inside a worker")
     crossing = ground._land_border_min()
     severed = getattr(idx, "severed", frozenset())
     fine_attr = getattr(idx, "fine", np.zeros(0, dtype=bool))

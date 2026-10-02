@@ -30,7 +30,7 @@ MAX_MINUTES = config.UNREACHABLE - 1
 
 
 def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
-                          cell_class: np.ndarray | None = None) -> np.ndarray:
+                          cell_class: np.ndarray) -> np.ndarray:
     """(n_nodes, len(CHANNELS)) array of minutes spent in each surface mode.
 
     Accumulated down the shortest-path tree in one pass ordered by distance, so
@@ -41,15 +41,19 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
     ground edge) and a ferry when it does not, since only a crossing can join
     two cells the ground network keeps apart -- including two neighbours that
     open water severs (graph/landmass).
+
+    `cell_class` is `graph.ground.cell_class(idx)`, computed once in the
+    parent. It is required: deriving it here was a rasterio read, and a forked
+    worker that took that path because a caller dropped the keyword hangs
+    rather than fails (S2, ARCH-5).
     """
+    if cell_class is None:
+        raise TypeError("mode_minutes_per_node needs cell_class; it is computed once "
+                        "in the parent, never inside a worker")
     n_cells = idx.n_cells
     n_air = len(idx.airports)
     first_stn = n_cells + 2 * n_air
 
-    if cell_class is None:
-        from ..sources import roads
-
-        cell_class = roads.cell_class(idx.cells)
     acc = np.zeros((len(minutes), len(CHANNELS)), dtype=np.float64)
     finite = np.isfinite(minutes)
     order = np.argsort(np.where(finite, minutes, np.inf), kind="stable")
@@ -89,7 +93,8 @@ def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path,
 
     Taken from the same solver cell the hover time came from
     (hover._representative_children), so the breakdown describes the journey
-    the number refers to rather than a different one.
+    the number refers to rather than a different one. Without `acc`,
+    `cell_class` is required (`mode_minutes_per_node`).
     """
     if parents is None:
         parents = sorted({h3.cell_to_parent(c, config.HOVER_RES) for c in idx.cells})

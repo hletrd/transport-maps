@@ -110,6 +110,11 @@ def _adjacent_pair() -> tuple[str, str]:
     return seoul, neighbour
 
 
+# Both cells of the pair lie in South Korea. The gate takes country and zone
+# from its caller (the build computes them once, in the parent: S2).
+_ONE_COUNTRY = {"country": np.array(["KOR", "KOR"]), "zone": ["", ""]}
+
+
 def test_inconsistent_neighbour_time_is_rejected():
     """A neighbour reported far more expensive than the actual hop from an
     already-reached cell violates Dijkstra's own invariant.
@@ -122,7 +127,8 @@ def test_inconsistent_neighbour_time_is_rejected():
     minutes = np.array([0.0, 1e6])
 
     with pytest.raises(ValueError, match="inconsistent"):
-        validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx))
+        validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx),
+                                        **_ONE_COUNTRY)
 
 
 def test_consistent_neighbour_time_is_accepted():
@@ -134,7 +140,8 @@ def test_consistent_neighbour_time_is_accepted():
     minutes = np.array([0.0, 0.0])  # reaching the neighbour "for free" only helps
 
     # must not raise
-    validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx))
+    validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx),
+                                    **_ONE_COUNTRY)
 
 
 def test_a_severed_pair_is_exempt_like_a_closed_border():
@@ -152,7 +159,8 @@ def test_a_severed_pair_is_exempt_like_a_closed_border():
     minutes = np.array([0.0, 1e6])
 
     # must not raise
-    validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx))
+    validate.check_monotonic_ground(idx, minutes, ground.cell_speed_kmh(idx),
+                                    **_ONE_COUNTRY)
 
 
 # --- Graph connectivity gate (I3) --------------------------------------------
