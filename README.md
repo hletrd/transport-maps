@@ -108,8 +108,9 @@ No commercial flight data (schedules, frequencies or positions) is used
 anywhere in this pipeline; `tests/test_licence_firewall.py` checks that no
 provider fingerprint reaches `dist/`. One commercial service is used during
 **calibration only**: `scripts/calibrate_ground.py` samples driving times from
-Google Routes and fits four of the six per-road-class speeds in
-`graph/ground.py` (classes 1-4) and the urban factor in `sources/urban.py`.
+Google Routes and fits four of the six per-road-class speeds (classes 1-4)
+and the urban factor, which `calibration.toml` (`[ground]`, `[urban]`) records
+with their provenance and `graph/ground.py` and `sources/urban.py` read.
 Roadless terrain and local roads keep published-figure defaults: for roadless
 terrain the fit returned a negative time per kilometre (a reciprocal of
 -0.00978 h/km, about -102 km/h, from 2,272 km across 55 journeys), which the

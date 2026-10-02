@@ -58,7 +58,7 @@ The 5.x note that used to stand here -- pmtiles' protocol handler "called once
 for the metadata and then never for tiles" on 6.x -- does not reproduce on
 6.11.2 with pmtiles 4.5.0: bands and water render at every viewport and past
 zoom 9, and the page renders within 0.02% of the pixels 5.24.0 drew from the
-same data (cycle-3 I2 note in `plan/2026-09-10-c2-security-and-policy.md`).
+same data (cycle-3 I2 note in `plan/archive/2026-09-10-c2-security-and-policy.md`).
 
 CVE-2026-85061 (a `DOM.sanitize` bypass in 5.x; advisory:
 https://advisories.gitlab.com/npm/maplibre-gl/CVE-2026-85061/) was fixed

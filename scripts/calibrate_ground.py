@@ -9,8 +9,9 @@ cells (resolution 6, refined to 7), so solving once and taking many
 destinations off the same tree turns a prohibitive 2,000 solves into 50.
 
 Run twice so far: 1,383 journeys (data/build/ground_samples.json) fitted the
-urban factor in sources/urban.py, then 2,998 (ground_samples2.json) fitted
-the per-class speeds shipped in graph/ground.py. The samples stay in
+urban factor, then 2,998 (ground_samples2.json) fitted the per-class speeds;
+both now live in calibration.toml ([urban], [ground]), read by sources/urban.py
+and graph/ground.py. The samples stay in
 data/build/ (gitignored); nothing from them reaches dist/.
 
 For each sampled journey the path is walked to accumulate kilometres per GRIP4

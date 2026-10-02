@@ -4,8 +4,8 @@
 Superseded as a calibration input by scripts/calibrate_ground.py, which samples
 real journeys from Google Routes instead of six hand-picked ones. It has run
 twice: a first pass of 1,383 journeys (data/build/ground_samples.json) fitted
-the urban factor in sources/urban.py, and a second of 2,998
-(ground_samples2.json) fitted the per-class speeds shipped in graph/ground.py.
+the urban factor, and a second of 2,998 (ground_samples2.json) fitted the
+per-class speeds -- both recorded in calibration.toml ([urban], [ground]).
 The first pass showed these six were not merely thin but misleading: they
 implied the model was 2.1x too fast everywhere, when between towns it was only
 1.12x out and the error was almost entirely urban.
