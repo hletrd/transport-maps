@@ -400,3 +400,19 @@ def test_the_bodies_nginx_answers_for_the_solver_are_the_wire_format():
         assert json.loads(m.group(1)) == wire.error_body(code)
         retry = re.search(r"location @solver_" + code + r" \{.*?Retry-After (\d+)", conf, re.S)
         assert retry and int(retry.group(1)) == wire.RETRY_AFTER_S[code]
+
+
+def test_the_solver_route_keeps_no_access_log():
+    """The query string is where a visitor departs from and is going, and the
+    privacy text says it reaches this server and no one else. A default access
+    log would keep every point.
+
+    Mutation performed and reverted: delete `access_log off;` -> red.
+    """
+    import re
+
+    from transport_maps import config
+
+    conf = (config.ROOT / "deploy" / "worldmap.atik.kr.conf").read_text()
+    block = re.search(r"location = /api/solve \{(.*?)\n    \}", conf, re.S)
+    assert block and re.search(r"^\s*access_log off;", block.group(1), re.M)
