@@ -368,9 +368,16 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       include `water.LAYER`; a test pins the page's `source-layer` to the same
       name. The live `dist/water.pmtiles` (z0-11, `water`) passes.
       `tests/web/test_check_dist.py`, seven mutants.
-- [ ] **L12 (PR-14 half)** `-D 10` / low-detail for the water layer's z0–2.
-      Split out of the line above: it changes the tileset, so it lands with
-      the next `scripts/build_water_tiles.py` run, not with a gate.
+- [x] **L12 (PR-14 half)** ~~`-D 10` / low-detail for the water layer's z0–2.~~
+      **Won't do -- measured 2026-10-02.** A `-D 10` build is 386 MB against
+      504 MB, and its tiles are half the size or less (largest tile at z3-z6:
+      15-24 KB against 67-100 KB). But tippecanoe's `-D` applies to every zoom
+      below the maximum, not to z0-2 alone, and at z7 the coast is visibly
+      coarser: Copenhagen's shore and the small lakes go to straight-edged
+      polygons (side-by-side crop compared in the browser; 0.5-1.0% of pixels
+      differ across four views, concentrated on coasts). Limiting it to z0-2
+      would need a second tileset joined with `tile-join` to save about
+      0.3 MB of the world view's tiles. Not worth either cost.
 - [x] **A10** Stable secondary key in `osm.rail_routes` dedupe. **A12** Count
       and bound dropped ferry crossings; book a ferry leg as ferry when the base
       parents are adjacent. **A14** Monotonic-ground gate over cross-resolution
