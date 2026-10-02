@@ -219,8 +219,24 @@ Controls, focus, tooltips, semantics
       return and moving the memo off `places` each turn one red);
       `test_code_first.py` lifts the airport key line from app.js and goes red
       when `code:` is dropped.)
-- [ ] **C3** Hover outline and reading from the same cell (needs the split-cell
-      set from the emitter and a rebuild). **C1** Route chain through surface
+- [x] **C3 (page half)** Hover outline and reading from the same cell, as far
+      as the shipped data allows. (2026-10-02: the page reads at res 6 from the
+      reading tier and at res 4 when it falls back -- tier in flight, Save-Data,
+      absent, or contradicted by the coarse tier -- and the ring was always
+      res 6. `highlight` now takes `readingGrid()` from the lookup just made,
+      and `rereadPointer` redraws a ring under a still pointer when the data
+      that lands moves the reading to another grid (`reoutline`). The line
+      under the number says "read from the wider grid" instead of "a wider
+      cell than the outline", and the method panel says the outline widens
+      with it. Guard: `tests/web/test_hover_ring_grid.py` runs the real
+      mousemove handler, `highlight`, `reoutline` and `rereadPointer` in node;
+      four mutations, each red.)
+- [ ] **C3 (res-7 half)** Outline the refined cell where the surface was solved
+      at res 7 (needs the split-cell set from the emitter and a rebuild). Not
+      possible on today's files: the reading tier holds ONE value per res-6
+      cell (its centre res-7 child's, `emit/hover.py` `reading_layout`), so a
+      res-7 ring would outline a cell the number is not read from unless the
+      emitter also ships res-7 readings. **C1** Route chain through surface
       transfers (rebuild). **C2 (accounting)** Per-leg surface minutes
       (rebuild). **C8** One rounding rule (rebuild). **C11** Filter dropped
       airports from search; disambiguate duplicate names with region.

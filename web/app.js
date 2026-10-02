@@ -95,15 +95,17 @@ const HOVER_RES = meta.hoverRes ?? 4;
 // tests/web/test_module_scope_order.py refuses it, correctly.
 //
 // It cannot be derived from `origin.reading` alone: a reading that falls back
-// to the coarse tier comes from a wider cell than the outline, which is
-// exactly what that line exists to disclose.
+// to the coarse tier comes from a wider cell, which is exactly what that line
+// exists to disclose -- and, since C3, the cell the hover ring outlines.
 let lastReadingRes = HOVER_RES;
 // The surface is solved per res-6 cell (~6.5 km across), refined to res 7
 // (2.4 km) in dense regions; the readout array is res 4 (~45 km) and holds
 // each parent's CENTRE child's value, to stay small. The highlight shows the
-// solved base cell -- outlining the readout parent drew a hexagon seven times
-// the size of anything the map was computed from. (Where the surface was
-// refined, the outline is still the res-6 parent: finding C3, cycle 3.)
+// cell the number was READ from (C3): the res-6 cell whenever the reading tier
+// answers, which is the solved base cell, and the res-4 cell only when the
+// number itself came from the res-4 array. (Where the surface was refined to
+// res 7 the outline is still the res-6 cell, and so is the reading: the res-7
+// half of C3 needs the split-cell set from the emitter and a rebuild.)
 const SOLVE_RES = meta.solveRes ?? 6;
 // The reading tier. When index.json advertises it, the number printed under
 // the pointer comes from a res-6 array -- the grid the base band is painted
@@ -291,6 +293,7 @@ let BANDS;
 let lockNorth, namePlaces;
 let places = null;              // gazetteer: flat typed arrays plus the rows
 let hoveredCell = null;
+let hoveredAt = null;           // {lat, lon} the hover ring was last drawn for
 let raf = 0;
 let scaleTimer = 0;            // scheduleScaleRefresh's debounce; see the resize listener
 let pinB = null;                // the destination, once one is set
@@ -1104,8 +1107,16 @@ function onNearSide(lat, lng) {
   return cosArc > Math.cos(85 * rad);
 }
 
-function highlight(lat, lon) {
-  const cell = h3.latLngToCell(lat, lon, SOLVE_RES);
+//: `res` is the grid the number beside the ring was read from (readingGrid()
+//: just after its lookup), so the ring and the number describe one cell. It
+//: was always SOLVE_RES, and wherever the reading fell back to the res-4 array
+//: -- the reading tier still in flight, declined under Save-Data, absent from
+//: the build, or contradicting the coarse tier -- the ring outlined a 6.5 km
+//: cell around a number read from a 45 km one, and the line under the number
+//: had to apologise for it. Finding C3.
+function highlight(lat, lon, res = SOLVE_RES) {
+  const cell = h3.latLngToCell(lat, lon, res);
+  hoveredAt = { lat, lon };
   if (cell === hoveredCell) return;
   hoveredCell = cell;
   // unwrap(), for the same reason renderRoute() uses it: a cell straddling the
@@ -1119,7 +1130,7 @@ function highlight(lat, lon) {
     { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] } }] });
 }
 function clearHighlight() {
-  hoveredCell = null;
+  hoveredCell = hoveredAt = null;
   map.getSource("hover").setData({ type: "FeatureCollection", features: [] });
 }
 
@@ -3322,16 +3333,16 @@ function showReading(lat, lng, point) {
     : t === null ? "Open water."
     : placeLine(lat, lng)
       + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`
-      // The ring is drawn at SOLVE_RES. Whenever the NUMBER came from a
-      // coarser grid than that -- the reading tier still in flight, absent
-      // from this build, or declined under Save-Data -- what is outlined and
-      // what is printed describe different hexagons, and the page says so
-      // rather than leaving a visitor to assume they agree. Compared against
-      // SOLVE_RES, not READING_RES: READING_RES is null on a build from
-      // before the tier existed, and gating on it made the method panel's
-      // "the outlined hexagon is the cell the time is read from" a claim
-      // nothing on the page qualified.
-      + (grid !== SOLVE_RES ? " · read from a wider cell than the outline" : "");
+      // Whenever the NUMBER came from a coarser grid than the solved one --
+      // the reading tier still in flight, absent from this build, or
+      // declined under Save-Data -- the page says so rather than leaving a
+      // visitor to assume a 6.5 km reading. The hover ring follows the same
+      // grid (C3), so it no longer disagrees; this line is what explains why
+      // it just grew. Compared against SOLVE_RES, not READING_RES:
+      // READING_RES is null on a build from before the tier existed, and
+      // gating on it left the method panel's account of the wider grid a
+      // claim nothing on the page qualified.
+      + (grid !== SOLVE_RES ? " · read from the wider grid" : "");
   return t;
 }
 // One live region for the whole page, written only when a reading is
@@ -3355,6 +3366,7 @@ function announceReading(lat, lng, t, label) {
 // Once an origin's times land, the reading under the pointer (or the last
 // tap) is redone, so it never keeps saying "loading".
 function rereadPointer() {
+  reoutline();
   // A pinned destination owns the headline, so when the arrays land it is the
   // PIN that has to be re-read, not the last place the pointer happened to be.
   const from = pinB ? { lat: pinB.lat, lng: pinB.lon } : lastPointer;
@@ -3365,6 +3377,19 @@ function rereadPointer() {
   // band when the place is now on the far side of the globe.
   const point = onNearSide(lat, lng) ? map.project([lng, lat]) : null;
   showReading(lat, lng, point);
+}
+
+// The ring under a pointer that has not moved, redrawn on the grid the data
+// that just landed reads from. Without it the reading tier arriving under a
+// still pointer moved the NUMBER to the res-6 cell and left the ring on the
+// res-4 one -- C3's disagreement, for as long as the mouse stayed put. Its own
+// lookup, not lastPointer's: with a destination pinned the headline is the
+// pin's, and the ring is wherever the mouse is.
+function reoutline() {
+  if (!hoveredCell || !hoveredAt) return;
+  const { lat, lon } = hoveredAt;
+  if (lookup(lat, lon) == null) { clearHighlight(); return; }
+  highlight(lat, lon, readingGrid());
 }
 
 map.on("mouseout", () => { $("tip").hidden = true; clearHighlight(); });
@@ -3385,9 +3410,12 @@ map.on("mousemove", (e) => {
     // carries the hovered time, the ring still moves, and clearing the route
     // hands the headline back.
     const t = pinB ? lookup(lat, lng) : showReading(lat, lng, e.point);
+    // On the line after the lookup, as showReading captures it: readingGrid()
+    // answers about the LAST lookup, and the ring must outline that one's cell.
+    const grid = readingGrid();
     const tip = $("tip");
     if (t == null) { tip.hidden = true; clearHighlight(); return; }
-    highlight(lat, lng);
+    highlight(lat, lng, grid);
     // The setting is respected in describe() and announceReading() and was
     // ignored here -- so unticking a box labelled "Name the place under the
     // cursor" left the panel reading 37.57N 126.98E while the tip glued to

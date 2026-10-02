@@ -231,6 +231,12 @@ def test_the_page_says_when_the_number_came_from_a_coarser_cell_than_the_ring():
     Mutation performed and reverted: compare against READING_RES -> red.
     Mutation performed and reverted: drop the capture and call `readingGrid()`
     at the use site -> red.
+
+    C3 (2026-10-02): the ring now follows the same grid
+    (tests/web/test_hover_ring_grid.py runs that), so the line no longer says
+    "wider cell than the outline" -- there is no such disagreement left to
+    disclose -- but "read from the wider grid", which is what explains a ring
+    that has just grown. The method panel says the outline widens with it.
     """
     body = CODE[CODE.index("function showReading("):]
     body = body[:body.index("\n}")]
@@ -242,12 +248,14 @@ def test_the_page_says_when_the_number_came_from_a_coarser_cell_than_the_ring():
     assert "READING_RES" not in body.split("grid !== SOLVE_RES")[0][-200:], (
         "the comparison is gated on READING_RES, which is null on a build made "
         "before the reading tier existed")
-    assert "wider cell than the outline" in body
+    assert "read from the wider grid" in body
     html = (config.ROOT / "web" / "index.html").read_text(encoding="utf-8")
     flat = " ".join(html.split())
     assert "the cell the time is read from" in flat, (
         "the method panel no longer says where the number is read; this guard exists to "
         "keep that sentence and its qualifier in step")
+    assert "the outline widens to that grid's cell" in flat, (
+        "the method panel no longer says the ring follows the wider grid")
 
 
 # --- and the same rule RUN, not asserted about ------------------------------
