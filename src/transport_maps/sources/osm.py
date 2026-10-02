@@ -415,6 +415,23 @@ def _rail_cache_path(fingerprint) -> pathlib.Path:
         + ".parquet")
 
 
+def _fingerprint(extracts_dir, paths, *, by_mtime: bool = False) -> list[tuple]:
+    """What the rail and ferry caches key each extract on: its directory and
+    name, its size, and the replication snapshot in its header (G2) -- or its
+    mtime, for an extract whose header carries none, and for `by_mtime`, the
+    pre-G2 key, which `geofabrik.adopt` uses to rename a cache built from
+    the very same file rather than parse it again."""
+    from transport_maps.sources import geofabrik
+
+    out = []
+    for p in paths:
+        st = p.stat()
+        snap = None if by_mtime else geofabrik.snapshot(p)
+        out.append((str(extracts_dir), p.name, st.st_size,
+                    snap.isoformat() if snap else st.st_mtime_ns))
+    return out
+
+
 def ferry_links(*, extracts_dir=None) -> pl.DataFrame:
     """Every ferry crossing's two endpoints and schedule tags, across all extracts."""
     extracts_dir = extracts_dir or (config.CACHE / "osm")
@@ -423,9 +440,10 @@ def ferry_links(*, extracts_dir=None) -> pl.DataFrame:
         raise FileNotFoundError(
             f"no *-rail.osm.pbf in {extracts_dir}; run scripts/osm_rail.sh first"
         )
-    fingerprint = [(str(extracts_dir), p.name, p.stat().st_size, p.stat().st_mtime_ns)
-                   for p in paths]
-    cached = _ferry_cache_path(fingerprint)
+    from transport_maps.sources import geofabrik
+
+    cached = _ferry_cache_path(_fingerprint(extracts_dir, paths))
+    geofabrik.adopt(cached, _ferry_cache_path(_fingerprint(extracts_dir, paths, by_mtime=True)))
     if cached.exists():
         return pl.read_parquet(cached)
 
@@ -454,10 +472,13 @@ def rail_routes(*, extracts_dir=None) -> pl.DataFrame:
     # names alone means a re-downloaded extract -- same name, new contents --
     # silently reuses the stale parquet, and two callers pointing at different
     # directories that happen to hold "europe-rail.osm.pbf" read each other's
-    # results. Size and mtime are what change when a file is replaced.
-    fingerprint = [(str(extracts_dir), p.name, p.stat().st_size, p.stat().st_mtime_ns)
-                   for p in paths]
-    cached = _rail_cache_path(fingerprint)
+    # results. Size and mtime were what changed when a file was replaced; the
+    # replication snapshot in the header is what the file IS (G2), and does
+    # not change when it is merely copied.
+    from transport_maps.sources import geofabrik
+
+    cached = _rail_cache_path(_fingerprint(extracts_dir, paths))
+    geofabrik.adopt(cached, _rail_cache_path(_fingerprint(extracts_dir, paths, by_mtime=True)))
     if cached.exists():
         return pl.read_parquet(cached)
 

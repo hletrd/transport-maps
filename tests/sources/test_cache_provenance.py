@@ -385,10 +385,14 @@ _COVERED_BY_TABLE = {
 #: entry here is a decision someone has to write down, not a silent omission.
 _NOT_IN_THIS_TABLE = {
     # The INPUT half of the fixed-link key: the extract's own name, size and
-    # mtime, and no module constant at all -- there is no row to write.
-    # `tests/sources/test_fixed_links.py::test_a_newer_download_is_a_cache_miss`
-    # pins it instead, and goes red when the source key is ignored.
-    "fixed_links._source_key": "hashes the extract's name/size/mtime, no constant",
+    # replication snapshot (G2), and no module constant at all -- there is no
+    # row to write. `tests/sources/test_fixed_links.py` pins it instead:
+    # `test_a_newer_download_is_a_cache_miss` and the snapshot tests go red
+    # when the source key is ignored.
+    "fixed_links._source_key": "hashes the extract's name/size/snapshot, no constant",
+    # The pre-G2 name/size/mtime key, kept for header-less extracts and to
+    # adopt a cache built from the same file (geofabrik.adopt).
+    "fixed_links._mtime_key": "hashes the extract's name/size/mtime, no constant",
 }
 
 
