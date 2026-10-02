@@ -1685,6 +1685,12 @@ fetch("./places.json")
       // Largest cities claim their screen space first; a smaller one whose
       // label would land within the gap of one already placed is skipped, so
       // the map thins itself rather than piling names on top of each other.
+      // A linear scan, on purpose. R8 asked for a grid-bucketed test here
+      // (PR-17); measured in node on the real gazetteer at four views up to
+      // 489 candidates on screen, the scan cost 0.003-0.016 ms a frame and two
+      // grids (a Map of buckets, a flat linked grid) 0.005-0.038 ms and
+      // 0.005-0.016 ms. `some` stops at the first hit and fewer than 120
+      // labels are ever placed, so there was nothing for a grid to save.
       const placed = [];
       const gapX = 70, gapY = 16;
       const collides = (pt) => placed.some((q) => Math.abs(q.x - pt.x) < gapX && Math.abs(q.y - pt.y) < gapY);
@@ -1730,8 +1736,20 @@ fetch("./places.json")
   })
   .catch(() => { /* the map is still readable without names */ });
 
+//: Once per pointer frame, not twice. The readout's describe() and the tooltip
+//: both ask about the same e.lngLat in the same frame, and each paid a full
+//: 34,135-row scan for it. The last answer is kept ON `places` rather than in a
+//: module-level `let`: it is then dropped with the gazetteer it was computed
+//: from, and there is no second binding for the state block to declare.
 function nearestPlace(lat, lon) {
   if (!places) return null;
+  const memo = places.last;
+  if (memo && memo.lat === lat && memo.lon === lon) return memo.p;
+  const p = nearestPlaceScan(lat, lon);
+  places.last = { lat, lon, p };
+  return p;
+}
+function nearestPlaceScan(lat, lon) {
   const rad = Math.PI / 180;
   const cosLat = Math.cos(lat * rad);
   let best = -1, bestD = Infinity;
@@ -3899,7 +3917,10 @@ fetch("./airports.json")
   .then((r) => (okOr(r, "airports.json") ? r.json() : null))
   .then((a) => {
     if (!a) return;
-    airports = a.airports.map((row) => Object.assign(row, { key: fold(row[1]) }));
+    // Both search keys once, here, not per keystroke: render() compared the
+    // code as `a[0].toLowerCase()` for every one of 4,008 rows on every key
+    // (PR-18), beside a name key that was already folded at load.
+    airports = a.airports.map((row) => Object.assign(row, { key: fold(row[1]), code: row[0].toLowerCase() }));
     // The drawn journey resolves every one of its points through this table,
     // and so does the itinerary's airport naming. Before it lands, every
     // lookup returns undefined and the globe draws ZERO route features against
@@ -4023,7 +4044,7 @@ function render(filter = "") {
   // column the page ignored.
   const SIZE_RANK = { large: 0, medium: 1, small: 2 };
   const rankAirport = (a) => {
-    if (a[0].toLowerCase() === f) return 0;
+    if (a.code === f) return 0;
     if (a.key.startsWith(f)) return 1;
     return (" " + a.key).includes(" " + f) ? 2 : 3;
   };
@@ -4035,7 +4056,7 @@ function render(filter = "") {
   // across three keystrokes and "airport" 36.8 ms; ranking first is 4.5x
   // faster. A mid-range phone was landing at 65-125 ms per keystroke.
   const apHits = f.length >= 2
-    ? airports.filter((a) => a[0].toLowerCase() === f || a.key.includes(f))
+    ? airports.filter((a) => a.code === f || a.key.includes(f))
         .map((a) => ({ a, r: rankAirport(a), s: SIZE_RANK[a[5]] ?? 3, n: a[1].length }))
         .sort((x, y) => x.r - y.r || x.s - y.s
           // The plainer name wins a tie: "Tokyo Haneda International Airport"
@@ -4075,7 +4096,7 @@ function render(filter = "") {
   // keystroke behaviour this rule exists for is untouched: no departure city
   // is called JFK.
   const codeFirst = f.length === 3 && hits[0]?.key !== f
-    && apHits.some((a) => a[0].toLowerCase() === f);
+    && apHits.some((a) => a.code === f);
   if (codeFirst) list.append(...airportRows);
 
   for (const c of hits) {

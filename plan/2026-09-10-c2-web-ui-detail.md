@@ -202,8 +202,23 @@ Controls, focus, tooltips, semantics
       removes the value half.
 - [ ] **N22** Owner judgement: a permanent one-line credit under the legend or
       the panel renamed "Sources, licences and method" (DOC-12).
-- [ ] **R8 (page)** `nearestPlace` once per frame; grid-bucketed label
+- [x] **R8 (page)** `nearestPlace` once per frame; grid-bucketed label
       collision; pre-lower-cased search lists (PR-12, PR-17, PR-18).
+      (2026-10-02, measured in node on the real `places.json` (34,135 rows)
+      and `airports.json`, medians of five runs. `nearestPlace` keeps its last
+      answer on `places`, so describe() and the tooltip share one scan: the
+      pointer frame's gazetteer cost went from 0.185 ms to 0.083 ms. Airport
+      codes are lower-cased once at load: the "airport" keystroke's filter went
+      from 0.199 ms to 0.171 ms; city and airport names were already folded at
+      load. The grid collision was built, measured and NOT shipped: at four
+      views with 27-489 candidates on screen the linear scan costs 0.003-0.016
+      ms a frame and a Map-bucketed grid 0.005-0.038 ms (a flat linked grid
+      tied it), because `some` stops at the first hit and under 120 labels are
+      ever placed; the reason is recorded beside `collides` in app.js. Guards:
+      three memo tests in `tests/web/test_nearest_place.py` (dropping the memo
+      return and moving the memo off `places` each turn one red);
+      `test_code_first.py` lifts the airport key line from app.js and goes red
+      when `code:` is dropped.)
 - [ ] **C3** Hover outline and reading from the same cell (needs the split-cell
       set from the emitter and a rebuild). **C1** Route chain through surface
       transfers (rebuild). **C2 (accounting)** Per-leg surface minutes

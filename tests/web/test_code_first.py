@@ -14,6 +14,11 @@ The rule the flag exists for is untouched: no departure city is called JFK, so
 
 Mutation performed and reverted: drop `hits[0]?.key !== f` from the condition
 -> red, all six cities put an airport first again.
+
+R8 (2026-10-02): the airport code is lower-cased once at load (`code:`) rather
+than per row per keystroke, and the key line is now lifted from app.js rather
+than retyped here. Mutation performed and reverted: drop `code:` from that
+line -> red, 2 failed (no code matches any more).
 """
 
 from __future__ import annotations
@@ -33,6 +38,14 @@ APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 def _fold_line() -> str:
     start = APP.index("const FOLD_DROP =")
     return APP[start:APP.index("const cities =", start)]
+
+
+def _airports_line() -> str:
+    """The page's own search keys for the airport table, lifted rather than
+    retyped: the ranking reads `a.code`, which this file's copy of the line
+    did not build, so a retyped copy would rank every code as a miss."""
+    start = APP.index("    airports = a.airports.map(")
+    return APP[start:APP.index("\n", start)]
 
 
 @pytest.fixture(scope="module")
@@ -64,7 +77,9 @@ const ap = JSON.parse(fs.readFileSync({json.dumps(str(airports))}, "utf8"));
 {_fold_line()}
 const cities = meta.origins.slice().sort((a, b) => a.name.localeCompare(b.name));
 for (const c of cities) c.key = fold(c.name);
-const airports = ap.airports.map((row) => Object.assign(row, {{ key: fold(row[1]) }}));
+let airports;
+const a = ap;
+{_airports_line()}
 const UNFILTERED_CAP = 60;
 const dn = new Intl.DisplayNames(["en"], {{ type: "region" }});
 const countryName = (code) => (code ? (dn.of(code) || code) : "");
