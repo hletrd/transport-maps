@@ -30,6 +30,77 @@ def test_slug_rejects_path_separators():
         _slug("a/b")
 
 
+# W1 (plan/2026-09-10-c2-gates-and-tests.md). CPython 3.12+ warns on every
+# fork() from a process with more than one OS thread, and this test process
+# has four before any test runs: importing transport_maps.cli loads polars and
+# pyarrow, whose native pools start at import (measured: 1 thread -> 4; polars
+# alone 1 -> 2, pyarrow alone 1 -> 3). The tests marked with this fork on
+# purpose, because `_build_all` does -- it is the path they exist to test.
+#
+# Silencing it there and only there is safe because the hazard the warning
+# names cannot pass unseen in these tests. A child deadlocks on a lock that
+# another thread held at the fork; the children here run the stubbed
+# pipeline, which keeps polars and GDAL out of workers exactly as the real
+# build does (it preloads their results in the parent), and every one of
+# these tests arms a 15 s SIGALRM that turns a hung pool into a TimeoutError,
+# i.e. red. What the filter hides is the advice, not the failure.
+#
+# Narrow on purpose: this exact message, this category, these tests. Any
+# other warning they raise -- another DeprecationWarning included -- still
+# shows, and the production build still prints this one (its exit criterion,
+# a forkserver/spawn pool, is S2's and is not this).
+FORK_WARNING = (r"This process \(pid=\d+\) is multi-threaded, "
+                r"use of fork\(\) may lead to deadlocks in the child")
+forks_a_threaded_process = pytest.mark.filterwarnings(f"ignore:{FORK_WARNING}:DeprecationWarning")
+
+
+def test_the_fork_warning_filter_matches_that_warning_and_no_other():
+    """The filter is only safe if it is narrow, and only useful if it matches
+    the warning CPython actually raises, so both are checked against a real
+    one: a thread is started and the process forks, and the warning that
+    comes back must be swallowed by the filter while a different
+    DeprecationWarning, and the same text in another category, are not.
+
+    Mutations performed and reverted, each -> red: `is multi-threaded` ->
+    `is threaded` in FORK_WARNING (the real warning is no longer matched);
+    FORK_WARNING -> `.*` (the unrelated DeprecationWarning is swallowed).
+    """
+    import re
+    import threading
+    import warnings
+
+    stop = threading.Event()
+    t = threading.Thread(target=stop.wait)
+    t.start()
+    try:
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.simplefilter("always")
+            pid = os.fork()
+            if pid == 0:
+                os._exit(0)
+            os.waitpid(pid, 0)
+    finally:
+        stop.set()
+        t.join()
+    real = [w for w in seen if issubclass(w.category, DeprecationWarning)
+            and "fork" in str(w.message)]
+    assert real, f"no fork warning from a threaded fork: {[str(w.message) for w in seen]}"
+
+    def survives(message: str, category: type[Warning]) -> bool:
+        with warnings.catch_warnings(record=True) as got:
+            warnings.simplefilter("always")
+            # What pytest builds from the mark: an anchored, case-insensitive
+            # regex on the message, and the category.
+            warnings.filterwarnings("ignore", message=FORK_WARNING, category=DeprecationWarning)
+            warnings.warn(message, category, stacklevel=1)
+        return bool(got)
+
+    assert re.match(FORK_WARNING, str(real[0].message))
+    assert not survives(str(real[0].message), DeprecationWarning), "the filter misses the real warning"
+    assert survives("datetime.utcnow() is deprecated", DeprecationWarning), "the filter is not narrow"
+    assert survives(str(real[0].message), RuntimeWarning), "the filter ignores the category"
+
+
 # Where the stubbed solver-bundle writer records its calls (kept out of
 # `written`, whose length several tests count).
 BUNDLES: list = []
@@ -260,6 +331,7 @@ def test_the_build_reports_whether_rail_and_ferries_are_included(monkeypatch, tm
             f"{lines[mode].strip()!r}")
 
 
+@forks_a_threaded_process
 def test_a_gate_failure_in_a_forked_worker_aborts_the_run(monkeypatch, tmp_path):
     """With enough origins the workers are FORKED, and multiprocessing's
     worker loop catches only Exception. The coverage gate used to raise
@@ -291,6 +363,7 @@ def test_a_gate_failure_in_a_forked_worker_aborts_the_run(monkeypatch, tmp_path)
     assert index_calls == []
 
 
+@forks_a_threaded_process
 def test_forked_workers_get_the_build_context_from_the_initializer_unpickled(
         monkeypatch, tmp_path, capsys):
     """S2: the forked path runs every origin from a BuildContext handed to the
@@ -330,6 +403,7 @@ def test_forked_workers_get_the_build_context_from_the_initializer_unpickled(
     assert not hasattr(cli, "_CTX")
 
 
+@forks_a_threaded_process
 def test_a_worker_killed_by_a_signal_aborts_the_run_instead_of_hanging(monkeypatch, tmp_path):
     """multiprocessing.Pool respawns a worker that dies of a signal and the
     task's result never arrives, so imap blocks forever: an OOM kill or a
