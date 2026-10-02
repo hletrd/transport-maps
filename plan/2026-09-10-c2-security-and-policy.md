@@ -85,8 +85,26 @@ DOM-write table).
       redirect may only go to https on GitHub's asset hosts; a part over 4 GB or
       a day over 16 GB is refused before download and the declared size caps
       the bytes received. `tests/sources/test_adsb_extract.py`, nine mutants.
-- [ ] **I2 (6.x)** Try MapLibre 6.9.0 with pmtiles 4.5.0 on the preview with
+- [x] **I2 (6.x)** Try MapLibre 6.9.0 with pmtiles 4.5.0 on the preview with
       the tile-loading retest `web/README.md` describes.
+      *2026-10-02:* done on 6.11.2, the latest 6.x (npm tarball, sha512
+      matching the registry's `dist.integrity`); pmtiles stays 4.5.0, still the
+      latest, and needs no change. The old "handler never called for tiles"
+      symptom does not reproduce. What 6.x required: `import * as maplibregl`
+      (no default export); three ES modules, vendored with upstream's `.mjs`
+      renamed to `.js` so the nginx `.js` cache and MIME rules still cover them
+      (one import specifier rewritten in two files); `setWorkerUrl` pointing at
+      `vendor/maplibre-gl-worker.js` before the Map; the WebGL guard narrowed to
+      WebGL2. CVE-2026-85061 is fixed upstream (6.4.1), so the local patch is
+      gone and `test_vendor.py` now pins the upstream fix. Verified against the
+      main `dist/` served read-only with the production CSP: at 1280x800,
+      820x1180, 390x844 and 844x390 the canvas exists, 60 cities list, bands and
+      water render (queryRenderedFeatures > 0 at load and at z6.5, z7.5, z9.5),
+      a click gives a reading and the route panel, console and page errors
+      empty; `browser_verify.sh` passes in full; the 1280x800 renders differ
+      from 5.24.0's by at most 0.02% of pixels. Not deployed. CSP unchanged
+      (the page also ran with `blob:` removed; that tightening is left to a
+      server-side change).
 - [ ] **N22 / DOC-12** Attribution visibility (owner judgement, web plan).
 
 ## Blocked on owner (recorded, not deferred)

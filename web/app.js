@@ -1,4 +1,5 @@
-import maplibregl from "./vendor/maplibre-gl.js";
+// MapLibre 6 is an ES module with no default export.
+import * as maplibregl from "./vendor/maplibre-gl.js";
 import * as pmtiles from "./vendor/pmtiles.js";
 import * as h3 from "./vendor/h3.js";
 
@@ -22,6 +23,11 @@ const UNREACHABLE_BAND = -1;
 const $ = (id) => document.getElementById(id);
 const proto = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", proto.tile);
+// MapLibre 6 starts its worker as a module from a sibling of its own bundle,
+// and the name it guesses is upstream's `maplibre-gl-worker.mjs`. vendor/ ships
+// it as `.js` (web/README.md says why), so name it here: a worker that 404s
+// draws no tiles at all. Before the Map constructor, which builds the pool.
+maplibregl.setWorkerUrl(new URL("./vendor/maplibre-gl-worker.js", import.meta.url).href);
 
 // Anything that reaches the DOM from a dataset (GeoNames, OurAirports,
 // Nominatim, OpenStreetMap station names) goes through this first.
@@ -662,8 +668,8 @@ if (meta.builtAt) {
 }
 
 // ---- globe ----
-// The Map constructor throws SYNCHRONOUSLY when WebGL is unavailable
-// ("Failed to initialize WebGL", quoted from the vendored bundle), and
+// The Map constructor throws SYNCHRONOUSLY when WebGL2 is unavailable
+// (a GPUInitializationError from `_setupPainter` in the vendored bundle), and
 // everything that fills this page runs after it: the city list, the ramp
 // picker, layoutForSize, paintOrigin. So fatal() was never reached and the
 // shell stayed up with an empty list -- and a <canvas> HAS already been
@@ -674,10 +680,12 @@ if (meta.builtAt) {
 if (!(() => {
   try {
     const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+    // WebGL2 only: MapLibre 6 dropped WebGL 1, so a browser that offers
+    // only "webgl" passes a looser check and then throws in the constructor.
+    return !!c.getContext("webgl2");
   } catch { return false; }
 })()) {
-  fatal("This browser cannot draw the globe: it needs WebGL, which is "
+  fatal("This browser cannot draw the globe: it needs WebGL 2, which is "
       + "unavailable or switched off. Hardware acceleration in the browser's "
       + "settings is the usual cause.");
 }
@@ -818,12 +826,13 @@ await Promise.race([
 // For scripts/browser_verify.sh only: lets the post-deploy check ask the map
 // whether the water layer actually rendered rather than trusting a 200.
 window.__map = map;
-// MapLibre is pinned to 5.24 (see web/README.md); this is its projection API.
+// MapLibre 6 (see web/README.md); this is its projection API.
 map.setProjection({ type: "globe" });
 // A faint atmosphere at the limb, so the globe's edge reads against space
-// even where the sea is nearly as dark. Under the globe projection only
-// atmosphere-blend acts (MapLibre 5 disables the sky there); the other keys
-// take effect if the projection ever changes back to Mercator.
+// even where the sea is nearly as dark. MapLibre 6.10+ also draws the sky
+// under the globe projection, fading it out with the camera's altitude; at
+// this page's zooms the render measured within 0.02% of the pixels MapLibre 5
+// drew, so atmosphere-blend still carries the limb.
 map.setSky({
   "sky-color": SPACE, "horizon-color": "#2a3346", "fog-color": SPACE,
   "fog-ground-blend": 0, "horizon-fog-blend": 0.8, "sky-horizon-blend": 0.9,

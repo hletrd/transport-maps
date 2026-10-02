@@ -1,9 +1,11 @@
 # Third-party notices
 
 Every file in `web/vendor/` is redistributed to each visitor of this site, so
-each carries its upstream licence's notice requirement with it. The bundles
+each carries its upstream licence's notice requirement with it. Most bundles
 here were taken from jsDelivr, whose repack strips the source banners, which is
-how four of them came to be served with no copyright notice at all.
+how four of them came to be served with no copyright notice at all. (MapLibre's
+files now come from its npm tarball and keep their banner, which points at the
+licence; the text itself is still reproduced here.)
 
 The texts in this directory are the upstream ones, fetched from each project's
 own repository at the version pinned in `web/README.md`. They are not
@@ -12,7 +14,7 @@ notice to be reproduced verbatim on redistribution.
 
 | Vendored file | Project | Version | Licence | Text |
 |---|---|---|---|---|
-| `maplibre-gl.js`, `maplibre-gl.css` | MapLibre GL JS | 5.24.0 | BSD-3-Clause | `maplibre-gl.LICENSE.txt` |
+| `maplibre-gl.js`, `maplibre-gl-shared.js`, `maplibre-gl-worker.js`, `maplibre-gl.css` | MapLibre GL JS | 6.11.2 | BSD-3-Clause | `maplibre-gl.LICENSE.txt` |
 | `pmtiles.js` | PMTiles | 4.5.0 | BSD-3-Clause | `pmtiles.LICENSE.txt` |
 | `h3.js` | h3-js | 4.2.1 | Apache-2.0 | `h3-js.LICENSE.txt`, `h3-js.NOTICE.txt` |
 | `fflate.js` | fflate | 0.8.3 | MIT | `fflate.LICENSE.txt` |
