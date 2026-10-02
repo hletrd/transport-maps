@@ -127,6 +127,11 @@ def record(name: str, info: dict) -> None:
     _records[name] = dict(info)
 
 
+def checked() -> list[Fingerprint]:
+    """Every file input settled in this process, in the order first asked."""
+    return list(_checked.values())
+
+
 def used() -> dict[str, dict]:
     """Every input this process has read, by URL (files) or by name."""
     out = {fp.url: fp.record() for fp in _checked.values()}

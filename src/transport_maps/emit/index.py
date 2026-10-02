@@ -14,6 +14,7 @@ import numpy as np
 
 from transport_maps import _io, config
 from transport_maps.emit import hover, modes
+from transport_maps.sources import _fetch
 
 # Origin slugs become filenames under dist/origins and path segments in the
 # page's fetch URLs, so reject anything that could escape the directory or
@@ -339,6 +340,16 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
     unreachable sentinel and the mode channels; `buildId` adds the start time so
     two runs of one input set (one of them aborted) stay distinguishable;
     `gitHead` names the commit, for provenance only.
+
+    `inputs` is every raw input the build has read so far, by URL or name,
+    with what identifies the copy it read -- sha256, size, ETag and
+    Last-Modified for a download, the replication snapshot for an OSM
+    extract, the fetch window for the Wikipedia crawl (sources/_fetch.used).
+    `build-all` checks them all before calling this (cli._check_inputs), so
+    it names the upstream snapshot the artifacts were built from (G2). It is
+    deliberately NOT in `inputsHash`: that is the key a resumed build trusts,
+    and the data inputs reach that key through the graph digest
+    (progress.graph_hash) already.
     """
     started = started or datetime.now(UTC)
     # Everything below is sampled NOW, so this must be called when the build
@@ -365,7 +376,8 @@ def build_identity(started: datetime | None = None) -> dict[str, str]:
     return {"inputsHash": inputs,
             "buildId": f"{inputs}-{started:%Y%m%dT%H%M%SZ}",
             "builtAt": started.replace(microsecond=0).isoformat(),
-            "gitHead": _git_head()}
+            "gitHead": _git_head(),
+            "inputs": _fetch.used()}
 
 
 def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None = None,

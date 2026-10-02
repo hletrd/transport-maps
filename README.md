@@ -33,6 +33,7 @@ uv run pytest                              # the gate; -m "not integration" for 
 uv run transport-maps build-all            # every origin -> dist/ (one build per dist/ at a time)
 uv run transport-maps build-all --only seoul,tokyo   # a smoke test through every gate; index.json untouched
 uv run transport-maps build-all --skip-existing     # resume a build that died: rebuild only unfinished origins
+uv run transport-maps build-all --offline  # read every raw input from data/cache, ask no upstream
 uv run transport-maps reindex              # rewrite dist/index.json from the artifacts on disk
 uv run transport-maps assets               # places.json, airports.json, borders.json -> dist/
 uv run python scripts/check_dist.py        # is dist/ consistent enough to deploy?
@@ -63,6 +64,22 @@ solves, not the graph build. `index.json` and a variant's `variant.json` are
 written only once every origin is complete for the run, whichever run built it.
 `scripts/check_dist.py` refuses an origin whose record still says "writing".
 
+Every build first asks each upstream whether its raw input changed and
+downloads what did (`sources/_fetch.py`): a conditional request per file
+(ETag / Last-Modified, from a `<file>.meta.json` sidecar beside it in
+`data/cache`) for OurAirports, Natural Earth, GRIP4, GeoNames and the water
+polygons; Geofabrik's `state.txt` against the snapshot in each OSM extract's
+header, re-extracting a region more than `TRANSPORT_MAPS_OSM_MAX_AGE_DAYS`
+(default 7) behind through `scripts/osm_fixed_links.sh` / `osm_rail.sh` with
+`OSM_REPLACE=1`; and the Wikipedia crawl, whose articles are refetched once a
+day old (Wikidata codes once a month old). A failed check keeps the cached
+copy and says so; a missing input with no copy fails. Every derived cache keys
+on its input's content, so a changed input rebuilds exactly what depends on
+it, and `index.json` records what was read under `inputs`. `--offline` (or
+`TRANSPORT_MAPS_OFFLINE=1`) asks nothing and reads the cache as it is -- use it
+to reproduce a past build, and with `--skip-existing` to resume one on the
+inputs it read.
+
 `reindex` writes `index.json` and nothing else. It is for the case where a build
 outlives a change to the index emitter: the parent process writes `index.json`
 at the end of the run using the module it imported at the start, so a sixteen-hour
@@ -73,8 +90,8 @@ current checkout.
 
 The bands are painted one cell past the shore and the static `water.pmtiles`
 layer, built once from OpenStreetMap water polygons, cuts them back to the real
-coastline on the page. It is not produced by `build-all`; rebuild it only when
-refreshing the OSM download.
+coastline on the page. It is not produced by `build-all`; rebuild it when the
+water polygons change -- the script checks them against the upstream itself.
 
 ## Data sources and attribution
 

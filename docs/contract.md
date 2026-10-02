@@ -177,6 +177,7 @@ file when a field marked *frozen* no longer matches today's code
 | `origins` | [{`slug`, `name`, `lat`, `lon`, `country`?}] | departure cities from `data/origins.toml`. Slugs match `^[A-Za-z0-9][A-Za-z0-9_-]*$`. | `fatal()` |
 | `graph` | {`rail`, `ferry`} | whether rail and ferries were in the graph | not read by the page; `reindex` carries it |
 | `inputsHash`, `buildId`, `builtAt`, `gitHead` | string | `build_identity()`, sampled when the build starts. The page prints `builtAt`; `buildId` ties the solver bundle to the build | no build date |
+| `inputs` | {url-or-name: {...}} | every raw input the build read, as `build-all` checked it first (`sources/_fetch.used`, G2): `sha256`, `size`, `fetchedAt` and the server's `etag`/`lastModified` per download; `snapshot`/`upstream` per OSM extract; the fetch window of the Wikipedia crawl and the Wikidata resolution. Not in `inputsHash`. `reindex` carries it | not read by the page |
 | `solver` | {`wire`} | present only when `data/build/solver` is from this same build (`_solver_matches`) | exact departure off |
 
 `deploy_verify.sh`'s `solver_gate` refuses a deploy whose `index.json` offers
