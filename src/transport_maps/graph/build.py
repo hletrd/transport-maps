@@ -59,6 +59,41 @@ def _air_edges(
     Pairs naming an airport absent from the node index are dropped too, and
     collected into `unknown_out` on the same principle -- that skip used to be
     silent and unbounded.
+
+    Border control is paid once per AIRSIDE journey that leaves its
+    immigration zone, not once per flight (A15). Seoul -> Narita -> Frankfurt
+    passes emigration at Incheon and immigration at Frankfurt; at Narita the
+    traveller never leaves the transit area. Charging every zone-crossing
+    flight made that journey pay 45 + 45 minutes. Whether a border is still
+    owed depends on the journey so far, which one node per airport cannot
+    remember, so every airport has its two nodes twice -- a DOMESTIC layer
+    (`airport_index`, `airport_arr_index`: nothing paid yet on this airside
+    journey) and an INTERNATIONAL one (`airport_intl_index`,
+    `airport_intl_arr_index`: the border has been paid). The edges:
+
+        cell -> A_dep              processing (_access_edges)
+        A_dep -> B_arr             block time; A and B in one zone
+        A_dep -> B_intl_arr        block time + border_min; the first crossing
+        A_intl_dep -> B_intl_arr   block time, whatever the zones: already paid
+        B_arr -> B_dep             connection (_transfer_edges)
+        B_intl_arr -> B_intl_dep   connection, airside transit
+        B_intl_arr -> B_dep        connection where B's zone has no airside
+                                   transit (transfers.NO_AIRSIDE_TRANSIT): the
+                                   traveller is admitted to B's zone, so the
+                                   next crossing is a new one
+        B_arr -> cell              disembark (_access_edges)
+        B_intl_arr -> cell         disembark: leaving the airport is entering
+                                   the zone, and that was paid on the way in
+
+    So the border is charged by the first flight that leaves the zone the
+    traveller went airside in, at the larger terminal of THAT flight (exactly
+    today's figure for a nonstop flight), and not again until the traveller
+    goes landside: a later journey from a cell starts in the domestic layer,
+    and a landside connection -- out through the arrival hall and back in --
+    is one. A journey that flies out of its zone and back into it pays once,
+    which is right too: it does pass emigration and immigration. The
+    international departure node of a no-transit airport has no flights,
+    because nothing reaches it.
     """
     cal = air.load_calibration()
     apts = airports.scheduled_airports()
@@ -69,6 +104,10 @@ def _air_edges(
         )
     }
     known = set(idx.airports)
+    # The zone whose control each airport's passengers pass: OurAirports'
+    # country unless transfers.AIRPORT_COUNTRY corrects it (Ercan).
+    zone = {iata: transfers.immigration_zone(transfers.airport_country(iata, m[3]))
+            for iata, m in meta.items()}
 
     rows: list[int] = []
     cols: list[int] = []
@@ -80,30 +119,36 @@ def _air_edges(
         if src not in known or dst not in known:
             unknown.append((src, dst))
             continue
-        (lat1, lon1, size1, country1) = meta[src]
-        (lat2, lon2, size2, country2) = meta[dst]
+        (lat1, lon1, size1, _) = meta[src]
+        (lat2, lon2, size2, _) = meta[dst]
         d = h3.great_circle_distance((lat1, lon1), (lat2, lon2), unit="km")
         if not is_geographically_plausible(d, size1, size2):
             rejected.append((src, dst, d))
             continue
-        block = air.block_time_min(d, size1, size2, cal)
-        # Border control is a property of the ROUTE, not of either airport, so
-        # it is charged here where both countries are known. Schengen and the
-        # Ireland/UK Common Travel Area count as single zones: those flights
-        # cross a national border but no passport desk. The country is the
-        # one whose control the airport's passengers pass, which for Ercan
-        # is not OurAirports' (transfers.AIRPORT_COUNTRY).
-        if transfers.crosses_border(transfers.airport_country(src, country1),
-                                    transfers.airport_country(dst, country2)):
-            block += transfers.border_min(max(size1, size2, key=_SIZE_RANK.get), cal)
-        # The flight edge carries block time ONLY. Waiting is charged on the
-        # connection edge instead (see _transfer_edges), because a traveller
-        # plans their first departure but cannot choose when a connecting
-        # service leaves. That also removes the connection penalty this edge
-        # used to add to every journey's first flight.
-        rows.append(idx.airport_index(src))
-        cols.append(idx.airport_arr_index(dst))
-        minutes.append(float(block))
+        block = float(air.block_time_min(d, size1, size2, cal))
+        # The flight edge carries block time ONLY, plus the border on a first
+        # crossing. Waiting is charged on the connection edge instead (see
+        # _transfer_edges), because a traveller plans their first departure
+        # but cannot choose when a connecting service leaves. That also
+        # removes the connection penalty this edge used to add to every
+        # journey's first flight.
+        #
+        # Border control is charged where both zones are known. Schengen and
+        # the Common Travel Area count as single zones: those flights cross a
+        # national border but no passport desk.
+        if zone[src] != zone[dst]:
+            rows.append(idx.airport_index(src))
+            cols.append(idx.airport_intl_arr_index(dst))
+            minutes.append(block + transfers.border_min(max(size1, size2, key=_SIZE_RANK.get), cal))
+        else:
+            rows.append(idx.airport_index(src))
+            cols.append(idx.airport_arr_index(dst))
+            minutes.append(block)
+        # The same flight for a traveller who has paid already.
+        if transfers.airside_transit(zone[src]):
+            rows.append(idx.airport_intl_index(src))
+            cols.append(idx.airport_intl_arr_index(dst))
+            minutes.append(block)
 
     if rejected:
         detail = ", ".join(f"{s}->{d} ({km:.0f} km)" for s, d, km in rejected)
@@ -155,9 +200,13 @@ def _access_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         # on the flight edge instead -- see _air_edges.
         access = transfers.processing_min(size, cal)
         egress = transfers.disembark_min(size, cal)
-        # Enter on the departure side, leave from the arrival side.
+        # Enter on the departure side, leave from the arrival side -- of
+        # either layer: a traveller from abroad paid the border on the flight
+        # that crossed, so walking out costs what it costs anyone. Nobody
+        # enters the international layer from the street.
         rows.append(cell); cols.append(node); minutes.append(access)
         rows.append(idx.airport_arr_index(iata)); cols.append(cell); minutes.append(egress)
+        rows.append(idx.airport_intl_arr_index(iata)); cols.append(cell); minutes.append(egress)
     return (
         np.asarray(rows, dtype=np.int64),
         np.asarray(cols, dtype=np.int64),
@@ -176,6 +225,13 @@ def _transfer_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]
     Cost is max(MCT, wait), not their sum -- when services are frequent the
     minimum connection time dominates, and when they are rare the wait already
     exceeds it, so adding both would charge the same minutes twice.
+
+    Each layer connects within itself (see _air_edges): a traveller who has
+    paid the border stays paid through an airside transit. Where the zone has
+    no airside transit, the international arrival connects to the DOMESTIC
+    departure instead -- the traveller has been admitted, and the next
+    crossing is charged again, as it is today. The connection costs the same
+    either way: admission is what the border charge already paid for.
     """
     cal = air.load_calibration()
     apts = airports.scheduled_airports()
@@ -183,6 +239,8 @@ def _transfer_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]
         iata: (lat, lon, size)
         for iata, lat, lon, size in zip(apts["iata"], apts["lat"], apts["lon"], apts["size"])
     }
+    zone = {iata: transfers.immigration_zone(transfers.airport_country(iata, c))
+            for iata, c in zip(apts["iata"], apts["country"])}
     known = set(idx.airports)
 
     waits: dict[str, list[float]] = {}
@@ -207,10 +265,14 @@ def _transfer_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]
         if not onward:
             continue  # nothing departs here, so no connection is possible
         typical = float(np.median(onward))
-        conn = transfers.connection_min(meta[iata][2], cal)
+        conn = max(transfers.connection_min(meta[iata][2], cal), typical)
         rows.append(idx.airport_arr_index(iata))
         cols.append(idx.airport_index(iata))
-        minutes.append(max(conn, typical))
+        minutes.append(conn)
+        rows.append(idx.airport_intl_arr_index(iata))
+        cols.append(idx.airport_intl_index(iata) if transfers.airside_transit(zone[iata])
+                    else idx.airport_index(iata))
+        minutes.append(conn)
     return (
         np.asarray(rows, dtype=np.int64),
         np.asarray(cols, dtype=np.int64),

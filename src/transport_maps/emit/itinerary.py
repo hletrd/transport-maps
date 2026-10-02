@@ -13,6 +13,7 @@ import h3
 import numpy as np
 
 from transport_maps import _io, config
+from transport_maps.graph.layout import layout_of
 
 # No airport was involved -- the journey was entirely overland.
 NO_AIRPORT = 0xFFFF
@@ -28,16 +29,16 @@ def arrival_airport_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray)
     """
     n = len(minutes)
     last = np.full(n, -1, dtype=np.int64)
-
-    first_arrival = idx.n_cells + len(idx.airports)
-    last_arrival = first_arrival + len(idx.airports)
+    # Arrival nodes of BOTH airport layers (graph/layout.py): a journey from
+    # abroad lands on the international one, and it is still that airport.
+    is_arrival = layout_of(idx).is_arrival
 
     finite = np.isfinite(minutes)
     for node in np.argsort(np.where(finite, minutes, np.inf), kind="stable"):
         node = int(node)
         if not finite[node]:
             break
-        if first_arrival <= node < last_arrival:
+        if is_arrival(node):
             last[node] = node
             continue
         prev = int(predecessors[node])
@@ -62,7 +63,7 @@ def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Pat
 
     if last is None:
         last = arrival_airport_per_node(idx, minutes, predecessors)
-    first_arrival = idx.n_cells + len(idx.airports)
+    ordinal = layout_of(idx).arrival_ordinal
 
     from .hover import _representative_children
 
@@ -71,6 +72,6 @@ def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Pat
         rep = _representative_children(idx, parents, minutes[: idx.n_cells])
     for p, pos in rep.items():
         node = last[pos]
-        chosen[p] = NO_AIRPORT if node < 0 else node - first_arrival
+        chosen[p] = NO_AIRPORT if node < 0 else ordinal(node)
 
     _io.write_bytes(out, chosen.astype("<u2").tobytes())

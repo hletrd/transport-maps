@@ -29,24 +29,27 @@ CENTRE = (37.5665, 126.9780)
 N_AIR, N_STN = 2, 2
 
 
-def _world(cut_last: bool = False):
+def _world(cut_last: bool = False, layers: int = 2):
     """Ring-2 res-6 disk with its centre split into res-7 children, a chain of
     edges through every cell, and the centre's own cell left out of the land
     set's ring-2 corner so a snap has something to do.
 
     Laid out as the build lays a graph out (docs/contract.md): the 24 cells,
     then departure nodes for airports 0 and 1, their arrival nodes, then two
-    stations. The chain from cell 0 to the last cell costs 322 min; the
-    journey that beats it, at 284.7, rides the train, flies 0 -> 1, connects
-    at 1 and flies 1 -> 0 (airport 1 has no way out to the ground), so one
-    solve crosses every kind of edge:
+    stations, then -- with `layers` 2, FORMAT 2 -- the international layer's
+    departure and arrival nodes (graph/layout.py). The chain from cell 0 to
+    the last cell costs 322 min; the journey that beats it, at 284.7, rides
+    the train, flies 0 -> 1, connects at 1 and flies 1 -> 0 (airport 1 has no
+    way out to the ground), so one solve crosses every kind of edge. With two
+    layers the first flight crosses a border and the rest of the airside
+    journey runs in the international layer, as `_air_edges` builds it:
 
         cell 0 -> stn 0 -> stn 1 -> cell 5     4.4 + 10.3 + 3.2   rail
         cell 5 -> dep 0                        60.6               access
-        dep 0 -> arr 1                         90.2               flight
-        arr 1 -> dep 1                         45.4               connection
-        dep 1 -> arr 0                         30.1               flight
-        arr 0 -> cell 22 -> cell 23            15.5 + 25          egress, road
+        dep 0 -> (intl) arr 1                  90.2               flight
+        (intl) arr 1 -> (intl) dep 1           45.4               connection
+        (intl) dep 1 -> (intl) arr 0           30.1               flight
+        (intl) arr 0 -> cell 22 -> cell 23     15.5 + 25          egress, road
 
     `cut_last` drops every edge into the last cell, which makes it unreachable.
     """
@@ -58,13 +61,18 @@ def _world(cut_last: bool = False):
     cells.remove(missing)
     nc = len(cells)
     dep, arr, stn = (lambda k: nc + k), (lambda k: nc + N_AIR + k), (lambda k: nc + 2 * N_AIR + k)
-    n = nc + 2 * N_AIR + N_STN
+    n = nc + 2 * layers * N_AIR + N_STN
+    if layers == 2:
+        x = nc + 2 * N_AIR + N_STN
+        xdep, xarr = (lambda k: x + k), (lambda k: x + N_AIR + k)
+    else:
+        xdep, xarr = dep, arr
     edges = []
     for i in range(nc - 1):                # a path through every cell, both ways
         edges += [(i, i + 1, 3.0 + i), (i + 1, i, 2.0 + i)]
     edges += [(0, stn(0), 4.4), (stn(0), stn(1), 10.3), (stn(1), 5, 3.2),
-              (5, dep(0), 60.6), (dep(0), arr(1), 90.2), (arr(1), dep(1), 45.4),
-              (dep(1), arr(0), 30.1), (arr(0), 22, 15.5)]
+              (5, dep(0), 60.6), (dep(0), xarr(1), 90.2), (xarr(1), xdep(1), 45.4),
+              (xdep(1), xarr(0), 30.1), (xarr(0), 22, 15.5)]
     if cut_last:
         edges = [e for e in edges if e[1] != nc - 1]
     rows, cols, w = zip(*edges, strict=True)
@@ -76,6 +84,19 @@ def _write(tmp_path, cut_last=False, name="solver"):
     cells, split, n, csr, missing = _world(cut_last)
     out = bundle.write_bundle(tmp_path / name, cells, split, n, csr, {"buildId": "t"},
                               n_airports=N_AIR, n_stations=N_STN)
+    return cells, split, csr, missing, out
+
+
+def _write_format1(tmp_path, monkeypatch, name="solver"):
+    """A bundle as the builds before A15 wrote it: FORMAT 1, one airport
+    layer. Written by this module's own writer with FORMAT set back to 1,
+    which is what those builds ran."""
+    cells, split, n, csr, missing = _world(layers=1)
+    with monkeypatch.context() as m:
+        m.setattr(bundle, "FORMAT", 1)
+        out = bundle.write_bundle(tmp_path / name, cells, split, n, csr, {"buildId": "t"},
+                                  n_airports=N_AIR, n_stations=N_STN)
+    assert json.loads((out / "meta.json").read_text())["format"] == 1
     return cells, split, csr, missing, out
 
 
@@ -206,12 +227,14 @@ JOURNEY = [
 def test_a_solve_says_how_the_journey_went(built):
     """Rail, the airport, two flights, a connection and the road out, each
     classified by the node range it falls in, with ordinals as `.air.bin`
-    numbers airports.
+    numbers airports -- the same ordinal in either airport layer.
 
     Mutations performed and reverted, each RED: swap `from` and `to` in the
     fly leg; drop the station test from `rail`; classify arr -> dep as
     surface; read an arrival node's ordinal as `v - n_cells`; walk the
-    predecessors back from the start instead of the end.
+    predecessors back from the start instead of the end; drop the
+    international layer from `side` (its nodes read as stations, the whole
+    journey one rail-heavy surface leg).
     """
     cells, _split, csr, _missing, b = built
     body = bundle.GraphSolver(b).solve(_between(cells, 0, len(cells) - 1))
@@ -267,14 +290,29 @@ def test_an_unreachable_destination_has_no_legs(tmp_path):
         bundle.walk_back(np.full(len(cells) + 6, -9999, dtype=np.int32), 0, len(cells) - 1)
 
 
-def test_a_bundle_written_before_the_counts_still_answers_a_number(tmp_path):
+def test_a_format_1_bundle_still_says_how_the_journey_went(tmp_path, monkeypatch):
+    """Rebuild 27's bundle has one airport layer. The server that reads
+    FORMAT 2 must read it as it always did: same minutes, same legs.
+
+    Mutations performed and reverted, each RED: drop 1 from AIRPORT_LAYERS
+    (the load refuses it); read every bundle with two layers (the layout
+    check refuses it).
+    """
+    cells, *_rest, out = _write_format1(tmp_path, monkeypatch)
+    b = bundle.load_bundle(out)
+    assert b.layout == (len(cells), N_AIR, N_STN, 1)
+    body = bundle.GraphSolver(b).solve(_between(cells, 0, len(cells) - 1))
+    assert body["minutes"] == 285 and body["legs"] == JOURNEY
+
+
+def test_a_bundle_written_before_the_counts_still_answers_a_number(tmp_path, monkeypatch):
     """The bundle the running rebuild writes is FORMAT 1 with no node counts.
     It must load and answer exactly as before -- the figure, and no `legs`.
 
     Mutation performed and reverted: read the counts unconditionally in
     `Bundle.layout` -> RED (KeyError).
     """
-    cells, *_rest, out = _write(tmp_path)
+    cells, *_rest, out = _write_format1(tmp_path, monkeypatch)
     _strip_counts(out)
     b = bundle.load_bundle(out)
     assert b.layout is None
@@ -282,10 +320,10 @@ def test_a_bundle_written_before_the_counts_still_answers_a_number(tmp_path):
     assert body["minutes"] == 285 and "legs" not in body
 
 
-def test_add_counts_gives_an_old_bundle_its_legs(tmp_path):
+def test_add_counts_gives_an_old_bundle_its_legs(tmp_path, monkeypatch):
     """Mutation performed and reverted: drop the `_check_layout` call from
     add_counts -> RED, the (2, 3) row is written."""
-    cells, *_rest, out = _write(tmp_path)
+    cells, *_rest, out = _write_format1(tmp_path, monkeypatch)
     _strip_counts(out)
     before = (out / "meta.json").read_text()
     for bad in ((2, 3), (3, 1), (-1, 8), (2.0, 2)):
@@ -301,6 +339,19 @@ def test_add_counts_gives_an_old_bundle_its_legs(tmp_path):
     bundle.add_counts(out, N_AIR, N_STN)
     with pytest.raises(ValueError):
         bundle.add_counts(out, 1, 4)
+
+
+def test_add_counts_is_only_for_the_bundles_that_lacked_them(tmp_path):
+    """Every FORMAT-2 bundle is written with its counts; counts for one
+    would be counted on another layout.
+
+    Mutation performed and reverted: accept any format in add_counts and
+    check the counts against that format's own layer count -> RED.
+    """
+    *_rest, out = _write(tmp_path)
+    _strip_counts(out)
+    with pytest.raises(ValueError):
+        bundle.add_counts(out, N_AIR, N_STN)
 
 
 def test_a_layout_that_does_not_add_up_is_refused_at_load_and_at_write(tmp_path):
@@ -322,7 +373,7 @@ def test_a_layout_that_does_not_add_up_is_refused_at_load_and_at_write(tmp_path)
 
 
 def _dist(root, build_id="t", airports=None, stations=None):
-    nc = len(_world()[0])
+    nc = len(_world(layers=1)[0])
     d = root / "dist"
     (d / "origins").mkdir(parents=True)
     (d / "index.json").write_text(json.dumps(
@@ -334,17 +385,17 @@ def _dist(root, build_id="t", airports=None, stations=None):
     return d
 
 
-def test_the_counts_come_from_the_same_builds_dist(tmp_path):
+def test_the_counts_come_from_the_same_builds_dist(tmp_path, monkeypatch):
     """And from nowhere else: another build's offsets, or offsets that do not
     start where the bundle's cells end, are refused.
 
     Mutations performed and reverted: drop the buildId comparison -> RED on
     "another build"; drop the `airports != nCells` test -> RED on "shifted".
     """
-    *_rest, out = _write(tmp_path)
+    *_rest, out = _write_format1(tmp_path, monkeypatch)
     _strip_counts(out)
     assert bundle.counts_from_dist(out, _dist(tmp_path)) == (N_AIR, N_STN)
-    nc = len(_world()[0])
+    nc = len(_world(layers=1)[0])
     for name, kw in (("another build", {"build_id": "other"}),
                      ("shifted", {"airports": nc + 1, "stations": nc + 1 + 2 * N_AIR}),
                      ("odd", {"stations": nc + 2 * N_AIR + 1})):
@@ -353,4 +404,4 @@ def test_the_counts_come_from_the_same_builds_dist(tmp_path):
         with pytest.raises(ValueError):
             bundle.counts_from_dist(out, _dist(sub, **kw))
     bundle.main(["add-counts", str(out), str(_dist(tmp_path / "cli"))])
-    assert bundle.load_bundle(out).layout == (nc, N_AIR)
+    assert bundle.load_bundle(out).layout == (nc, N_AIR, N_STN, 1)

@@ -1,10 +1,11 @@
 """Stable integer indices for every node in the multi-modal graph.
 
 Layout: land cells occupy [0, n_cells), then one DEPARTURE node per airport,
-then one ARRIVAL node per airport, then one node per rail station. Keeping
-cells first means the per-cell time surface is still simply
-`distances[:n_cells]`, and appending stations last means adding rail does not
-move any airport index.
+then one ARRIVAL node per airport, then one node per rail station, then the
+same two airport ranges again for the INTERNATIONAL layer (graph/layout.py
+has the arithmetic). Keeping cells first means the per-cell time surface is
+still simply `distances[:n_cells]`, and appending each new range last means
+adding it moved no id before it.
 
 Airports are split because a single node cannot tell a journey's first flight
 from a connecting one. With one node, the minimum-connection-time had to be
@@ -16,6 +17,11 @@ one-flight trip. Splitting makes the distinction structural:
     A_dep -> B_arr    the flight itself
     B_arr -> B_dep    a connection, and only ever a connection
     B_arr -> cell     egress: disembark and leave the airport
+
+The international layer repeats the two airport nodes for a traveller who has
+already crossed into another immigration zone on an earlier flight of the
+same airside journey, so a connection does not pay the border a second time;
+graph/build.py, `_air_edges`, says how the layers are joined.
 """
 
 import logging
@@ -25,6 +31,7 @@ import h3
 import numpy as np
 
 from transport_maps import config
+from transport_maps.graph.layout import NodeLayout
 from transport_maps.snap import (
     _nearest_land,  # noqa: F401 -- re-exported; one implementation
 )
@@ -92,8 +99,12 @@ class NodeIndex:
         return len(self.cells)
 
     @property
+    def layout(self) -> NodeLayout:
+        return NodeLayout(len(self.cells), len(self.airports), len(self.stations))
+
+    @property
     def n(self) -> int:
-        return len(self.cells) + 2 * len(self.airports) + len(self.stations)
+        return self.layout.n
 
     @property
     def has_rail(self) -> bool:
@@ -121,6 +132,16 @@ class NodeIndex:
     def airport_arr_index(self, iata: str) -> int:
         """Arrival-side node: where you land, before connecting or leaving."""
         return self._airport_pos[iata] + len(self.airports)
+
+    def airport_intl_index(self, iata: str) -> int:
+        """International departure node: airside here, about to board, having
+        already crossed into another immigration zone on this journey."""
+        return self._airport_pos[iata] - len(self.cells) + self.layout.first_intl_departure
+
+    def airport_intl_arr_index(self, iata: str) -> int:
+        """International arrival node: landed here from another immigration
+        zone, earlier on this airside journey or on this flight."""
+        return self._airport_pos[iata] - len(self.cells) + self.layout.first_intl_arrival
 
     def airport_cell_index(self, iata: str) -> int:
         return self._airport_cell[iata]

@@ -18,11 +18,14 @@ and the service maps them:
 
 `meta.json` names the node layout the build solved on -- cells `[0, nCells)`,
 then `nAirports` departure nodes, `nAirports` arrival nodes and `nStations`
-station nodes (docs/contract.md, "Node-offset arithmetic") -- which is what
-lets a solve say how the journey went (`journey_legs`) rather than only how
-long it took. The first FORMAT-1 bundles were written without the two counts;
-they still load, answer a number with no legs, and can be given the counts
-afterwards by `add_counts`, which checks them against `nNodes`.
+station nodes (docs/contract.md, "Node-offset arithmetic"), and in FORMAT 2
+the international airport layer after them, departures then arrivals again
+(graph/layout.py) -- which is what lets a solve say how the journey went
+(`journey_legs`) rather than only how long it took. FORMAT 1 is the same
+arrays without the international layer; those bundles still load. The first
+of them were written without the two counts; they answer a number with no
+legs, and can be given the counts afterwards by `add_counts`, which checks
+them against `nNodes`.
 
 `data` stays float64 and `indices` int32 because those are the dtypes
 `scipy.sparse.csgraph` works in: anything else is converted, which is a copy,
@@ -48,7 +51,11 @@ import numpy as np
 from transport_maps import config
 from transport_maps.snap import _nearest_land
 
-FORMAT = 1
+# 2 since A15: the international airport layer (graph/build.py, `_air_edges`).
+# An older server refuses it by number rather than misreading its layout.
+FORMAT = 2
+# Formats this code reads, and how many airport layers each lays out.
+AIRPORT_LAYERS = {1: 1, 2: 2}
 ARRAYS = ("cells", "sorted_ids", "sorted_pos", "split", "indptr", "indices", "data")
 
 
@@ -56,18 +63,28 @@ def _ids(cells) -> np.ndarray:
     return np.fromiter((int(c, 16) for c in cells), dtype=np.uint64)
 
 
-def _check_layout(n_cells: int, n_nodes: int, n_airports: int, n_stations: int) -> None:
+def _check_layout(n_cells: int, n_nodes: int, n_airports: int, n_stations: int,
+                  layers: int = 2) -> None:
     """The node layout adds up, or ValueError. A count that is off by one moves
     every airport ordinal after it, and an itinerary read through it names the
     wrong airports with every figure still right -- so it is refused here
-    rather than discovered on the page."""
+    rather than discovered on the page. `layers` is the number of airport
+    layers, each a departure and an arrival node per airport: 2 for FORMAT 2,
+    1 for FORMAT 1 (AIRPORT_LAYERS)."""
     for name, v in (("nAirports", n_airports), ("nStations", n_stations)):
         if type(v) is not int or v < 0:
             raise ValueError(f"{name} must be a non-negative integer, not {v!r}")
-    if n_cells + 2 * n_airports + n_stations != n_nodes:
+    if n_cells + 2 * layers * n_airports + n_stations != n_nodes:
         raise ValueError(
-            f"nCells {n_cells} + 2 x nAirports {n_airports} + nStations {n_stations} "
-            f"is not nNodes {n_nodes}")
+            f"nCells {n_cells} + {2 * layers} x nAirports {n_airports} + nStations "
+            f"{n_stations} is not nNodes {n_nodes}")
+
+
+def _format(meta: dict[str, Any]) -> int:
+    f = meta.get("format")
+    if f not in AIRPORT_LAYERS:
+        raise ValueError(f"bundle format {f!r}, expected one of {sorted(AIRPORT_LAYERS)}")
+    return f
 
 
 def write_bundle(out: Path, cells: list[str], split, n_nodes: int, csr,
@@ -75,7 +92,7 @@ def write_bundle(out: Path, cells: list[str], split, n_nodes: int, csr,
                  n_airports: int, n_stations: int) -> Path:
     """Write the bundle to `out`, replacing any previous one in one rename."""
     out = Path(out)
-    _check_layout(len(cells), int(n_nodes), n_airports, n_stations)
+    _check_layout(len(cells), int(n_nodes), n_airports, n_stations, AIRPORT_LAYERS[FORMAT])
     tmp = out.with_name(out.name + ".part")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
@@ -160,12 +177,14 @@ class Bundle:
         return h3.cell_to_latlng(format(int(self.cells[pos]), "x"))
 
     @property
-    def layout(self) -> tuple[int, int] | None:
-        """(nCells, nAirports), or None for a bundle written before meta.json
-        carried the counts -- which answers a number and no legs."""
+    def layout(self) -> tuple[int, int, int, int] | None:
+        """(nCells, nAirports, nStations, airport layers), or None for a bundle
+        written before meta.json carried the counts -- which answers a number
+        and no legs."""
         if "nAirports" not in self.meta or "nStations" not in self.meta:
             return None
-        return self.meta["nCells"], self.meta["nAirports"]
+        return (self.meta["nCells"], self.meta["nAirports"], self.meta["nStations"],
+                AIRPORT_LAYERS[self.meta["format"]])
 
 
 def load_bundle(path: Path) -> Bundle:
@@ -173,10 +192,10 @@ def load_bundle(path: Path) -> Bundle:
     layout that does not add up; accepts one with no layout at all."""
     path = Path(path)
     meta = json.loads((path / "meta.json").read_text())
-    if meta.get("format") != FORMAT:
-        raise ValueError(f"bundle format {meta.get('format')!r}, expected {FORMAT}")
+    fmt = _format(meta)
     if "nAirports" in meta or "nStations" in meta:
-        _check_layout(meta["nCells"], meta["nNodes"], meta.get("nAirports"), meta.get("nStations"))
+        _check_layout(meta["nCells"], meta["nNodes"], meta.get("nAirports"), meta.get("nStations"),
+                      AIRPORT_LAYERS[fmt])
     a = {name: np.load(path / f"{name}.npy", mmap_mode="r") for name in ARRAYS}
     import scipy.sparse as sp
 
@@ -190,16 +209,18 @@ def add_counts(path: Path, n_airports: int, n_stations: int) -> dict[str, Any]:
     """Give a bundle written without them its airport and station counts.
 
     For the FORMAT-1 bundles written before `write_bundle` recorded the node
-    layout. Nothing but `meta.json` changes, and it is replaced in one rename.
-    Refuses counts that do not make `nNodes` (nCells + 2 x nAirports +
-    nStations), and counts that contradict ones already there. The counts
-    come from a per-origin `.json` of the SAME build (`counts_from_dist`).
+    layout; every later bundle has the counts from the start. Nothing but
+    `meta.json` changes, and it is replaced in one rename. Refuses counts that
+    do not make `nNodes` (nCells + 2 x nAirports + nStations), and counts
+    that contradict ones already there. The counts come from a per-origin
+    `.json` of the SAME build (`counts_from_dist`).
     """
     path = Path(path)
     meta = json.loads((path / "meta.json").read_text())
-    if meta.get("format") != FORMAT:
-        raise ValueError(f"bundle format {meta.get('format')!r}, expected {FORMAT}")
-    _check_layout(meta["nCells"], meta["nNodes"], n_airports, n_stations)
+    if meta.get("format") != 1:
+        raise ValueError(f"bundle format {meta.get('format')!r}: only a FORMAT-1 bundle "
+                         "was ever written without its counts")
+    _check_layout(meta["nCells"], meta["nNodes"], n_airports, n_stations, AIRPORT_LAYERS[1])
     for name, v in (("nAirports", n_airports), ("nStations", n_stations)):
         if name in meta and meta[name] != v:
             raise ValueError(f"the bundle already says {name} {meta[name]}, not {v}")
@@ -237,12 +258,16 @@ def counts_from_dist(bundle_path: Path, dist: Path) -> tuple[int, int]:
 
 
 def journey_legs(path: list[int], minutes: np.ndarray, n_cells: int,
-                 n_airports: int) -> list[dict[str, Any]]:
+                 n_airports: int, n_stations: int = 0,
+                 layers: int = 1) -> list[dict[str, Any]]:
     """The journey along `path` (node ids, departure first) as legs.
 
     Each node is classified by its range in the layout docs/contract.md
     describes, and each edge by the two nodes it joins -- the distinctions
-    `emit/itinerary.py` and `emit/modes.py` draw, read off node ranges alone:
+    `emit/itinerary.py` and `emit/modes.py` draw, read off node ranges alone.
+    With `layers` 2 the international airport layer follows the stations
+    (graph/layout.py; `n_stations` says where), and its nodes are read as
+    the same airports -- the layer says only whether the border is paid:
 
     - departure airport -> arrival airport is a flight,
       `{"kind": "fly", "from": a, "to": b, "min": m}`;
@@ -258,7 +283,9 @@ def journey_legs(path: list[int], minutes: np.ndarray, n_cells: int,
 
     Airport ordinals are positions in the build's airport list, the ordinals
     `.air.bin` carries: ordinal k is departure node nCells + k and arrival
-    node nCells + nAirports + k.
+    node nCells + nAirports + k, and in the international layer departure
+    node X + k and arrival node X + nAirports + k, X = nCells + 2 x
+    nAirports + nStations.
 
     Surface is NOT split into road and ferry. The build tells them apart with
     `refine.ground_joined`, which needs the landmass data (`severed`, `spans`)
@@ -269,19 +296,35 @@ def journey_legs(path: list[int], minutes: np.ndarray, n_cells: int,
     ends, so the legs sum exactly to the rounded total and `railMin` never
     exceeds its leg.
     """
-    first_arr = n_cells + n_airports
     first_stn = n_cells + 2 * n_airports
+    # A FORMAT-1 graph has stations to the end; a FORMAT-2 one ends them where
+    # the international layer begins.
+    end_stn = first_stn + n_stations if layers == 2 else None
+    bases = (n_cells,) if end_stn is None else (n_cells, end_stn)
+
+    def side(node: int) -> tuple[str, int] | None:
+        """("dep" | "arr", airport ordinal), or None for a cell or a station."""
+        for base in bases:
+            if base <= node < base + 2 * n_airports:
+                k = node - base
+                return ("dep", k) if k < n_airports else ("arr", k - n_airports)
+        return None
+
+    def station(node: int) -> bool:
+        return node >= first_stn and (end_stn is None or node < end_stn)
+
     at = [round(float(minutes[v])) for v in path]
     legs: list[dict[str, Any]] = []
     for k in range(1, len(path)):
         u, v = path[k - 1], path[k]
         m = at[k] - at[k - 1]
-        if n_cells <= u < first_arr and first_arr <= v < first_stn:
-            legs.append({"kind": "fly", "from": u - n_cells, "to": v - first_arr, "min": m})
-        elif first_arr <= u < first_stn and n_cells <= v < first_arr:
-            legs.append({"kind": "connect", "at": u - first_arr, "min": m})
+        su, sv = side(u), side(v)
+        if su and sv and su[0] == "dep" and sv[0] == "arr":
+            legs.append({"kind": "fly", "from": su[1], "to": sv[1], "min": m})
+        elif su and sv and su[0] == "arr" and sv[0] == "dep":
+            legs.append({"kind": "connect", "at": su[1], "min": m})
         else:
-            rail = m if (u >= first_stn or v >= first_stn) else 0
+            rail = m if (station(u) or station(v)) else 0
             if legs and legs[-1]["kind"] == "surface":
                 legs[-1]["min"] += m
                 legs[-1]["railMin"] += rail

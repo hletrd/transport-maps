@@ -16,6 +16,7 @@ import h3
 import numpy as np
 
 from transport_maps import _io, config
+from transport_maps.graph.layout import layout_of
 from transport_maps.graph.refine import ground_joined
 
 # Order of the uint16 channels in the emitted file. Road is split by grade
@@ -51,8 +52,9 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
         raise TypeError("mode_minutes_per_node needs cell_class; it is computed once "
                         "in the parent, never inside a worker")
     n_cells = idx.n_cells
-    n_air = len(idx.airports)
-    first_stn = n_cells + 2 * n_air
+    # Bounded on both sides: the international airport layer comes after
+    # the stations (graph/layout.py), and its nodes are not rail.
+    is_station = layout_of(idx).is_station
 
     acc = np.zeros((len(minutes), len(CHANNELS)), dtype=np.float64)
     finite = np.isfinite(minutes)
@@ -69,7 +71,7 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
         cost = minutes[node] - minutes[prev]
 
         prev_cell, node_cell = prev < n_cells, node < n_cells
-        prev_stn, node_stn = prev >= first_stn, node >= first_stn
+        prev_stn, node_stn = is_station(prev), is_station(node)
 
         if prev_cell and node_cell:
             if ground_joined(idx, prev, node):

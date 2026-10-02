@@ -27,6 +27,7 @@ import numpy as np
 import polars as pl
 
 from transport_maps import _io, config
+from transport_maps.graph.layout import layout_of
 
 NO_RAIL = 0xFFFF
 # Ordinal for "this route carries no `operator` tag". 8% of route relations
@@ -40,13 +41,15 @@ def last_station_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray) ->
     One pass in distance order, as for airports in itinerary.py."""
     n = len(minutes)
     last = np.full(n, -1, dtype=np.int64)
-    first_station = idx.n_cells + 2 * len(idx.airports)
+    # Bounded on both sides: the international airport layer follows the
+    # stations (graph/layout.py).
+    is_station = layout_of(idx).is_station
     finite = np.isfinite(minutes)
     for node in np.argsort(np.where(finite, minutes, np.inf), kind="stable"):
         node = int(node)
         if not finite[node]:
             break
-        if node >= first_station:
+        if is_station(node):
             last[node] = node
             continue
         prev = int(predecessors[node])
@@ -187,6 +190,8 @@ def _walk_back_hops(idx, predecessors, node, first_station) -> list[tuple[str, s
     variant calls at 광명 in between and so has no 서울 -> 대전 hop at all.
     """
     hops: list[tuple[str, str]] = []
+    # Unbounded above on purpose: a station's predecessor is a cell or a
+    # station, never an airport node of either layer (graph/layout.py).
     while len(hops) < PATH_LOOKBACK_HOPS and node >= first_station:
         prev = int(predecessors[node])
         if prev < first_station:
@@ -344,7 +349,7 @@ def write_rail_detail(idx, minutes: np.ndarray, predecessors: np.ndarray,
     operators: list[str] = []
     op_index: dict[str, int] = {}
     if tables and tables.get("lines") and len(idx.stations):
-        first_station = idx.n_cells + 2 * len(idx.airports)
+        first_station = layout_of(idx).first_station
         last = last_station_per_node(idx, minutes, predecessors)
         lines, stop_names = tables["lines"], tables["stop_names"]
         route_label = tables.get("route_label") or {}

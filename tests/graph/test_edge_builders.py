@@ -86,50 +86,66 @@ def _wait(a: str, b: str) -> int:
 
 def test_flights_run_departure_side_to_arrival_side_with_the_border_on_the_route(idx):
     """Border control is charged on the flight, by the larger terminal of the
-    pair, and only where the two countries are in different zones.
+    pair, and only where the two countries are in different zones. A flight
+    that crosses lands on the INTERNATIONAL arrival node; one that does not,
+    on the domestic one; and every flight runs again, at block time only,
+    from the international departure node -- the traveller who has paid
+    already (A15, graph/build.py `_air_edges`).
 
     Mutations performed and reverted, each -> red: drop the border line
     (ICN->NRT short by 45); `max(...)` -> `size1` (PUS->NRT charged the
-    medium 35, not 45); `crosses_border` -> `country1 != country2` (CDG->FRA
-    charged 45 inside Schengen); `airport_arr_index(dst)` -> `airport_index(dst)`
-    (lands on the departure side, so no edge matches); remove the
-    plausibility `continue` (PUS->SML appears, seven edges).
+    medium 35, not 45); `zone[src] != zone[dst]` -> raw countries (CDG->FRA
+    charged 45 inside Schengen); land a crossing on `airport_arr_index`
+    (ICN->NRT on the domestic side); land the international copy on the
+    domestic arrival; charge the border on the international copy too;
+    `airport_arr_index(dst)` -> `airport_index(dst)` (lands on the departure
+    side, so no edge matches); remove the plausibility `continue` (PUS->SML
+    appears).
     """
     rejected: list = []
     edges = _edges(build._air_edges(idx, rejected_out=rejected))
 
-    want = {
-        ("ICN", "NRT"): _block("ICN", "NRT") + CAL.border_min["large"],
-        ("ICN", "CDG"): _block("ICN", "CDG") + CAL.border_min["large"],
-        ("NRT", "ICN"): _block("NRT", "ICN") + CAL.border_min["large"],
-        ("PUS", "NRT"): _block("PUS", "NRT") + CAL.border_min["large"],
-        ("PUS", "XSM"): _block("PUS", "XSM") + CAL.border_min["medium"],
-        ("CDG", "FRA"): _block("CDG", "FRA"),
+    border = {
+        ("ICN", "NRT"): CAL.border_min["large"],
+        ("ICN", "CDG"): CAL.border_min["large"],
+        ("NRT", "ICN"): CAL.border_min["large"],
+        ("PUS", "NRT"): CAL.border_min["large"],
+        ("PUS", "XSM"): CAL.border_min["medium"],
+        ("CDG", "FRA"): 0.0,
     }
     assert CAL.border_min["large"] != CAL.border_min["medium"], "fixture cannot tell sizes apart"
-    assert edges == {(idx.airport_index(a), idx.airport_arr_index(b)): float(w)
-                     for (a, b), w in want.items()}
+    want = {}
+    for (a, b), b_min in border.items():
+        lands = idx.airport_intl_arr_index(b) if b_min else idx.airport_arr_index(b)
+        want[(idx.airport_index(a), lands)] = float(_block(a, b) + b_min)
+        want[(idx.airport_intl_index(a), idx.airport_intl_arr_index(b))] = float(_block(a, b))
+    assert edges == want
     assert [(s, d) for s, d, _ in rejected] == [("PUS", "SML")]
 
 
 def test_access_enters_on_the_departure_side_and_leaves_from_the_arrival_side(idx):
-    """Two edges per airport: cell -> departure node at the processing time,
-    arrival node -> cell at the disembark time, each by the airport's own
-    size. The reverse of either would let a traveller walk out through
-    security or board straight off an arriving aircraft.
+    """Three edges per airport: cell -> departure node at the processing time,
+    and each arrival node -> cell at the disembark time, each by the airport's
+    own size. The reverse of either would let a traveller walk out through
+    security or board straight off an arriving aircraft, and a way IN to the
+    international layer would let one skip the border.
 
     Mutations performed and reverted, each -> red: swap rows and cols on the
     access edge (cell <- departure); `processing_min` -> `disembark_min` on
-    the way in; the size looked up for `idx.airports[0]` for every airport.
+    the way in; the size looked up for `idx.airports[0]` for every airport;
+    drop the international egress (a traveller from abroad cannot leave).
     """
     edges = _edges(build._access_edges(idx))
-    assert len(edges) == 2 * len(AIRPORTS)
+    assert len(edges) == 3 * len(AIRPORTS)
     for iata, _, _, size, _ in AIRPORTS:
         cell = idx.airport_cell_index(iata)
         dep, arr = idx.airport_index(iata), idx.airport_arr_index(iata)
+        xdep, xarr = idx.airport_intl_index(iata), idx.airport_intl_arr_index(iata)
         assert edges[(cell, dep)] == CAL.processing_min[size], iata
         assert edges[(arr, cell)] == CAL.disembark_min[size], iata
+        assert edges[(xarr, cell)] == CAL.disembark_min[size], iata
         assert (dep, cell) not in edges and (cell, arr) not in edges, iata
+        assert (cell, xdep) not in edges and (cell, xarr) not in edges, iata
 
 
 def test_a_connection_costs_the_larger_of_mct_and_the_wait_and_needs_a_departure(idx):
@@ -146,7 +162,13 @@ def test_a_connection_costs_the_larger_of_mct_and_the_wait_and_needs_a_departure
     weight high); `max` -> `min` (ICN at its MCT); replace `if not onward:
     continue` with a zero wait (FRA, XSM and SML get a connection); drop the
     plausibility `continue` (PUS's median takes the SML pair in);
-    `idx.airport_index` and `airport_arr_index` swapped (departure -> arrival).
+    `idx.airport_index` and `airport_arr_index` swapped (departure -> arrival);
+    connect the international arrival to the domestic departure everywhere
+    (a transit pays its border again).
+
+    Each layer connects within itself at the same cost (A15): no airport here
+    is in a zone without airside transit; that case has its own test in
+    test_airside_transit.py.
     """
     edges = _edges(build._transfer_edges(idx))
 
@@ -161,8 +183,11 @@ def test_a_connection_costs_the_larger_of_mct_and_the_wait_and_needs_a_departure
                    float(np.median([_wait("PUS", "NRT"), _wait("PUS", "XSM")]))),
         "CDG": max(CAL.connection_min["large"], float(_wait("CDG", "FRA"))),
     }
-    assert edges == {(idx.airport_arr_index(a), idx.airport_index(a)): float(w)
-                     for a, w in want.items()}
+    assert edges == {
+        **{(idx.airport_arr_index(a), idx.airport_index(a)): float(w) for a, w in want.items()},
+        **{(idx.airport_intl_arr_index(a), idx.airport_intl_index(a)): float(w)
+           for a, w in want.items()},
+    }
     # FRA, XSM and SML have nothing (plausible) departing: no connection at all.
 
 
@@ -200,8 +225,10 @@ def test_a_flight_is_charged_by_the_zone_its_passengers_actually_enter(monkeypat
         return air.block_time_min(km, meta[a][2], meta[b][2], CAL)
 
     edges = _edges(build._air_edges(small))
-    want = {("IOM", "LHR"): block("IOM", "LHR"),
-            ("ECN", "LCA"): block("ECN", "LCA") + CAL.border_min["medium"],
-            ("CDG", "RUN"): block("CDG", "RUN") + CAL.border_min["large"]}
-    assert edges == {(small.airport_index(a), small.airport_arr_index(b)): float(w)
-                     for (a, b), w in want.items()}
+    first = {k: v for k, v in edges.items() if k[0] < small.layout.first_station}
+    want = {(small.airport_index("IOM"), small.airport_arr_index("LHR")): block("IOM", "LHR"),
+            (small.airport_index("ECN"), small.airport_intl_arr_index("LCA")):
+                block("ECN", "LCA") + CAL.border_min["medium"],
+            (small.airport_index("CDG"), small.airport_intl_arr_index("RUN")):
+                block("CDG", "RUN") + CAL.border_min["large"]}
+    assert first == {k: float(w) for k, w in want.items()}

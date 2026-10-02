@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 
 from transport_maps import _io
+from transport_maps.graph.layout import layout_of
 
 from .itinerary import NO_AIRPORT
 from .modes import CHANNELS, MAX_MINUTES
@@ -51,8 +52,8 @@ def override_entries(idx, last: np.ndarray, acc: np.ndarray, rep: np.ndarray,
     order = np.argsort(slots, kind="stable")
     pick, slots = pick[order], slots[order]
     nodes = src[pick]
-    first_arrival = idx.n_cells + len(idx.airports)
-    airport = np.where(last[nodes] >= 0, last[nodes] - first_arrival, NO_AIRPORT)
+    # Either airport layer names the same airport (graph/layout.py).
+    airport = np.where(last[nodes] >= 0, layout_of(idx).arrival_ordinal(last[nodes]), NO_AIRPORT)
     minutes = np.clip(np.nan_to_num(acc[nodes], posinf=0.0), 0, MAX_MINUTES)
     return slots, airport, minutes
 

@@ -92,6 +92,31 @@ AIRPORT_COUNTRY: dict[str, str] = {
 }
 
 
+# Zones whose airports have no airside transit: every passenger arriving from
+# another zone is admitted at the first airport, connecting or not, so a
+# connection there is an ENTRY and the onward international flight pays its
+# own border (graph/build.py, `_transfer_edges`). Elsewhere a connection stays
+# airside and the border is paid once for the whole airside journey.
+#
+# The United States: "All passengers must be interviewed by U.S. Customs and
+# Border Protection (CBP) and claim all checked luggage before being allowed
+# to enter the U.S. including connecting travelers" (Port of Seattle,
+# https://www.portseattle.org/page/international-connections, read
+# 2026-10-02). An airport authority stating the federal rule; CBP's own
+# visitor guide could not be read as text that day. Keyed on the zone, so it is OurAirports' "US" only: Puerto Rico, Guam and the other
+# territories are zones of their own in this table today, which is a separate
+# question (recorded in plan/2026-10-02-rebuild28-model.md).
+# Not a calibration constant -- no minutes, only which rule applies -- so it
+# lives beside the zone table rather than in calibration.toml.
+NO_AIRSIDE_TRANSIT: frozenset[str] = frozenset({"US"})
+
+
+def airside_transit(zone: str) -> bool:
+    """Whether a passenger from another zone can connect in `zone` without
+    being admitted to it."""
+    return zone not in NO_AIRSIDE_TRANSIT
+
+
 def immigration_zone(country: str) -> str:
     """The zone a country belongs to; its own code unless it shares one."""
     return IMMIGRATION_ZONES.get(country, country)

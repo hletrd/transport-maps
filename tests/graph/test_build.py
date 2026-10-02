@@ -78,9 +78,11 @@ def test_neighbouring_land_cells_are_connected(csr, idx):
 
 def test_incheon_reaches_narita_directly(csr, idx):
     # A flight lands on the arrival node, never the departure node: that split
-    # is what stops a journey's first flight paying a connection penalty.
+    # is what stops a journey's first flight paying a connection penalty. A
+    # flight out of the zone lands on the INTERNATIONAL arrival node (A15).
     u = idx.airport_index("ICN")
-    assert csr[u, idx.airport_arr_index("NRT")] > 0
+    assert csr[u, idx.airport_intl_arr_index("NRT")] > 0
+    assert csr[u, idx.airport_arr_index("NRT")] == 0
     assert csr[u, idx.airport_index("NRT")] == 0
 
 

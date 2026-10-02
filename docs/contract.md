@@ -85,7 +85,7 @@ in the shipped build.
 | `.bin` | `emit/hover.py:write_hover` | Tier A: *N* × uint16 LE minutes. Each entry is the centre child at the solve resolution (the fastest child where the centre is water). Values ≥ 65,534 are written as the sentinel 65,535. |
 | `.r6.bin` | `emit/hover.py:write_reading` | Tier B: `readingParentCount` × `readingSlots` (343) × uint16 LE minutes. Block *b* belongs to entry *b* of `reading_parents.bin`. The slot inside a block is the cell's H3 digits below `readingParentRes`, read as a base-7 number, so no per-cell list ships. Pentagon holes and non-land slots (18.3 %) hold 65,535. The fixed 343 stride is deliberate (`config.READING_SLOTS`). |
 | `.over.bin` | `emit/override.py:write_override` | Three arrays back to back, little-endian, sorted by slot: *n* × uint32 global reading slots (`block × 343 + slot`), *n* × uint16 airport ordinals, then *n* × 6 uint16 mode minutes (cell-major). *n* = byteLength / 18 (`ENTRY_BYTES` = 4 + 2 + 2 × channels). These are the res-6 cells whose arrival airport differs from their tier-A representative's. Optional: offered only when `overrideUrlSuffix` is in `index.json`. |
-| `.json` | `emit/routes_json.py:write_routes` | `{"offsets": {"cells": 0, "airports": A, "stations": S}, "nodes": [{"id", "kind": "dep"\|"arr", "code": IATA, "min", "prev": id\|null}, ...]}`. Only airport nodes are listed, both the departure side and the arrival side, and only those reachable under 65,534 min. |
+| `.json` | `emit/routes_json.py:write_routes` | `{"offsets": {"cells": 0, "airports": A, "stations": S, "intl": X}, "nodes": [{"id", "kind": "dep"\|"arr", "code": IATA, "min", "prev": id\|null}, ...]}`. Only airport nodes are listed, both the departure side and the arrival side, and only those reachable under 65,534 min. From A15 on, nodes of the international airport layer are listed too, under ids at or past `intl`, where a chain the page can walk passes through them; `intl` is optional and informational (absent before A15). |
 | `.air.bin` | `emit/itinerary.py:write_itinerary` | Tier A: *N* × uint16 LE airport ordinal, the arrival airport the cell was last reached through. `0xFFFF` (`NO_AIRPORT`) means the journey was overland. |
 | `.modes.bin` | `emit/modes.py:write_modes` | Tier A: *N* × `len(modeChannels)` (6) × uint16 LE, cell-major, minutes per surface mode in `modeChannels` order. Clipped to 0 … 65,534. An unreachable cell is all zeros. Air and airport time are not counted here, because `.json` itemises them. |
 | `.rail.bin` | `emit/rail_detail.py:write_rail_detail` | Tier A: *N* × uint16 LE row index into `.rail.json` `stations`. `0xFFFF` (`NO_RAIL`) means no rail leg. A table of 65,535 rows or more is a build error, not a wrap. |
@@ -93,13 +93,25 @@ in the shipped build.
 
 **Node-offset arithmetic.** The solver's node ids are laid out as cells
 `[0, A)`, departure airports `[A, A + n_air)`, arrival airports
-`[A + n_air, S)` and stations `[S, ...)`, where `A = offsets.airports` (the
-refined cell count) and `S = offsets.stations = A + 2 × n_air`. The page
-derives `n_air = (S - A) / 2`. A `.air.bin` ordinal *k* names the arrival node
-`A + n_air + k` in `.json`, and the page walks `prev` back from there. The
-pipeline hand-derives these offsets at seven sites today: two in
-`emit/itinerary.py`, two in `emit/rail_detail.py`, and one each in
-`emit/modes.py`, `emit/override.py` and `emit/routes_json.py`. `check_dist` uses the
+`[A + n_air, S)`, stations `[S, X)`, and -- from A15 on -- the international
+airport layer: departures `[X, X + n_air)` and arrivals
+`[X + n_air, X + 2 × n_air)`. `A = offsets.airports` (the refined cell
+count), `S = offsets.stations = A + 2 × n_air` and `X = offsets.intl = S +
+n_stations`. The international layer is where a journey runs once it has
+paid the border on this airside journey (`graph/build.py`, `_air_edges`); it
+comes last so that no id the page already knew moved. The page derives
+`n_air = (S - A) / 2`. A `.air.bin` (and `.over.bin`) ordinal *k* is the
+airport's position, whichever layer the journey landed on, and names the
+arrival node `A + n_air + k` in `.json`; the page walks `prev` back from
+there. Where airport *k*'s cell was reached from its international arrival
+node, `.json` lists that node under the id `A + n_air + k` and the domestic
+one under `X + n_air + k`, renaming every `prev` the same way, so the entry
+is the node the journey actually left the airport from and the page needs no
+new arithmetic. The pipeline reads every range from one place,
+`graph/layout.py:NodeLayout` (`emit/itinerary.py`, `emit/override.py`,
+`emit/modes.py`, `emit/rail_detail.py`, `emit/routes_json.py`); the service
+keeps its own copy in `service/bundle.py:journey_legs`, because it may not
+import the graph package. `check_dist` uses the
 `(A, S)` pair of every origin as the build's fingerprint: two pairs mean two
 builds are mixed. It also requires `H ≤ A ≤ 7^(fineRes − hoverRes) · H`,
 where *H* is `hoverCellCount`. Every hover cell is the `hoverRes` parent of
@@ -130,13 +142,13 @@ each origin has `pmtiles`, `bin`, `json`, `air.bin`, `modes.bin`, `r6.bin` and
   record under the current key. The rsync filter excludes it twice: once as
   `.*` and once by name.
 - **The solver bundle, `data/build/solver/`** (`service/bundle.py`, `FORMAT`
-  1). Every full `build-all` writes it. It holds `cells.npy`,
+  2 from A15 on; FORMAT 1, with no international layer, still loads). Every full `build-all` writes it. It holds `cells.npy`,
   `sorted_ids.npy`, `sorted_pos.npy`, `split.npy` and the CSR graph in
   `indptr.npy` (int32), `indices.npy` (int32) and `data.npy` (float64,
   minutes), plus `meta.json` with the counts, resolutions and the build's
   `identity`. The counts include `nAirports` and `nStations`, the node
-  layout above (`nNodes = nCells + 2 × nAirports + nStations`, checked at
-  load). Bundles written before 2026-10-02 lack those two: they still load
+  layout above (`nNodes = nCells + 4 × nAirports + nStations` in FORMAT 2,
+  `nCells + 2 × nAirports + nStations` in FORMAT 1, checked at load). Bundles written before 2026-10-02 lack those two: they still load
   and answer a number with no legs, and `python -m
   transport_maps.service.bundle add-counts BUNDLE DIST` adds them from the
   same build's `dist/` (`counts_from_dist`). It is never under `dist/`.
@@ -225,8 +237,8 @@ in `index.json`'s `modeChannels`, the list the page reads them by. It falls
 back to `emit/modes.py:CHANNELS` only when the field is absent, and reports
 the absence (J1b(d), 2026-10-02).
 
-Not done yet (J1's code half, recorded in the plan): one `NodeIndex.offsets`
-in place of the seven hand-derived sites.
+J1's code half landed with A15: `graph/layout.py:NodeLayout`
+(`NodeIndex.layout`) in place of the seven hand-derived sites.
 
 ## Rules that cross the layer boundary
 

@@ -149,6 +149,17 @@ arrival_saving_min = 10.0
 # edge and only when it leaves the departure airport's immigration zone.
 # Schengen counts as a single zone: an Amsterdam-Milan flight crosses a national
 # border but no immigration desk. Published-figure default; not fitted.
+#
+# Since A15 (2026-10-02, takes effect with the next full build after rebuild
+# 27) it is charged once per AIRSIDE journey, not once per crossing flight: a
+# Seoul -> Narita -> Frankfurt transit pays it on the flight into Narita and
+# nothing more, because the traveller never leaves the transit area. Where
+# the zone admits every arriving passenger (the US, graph/transfers.py
+# NO_AIRSIDE_TRANSIT), and on any landside connection, the next crossing pays
+# again. The figures below are unchanged and still unfitted; what changed is
+# how often a journey pays them (graph/build.py, `_air_edges`). The zone
+# memberships (Åland, Monaco, San Marino, the Vatican; the Crown
+# Dependencies; Ercan) moved the same day, each sourced in graph/transfers.py.
 [border_min]
 large = 45.0
 medium = 35.0
