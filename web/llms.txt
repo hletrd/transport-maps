@@ -53,7 +53,7 @@ The ground is 4,091,715 H3 resolution-6 land cells (about 36 km2, 6.5 km
 across), refined to resolution 7 (5.2 km2, 2.4 km across) wherever the road
 network reaches secondary grade or a metropolitan area lies. Ground movement
 between adjacent cells is charged at a per-cell speed derived from GRIP4
-road-density rasters, halved inside cities. Flights connect airport pairs taken
+road-density rasters, slowed inside cities by a fitted congestion factor. Flights connect airport pairs taken
 from Wikipedia's "Airlines and destinations" tables, resolved to IATA codes
 through Wikidata property P238, with block time modelled from great-circle
 distance. Rail runs stop to stop along OpenStreetMap route relations; ferries
