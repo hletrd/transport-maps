@@ -56,22 +56,40 @@ def _hermetic_cache(request, monkeypatch, scratch_cache):
     monkeypatch.setattr(config, "CACHE", scratch_cache)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _offline_session():
+    """Offline from the first fixture of the session to the last.
+
+    Per test was not enough: pytest builds a module-scoped fixture BEFORE the
+    function-scoped ones of the test that first needs it, so
+    tests/sources/test_airports.py's module `df` ran between one test's
+    teardown and the next test's setup -- online -- and fetched OurAirports
+    live. Integration tests read the REAL data/cache, so in the main checkout
+    that was a test run refreshing the build's inputs.
+    """
+    from transport_maps.sources import _fetch
+
+    _fetch.set_offline(True)
+    yield
+    _fetch.set_offline(None)
+
+
 @pytest.fixture(autouse=True)
-def _offline_inputs():
+def _offline_inputs(_offline_session):
     """No test asks an upstream whether a raw input changed (G2).
 
     `sources._fetch` checks every input once per process; under pytest that
     would be a live request from any test that reaches a download, and the
     per-process memo would carry one test's answer into the next. Every test
-    starts offline with an empty memo; tests/sources/test_fetch.py turns the
-    network back on against a stub.
+    starts offline with an empty memo, and ends offline whatever it set;
+    tests/sources/test_fetch.py turns the network back on against a stub.
     """
     from transport_maps.sources import _fetch
 
     _fetch.reset()
     _fetch.set_offline(True)
     yield
-    _fetch.set_offline(None)
+    _fetch.set_offline(True)
     _fetch.reset()
 
 
