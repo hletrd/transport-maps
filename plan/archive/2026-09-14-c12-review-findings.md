@@ -48,6 +48,11 @@ were forked with the modules imported.
       nothing ties the two together. The certificate half holds; the
       "over the real origins.toml" half does not. To make it true, assert the
       constant against `load_origins()`'s `kota-kinabalu` row.
+      MADE TRUE (2026-10-02):
+      `tests/solve/test_origin_snap.py::test_the_fixture_is_the_real_origins_toml_row`
+      reads the row through `index.load_origins()` and requires it to equal
+      `KOTA_KINABALU`. Mutations, both RED: the constant's longitude moved by
+      1e-4; the row's latitude moved in `data/origins.toml`.
 - [x] **C12-1d** Land-validate in `scripts/expand_origins.py`, which added the
       911 new origins with no check at all (`DBG12-2`, High).
 

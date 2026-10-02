@@ -38,6 +38,18 @@ def _index(cells: list[str]) -> NodeIndex:
                      _airport_pos={}, _airport_cell={})
 
 
+def test_the_fixture_is_the_real_origins_toml_row():
+    """C12-1c promised a test "over the real data/origins.toml", and the
+    constant above was only typed to match it (C13-11 / V13-7). Read the row,
+    so the snap tests below run on the coordinate the build reads.
+
+    Mutation performed (2026-10-02): KOTA_KINABALU's longitude 116.0724 ->
+    116.0725 -> RED.
+    """
+    row = next(o for o in index.load_origins() if o["slug"] == "kota-kinabalu")
+    assert (row["lat"], row["lon"]) == KOTA_KINABALU
+
+
 def test_an_origin_just_off_the_mask_snaps_to_its_neighbour():
     """Kota Kinabalu's own cell is missing; ring 1 has land. It must resolve.
 

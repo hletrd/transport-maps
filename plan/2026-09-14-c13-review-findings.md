@@ -270,6 +270,10 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
     `modes.CHANNELS` by a source test in `tests/web/test_app_constants.py`.
     The test was added there because `web/` itself was not in this lane, and
     no page file changed. The archived c4 plan (U27) has the mutations.
+  - [x] V13-7 made true (2026-10-02): `KOTA_KINABALU` is asserted against
+    `load_origins()`'s `kota-kinabalu` row. See the archived c12 plan
+    (C12-1c). With V13-3, V13-4 and V13-6, this makes all four partial
+    ticks true.
 
 ---
 
