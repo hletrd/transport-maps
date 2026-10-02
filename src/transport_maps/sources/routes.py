@@ -1,5 +1,6 @@
 """Wikipedia 'Airlines and destinations' sections -> airline route network."""
 
+import collections
 import itertools
 import json
 import re
@@ -12,6 +13,7 @@ import polars as pl
 from transport_maps import config
 from transport_maps.sources import airports, wikidata
 from transport_maps.sources._utils import (
+    IncompleteResponse,
     _atomic_write,
     _params_hash,
     _refuse_partial,
@@ -158,10 +160,11 @@ def _fetch_wikitext_with_retry(
 ) -> tuple[dict[str, str], set[str]]:
     """`_fetch_wikitext`, backing off and retrying on HTTP 429 rather than crashing.
 
-    An API-level error (readonly, maxlag, ...) or an incomplete/paginated
-    response raises RuntimeError from `_validated_json` immediately, without
-    retrying here -- the caller's per-batch skip handles that the same way
-    it handles a batch that exhausts its 429 retries.
+    An API-level error (readonly, maxlag, ...) raises RuntimeError from
+    `_validated_json` immediately, without retrying here -- the caller's
+    per-batch skip handles that the same way it handles a batch that exhausts
+    its 429 retries. An incomplete/paginated response raises
+    `IncompleteResponse`, which the caller answers by halving the batch.
     """
     for attempt in range(MAX_RETRIES):
         try:
@@ -253,14 +256,31 @@ def _crawl_destinations(
     cache = _load_destination_cache()
     todo = list(dict.fromkeys(t for t in titles_by_iata.values() if t not in cache))
     if todo:
-        batches = list(itertools.batched(todo, TITLES_PER_REQUEST))
-        print(f"routes: {len(cache)} articles cached, {len(todo)} to fetch in {len(batches)} batches")
+        pending = collections.deque(itertools.batched(todo, TITLES_PER_REQUEST))
+        print(f"routes: {len(cache)} articles cached, {len(todo)} to fetch in {len(pending)} batches")
+        n = 0
         with httpx.Client(timeout=60, headers=HEADERS, follow_redirects=True) as client:
-            for n, batch in enumerate(batches, start=1):
+            while pending:
+                batch = pending.popleft()
+                n += 1
                 try:
                     wikitext_by_title, confirmed_absent = _fetch_wikitext_with_retry(client, list(batch))
+                except IncompleteResponse as e:
+                    # Fifty whole articles can exceed one response, and the API
+                    # then pages: part of the batch and a `continue`. The batch
+                    # is a pure function of what is still uncached, so a re-run
+                    # asks for the same fifty and fails the same way, and
+                    # route_network refuses forever (A11, CR-18). Halve it and
+                    # ask again at once; one article always fits.
+                    if len(batch) > 1:
+                        half = len(batch) // 2
+                        pending.extendleft((batch[half:], batch[:half]))
+                        print(f"routes: batch {n} of {len(batch)} came back partial; "
+                              f"asking again as {half} and {len(batch) - half}")
+                        continue
+                    print(f"routes: batch {n} failed: {e!r}")
                 except (httpx.HTTPStatusError, httpx.TransportError, RuntimeError) as e:
-                    print(f"routes: batch {n}/{len(batches)} failed: {e!r}")
+                    print(f"routes: batch {n} failed: {e!r}")
                 else:
                     for title in batch:
                         wikitext = wikitext_by_title.get(title)
@@ -270,7 +290,8 @@ def _crawl_destinations(
                             # enwiki has no such article; nothing to fetch, ever.
                             cache[title] = None
                     _save_destination_cache(cache)
-                print(f"routes: batch {n}/{len(batches)} done ({len(cache)} articles cached)")
+                print(f"routes: batch {n} done ({len(cache)} articles cached, "
+                      f"{len(pending)} batches left)")
 
     destinations = {iata: cache[t] for iata, t in titles_by_iata.items() if t in cache}
     unresolved = [iata for iata, t in titles_by_iata.items() if t not in cache]

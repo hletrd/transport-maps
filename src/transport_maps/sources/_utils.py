@@ -34,6 +34,13 @@ def _retry_after_seconds(value: str | None, attempt: int) -> float:
     return min(float(2**attempt), MAX_RETRY_AFTER_S)
 
 
+class IncompleteResponse(RuntimeError):
+    """A partial page of a paginated answer: a `continue` key, or a query
+    without `batchcomplete`. Not wrong, only too big for one response -- the
+    same titles asked for in smaller batches come back whole, which is what
+    the wikitext crawl does with it (routes._crawl_destinations, A11)."""
+
+
 def _validated_json(response, *, expect_key: str, require_batchcomplete: bool) -> dict:
     """Parse an httpx JSON response and validate its shape before trusting it.
 
@@ -50,9 +57,9 @@ def _validated_json(response, *, expect_key: str, require_batchcomplete: bool) -
     if "error" in body:
         raise RuntimeError(f"API error: {body['error']}")
     if "continue" in body:
-        raise RuntimeError("API response incomplete (continue key present)")
+        raise IncompleteResponse("API response incomplete (continue key present)")
     if require_batchcomplete and "batchcomplete" not in body:
-        raise RuntimeError("API response missing 'batchcomplete'")
+        raise IncompleteResponse("API response missing 'batchcomplete'")
     if expect_key not in body:
         raise RuntimeError(f"API response missing {expect_key!r}")
     return body[expect_key]

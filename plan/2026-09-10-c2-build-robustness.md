@@ -370,6 +370,17 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       transits (model change — document before/after per CLAUDE.md). **A16**
       `check_bands_cover` samples the tiles tippecanoe wrote. **G2** Raw
       downloads by URL hash with ETag/size and a refresh policy.
+  - [x] **A11** (2026-10-02) `_validated_json` raises `IncompleteResponse`
+        (a `RuntimeError`, so every existing catch still holds) for a
+        `continue` key or a missing `batchcomplete`; `_crawl_destinations`
+        answers it by halving the batch and asking for both halves at once,
+        down to one article, which is left unresolved if even that pages.
+        Other failures are handled as before. Test: any request for more than
+        two titles pages -- seven articles in one batch all resolve and are
+        cached, an article that pages alone stays unresolved, no loop; with
+        the split removed it is red. Changes only a crawl that used to refuse
+        forever: the parse, the per-article cache and the `routes.parquet`
+        key are untouched, so no build output changes.
 - [x] **O6 / E6** `transport-maps assets` (or the last step of `build-all`)
       writes `places.json`, `airports.json`, `borders.json`; README lists it.
       Not run this cycle (writes under `dist/`). *(2026-10-02: code half

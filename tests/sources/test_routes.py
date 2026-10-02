@@ -387,6 +387,39 @@ def test_crawl_reports_a_failed_batch_without_caching_it(tmp_path, monkeypatch):
     assert sorted(unresolved) == ["AAA", "BBB"]
 
 
+def test_a_batch_that_comes_back_paged_is_halved_until_it_resolves(tmp_path, monkeypatch):
+    """A11 / CR-18: a batch of whole articles too big for one response comes
+    back with a `continue`, and since the batch is whatever is still
+    uncached, every re-run asked for the same titles and failed the same
+    way -- route_network refused forever. Here any request for more than two
+    titles pages; seven titles in one batch must all resolve, and an article
+    that pages even alone stays unresolved without looping.
+
+    Mutation performed and reverted: the split removed (a paged batch
+    treated as failed) -> red, all seven unresolved.
+    """
+    from transport_maps.sources._utils import IncompleteResponse
+
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    monkeypatch.setattr(routes, "TITLES_PER_REQUEST", 8)
+    asked: list[int] = []
+
+    def fetch(client, titles):
+        asked.append(len(titles))
+        if len(titles) > 2 or "Huge" in titles:
+            raise IncompleteResponse("API response incomplete (continue key present)")
+        return {t: "== Airlines and destinations ==\n[[Hub Airport]]\n" for t in titles}, set()
+
+    monkeypatch.setattr(routes, "_fetch_wikitext_with_retry", fetch)
+    titles = {f"A{i}": f"Article{i}" for i in range(7)} | {"HHH": "Huge"}
+    got, unresolved = routes._crawl_destinations(titles)
+
+    assert unresolved == ["HHH"]
+    assert got == {f"A{i}": ["Hub_Airport"] for i in range(7)}
+    assert asked[0] == 8 and max(asked[1:]) < 8, asked
+    assert routes._load_destination_cache().keys() == {f"Article{i}" for i in range(7)}
+
+
 def test_the_crawl_cache_is_keyed_on_the_article_not_the_airport(tmp_path, monkeypatch):
     """OurAirports re-pointing a code at another article must refetch it, and
     an article already parsed for one code must not be fetched again for
