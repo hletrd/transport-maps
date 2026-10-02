@@ -17,6 +17,14 @@ no-rail; log `data/build/rebuild27.log`).
   origin (19-62 MB raw), ~100 GB over the full set and the three variants --
   more than the web host has free. The page already notes when the itemised
   modes and the total differ.
+- **A15** (border control per zone entered; zone memberships), owner
+  approved 2026-10-02, landed in code 2026-10-03 AFTER this rebuild started.
+  It is a model change for the NEXT full build, not this one:
+  `plan/2026-10-02-rebuild28-model.md` has the change, the measured
+  before/after and its release steps. Do not merge it into the main checkout
+  while this chain runs -- a later chain step would import the new model.
+  The `add-counts` step below still works with that code (FORMAT-1 bundles
+  stay readable and are the only ones `add-counts` accepts).
 
 ## Release checklist (in this order)
 - [ ] Chain finished: `ALL BUILDS DONE` in the log, no `CHAIN STOPPED`.

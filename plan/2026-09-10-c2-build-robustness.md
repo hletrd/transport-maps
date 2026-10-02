@@ -443,8 +443,28 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
         sample) would hide the defect rather than fix it, so it was not taken.
         Waits for the owner and the build that would carry it; TE3-8's exit in
         `plan/deferred.md` waits with it.
-  - [ ] **A15** -- recorded 2026-10-02, NOT implemented: a MODEL change, and
-        it waits for the owner and a later build. Air reads the country from
+  - [x] **A15** -- owner approved the model change 2026-10-02 for the NEXT
+        full build; implemented 2026-10-03 (`0b36a16` zone membership,
+        `6791764` border once per airside journey). In code only: rebuild 27
+        does not carry it, and the release steps, measured before/after and
+        merge caution are in `plan/2026-10-02-rebuild28-model.md`.
+        2026-10-03 notes: (1) checking CR-20's list against official
+        sources reversed one item -- the French overseas departments KEEP
+        their border (outside Schengen; a Paris flight passes a check at the
+        metropolitan airport, Assemblée nationale 15-1639QE), and Andorra
+        keeps its own; Åland, Monaco, San Marino, the Vatican and the Crown
+        Dependencies moved, Ercan is `CYN`. (2) The airside rule needed
+        state, so every airport has a second (international) pair of nodes
+        after the stations; `graph/layout.py` replaces the seven
+        hand-derived offset sites (J1's code half). (3) The US is the one
+        zone with no airside transit, so a US connection pays twice, as
+        before. (4) Measured air-only on rebuild 27's inputs: 57.8% of
+        airport pairs faster, median 45 min, six slower (all via Ercan).
+        Mutation-checked: every new guard in `test_transfers.py`,
+        `test_edge_builders.py`, `test_airside_transit.py`,
+        `tests/emit/test_intl_layer.py` and `tests/service/test_bundle.py`
+        red when its line is broken.
+        The 2026-10-02 record, kept: Air reads the country from
         OurAirports' `iso_country` against the Schengen + CTA table in
         `graph/transfers.py`; ground, rail and ferry read Natural Earth's.
         What it would change: flights between France and its overseas
