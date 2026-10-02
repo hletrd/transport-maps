@@ -472,7 +472,11 @@ whose output only changes at the next build; both say so.
       of the two landed:
       `tests/emit/test_index.py::test_the_mode_prose_covers_every_channel_the_page_expects`
       (`80947e5`). Nothing pins the keys of `web/app.js`'s `MODE_FALLBACK` to
-      `modes.CHANNELS`. Half done]; and the non-text contrast of T31's
+      `modes.CHANNELS`. Half done. MADE TRUE 2026-10-02:
+      `tests/web/test_app_constants.py::test_the_mode_prose_fallback_has_one_entry_per_channel`
+      requires `MODE_FALLBACK`'s keys, in order, to equal `modes.CHANNELS`.
+      Mutations, both RED: rename a key in `app.js`; add a seventh channel to
+      `CHANNELS`]; and the non-text contrast of T31's
       own controls, measured from shipped pixels at 1.08:1 fill and 1.40:1 border
       for zoom and compass over space, 1.08:1 and 1.30:1 for `#q` on the panel
       (UX4-10) -- WCAG 1.4.11 wants 3:1 on the boundary that identifies a control,

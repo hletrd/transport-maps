@@ -39,6 +39,24 @@ def test_mode_channel_fallback_matches_the_emitter():
     assert _js_list("MODE_NAMES") == list(modes.CHANNELS)
 
 
+def test_the_mode_prose_fallback_has_one_entry_per_channel():
+    """c4 U27 asked for two assertions pinning the six surface mode names to
+    `modes.CHANNELS`. One landed (`MODE_NAMES` above, and the emitter's prose
+    in tests/emit/test_index.py); `MODE_FALLBACK`'s keys were pinned by
+    nothing (C13-11 / V13-6). The page looks the tooltip up by channel name,
+    so a renamed or added channel would print bare on an index.json older
+    than `modeDetail`, with no error.
+
+    Mutations performed (2026-10-02), each RED, each restored:
+      - rename the "major road" key in MODE_FALLBACK to "major"  -> RED
+      - append a seventh channel to modes.CHANNELS               -> RED
+    """
+    m = re.search(r"const MODE_FALLBACK\s*=\s*\{(.*?)\n\};", APP, re.S)
+    assert m, "MODE_FALLBACK not found in app.js"
+    keys = re.findall(r'^\s*"([^"]+)"\s*:', m.group(1), re.M)
+    assert keys == list(modes.CHANNELS), keys
+
+
 def test_sentinels_match_the_emitters():
     assert int(_js_const("NO_AIRPORT"), 16) == itinerary.NO_AIRPORT
     assert int(_js_const("NO_RAIL"), 16) == rail_detail.NO_RAIL

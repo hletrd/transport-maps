@@ -266,6 +266,10 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
     bound `H ≤ offsets.airports ≤ 7^(fineRes − hoverRes)·H`, not U22's
     `49·H` lower bound, which was false. The derivation, the test and the
     mutations are in the archived c4 plan (U22).
+  - [x] V13-6 made true (2026-10-02): `MODE_FALLBACK`'s keys are pinned to
+    `modes.CHANNELS` by a source test in `tests/web/test_app_constants.py`.
+    The test was added there because `web/` itself was not in this lane, and
+    no page file changed. The archived c4 plan (U27) has the mutations.
 
 ---
 
