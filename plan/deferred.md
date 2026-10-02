@@ -52,6 +52,13 @@ runs the sweep as its first task, before anything else.** Recording the count
 here — three deferrals — so the next cycle inherits the number rather than the
 impression.
 
+**2026-10-02: a fourth deferral, for the same reason.** The small-items lane
+changed `tests/`, and another lane was editing `web/`, so the criterion did not
+fire. The size of the job, measured: 284 `file:line` citations, 53 of them
+into `web/app.js`. None points past the end of its file, so stale citations
+can be found only by reading each row against the code
+(`plan/2026-09-16-c15-review-findings.md`, C15-6.7).
+
 ## Cycle 14: AA17 closed, by the owner reporting it on the live site
 
 | ID | Exit criterion, and what fired it | Now |

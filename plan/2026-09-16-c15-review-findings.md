@@ -272,6 +272,25 @@ inferred.
 - [~] **C15-6.7** `plan/deferred.md`: the ledger sweep's trigger **fired twice and the
       sweep did not happen**, and the edit **invalidated the sweep's own citations**
       (AB41's `graph/rail.py:113` now resolves to unrelated code). Re-point the citations.
+      (2026-10-02, still NOT done; left `[~]`. Reasons, measured at `273a8a0`:
+      (1) The exit criterion `deferred.md` set for this sweep has not fired.
+      It is "the first cycle that makes no change under `web/` or `tests/`".
+      The 2026-10-02 small-items lane changed `tests/` in seven files, and a
+      separate lane was editing `web/` at the same time. (2) The sweep is not
+      small. `deferred.md` holds 284 `file:line` citations: 53 into
+      `web/app.js` (41 as `web/app.js`, 12 as `app.js`), 12 into
+      `web/index.html` and 12 into `emit/index.py`. Of the 284, 276 resolve to
+      a file and 8 do not. A mechanical pass finds nothing to fix: none of the
+      276 points past the end of its file, because the files have grown.
+      Telling a stale citation from a sound one needs each row read against
+      the code. That is the per-row judgement AB41's cycle-9 note already
+      prescribes ("re-anchored when its row is acted on"). Re-anchoring the 53
+      `app.js` citations while another lane moves `app.js` lines would make
+      them stale before the merge. (3) The half that was done stands: the
+      ledger records the deferral count and the tightened criterion, and
+      AB41's own example is deliberately left as evidence. Exit criterion
+      unchanged: the first cycle that makes no change under `web/` or
+      `tests/` runs the sweep first.)
 
 ### C15-7 — `Permissions-Policy` leaves every Privacy Sandbox advertising API at its default
 **From AGG15-49 (SEC15-3) · Severity Medium · Confidence Medium**
