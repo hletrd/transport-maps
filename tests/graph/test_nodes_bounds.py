@@ -32,6 +32,8 @@ def tiny_world(monkeypatch):
     from transport_maps.sources import fixed_links, roads, urban
 
     monkeypatch.setattr(nodes.landmask, "land_cells", lambda res: list(LAND))
+    # One land part per cell: no straddlers, so the split stays the dense mask's.
+    monkeypatch.setattr(nodes.landmask, "land_cell_landmasses", lambda res: [(0,)] * len(LAND))
     monkeypatch.setattr(roads, "cell_class", lambda cells: np.zeros(len(cells), dtype=np.int64))
     monkeypatch.setattr(urban, "urban_mask", lambda cells: np.zeros(len(cells), dtype=bool))
     monkeypatch.setattr(fixed_links, "fixed_links", lambda **k: None)
