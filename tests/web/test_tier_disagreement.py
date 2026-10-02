@@ -18,8 +18,8 @@ The page ships no res-6 land set, so it cannot tell a padding slot from a
 genuinely unreachable land cell -- which is why `plan/deferred.md:582` deferred
 this. What it CAN tell is that the coarse tier, whose land set it does ship,
 has a real answer for the cell the pointer is in. Printing that, with the
-"read from a wider cell than the outline" disclosure the page already carries,
-replaces a false statement with a true and qualified one.
+"read from the wider grid" disclosure the page already carries (and, since C3,
+a hover ring drawn on that grid's cell), replaces a false statement with a true and qualified one.
 
 `lookup()` is run here rather than asserted about, because the defect is a
 branch and a substring check stays green when a branch is deleted.

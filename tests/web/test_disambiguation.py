@@ -99,6 +99,7 @@ const dn = new Intl.DisplayNames(["en"], {{ type: "region" }});
 const countryName = (code) => (code ? (dn.of(code) || code) : "");
 let _disambig = null;
 {_function("nearestPlace")}
+{_function("nearestPlaceScan")}
 {_function("cityCountry")}
 {_function("disambigMap")}
 const label = (c) => disambigMap().get(c.slug) ?? "";
