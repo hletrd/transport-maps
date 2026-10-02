@@ -198,8 +198,10 @@ def _write_meta(cache: pathlib.Path, meta: dict) -> None:
     _io.write_text(meta_path(cache), json.dumps(meta, indent=1, sort_keys=True))
 
 
-def _conditional_headers(cache: pathlib.Path, meta: dict | None) -> dict[str, str]:
-    if meta is None:
+def _conditional_headers(cache: pathlib.Path, meta: dict | None, url: str) -> dict[str, str]:
+    if meta is None or meta.get("url") not in (None, url):
+        # Nothing on disk, or a copy of ANOTHER URL at this path: neither its
+        # validators nor its mtime say anything about this one.
         return {}
     headers = {}
     if meta.get("etag"):
@@ -248,10 +250,6 @@ def fetch(url: str, cache: pathlib.Path, *, timeout: float = 180) -> Fingerprint
         return _checked[key]
     cache.parent.mkdir(parents=True, exist_ok=True)
     meta = _read_meta(cache)
-    if meta is not None and meta.get("url") not in (None, url):
-        # The same cache path asked of another URL: the validators belong to
-        # the old one, so ask unconditionally.
-        meta = {**meta, "etag": None, "last_modified": None}
 
     if offline():
         if meta is None:
@@ -275,7 +273,7 @@ def fetch(url: str, cache: pathlib.Path, *, timeout: float = 180) -> Fingerprint
 def _check(url: str, cache: pathlib.Path, meta: dict | None, timeout: float) -> str:
     """Ask the upstream and settle the cache and its sidecar. Returns the status."""
     try:
-        with _stream(url, _conditional_headers(cache, meta), timeout) as r:
+        with _stream(url, _conditional_headers(cache, meta, url), timeout) as r:
             if r.status_code == 304 and meta is not None:
                 # A 304 may repeat the validators or omit them; keep what we had
                 # for whichever it omits.

@@ -238,6 +238,20 @@ def test_a_cache_from_before_g2_is_adopted_by_its_mtime(tmp_path, online):
     assert _fetch.peek(cache) == fp.sha256
 
 
+def test_a_cache_of_another_url_is_not_a_validator_for_this_one(tmp_path, online):
+    """Same cache path, new URL (a moved host): neither the old ETag nor the
+    file's mtime says anything about the new resource, so the request is
+    unconditional. Mutation: send them anyway -> red."""
+    cache = tmp_path / "data.zip"
+    online(Resp(200, V1, HEADERS_V1))
+    _fetch.fetch(URL, cache)
+    _new_build()
+    up = online(Resp(200, V2))
+    fp = _fetch.fetch("https://mirror.invalid/data.zip", cache)
+    assert up.calls == [{}]
+    assert fp.status == "updated" and cache.read_bytes() == V2
+
+
 def test_a_file_replaced_behind_the_sidecar_is_rehashed(tmp_path, online):
     """A sidecar describing other bytes must not lend them its hash."""
     cache = tmp_path / "data.zip"
