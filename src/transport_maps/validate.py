@@ -177,7 +177,7 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
         # which GEOS predicates do not accept on the whole; the parts are
         # indexed and tested one by one.
         parts = [g for f in bands.lod_features(feature_collection, i)
-                 for g in shapely.get_parts(shape(f["geometry"]))]
+                 for g in shapely.get_parts(_geometry(f["geometry"]))]
         covered = np.zeros(len(pts), dtype=bool)
         if parts:
             tree = shapely.STRtree(parts)
@@ -188,6 +188,12 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
             raise ValueError(
                 f"level {i} (zoom {lod['minzoom']}+): {n:,} of {len(pts):,} interior hex "
                 "vertices fall between bands")
+
+
+def _geometry(geometry):
+    """A feature's geometry as shapely: contour.bands hands over the object
+    itself (R1); a GeoJSON mapping is parsed."""
+    return shape(geometry) if isinstance(geometry, dict) else geometry
 
 
 def _interior_split_parents(idx, complete: np.ndarray) -> np.ndarray:

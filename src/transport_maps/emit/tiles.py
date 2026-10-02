@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from shapely.geometry import mapping
+
 from transport_maps import _io
 
 # Measured on a real Seoul band set BUILT ON THE RES-5 GRID (the qualifier
@@ -70,6 +72,31 @@ def _threads(workers: int | None) -> dict[str, str]:
     return {"TIPPECANOE_MAX_THREADS": str(max(1, cores // workers))}
 
 
+def write_geojson(feature_collection: dict, fh) -> None:
+    """`json.dump(feature_collection, fh)` with every geometry mapped, byte for
+    byte, built one feature at a time.
+
+    contour.bands keeps each feature's geometry as a shapely object; mapping
+    the whole collection at once is the object tree this exists to avoid
+    (R1, PR-1). Each feature is mapped and encoded alone and written between
+    the separators json.dump itself uses, so tippecanoe reads the same file
+    it did -- `tests/emit/test_tiles.py` holds the two against each other.
+    Not `shapely.to_geojson`: GEOS writes coordinates and spacing its own
+    way, a different file for the same shapes. A geometry that is already a
+    mapping is written as it is.
+    """
+    if list(feature_collection)[-1:] != ["features"]:
+        raise ValueError("write_geojson expects 'features' as the collection's last key")
+    head = {k: v for k, v in feature_collection.items() if k != "features"}
+    fh.write(json.dumps(head)[:-1] + (", " if head else "") + '"features": [')
+    for i, feature in enumerate(feature_collection["features"]):
+        geometry = feature["geometry"]
+        if not isinstance(geometry, dict):
+            feature = {**feature, "geometry": mapping(geometry)}
+        fh.write((", " if i else "") + json.dumps(feature))
+    fh.write("]}")
+
+
 def write_pmtiles(feature_collection: dict, out: Path, *, workers: int | None = None,
                   max_zoom: int = MAX_ZOOM) -> None:
     if shutil.which("tippecanoe") is None:
@@ -80,7 +107,7 @@ def write_pmtiles(feature_collection: dict, out: Path, *, workers: int | None = 
     fd, src_name = tempfile.mkstemp(dir=scratch, prefix=f"{out.stem}.{os.getpid()}.", suffix=".geojson")
     src = Path(src_name)
     with os.fdopen(fd, "w") as fh:
-        json.dump(feature_collection, fh)
+        write_geojson(feature_collection, fh)
     staged = src.with_suffix(".pmtiles")
 
     try:

@@ -99,3 +99,85 @@ def test_sweep_removes_only_files_whose_writer_is_gone(tmp_path):
         p.write_text("{}")
     assert tiles.sweep_scratch(tmp_path) == 1
     assert not stale.exists() and live.exists() and foreign.exists()
+
+
+def _band_collection():
+    """A real band set on a refined grid that straddles the antimeridian
+    (Taveuni, Fiji): every level of detail, wrapping and split cells, and
+    multipolygons -- the shapes whose encoding could differ."""
+    import h3
+    import numpy as np
+
+    from transport_maps import config
+    from transport_maps.contour import bands, grid
+    from transport_maps.graph import refine
+
+    centre = h3.latlng_to_cell(-16.8, 180.0, config.SOLVE_RES)
+    base = sorted(h3.grid_disk(centre, 4))
+    split = [c for c in sorted(h3.grid_disk(centre, 1)) if bands._crosses_antimeridian(c)][:2]
+    cells, base_index, fine = refine.refine(base, np.array([c in split for c in base]))
+
+    class Idx:
+        pass
+    idx = Idx()
+    idx.cells, idx.n_cells = cells, len(cells)
+    idx.base_cells, idx.base_index, idx.fine = base, base_index, fine
+    edges = np.asarray(config.BAND_EDGES_MIN, dtype=float)
+    band = np.random.default_rng(3).integers(0, 9, size=len(cells))
+    minutes = np.where(band == 0, 1.0, edges[np.maximum(band - 1, 0)] + 1.0)
+    minutes[band == 8] = np.inf
+    return bands.band_feature_collection(idx, minutes, grid=grid.universe(base),
+                                         native=grid.native_edges(idx))
+
+
+def test_tippecanoe_reads_the_same_bytes_the_whole_collection_dump_wrote(monkeypatch, tmp_path):
+    """R1: the bands keep shapely geometries and `write_pmtiles` maps and
+    encodes one feature at a time, instead of `json.dump` over a collection
+    whose every geometry was already a `mapping()` -- several GB of nested
+    tuples per origin. The file tippecanoe is handed must be byte for byte
+    the one the old path wrote, or the tiles could change.
+
+    The old path is rebuilt from the same geometries: `mapping()` on each,
+    then one `json.dump`. tippecanoe itself is replaced by a stub that
+    keeps its input.
+
+    Mutations performed and reverted, each red: the writer's separator
+    `", "` -> `","`; `shapely.to_geojson`'s text spliced in for the
+    geometry (what the plan first proposed: same shapes, other bytes);
+    contour.bands storing `mapping(geometry)` again (the memory half).
+    """
+    import io
+    import json
+    import subprocess
+    from pathlib import Path
+
+    from shapely.geometry import mapping
+    from shapely.geometry.base import BaseGeometry
+
+    fc = _band_collection()
+    assert len(fc["features"]) > 10
+    assert all(isinstance(f["geometry"], BaseGeometry) for f in fc["features"]), \
+        "the bands are back to holding mapped geometry"
+    assert any(f["geometry"].geom_type == "MultiPolygon" for f in fc["features"])
+
+    old = io.StringIO()
+    json.dump({**fc, "features": [{**f, "geometry": mapping(f["geometry"])}
+                                  for f in fc["features"]]}, old)
+
+    seen = {}
+
+    def tippecanoe(cmd, **kw):
+        cwd = Path(kw["cwd"])
+        seen["input"] = (cwd / cmd[-1]).read_bytes()
+        (cwd / cmd[cmd.index("-o") + 1]).write_bytes(b"PMTiles stub")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(tiles.shutil, "which", lambda name: "/stub/tippecanoe")
+    monkeypatch.setattr(tiles.subprocess, "run", tippecanoe)
+    tiles.write_pmtiles(fc, tmp_path / "taveuni.pmtiles")
+
+    assert seen["input"] == old.getvalue().encode()
+    # A geometry that is already a mapping passes through unchanged.
+    plain = io.StringIO()
+    tiles.write_geojson(SQUARE, plain)
+    assert plain.getvalue() == json.dumps(SQUARE)

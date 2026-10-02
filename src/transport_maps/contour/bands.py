@@ -35,7 +35,7 @@ import h3
 import numpy as np
 import shapely
 from shapely import affinity
-from shapely.geometry import Polygon, box, mapping, shape
+from shapely.geometry import Polygon, box, shape
 from shapely.ops import unary_union
 
 from transport_maps import config
@@ -211,7 +211,13 @@ def _feature(k: int, geometry, lod: dict) -> dict:
             "max_minutes": (config.BAND_EDGES_MIN[emitted]
                             if 0 <= emitted < open_band else None),
         },
-        "geometry": mapping(geometry),
+        # The shapely geometry itself, not its `mapping()`: as nested tuples
+        # of Python floats a coordinate costs 128 bytes (measured on the
+        # Taveuni fixture in tests/emit/test_tiles.py) against GEOS's 16, and
+        # one origin's bands were ~3-4 GB of it, most of a worker's footprint
+        # (PR-1), which `check_bands_cover` then parsed back into shapely.
+        # tiles.write_pmtiles maps one feature at a time as it writes (R1).
+        "geometry": geometry,
     }
 
 

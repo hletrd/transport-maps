@@ -302,6 +302,20 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
       physical memory and the measured peak (PR-4). **R5** Compute `cell_class`,
       `speeds`, `country`, `zone` once in `_build_all` and pass them into
       `build_graph` (PR-5, CR-15, J4's seam).
+  - [x] **R1** (2026-10-02) Band features carry the shapely geometry, not
+        its `mapping()`; `tiles.write_geojson` maps and encodes one feature
+        at a time between the separators `json.dump` uses, and
+        `check_bands_cover` takes the geometries as they are (a mapping is
+        still parsed). Not `shapely.to_geojson` as written above: GEOS's text
+        is a different file for the same shapes (spliced in, it turns the
+        test red), and the brief was byte-identical tippecanoe input. Proved
+        on a Taveuni fixture (every level, wrapping and split cells,
+        multipolygons): the file tippecanoe is handed equals one `json.dump`
+        of the mapped collection, byte for byte. Mutations, each red: the
+        separator, `to_geojson`, bands storing mappings again. What it saves:
+        128 bytes per coordinate as Python tuples against GEOS's 16, measured
+        on that fixture; the per-worker peak on a real origin is for R4's
+        column on the next build to show. Same tiles, so no output change.
   - [x] **R4 (log half)** (2026-10-02) Every per-origin row ends with the
         process's pid and its `ru_maxrss` in MB (bytes on macOS, KB on Linux;
         a high-water mark, so the largest figure per pid is that worker's
