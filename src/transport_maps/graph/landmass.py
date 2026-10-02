@@ -31,9 +31,10 @@ Two finer points, both handled here:
     Oresund Bridge and the Confederation Bridge were cut before any severing.
     `spanning_links` turns such road links into edges of their own.
 
-What remains, stated rather than hidden: a straddler that was NOT split (open
-country, no roads to speak of) still joins both shores at SOLVE_RES; and a
-FINE_RES child that itself touches both shores still joins them.
+What remains, stated rather than hidden: a FINE_RES child that itself touches
+both shores still joins them. (A straddler that was not split -- open country,
+no roads to speak of -- used to join both shores at SOLVE_RES too; since
+2026-10-02 every straddler is split, graph/refine.straddler_mask.)
 """
 
 from __future__ import annotations

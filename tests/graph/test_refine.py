@@ -147,3 +147,16 @@ def test_airports_are_placed_snapped_or_dropped_and_the_snapped_share_is_bounded
     monkeypatch.setattr(nodes, "MAX_SNAPPED_AIRPORT_FRACTION", 0.05)
     with pytest.raises(RuntimeError, match="lost its coast"):
         nodes._place_airports(apts, cell_pos, frozenset())
+
+
+def test_a_cell_a_strait_runs_through_is_split_whatever_its_roads():
+    """Only dense cells used to be split, so a straddler in open country
+    joined both shores whole (graph/landmass). Antarctica is one landmass to
+    the severing rule and is never split for it.
+
+    Mutations performed and reverted, each -> red: `len(p) > 0` (every land
+    cell split); the Antarctica clause dropped.
+    """
+    ANT = -1
+    parts = [(3,), (3, 7), (), (ANT, 4), (5, 6, 9)]
+    assert refine.straddler_mask(parts, ANT).tolist() == [False, True, False, False, True]

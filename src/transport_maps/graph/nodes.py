@@ -242,10 +242,17 @@ def build_index(rail_routes=None) -> NodeIndex:
     from transport_maps.sources import roads, urban
 
     from . import refine
-    split = refine.dense_mask(roads.cell_class(base_cells), urban.urban_mask(base_cells))
+    dense = refine.dense_mask(roads.cell_class(base_cells), urban.urban_mask(base_cells))
+    # Straddlers too, so every cell a strait runs through is judged child by
+    # child (graph/landmass). Before 2026-10-02 only the dense ones were.
+    straddle = refine.straddler_mask(landmask.land_cell_landmasses(config.SOLVE_RES),
+                                     landmask.ANTARCTICA_LANDMASS)
+    split = dense | straddle
     cells, base_index, fine = refine.refine(base_cells, split)
-    logger.info("%d of %d base cells split into %d fine cells; %d cells in all",
-                int(split.sum()), len(base_cells), int(fine.sum()), len(cells))
+    logger.info("%d of %d base cells split (%d of them only because a strait runs "
+                "through them) into %d fine cells; %d cells in all",
+                int(split.sum()), len(base_cells), int((straddle & ~dense).sum()),
+                int(fine.sum()), len(cells))
     cell_pos = {c: i for i, c in enumerate(cells)}
     split_set = {base_cells[i] for i in np.flatnonzero(split)}
 

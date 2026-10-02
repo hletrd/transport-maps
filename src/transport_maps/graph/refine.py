@@ -32,6 +32,20 @@ def dense_mask(cell_class: np.ndarray, urban: np.ndarray) -> np.ndarray:
     return np.asarray(urban, dtype=bool) | ((cls >= 1) & (cls <= SPLIT_MAX_CLASS))
 
 
+def straddler_mask(base_parts: list[tuple[int, ...]], antarctica: int) -> np.ndarray:
+    """Base cells touching more than one land part: a strait narrower than the
+    cell runs through them.
+
+    Split, their children are judged shore by shore (graph/landmass
+    fine_cell_parts) and the strait is cut. Left whole, such a cell joined both
+    shores whenever the road network was too thin to split it -- open country,
+    which is exactly where a narrow strait is likely to be crossed by nothing.
+    Antarctica is one landmass to the severing rule and is never split for it.
+    """
+    return np.fromiter((len(p) > 1 and antarctica not in p for p in base_parts),
+                       dtype=bool, count=len(base_parts))
+
+
 def refine(base_cells: list[str], split: np.ndarray) -> tuple[list[str], np.ndarray, np.ndarray]:
     """(mixed cells, base index of each, is-fine flag).
 
