@@ -332,9 +332,14 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
         wiring tests by identity; seven mutations (each builder or the build
         dropping what it was handed) each red. Same arrays, so no output
         change.
-- [ ] **K7** `native_edges` treats a missing neighbour as resolved when any of
+- [x] **K7** `native_edges` treats a missing neighbour as resolved when any of
       its `FINE_RES` children is indexed, so the cover gate samples the seam
       (TR-11). **K11** `osm_rail.sh` filters on `route=train` alone (CR-16).
+      *(2026-10-02: both halves below were done and the box left empty;
+      verified against the code today -- `NATIVE_VERSION = 2` and the split
+      test in `grid.native_edges`, `SEAM_EDGE_FRACTIONS` and
+      `_interior_split_parents` in `validate.py`, `r/route=train` in
+      `scripts/osm_rail.sh`. K7 f383b86 (with f8a682c), K11 ac11bfc.)*
   - [x] **K7** (2026-10-02) `grid.native_edges` counts a split neighbour as
         resolved (`NATIVE_VERSION` v2, so a v1 cache cannot hand back the old
         flag), and `check_bands_cover` also samples split cells a quarter of
@@ -366,12 +371,36 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
 - [ ] **L12 (PR-14 half)** `-D 10` / low-detail for the water layer's z0–2.
       Split out of the line above: it changes the tileset, so it lands with
       the next `scripts/build_water_tiles.py` run, not with a gate.
-- [ ] **A10** Stable secondary key in `osm.rail_routes` dedupe. **A12** Count
+- [x] **A10** Stable secondary key in `osm.rail_routes` dedupe. **A12** Count
       and bound dropped ferry crossings; book a ferry leg as ferry when the base
       parents are adjacent. **A14** Monotonic-ground gate over cross-resolution
       edges. **A18 / Q4** `adsb_extract.py`: sanitised tag, https + host
       allow-list, size cap. *(A18 done 2026-10-02 -- see Q4 in the security
       plan; A10, A12 and A14 are still open, so the box stays empty.)*
+      *(2026-10-02: all four done; A10 and A12 had landed in earlier commits
+      and were never ticked, see below.)*
+  - [x] **A10** (verified 2026-10-02; landed 87aec6f, 2026-09-10)
+        `_pick_one_extract_per_route` keeps one extract per route, the one
+        with most stops, ties broken by extract name
+        (`sort(["route_id", "_n", "_extract"])` then `unique(keep="first")`,
+        which cycle 15 measured to honour input order). The final
+        `sort("route_id", "seq")` has no ties left to order: `seq` is
+        `enumerate` within one route of one extract. That commit bumped
+        `RAIL_PARSER_VERSION` to 2, so the spliced cache was already a miss;
+        nothing changes today, so no bump now. Mutation-checked today, each
+        red in `tests/sources/test_osm.py`: the extract-name key dropped, and
+        the tie broken the other way.
+  - [x] **A12** (verified 2026-10-02; landed 225a012 and 7abbde1)
+        `build._ferry_edges` counts every drop by reason, logs them, and
+        raises when more than `MAX_OFF_MASK_FERRY_FRACTION` (20%) of the
+        crossings in the length window lose an endpoint off the land mask
+        (225a012). `modes.mode_minutes_per_node` books a cell-to-cell hop as
+        road only when `refine.ground_joined` -- the test the build uses to
+        drop a ferry that duplicates a ground edge -- so a sailing between
+        adjacent but severed cells is a ferry minute, not a road one
+        (7abbde1). Mutation-checked today, each red: the off-mask bound
+        removed (`tests/graph/test_ferry.py`), every adjacent hop booked as
+        road (`tests/graph/test_landmass.py`).
   - [x] **A14** (2026-10-02) `validate.check_monotonic_ground` walks the
         edges `ground.hex_edges` builds: same-resolution ring neighbours, the
         fine-to-base seam pair from either side, and every `idx.spans` link,
@@ -395,6 +424,51 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
         the split removed it is red. Changes only a crawl that used to refuse
         forever: the parse, the per-article cache and the `routes.parquet`
         key are untouched, so no build output changes.
+  - [ ] **A9** -- recorded 2026-10-02, NOT implemented: every fix changes the
+        tiles. Measured today with the current code: `landmask._pole_cells`
+        (19 cells, 4 of them wrapping the antimeridian) still dissolves to an
+        INVALID polygon, bounds `[-180, -89.99, 180, -89.82]` at res 6 and
+        `[-180, -89.99, 180, -89.94]` at res 7, that leaves 2 of its own 114
+        pulled-in vertices uncovered at each. Emitting the cap as a lat/lon
+        rectangle, or keeping the pole cells out of `_dissolve`, changes the
+        Antarctic cap's band geometry in every origin's PMTiles. The
+        gate-only option (drop the pole cells from `check_bands_cover`'s
+        sample) would hide the defect rather than fix it, so it was not taken.
+        Waits for the owner and the build that would carry it; TE3-8's exit in
+        `plan/deferred.md` waits with it.
+  - [ ] **A15** -- recorded 2026-10-02, NOT implemented: a MODEL change, and
+        it waits for the owner and a later build. Air reads the country from
+        OurAirports' `iso_country` against the Schengen + CTA table in
+        `graph/transfers.py`; ground, rail and ferry read Natural Earth's.
+        What it would change: flights between France and its overseas
+        departments (RE, GP, MQ, GF, YT in OurAirports, `FRA` on the ground)
+        would stop paying `border_min`; Åland, the Isle of Man, Jersey,
+        Guernsey, Monaco, San Marino and the Vatican would stop being zones
+        of their own, so their ferry and ground edges lose the land-border
+        minute; Ercan (`CY` in OurAirports, `CYN` cells) would change zone;
+        and an airside transit -- Seoul -> NRT -> FRA today pays the border
+        charge on both flights (TR-17) -- would pay it once. Every time
+        through any of those routes moves, so CLAUDE.md's before/after and a
+        calibration note come with it.
+  - [ ] **A16** -- recorded 2026-10-02, NOT implemented. A cover gate on the
+        tiles is new code (an MVT decoder, which is not a dependency today)
+        and, more to the point, needs a tolerance: tippecanoe moves vertices
+        by design (`--simplification=8` with Visvalingam, and quantisation to
+        the tile grid), so the GeoJSON gate's 3% pull-in would fail tiles
+        that are correct. That tolerance has to be measured on a real origin's
+        tiles, which this run may not produce (no build against real data
+        while rebuild 27 runs), and a gate set without it could refuse origins
+        the current build publishes -- a change in what a build produces.
+        Waits for that measurement.
+  - [ ] **G2** -- recorded 2026-10-02, NOT implemented: it changes what a
+        build reads. Keying raw downloads by URL hash renames every raw cache
+        (land, countries, places, urban, the GRIP4 rasters, airports,
+        borders, water), so the next build would either download again --
+        and get whatever the upstream holds now -- or need an adoption path
+        for the bare names; an ETag refresh policy exists precisely to pick
+        up a moved upstream. When a build may refresh its inputs is the
+        owner's policy to set. The derived caches that matter for silent
+        staleness already key on their inputs (G1).
 - [x] **O6 / E6** `transport-maps assets` (or the last step of `build-all`)
       writes `places.json`, `airports.json`, `borders.json`; README lists it.
       Not run this cycle (writes under `dist/`). *(2026-10-02: code half
@@ -420,3 +494,14 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
 - 2026-09-10 cycle 2 done: K1/K2 a30ef1b (old lookup red on the split-neighbour and nearest tests; polars mutant red), K5 c22d630 (snapped bound red without it), K3/K4 53cd8cf (SIGKILLed worker aborts under a 15 s alarm; removing the liveness check hangs -> red; dropping O_EXCL -> red), K8/K9/K10 151b1e6, K6 100f2bb (planar pull-in red), A13 ceb2732 (clamp restored red), A6a 12fe779 (in-place write red for each of seven writers), L2/H10/L11/O12 64ab007 (shutil.move red; metadata carries no local path), S1 S-parts + A17 269e17c (slug validation removed red), A7 35320bf (--only publishing red), G1 364986b (25 stamped constants each red when dropped; urban whole-list red), L3/L4 160bb34 (twelve check_dist refusals), L5/L6/L7/L8/L9/L10/K4-deploy 0e74b2b. Every code change takes effect on the next build; the running rebuild16 is untouched.
 - 2026-09-10 cycle 2 deploy: DEPLOY_CMD (`scripts/deploy_verify.sh && scripts/browser_verify.sh`) run once at the end of the cycle, at 10:32 KST with rebuild16 227 of 553 origins in and 0 errors. Step 1 refused: `a build-all is running (pids 4144 4145 4146 4147); refusing to deploy a mixed dist/`, exit 1 before any rsync, so neither dist/ nor the server was touched and the rebuild was not disturbed. rebuild16 predates 53cd8cf, so it holds no `dist/.build.lock`; the CPU-threshold fallback added in 0e74b2b is what caught it -- the refusal is the K4/L1 guard working, not a regression. Not retried and no gate weakened (a `--page-only` deploy was available and deliberately not used: the orchestrator's brief allows one attempt at DEPLOY_CMD). Recorded in the cycle report as per-cycle-failed:artifacts-mid-rebuild. Exit criterion for a green deploy is unchanged: rebuild16 finishes, then DEPLOY_CMD passes check_dist on a single-generation dist/.
 - 2026-09-10 cycle 2 closed at `29c6330`: every Cycle 2 task above is ticked; the Cycle 3 section stays open, so this plan is not archived. Both gates green on the whole repo at that commit (ruff clean; pytest 356 passed, 4 deselected, 5 warnings, exit 0) -- recorded in `plan/2026-09-10-c2-gates-and-tests.md`.
+- 2026-10-02 pipeline close-out, in a worktree while rebuild 27 runs (no build,
+  reindex or assets against real data; dist/ and data/ untouched): S2's
+  fallbacks 72e0163, R3/H2's remainder 6a23da8, A11 c97bdf4, R1 c93c321 -- none
+  changes a build's output, each shown on a fixture and its mutations red.
+  Ticked after checking the code: K7/K11, A10, A12. Recorded, not done: A9 and
+  G2 (they change what a build produces or reads), A15 (model change, owner),
+  A16 (needs a tolerance measured on real tiles); R4's cap and L12's tileset
+  half stay open as before. Gates on the worktree: ruff clean; pytest
+  `-m "not integration and not network and not real_multi_band"` 1404 passed,
+  25 skipped, 53 deselected (the untouched tree: 1397 passed, the same 25
+  skipped -- they need data/ or dist/, which a worktree does not have).
