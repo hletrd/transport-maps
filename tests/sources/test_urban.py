@@ -101,27 +101,39 @@ def test_places_reads_the_archive_it_downloaded(tmp_path, monkeypatch):
     fresh clone died with TypeError in the index preamble; it only worked
     here because the zip happened to be in data/cache already.
     """
+    import contextlib
+
+    import httpx
+
+    from transport_maps.sources import _fetch
+
     payload = _places_archive(tmp_path)
     monkeypatch.setattr(config, "CACHE", tmp_path / "cache")   # does not exist yet
     fetched: list[str] = []
 
     class Response:
-        content = payload
+        status_code = 200
+        headers = httpx.Headers({})
+
+        def iter_bytes(self, _n):
+            yield payload
 
         def raise_for_status(self):
             pass
 
-    def fake_get(url, **kwargs):
+    def fake_stream(url, headers, timeout):
         fetched.append(url)
-        return Response()
-    monkeypatch.setattr(urban.httpx, "get", fake_get)
+        return contextlib.nullcontext(Response())
+    _fetch.set_offline(False)
+    monkeypatch.setattr(_fetch, "_stream", fake_stream)
 
     lat, lon = urban._places()
     assert fetched == [urban.PLACES_URL]
     assert (tmp_path / "cache" / urban.PLACES_ZIP).read_bytes() == payload
     # Only the place above the threshold, read back from the fetched archive.
     assert lat.tolist() == [10.0] and lon.tolist() == [20.0]
-    # The second call is served from the archive it just wrote.
+    # The second call is served from the archive it just wrote: one check per
+    # build (sources/_fetch.py), not one per call.
     urban._places()
     assert fetched == [urban.PLACES_URL]
 
@@ -129,10 +141,19 @@ def test_places_reads_the_archive_it_downloaded(tmp_path, monkeypatch):
 def test_urban_mask_cache_key_includes_the_source_archive(tmp_path, monkeypatch):
     """Changing the gazetteer must miss the cache rather than read back the
     mask built from the old one."""
+    import types
+
     monkeypatch.setattr(config, "CACHE", tmp_path)
     monkeypatch.setattr(urban, "_places", lambda: (np.array([51.5]), np.array([-0.1])))
+    source = types.SimpleNamespace(sha256="a" * 64)
+    monkeypatch.setattr(urban, "_source", lambda: source)
     cells = [h3.latlng_to_cell(51.5074, -0.1278, config.SOLVE_RES)]
     urban.urban_mask(cells)
     monkeypatch.setattr(urban, "PLACES_URL", "https://example.invalid/other_places.zip")
     urban.urban_mask(cells)
     assert len(list(tmp_path.glob("urban_mask-*.parquet"))) == 2, "a different archive hit the cache"
+    # The same URL with new content (G2): a re-downloaded release must miss
+    # too. Mutation: drop `source` from _mask_cache_path's key -> red.
+    source.sha256 = "b" * 64
+    urban.urban_mask(cells)
+    assert len(list(tmp_path.glob("urban_mask-*.parquet"))) == 3, "new content hit the cache"

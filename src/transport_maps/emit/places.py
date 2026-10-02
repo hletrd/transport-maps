@@ -19,10 +19,9 @@ import json
 import pathlib
 import zipfile
 
-import httpx
-
 from .. import config
 from .._io import atomic_write
+from ..sources import _fetch
 
 CITIES_URL = "https://download.geonames.org/export/dump/cities15000.zip"
 ADMIN1_URL = "https://download.geonames.org/export/dump/admin1CodesASCII.txt"
@@ -33,12 +32,8 @@ COLS = ("id", "name", "ascii", "alt", "lat", "lon", "fclass", "fcode", "cc", "cc
 
 
 def _download(url: str) -> pathlib.Path:
-    cached = config.CACHE / url.rsplit("/", 1)[-1]
-    if not cached.exists():
-        r = httpx.get(url, follow_redirects=True, timeout=180)
-        r.raise_for_status()
-        atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
-    return cached
+    """One GeoNames file, checked against the upstream on every run (G2)."""
+    return _fetch.fetch(url, config.CACHE / url.rsplit("/", 1)[-1]).path
 
 
 def _tsv(text: str) -> list[list[str]]:

@@ -11,9 +11,11 @@ import logging
 import os
 
 import httpx
+import polars as pl
 import pytest
 
-from transport_maps.sources import _fetch
+from transport_maps import config
+from transport_maps.sources import _fetch, airports
 
 URL = "https://example.invalid/data.zip"
 
@@ -246,3 +248,102 @@ def test_a_file_replaced_behind_the_sidecar_is_rehashed(tmp_path, online):
     _fetch.set_offline(True)
     import hashlib
     assert _fetch.fetch(URL, cache).sha256 == hashlib.sha256(V2).hexdigest()
+
+
+# --- end to end: a changed input invalidates exactly what depends on it -----
+
+CSV_V1 = ("type,name,latitude_deg,longitude_deg,iso_country,scheduled_service,iata_code\n"
+          "large_airport,Alpha,1.0,2.0,KR,yes,AAA\n")
+CSV_V2 = CSV_V1 + "large_airport,Beta,3.0,4.0,JP,yes,BBB\n"
+
+
+def test_a_changed_input_rebuilds_its_dependent_and_an_unchanged_one_does_not(
+        hermetic_build, online, monkeypatch):
+    """OurAirports through the real `scheduled_airports()`.
+
+    Mutation: drop the input's sha256 from `_table_cache_path` -> red (the
+    third build reads back the one-row table built from V1).
+    """
+    built = []
+    real = airports._atomic_write
+    monkeypatch.setattr(airports, "_atomic_write",
+                        lambda path, fn: (built.append(path.name), real(path, fn)))
+
+    online(Resp(200, CSV_V1.encode(), {"etag": '"a"'}))
+    assert airports.scheduled_airports()["iata"].to_list() == ["AAA"]
+    _new_build()
+    online(Resp(304))
+    assert airports.scheduled_airports()["iata"].to_list() == ["AAA"]
+    assert len(built) == 1, "an unchanged input rebuilt its dependent"
+    _new_build()
+    online(Resp(200, CSV_V2.encode(), {"etag": '"b"'}))
+    assert airports.scheduled_airports()["iata"].to_list() == ["AAA", "BBB"]
+    assert len(built) == 2
+    assert pl.read_parquet(config.BUILD / built[-1]).height == 2
+
+
+# --- derived FILES named by their archive's hash --------------------------------
+
+
+def _zip(member: str, data: bytes) -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(member, data)
+    return buf.getvalue()
+
+
+def test_a_new_grip4_archive_is_a_new_raster(tmp_path, online, monkeypatch):
+    """The extracted raster used to be found by its bare name, so the first
+    archive's raster served every later one. Mutation: drop the hash from the
+    raster's name -> red (the second extraction returns the first file)."""
+    from transport_maps.sources import roads
+
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    online(Resp(200, _zip("grip4_tp1_dens_m_km2.asc", b"first raster")))
+    first = roads._ensure_raster(1)
+    assert first.read_bytes() == b"first raster"
+    _new_build()
+    online(Resp(200, _zip("grip4_tp1_dens_m_km2.asc", b"second raster")))
+    second = roads._ensure_raster(1)
+    assert second.read_bytes() == b"second raster" and second != first
+    assert (tmp_path / "grip4" / "GRIP4_density_tp1.zip").exists(), \
+        "the archive must be kept, or there is nothing to check next build"
+
+
+def test_a_new_water_archive_is_a_new_flatgeobuf(tmp_path, online, monkeypatch):
+    """`_flatgeobuf` was keyed on `.exists()` of a bare name. Mutation: name the
+    .fgb by the stem alone -> red (the second archive is never converted)."""
+    import sys
+    import types
+
+    from transport_maps.emit import water
+
+    converted: list[bytes] = []
+
+    class _Reader:
+        def __init__(self, shp):
+            self.shp = shp
+
+        def __enter__(self):
+            return {"geometry_name": "g", "geometry_type": "Polygon", "crs": None}, self
+
+        def __exit__(self, *exc):
+            return False
+
+    def write_arrow(reader, out, **kw):
+        converted.append(reader.shp.read_bytes())
+        out.write_bytes(reader.shp.read_bytes())
+
+    monkeypatch.setitem(sys.modules, "pyogrio", types.SimpleNamespace(
+        open_arrow=lambda shp, batch_size: _Reader(shp), write_arrow=write_arrow))
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    online(Resp(200, _zip("coast/water.shp", b"coast one")))
+    a = water._flatgeobuf(URL)
+    _new_build()
+    online(Resp(200, _zip("coast/water.shp", b"coast two")))
+    b = water._flatgeobuf(URL)
+    assert converted == [b"coast one", b"coast two"]
+    assert a != b and b.read_bytes() == b"coast two"

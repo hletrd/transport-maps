@@ -17,12 +17,12 @@ import hashlib
 import pathlib
 
 import h3
-import httpx
 import numpy as np
 import polars as pl
 import pyogrio
 
 from .. import config
+from . import _fetch
 from ._utils import _atomic_write, _params_hash
 
 
@@ -64,8 +64,15 @@ PLACES_URL = ("https://naturalearth.s3.amazonaws.com/10m_cultural/"
 PLACES_ZIP = PLACES_URL.rsplit("/", 1)[-1]
 
 
+def _source() -> _fetch.Fingerprint:
+    """The populated-places archive, checked against the upstream once per
+    build (G2)."""
+    config.ensure_dirs()
+    return _fetch.fetch(PLACES_URL, config.CACHE / PLACES_ZIP)
+
+
 def _download() -> pathlib.Path:
-    """The populated-places archive, fetched once into the cache.
+    """The populated-places archive, in the cache.
 
     Its own download, in this layer. This used to call emit.places._download,
     which had since grown a required `url` argument and fetches GeoNames, so
@@ -73,13 +80,7 @@ def _download() -> pathlib.Path:
     would still have fetched the wrong dataset. The only reason a build ever
     got past here was an archive already sitting in data/cache.
     """
-    config.ensure_dirs()
-    cached = config.CACHE / PLACES_ZIP
-    if not cached.exists():
-        r = httpx.get(PLACES_URL, follow_redirects=True, timeout=180)
-        r.raise_for_status()
-        _atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
-    return cached
+    return _source().path
 
 
 def _places() -> tuple[np.ndarray, np.ndarray]:
@@ -93,17 +94,19 @@ def _places() -> tuple[np.ndarray, np.ndarray]:
     return lat[keep], lon[keep]
 
 
-def _mask_cache_path(cells: list[str]) -> pathlib.Path:
+def _mask_cache_path(cells: list[str], source: str) -> pathlib.Path:
     """Keyed on the constants, the source archive AND every cell: two universes
-    of the same length and ends (a re-refined grid) must not share an entry."""
+    of the same length and ends (a re-refined grid) must not share an entry.
+    The archive by URL and by `source`, its sha256: a new release of the
+    places under the same URL moves the cities the mask is drawn around (G2)."""
     key = _params_hash(URBAN_POP_MIN, URBAN_RADIUS_KM, PLACES_URL,
-                       hashlib.sha256("".join(cells).encode()).hexdigest())
+                       hashlib.sha256("".join(cells).encode()).hexdigest(), source)
     return config.CACHE / f"urban_mask-{key}.parquet"
 
 
 def urban_mask(cells: list[str]) -> np.ndarray:
     """True where a cell lies within `URBAN_RADIUS_KM` of a sizeable city."""
-    cached = _mask_cache_path(cells)
+    cached = _mask_cache_path(cells, _source().sha256)
     if cached.exists():
         return pl.read_parquet(cached)["urban"].to_numpy()
 

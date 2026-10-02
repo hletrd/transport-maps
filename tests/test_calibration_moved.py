@@ -60,13 +60,17 @@ def test_the_land_border_time_is_unchanged():
 
 def test_the_urban_mask_cache_key_did_not_move():
     """The move costs no recompute of the urban mask: same values, same key.
-    The key is digested through json, where 200000 and 200000.0 differ."""
-    assert urban._mask_cache_path(CELLS).name == OLD_URBAN_KEY
-    # ...and the key is still the function of the constants it was, so the
-    # equality above is not satisfied by a key that ignores them.
+    The key is digested through json, where 200000 and 200000.0 differ.
+
+    G2 (2026-10-02) appended the places archive's sha256 to the key on
+    purpose, so the old file name is history; what this still pins is that
+    the calibration constants serialise exactly as the literals did."""
+    assert OLD_URBAN_KEY == "urban_mask-" + urban._params_hash(
+        urban.URBAN_POP_MIN, urban.URBAN_RADIUS_KM, urban.PLACES_URL,
+        hashlib.sha256("".join(CELLS).encode()).hexdigest()) + ".parquet"
     want = urban._params_hash(*OLD_URBAN[:2], urban.PLACES_URL,
-                              hashlib.sha256("".join(CELLS).encode()).hexdigest())
-    assert OLD_URBAN_KEY == f"urban_mask-{want}.parquet"
+                              hashlib.sha256("".join(CELLS).encode()).hexdigest(), "sha")
+    assert urban._mask_cache_path(CELLS, "sha").name == f"urban_mask-{want}.parquet"
 
 
 def _edited(tmp_path, old: str, new: str):

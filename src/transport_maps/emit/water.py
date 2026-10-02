@@ -23,9 +23,8 @@ import time
 import zipfile
 from pathlib import Path
 
-import httpx
-
 from transport_maps import _io, config
+from transport_maps.sources import _fetch
 
 WATER_URL = "https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip"
 LAKES_URL = "https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v10_shp.zip"
@@ -55,17 +54,10 @@ LAKE_ZOOM_FILTER = (
 )
 
 
-def _download(url: str = WATER_URL) -> Path:
-    cached = config.CACHE / url.rsplit("/", 1)[-1]
-    if not cached.exists():
-        with httpx.stream("GET", url, follow_redirects=True, timeout=600) as r:
-            r.raise_for_status()
-            tmp = cached.with_suffix(".part")
-            with open(tmp, "wb") as fh:
-                for chunk in r.iter_bytes(1 << 20):
-                    fh.write(chunk)
-            tmp.replace(cached)
-    return cached
+def _download(url: str = WATER_URL) -> _fetch.Fingerprint:
+    """One archive, checked against the upstream on every water build (G2);
+    `_fetch` streams it to disk, which at ~900 MB is not optional."""
+    return _fetch.fetch(url, config.CACHE / url.rsplit("/", 1)[-1], timeout=600)
 
 
 def _flatgeobuf(url: str) -> Path:
@@ -78,13 +70,17 @@ def _flatgeobuf(url: str) -> Path:
     import pyogrio
 
     stem = url.rsplit("/", 1)[-1].removesuffix(".zip")
-    out = config.CACHE / f"{stem}.fgb"
+    archive = _download(url)
+    # Named by the archive's hash: keyed on the bare name, as this was, the
+    # conversion of the first download was found for every later one and a
+    # refreshed coastline never reached the tiles.
+    tagged = f"{stem}-{archive.sha256[:12]}"
+    out = config.CACHE / f"{tagged}.fgb"
     if out.exists():
         return out
-    archive = _download(url)
-    folder = config.CACHE / stem
+    folder = config.CACHE / tagged
     if not any(folder.glob("**/*.shp")):
-        with zipfile.ZipFile(archive) as z:
+        with zipfile.ZipFile(archive.path) as z:
             z.extractall(folder)
     shp = next(folder.glob("**/*.shp"))
     with pyogrio.open_arrow(shp, batch_size=20_000) as (meta, reader):

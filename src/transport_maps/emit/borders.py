@@ -24,12 +24,12 @@ larger, because 59ffd73 chose Natural Earth's own resolution over size.
 import json
 from pathlib import Path
 
-import httpx
 import pyogrio
 import shapely
 
 from .. import config
 from .._io import atomic_write
+from ..sources import _fetch
 
 URL = ("https://naturalearth.s3.amazonaws.com/10m_cultural/"
        "ne_10m_admin_0_boundary_lines_land.zip")
@@ -68,11 +68,8 @@ def _round(obj):
 
 
 def build(out: Path) -> int:
-    cached = config.CACHE / "ne_10m_admin_0_boundary_lines_land.zip"
-    if not cached.exists():
-        r = httpx.get(URL, follow_redirects=True, timeout=180)
-        r.raise_for_status()
-        atomic_write(cached, lambda tmp: tmp.write_bytes(r.content))
+    # Checked against Natural Earth on every run (G2).
+    cached = _fetch.fetch(URL, config.CACHE / "ne_10m_admin_0_boundary_lines_land.zip").path
     meta, table = pyogrio.read_arrow(f"/vsizip/{cached.resolve()}")
     geom_col = next(c for c in table.schema.names if "geom" in c.lower())
     geoms = shapely.from_wkb(table.column(geom_col).to_pylist())

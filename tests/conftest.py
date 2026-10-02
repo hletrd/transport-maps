@@ -75,6 +75,29 @@ def _offline_inputs():
     _fetch.reset()
 
 
+#: Reason prefix for a test skipped because a raw input it reads is not in the
+#: cache. Before G2 such a test downloaded the input live -- in a fresh
+#: worktree the country and urban tests fetched Natural Earth on every run --
+#: which a test suite must not do.
+NEEDS_INPUT = "needs a cached raw input"
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    """An offline test whose input is absent from the cache is SKIPPED, and
+    says which input. Only `MissingInput` raised because the run is offline
+    qualifies: a test expecting it catches it itself, and any other failure
+    is still a failure."""
+    from transport_maps.sources import _fetch
+
+    try:
+        return (yield)
+    except _fetch.MissingInput as exc:
+        if not str(exc).startswith("offline"):
+            raise
+        pytest.skip(f"{NEEDS_INPUT}: {exc}")
+
+
 @pytest.fixture
 def hermetic_build(monkeypatch, tmp_path):
     """Redirect `config.BUILD` at a scratch directory for one test.
