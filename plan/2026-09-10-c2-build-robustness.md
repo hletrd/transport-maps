@@ -467,7 +467,7 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
         while rebuild 27 runs), and a gate set without it could refuse origins
         the current build publishes -- a change in what a build produces.
         Waits for that measurement.
-  - [ ] **G2** -- recorded 2026-10-02, NOT implemented: it changes what a
+  - [x] **G2** -- recorded 2026-10-02, NOT implemented: it changes what a
         build reads. Keying raw downloads by URL hash renames every raw cache
         (land, countries, places, urban, the GRIP4 rasters, airports,
         borders, water), so the next build would either download again --
@@ -476,6 +476,82 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
         up a moved upstream. When a build may refresh its inputs is the
         owner's policy to set. The derived caches that matter for silent
         staleness already key on their inputs (G1).
+        *2026-10-02, owner: every build checks whether each raw input
+        changed upstream (ETag / Last-Modified) and re-downloads what
+        changed.* *2026-10-03, implemented in a worktree (371fab1, 4c20126,
+        ce3de1e, 9d6375d, 120a720, 6af3072, fd67586, e364c9c, 7706935,
+        6165c8a); not run against real data (rebuild 27 holds the main
+        checkout).*
+        - `sources/_fetch.fetch(url, cache)`: one conditional GET per input
+          per process, from a `<file>.meta.json` sidecar (ETag,
+          Last-Modified, size, sha256, fetched-at). 304 keeps the file; 200
+          streams to a same-directory temp, hashed as it arrives, checked
+          against Content-Length, renamed over the cache -- or dropped if it
+          hashes the same; a failure keeps a cached copy with a warning and
+          fails without one. The cache names did NOT move: a pre-G2 file has
+          no sidecar and is adopted by sending its mtime (the download time,
+          every download went through atomic_write) as If-Modified-Since, so
+          an unchanged upstream answers 304 and nothing is fetched.
+        - Routed through it: OurAirports, Natural Earth land/lakes/ice/
+          countries/places/boundary lines, GRIP4 (the five zips are now kept
+          and streamed; the rasters are named by the zip's hash), GeoNames,
+          the water polygons and HydroLAKES (the FlatGeobuf is named by the
+          zip's hash), scripts/expand_origins.py.
+        - Derived caches key on the input's sha256 as well as their
+          constants: airport table, land cells, landmasses, cell_country
+          (through a new path helper, closing the COUNTRIES_URL gap the
+          provenance table recorded), urban mask, road grid, route network
+          (plus a digest of the crawl and the resolution, which it never
+          had). Rail, ferry and fixed-link parquet key each extract on the
+          replication snapshot in its PBF header instead of its mtime; a
+          cache whose old (name, size, mtime) key names the file on disk is
+          renamed, not re-parsed.
+        - The Wikipedia crawl, decided: "check" means "fetch again" -- an
+          article older than 24 h is refetched (~80 requests a build, which
+          the owner accepted); Wikidata codes after 30 days. A day, not
+          zero, so a same-day restart reads the crawl the first attempt read.
+          A failed refetch keeps the cached parse and warns.
+        - OSM: each build reads every region's state.txt and compares it
+          with the extract's header snapshot. A region behind by
+          TRANSPORT_MAPS_OSM_MAX_AGE_DAYS (default 7, because Geofabrik
+          republishes daily and a full refresh is ~85 GB; 0 = any newer
+          dated file) is re-extracted by its script with OSM_REPLACE=1,
+          which keeps the existing size check and replaces the old file only
+          after it. osm_rail.sh now pins the dated URL as osm_fixed_links.sh
+          does, checks the size, filters to a temp it renames, and keeps a
+          full extract it did not download. Without the osmium CLI (this
+          host) a stale rail extract is kept and the log says how to
+          refresh it. An ABSENT extract is never downloaded by a build, nor
+          one whose raw file was deleted after its bridge parse was cached
+          (a stale such cache is a warning naming the command; review
+          finding, 6165c8a).
+        - `build-all` checks every input it reads before anything reads one
+          (cli._check_inputs); `--offline` (also on `assets`;
+          TRANSPORT_MAPS_OFFLINE=1) asks nothing. index.json's identity
+          gains `inputs` -- what each input was as read -- kept out of
+          inputsHash (the resume key); reindex carries it.
+        - Tests: a scripted upstream behind `_fetch._stream` and stub
+          `curl`/`osmium` for the two scripts; 304 keeps, 200 replaces
+          atomically and invalidates the dependent (airports end to end),
+          failure with/without a cache, offline makes no request, plus the
+          crawl, OSM and CLI halves. Every guard mutated red (59
+          mutations, each listed in its test's docstring). The suite now runs
+          offline; 38 tests that read real Natural Earth / GRIP4 data carry
+          `needs_inputs` and skip where the cache lacks it -- in a fresh
+          worktree they used to download it during the run.
+        - First build after this, in the main checkout: every input is
+          asked about once; OurAirports (daily) and probably GeoNames come
+          down again, the Natural Earth archives most likely answer 304;
+          the five GRIP4 zips are downloaded (only rasters were kept); all
+          seven full OSM extracts (Sep 16-21) are re-downloaded (~85 GB) and
+          their fixed links re-parsed; the rail extracts (Sep 7) are kept
+          with a warning (no osmium CLI here) and their parquet adopted;
+          every crawl article and Wikidata title is refreshed once (no
+          timestamps yet). The land cells, landmasses, cell_country, urban
+          mask, road grid, airport table and route network are recomputed
+          once, because their keys gained the input hash. (`--offline` does
+          not let this code resume rebuild 27: inputsHash covers the code by
+          content, and this is new code.)
 - [x] **O6 / E6** `transport-maps assets` (or the last step of `build-all`)
       writes `places.json`, `airports.json`, `borders.json`; README lists it.
       Not run this cycle (writes under `dist/`). *(2026-10-02: code half
@@ -512,3 +588,14 @@ Deploy and verification scripts (`scripts/deploy_verify.sh`,
   `-m "not integration and not network and not real_multi_band"` 1404 passed,
   25 skipped, 53 deselected (the untouched tree: 1397 passed, the same 25
   skipped -- they need data/ or dist/, which a worktree does not have).
+- 2026-10-03 G2, in a worktree (no build, reindex or download against real
+  data; dist/ and data/ untouched): every build checks each raw input upstream
+  and re-downloads what changed (371fab1 4c20126 ce3de1e
+  9d6375d 120a720 6af3072 fd67586 e364c9c 7706935 6165c8a). Gates on the
+  worktree: ruff clean; pytest `-m "not integration and not network and not
+  real_multi_band"` 1534 passed, 63 skipped, 53 deselected; the untouched tree
+  in a clean export: 1500 passed, 25 skipped, and 1 failed only because the
+  export is not a git checkout (a page test runs `git log`). The 38 extra
+  skips are the `needs_inputs` tests that used to download Natural Earth or
+  GRIP4 live in a fresh worktree. Independent review: one finding (a stale
+  cache-only full extract was re-downloaded), fixed in 6165c8a.
