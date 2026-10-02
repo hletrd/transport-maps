@@ -312,3 +312,29 @@ def test_only_the_full_build_writes_the_solver_bundle(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.index, "write_index", lambda *a, **k: None)
     cli._build_all()
     assert len(BUNDLES) == 1
+
+
+def test_index_json_offers_the_solver_only_for_a_bundle_from_the_same_build(tmp_path):
+    """A bundle from another build answers with another graph: the time from
+    the exact point would disagree with the map drawn beside it.
+
+    Mutations performed and reverted, each -> red: `_solver_matches` returning
+    True whenever meta.json exists; the buildId comparison dropped.
+    """
+    from transport_maps.emit import index
+    from transport_maps.service import wire
+
+    origins = [{"slug": "a", "name": "A", "lat": 0.0, "lon": 0.0}]
+    out, b = tmp_path / "index.json", tmp_path / "solver"
+    ident = {"buildId": "x-20261002T000000Z", "builtAt": "2026-10-02T00:00:00+00:00"}
+    read = lambda: json.loads(out.read_text()).get("solver")  # noqa: E731
+
+    index.write_index(origins, out, modes_detail={}, identity=ident, solver_bundle=b)
+    assert read() is None, "no bundle at all"
+    b.mkdir()
+    (b / "meta.json").write_text(json.dumps({"identity": {"buildId": "another-build"}}))
+    index.write_index(origins, out, modes_detail={}, identity=ident, solver_bundle=b)
+    assert read() is None, "a bundle from another build"
+    (b / "meta.json").write_text(json.dumps({"identity": {"buildId": ident["buildId"]}}))
+    index.write_index(origins, out, modes_detail={}, identity=ident, solver_bundle=b)
+    assert read() == {"wire": wire.WIRE_VERSION}

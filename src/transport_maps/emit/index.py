@@ -304,7 +304,8 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
                 graph: dict | None = None, identity: dict | None = None,
                 modes_detail: dict[str, str] | None = None,
                 rail_detail: bool = True,
-                reading_parent_count: int | None = None) -> None:
+                reading_parent_count: int | None = None,
+                solver_bundle: Path | None = None) -> None:
     """index.json: what the page needs to read every other artifact.
 
     `hover_cell_count` is checked by the page against the length of
@@ -398,4 +399,26 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
         payload["graph"] = dict(graph)
     if identity is not None:
         payload.update(identity)
+    if _solver_matches(solver_bundle, identity):
+        from transport_maps.service.wire import WIRE_VERSION
+
+        payload["solver"] = {"wire": WIRE_VERSION}
     _io.write_text(out, json.dumps(payload, separators=(",", ":")))
+
+
+def _solver_matches(bundle: Path | None, identity: dict | None) -> bool:
+    """Whether the page may offer an on-demand departure.
+
+    Only when the solver bundle was written by the SAME build as the arrays
+    the page reads (service/bundle.py stamps the build's identity into
+    meta.json). A bundle from another build answers with another graph, and a
+    time from the exact point that disagrees with the map beside it is the
+    one thing the page cannot explain.
+    """
+    if bundle is None or not identity or not identity.get("buildId"):
+        return False
+    try:
+        meta = json.loads((Path(bundle) / "meta.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return meta.get("identity", {}).get("buildId") == identity["buildId"]

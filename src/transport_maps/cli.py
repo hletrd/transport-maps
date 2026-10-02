@@ -653,7 +653,8 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
                       reading_parent_count=len(shared["reading"].parents),
                       graph={"rail": bool(getattr(idx, "has_rail", False)),
                              "ferry": ferry_links is not None and len(ferry_links) > 0},
-                      identity=identity, modes_detail=modes_detail)
+                      identity=identity, modes_detail=modes_detail,
+                      solver_bundle=config.BUILD / "solver")
 
 
 #: The index fields that describe the ARTIFACTS, not the checkout, and that the
@@ -844,7 +845,7 @@ def _reindex(dist: Path | None = None) -> None:
         index.write_index(present, index_path, hover_cell_count=n_cells,
                           reading_parent_count=n_parents,
                           graph=graph, identity=identity, rail_detail=rail_seen,
-                          modes_detail=modes_detail)
+                          modes_detail=modes_detail, solver_bundle=config.BUILD / "solver")
         print(f"index.json rewritten: {len(present)} origins, {n_cells:,} hover cells, "
               f"rail detail {'present' if rail_seen else 'absent'}, "
               f"built {identity['builtAt']}, {len(skipped)} origin(s) skipped")
