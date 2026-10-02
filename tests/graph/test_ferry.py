@@ -47,6 +47,7 @@ def _index(points):
     return NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, ())
 
 
+@pytest.mark.needs_inputs
 def test_a_crossing_becomes_a_two_way_edge_with_a_plausible_time():
     idx = _index([HEL, TLL])
     r, c, d = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
@@ -72,6 +73,7 @@ def test_a_crossing_becomes_a_two_way_edge_with_a_plausible_time():
     assert d[0] > sail + wait, "the terminal time is not charged"
 
 
+@pytest.mark.needs_inputs
 def test_a_crossing_inside_one_cell_is_dropped():
     """A self-loop is a positive-weight edge Dijkstra could sit on.
 
@@ -94,6 +96,7 @@ def test_a_crossing_inside_one_cell_is_dropped():
     assert len(r) == 0
 
 
+@pytest.mark.needs_inputs
 def test_two_ways_joining_the_same_cells_collapse_to_the_quickest():
     """build_graph refuses duplicate (row, col) pairs, so this must not emit
     them -- and the survivor must be the faster crossing, not the sum."""
@@ -106,6 +109,7 @@ def test_two_ways_joining_the_same_cells_collapse_to_the_quickest():
     assert d.min() == pytest.approx(solo_d.min())
 
 
+@pytest.mark.needs_inputs
 def test_crossings_outside_the_plausible_range_are_dropped():
     idx = _index([HEL, TLL, (10.0, 10.0)])
     absurd = _link(1, (60.15, 24.95), (-40.0, -70.0))   # > 4000 km
@@ -113,12 +117,14 @@ def test_crossings_outside_the_plausible_range_are_dropped():
     assert len(r) == 0
 
 
+@pytest.mark.needs_inputs
 def test_a_crossing_to_a_cell_outside_the_land_mask_is_dropped():
     idx = _index([HEL])                     # Tallinn's cell is absent
     r, _, _ = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
     assert len(r) == 0
 
 
+@pytest.mark.needs_inputs
 def test_a_ferry_between_adjacent_cells_is_skipped():
     """The ground network already joins neighbouring cells.
 
@@ -137,12 +143,14 @@ def test_a_ferry_between_adjacent_cells_is_skipped():
     assert len(r) == 0
 
 
+@pytest.mark.needs_inputs
 def test_a_ferry_between_distant_cells_is_still_kept():
     idx = _index([HEL, TLL])
     r, _, _ = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
     assert len(r) == 2
 
 
+@pytest.mark.needs_inputs
 def test_a_ferry_into_a_sealed_country_is_dropped():
     """An OSM ferry way across the Yellow Sea carried travellers from Seoul into
     North Korea with every land border sealed: ferry edges never consulted the
@@ -160,6 +168,7 @@ def test_a_ferry_into_a_sealed_country_is_dropped():
     assert len(r) == 0, "a ferry crossed the sealed inter-Korean border"
 
 
+@pytest.mark.needs_inputs
 def test_the_off_mask_drops_are_counted_and_reported():
     """1,872 in-window crossings (12.4%) are lost this way on the real extracts
     -- Sanya-Yongshu at 1,034 km, Donghae-Vladivostok at 570 km -- and the
@@ -171,6 +180,7 @@ def test_the_off_mask_drops_are_counted_and_reported():
     assert dropped.get("endpoint off the land mask") == 1, dropped
 
 
+@pytest.mark.needs_inputs
 def test_too_many_off_mask_drops_refuse_the_build():
     """A land-mask regression must be loud. Above the bound the build stops.
 
@@ -185,6 +195,7 @@ def test_too_many_off_mask_drops_refuse_the_build():
         build._ferry_edges(idx, links, CAL)
 
 
+@pytest.mark.needs_inputs
 def test_a_few_off_mask_drops_do_not_refuse_the_build():
     idx = _index([HEL])
     links = _links([_link(i, HEL, TLL) for i in range(build.MIN_FERRY_LINKS_TO_BOUND - 1)])
@@ -192,6 +203,7 @@ def test_a_few_off_mask_drops_do_not_refuse_the_build():
     assert len(r) == 0
 
 
+@pytest.mark.needs_inputs
 def test_a_rare_crossing_costs_far_more_than_a_frequent_one_of_the_same_length():
     """The whole point of the cycle. Two crossings between the same pair of
     cells, identical in every way but their timetable: the one that sails once
@@ -208,6 +220,7 @@ def test_a_rare_crossing_costs_far_more_than_a_frequent_one_of_the_same_length()
     assert d_weekly.min() - d_hourly.min() == pytest.approx(0.5 * (7 * 24 * 60 - 60), rel=0.01)
 
 
+@pytest.mark.needs_inputs
 def test_a_tagged_interval_beats_the_prior():
     idx = _index([HEL, TLL])
     _, _, tagged = build._ferry_edges(
@@ -219,6 +232,7 @@ def test_a_tagged_interval_beats_the_prior():
         ferry.sailing_min(_KM_HEL_TLL, CAL) + CAL.terminal_min + 60, rel=0.03)
 
 
+@pytest.mark.needs_inputs
 def test_a_tagged_duration_beats_the_speed_model():
     idx = _index([HEL, TLL])
     _, _, tagged = build._ferry_edges(
@@ -230,6 +244,7 @@ def test_a_tagged_duration_beats_the_speed_model():
         125.0 - ferry.sailing_min(_KM_HEL_TLL, CAL), rel=0.01)
 
 
+@pytest.mark.needs_inputs
 def test_seasonal_service_is_charged_a_longer_wait():
     """A summer-only ferry met in February is genuinely not there. The map has
     no date, so the frequency is scaled to a year average."""
@@ -242,6 +257,7 @@ def test_seasonal_service_is_charged_a_longer_wait():
     assert summer.min() - year.min() == pytest.approx(0.5 * (480 - 120), rel=0.01)
 
 
+@pytest.mark.needs_inputs
 def test_a_ferry_between_immigration_zones_pays_the_crossing():
     """Helsinki-Tallinn is Schengen-internal: no charge. Singapore-Batam is not."""
     sg, batam = (1.27, 103.85), (1.13, 104.05)
@@ -282,6 +298,7 @@ def _no_air(monkeypatch):
     monkeypatch.setattr(build, "_transfer_edges", lambda idx: empty)
 
 
+@pytest.mark.needs_inputs
 def test_a_ferry_between_a_fine_cell_and_its_adjacent_base_cell_is_skipped(monkeypatch):
     """Mixed resolution. ground.hex_edges joins an edge child of the split cell
     to the unsplit base cell beyond its ring, so a short ferry between the two
@@ -302,6 +319,7 @@ def test_a_ferry_between_a_fine_cell_and_its_adjacent_base_cell_is_skipped(monke
     build.build_graph(idx, ferry_links=links)   # must not refuse a duplicate pair
 
 
+@pytest.mark.needs_inputs
 def test_a_ferry_the_ground_network_does_not_duplicate_is_kept_on_the_mixed_grid(monkeypatch):
     """The far child of the split cell does not touch the neighbouring base
     cell, so hex_edges never joins them and a ferry between them is a real
@@ -320,6 +338,7 @@ def test_a_ferry_the_ground_network_does_not_duplicate_is_kept_on_the_mixed_grid
     build.build_graph(idx, ferry_links=links)   # both edge sets, no duplicate pair
 
 
+@pytest.mark.needs_inputs
 def test_the_edge_capacity_guard_names_the_problem_instead_of_an_index_error(monkeypatch):
     """The preallocated edge arrays were sized from one measurement with no
     check; an overflow was a bare IndexError hours into a build."""

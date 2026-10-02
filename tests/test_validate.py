@@ -131,6 +131,7 @@ def _adjacent_pair() -> tuple[str, str]:
 _ONE_COUNTRY = {"country": np.array(["KOR", "KOR"]), "zone": ["", ""]}
 
 
+@pytest.mark.needs_inputs
 def test_inconsistent_neighbour_time_is_rejected():
     """A neighbour reported far more expensive than the actual hop from an
     already-reached cell violates Dijkstra's own invariant.
@@ -147,6 +148,7 @@ def test_inconsistent_neighbour_time_is_rejected():
                                         **_ONE_COUNTRY)
 
 
+@pytest.mark.needs_inputs
 def test_consistent_neighbour_time_is_accepted():
     """Sanity companion to the rejection test: a neighbour time within the
     real hop cost of its already-reached neighbour must not raise.
@@ -160,6 +162,7 @@ def test_consistent_neighbour_time_is_accepted():
                                     **_ONE_COUNTRY)
 
 
+@pytest.mark.needs_inputs
 def test_a_severed_pair_is_exempt_like_a_closed_border():
     """Open water with no bridge between two islands means no ground edge, so
     the far island can rightly be much later than its neighbour across it.

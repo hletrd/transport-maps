@@ -13,6 +13,7 @@ from transport_maps.graph.nodes import NodeIndex
 from transport_maps.sources import countries
 
 
+@pytest.mark.needs_inputs
 def test_known_places_resolve_to_their_country():
     pts = [(37.5665, 126.978, "KOR"), (39.03, 125.75, "PRK"),
            (35.68, 139.69, "JPN"), (40.18, 44.51, "ARM")]
@@ -58,6 +59,7 @@ def _cut_end_to_end(cells: list[str]) -> None:
         "ground route crosses the sealed inter-Korean border"
 
 
+@pytest.mark.needs_inputs
 def test_the_inter_korean_border_is_not_traversable_on_the_ground():
     """A chain of cells across the DMZ must not connect end to end.
 
@@ -68,6 +70,7 @@ def test_the_inter_korean_border_is_not_traversable_on_the_ground():
     _cut_end_to_end(_chain(37.6, 39.2, 127.6))
 
 
+@pytest.mark.needs_inputs
 def test_a_land_border_between_immigration_zones_costs_a_crossing():
     """Singapore to Johor Bahru is a fifteen-minute drive plus a passport desk.
 
@@ -91,6 +94,7 @@ def test_a_land_border_between_immigration_zones_costs_a_crossing():
         "crossing SG -> MY cost no more than the drive itself"
 
 
+@pytest.mark.needs_inputs
 def test_a_schengen_border_costs_nothing_extra():
     """Two cells in different Schengen states share an immigration zone, so the
     edge between them is the drive and nothing more. The pair is found by
@@ -126,6 +130,7 @@ def test_no_land_cell_is_left_without_a_country():
     assert blank == 0, f"{blank} cells still have no country"
 
 
+@pytest.mark.needs_inputs
 def test_the_western_dmz_is_cut_too():
     """The first DMZ test ran at longitude 127.6; the bridge was at 126.3."""
     _cut_end_to_end(_chain(37.5, 38.3, 126.45))

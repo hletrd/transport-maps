@@ -144,6 +144,7 @@ def test_ground_joined_is_adjacency_less_the_severed_pairs():
     assert not refine.ground_joined(_index([A, B], {(0, 1), (1, 0)}), 0, 1)
 
 
+@pytest.mark.needs_inputs
 def test_hex_edges_builds_no_road_across_a_severed_pair(monkeypatch):
     idx = _index([A, B, C], {(0, 1), (1, 0)})
     monkeypatch.setattr(ground, "cell_speed_kmh", lambda _idx: np.full(3, 50.0))
@@ -153,6 +154,7 @@ def test_hex_edges_builds_no_road_across_a_severed_pair(monkeypatch):
     assert (0, 2) in edges and (2, 0) in edges, "an unsevered neighbour is still joined"
 
 
+@pytest.mark.needs_inputs
 def test_the_real_ferry_across_a_severed_strait_is_kept_not_dropped_as_a_duplicate():
     """The second half of the defect: with the phantom road in place, the
     crossing's real ferry was thrown away as a duplicate of it."""
@@ -196,6 +198,7 @@ def _square(lat, lon, d=0.3):
     return shapely.box(lon - d, lat - d, lon + d, lat + d)
 
 
+@pytest.mark.needs_inputs
 def test_antarctic_wedges_are_one_landmass_and_the_pole_cell_is_a_wildcard(monkeypatch, hermetic_build):
     """_land_parts cuts Antarctica into wedges so H3 can polyfill it. Numbered
     apart, the continent would be severed along every wedge seam."""

@@ -2,6 +2,7 @@
 
 import h3
 import numpy as np
+import pytest
 
 from transport_maps import config
 from transport_maps.graph import ground
@@ -15,6 +16,7 @@ def _idx(points):
     return NodeIndex(cells, [], {c: i for i, c in enumerate(cells)}, {}, {}, ())
 
 
+@pytest.mark.needs_inputs
 def test_cities_are_marked_and_empty_country_is_not():
     pts = [(51.5074, -0.1278),    # London
            (35.6762, 139.6503),   # Tokyo
@@ -26,6 +28,7 @@ def test_cities_are_marked_and_empty_country_is_not():
     assert not mask[2] and not mask[3], "empty country was marked urban"
 
 
+@pytest.mark.needs_inputs
 def test_an_urban_cell_is_slower_than_the_same_class_in_open_country():
     """The whole point: GRIP4 gives both the grade of their best road."""
     idx = _idx([(51.5074, -0.1278), (-25.0, 132.0)])
@@ -36,6 +39,7 @@ def test_an_urban_cell_is_slower_than_the_same_class_in_open_country():
     assert speeds[0] <= ground.SPEED_BY_ROAD_CLASS_KMH[1] / urban.URBAN_CONGESTION_FACTOR + 1e-9
 
 
+@pytest.mark.needs_inputs
 def test_the_factor_actually_divides():
     idx = _idx([(51.5074, -0.1278)])
     from transport_maps.sources import roads
@@ -45,6 +49,7 @@ def test_the_factor_actually_divides():
     assert np.isclose(got, raw / urban.URBAN_CONGESTION_FACTOR)
 
 
+@pytest.mark.needs_inputs
 def test_roadless_terrain_is_never_slowed_by_traffic():
     """A roadless cell is already at walking pace.
 

@@ -30,6 +30,7 @@ import types
 
 import h3
 import numpy as np
+import pytest
 
 from tests.emit.test_layout_contract import CELL_CLASS, TABLES, _fixture
 from transport_maps import cli
@@ -59,6 +60,7 @@ def _poisoned_init(parent_pid: int, context) -> None:
     cli._init_worker(parent_pid, context)
 
 
+@pytest.mark.needs_inputs
 def test_a_forked_worker_solves_an_origin_without_polars_gdal_or_rasterio(
         monkeypatch, tmp_path):
     from transport_maps.contour import bands

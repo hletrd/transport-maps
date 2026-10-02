@@ -84,16 +84,17 @@ NEEDS_INPUT = "needs a cached raw input"
 
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_call(item):
-    """An offline test whose input is absent from the cache is SKIPPED, and
-    says which input. Only `MissingInput` raised because the run is offline
-    qualifies: a test expecting it catches it itself, and any other failure
-    is still a failure."""
+    """A test MARKED `needs_inputs` whose input is absent from the cache is
+    SKIPPED, and says which input. Only the mark makes it a skip: unmarked,
+    the same `MissingInput` is a failure. A blanket rule turned sixteen
+    `_build_all` tests into silent skips the moment the build learned to check
+    its inputs -- which is the change they exist to catch."""
     from transport_maps.sources import _fetch
 
     try:
         return (yield)
     except _fetch.MissingInput as exc:
-        if not str(exc).startswith("offline"):
+        if not (str(exc).startswith("offline") and item.get_closest_marker("needs_inputs")):
             raise
         pytest.skip(f"{NEEDS_INPUT}: {exc}")
 

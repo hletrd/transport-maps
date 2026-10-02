@@ -49,6 +49,7 @@ def _rail_only_graph(idx):
     return sp.coo_matrix((data, (rows, cols)), shape=(idx.n, idx.n)).tocsr()
 
 
+@pytest.mark.needs_inputs
 def test_boarding_is_charged_once_across_a_multi_stop_ride():
     """Riding A -> B -> C must cost boarding + both rides + alighting.
 
@@ -65,6 +66,7 @@ def test_boarding_is_charged_once_across_a_multi_stop_ride():
     assert d[2] < 2 * CAL.boarding_min + rides + CAL.alighting_min
 
 
+@pytest.mark.needs_inputs
 def test_boarding_and_alighting_are_charged_at_the_right_END_of_the_journey():
     """The assertion above is symmetric in the two constants and cannot see a swap.
 
@@ -93,6 +95,7 @@ def test_boarding_and_alighting_are_charged_at_the_right_END_of_the_journey():
     assert to_cell2[2] == pytest.approx(asym.alighting_min)
 
 
+@pytest.mark.needs_inputs
 def test_rail_edges_are_traversable_in_both_directions():
     """OSM often models only one direction of a service as a relation."""
     idx, _, _ = _index()
