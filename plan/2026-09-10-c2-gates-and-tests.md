@@ -72,7 +72,7 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
       test sets `umask(0o022)` around itself (TE-12); the mtime fingerprint test
       bumps `st_mtime_ns` explicitly (TE-13); `test_tiles` skips when
       tippecanoe is absent and checks the layer name (TE-18).
-- [ ] **W1 (gate warning, recorded)** One `DeprecationWarning` class (fork of a
+- [x] **W1 (gate warning, recorded)** One `DeprecationWarning` class (fork of a
       multi-threaded process), raised five times at the end-of-cycle run by the
       two forked-pool tests in `tests/test_cli.py`:
       `test_a_gate_failure_in_a_forked_worker_aborts_the_run` (2) and
@@ -84,6 +84,29 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
       criterion unchanged: `_build_all` moves to a `forkserver`/`spawn` context
       with the graph passed explicitly (S2 in the build plan), or the tests
       carry a `filterwarnings` limited to themselves quoting this entry.
+      *2026-10-02, closed by the second criterion.* By now FOUR tests fork:
+      the two above, `test_forked_workers_get_the_build_context_from_the_initializer_unpickled`
+      (S2) and `tests/test_progress.py::test_forked_workers_report_each_origin_as_it_finishes`;
+      9 warnings in a fast-subset run at `350eff3`. The threads are not ours:
+      importing `transport_maps.cli` takes the process from 1 OS thread to 4
+      (polars' and pyarrow's native pools start at import). Each of the four
+      now carries `forks_a_threaded_process` (`tests/test_cli.py`), an
+      `ignore` for that exact message and `DeprecationWarning` only; the
+      comment there says why it is safe -- the children run the stubbed
+      pipeline with polars/GDAL kept out, and each test's 15 s SIGALRM turns a
+      deadlocked pool into a red TimeoutError, so the filter hides the advice,
+      not the failure. `test_the_fork_warning_filter_matches_that_warning_and_no_other`
+      forks a threaded process for real and checks the filter swallows that
+      warning but not another DeprecationWarning nor the same text as a
+      RuntimeWarning. Mutations, each red: the pattern reworded (no longer
+      matches the real warning); the pattern widened to `.*`; the mark
+      removed from the progress test (the warning is back in the summary); a
+      second DeprecationWarning raised inside a marked test (still surfaces).
+      Note: `-W error::DeprecationWarning` cannot be used to police this --
+      CPython reports a fork warning that raises via `PyErr_WriteUnraisable`,
+      so the escalated warning is swallowed and the test stays green.
+      The production build still prints the warning; moving it off fork
+      remains S2's business.
 - [x] Run the full suite once at the end of the cycle and record the outcome.
       At `29c6330`, machine loaded by rebuild16: `uv run ruff check .` **All
       checks passed**; `uv run pytest -q` **356 passed, 4 deselected, 5
@@ -125,14 +148,33 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
         (29 at res 6); dropping one name -> red.
   - [x] TE-19 (2026-10-02): the golden coverage test uses
         `validate.check_coverage`, as the gate does (99.5% gated, 96.9% raw).
-- [ ] **F13 rest** TE-18 c1 (implied assertion, double graph build), TE-19 c1
+- [x] **F13 rest** TE-18 c1 (implied assertion, double graph build), TE-19 c1
       (Antarctica in the golden threshold), TE-20 c1 (ramps parser count
       guard), TE-26 c1 (44-second bound tests); **S5** `native_edges` cache
-      branch reachable by a `cache=` parameter (ARCH-13).
+      branch reachable by a `cache=` parameter (ARCH-13). (2026-10-02: all
+      five parts done -- TE-18 and TE-19 are ticked under F10 above.)
   - [x] TE-26 (2026-10-02): the abort proof moved to
         `tests/graph/test_nodes_bounds.py`, `build_index` on a stubbed
         19-cell world (44 s -> <1 s, no data/ needed) plus a counted-drop
         case. Raise removed / `dropped` not reported -> each red.
+  - [x] TE-20 (2026-10-02; the cycle-1 finding text is not in the tree, so
+        this is reconstructed from the row and the code): `check_ramps.ramps()`
+        now counts the declared keys a second, looser way and raises unless
+        the strict parse read every one; `tests/web/test_ramps.py` holds the
+        parse against node's own evaluation of `RAMPS` (keys, order, name,
+        sea, grey, anchors) instead of the literal `== 12`, and measures the
+        37 PAINTED bands, `painted()` checked colour-for-colour against
+        `expandRamp` run in node. Asserted on the bands: lightness strictly
+        decreasing after hex rounding and no two adjacent identical -- what
+        the anchor rules guarantee; no ΔE floor is claimed. Measured minimum
+        adjacent band ΔE: mono 1.61, warm 1.65, lavender 1.67, forest and sand
+        1.69, muted 1.70, twilight 1.77, copper 1.78, rose 1.81, ice 1.83,
+        ember 2.12, vivid 2.38 (anchors 6.5-8.9). Mutations, each red: one
+        scheme with `grey` before `sea` (parser raises); that plus the looser
+        count disabled (node parity red, every other ramp test green -- the
+        old failure); anchors truncated to ten; `(n - 1)` -> `n` in `expand`
+        and in `expandRamp`; `round` -> `int` in `oklab_to_srgb`; `painted()`
+        returning the anchors; either `band_problems` check disabled.
   - [x] S5 (2026-10-02): `grid.native_edges(idx, cache=None|True|False)`;
         tests read back a doctored file and pin the size rule. Read branch
         off, `rows` key renamed, write skipped, always-cache -> each red.

@@ -93,7 +93,7 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 | `2026-09-14-c12-review-findings.md` | Cycle 12: everything else the eleven review lanes found, scheduled or deferred (C12-1…**C12-14**) | cycle 12: current |
 | `2026-09-10-c2-web-ui-detail.md` | Page detail, ease of use, UI and accessibility (the user's brief for this run) | cycle 2 done; tasks still open, carried forward |
 | `2026-09-10-c2-build-robustness.md` | Build correctness, artifact integrity, deploy and verification scripts, performance | cycle 2 done; tasks still open, carried forward |
-| `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 recorded); open tasks carried forward |
+| `2026-09-10-c2-gates-and-tests.md` | Lint and test gates: red gates, vacuous tests, hygiene | cycle 2 done (W1 closed 2026-10-02); open tasks carried forward |
 | `2026-09-10-c2-docs-attribution-calibration.md` | Attribution, stale docs and comments, calibration provenance, bookkeeping | cycle 2 done; tasks still open, carried forward |
 | `2026-09-10-c2-security-and-policy.md` | Third-party policy, CSP, supply chain, blocked-on-owner items | cycle 2 done; tasks still open, carried forward |
 | `2026-09-13-c10-four-live-defects.md` | Cycle 10: the four defects the owner and the deploy's own verification reported, plus the two they uncovered (C10-1…**C10-17**) | cycle 10: current |
@@ -113,9 +113,10 @@ cycle number (`CR4-n`, `UX4-n` …) so the collision cannot recur.
 
 The five cycle-2 plans do not move to `archive/` yet: tasks across them are
 still open, and the archive convention below applies only when every task is
-done or has been carried forward under its ID. `W1` in the gates plan stays open
-by design -- it is a recorded warning with an exit criterion, not an unfinished
-fix.
+done or has been carried forward under its ID. `W1` in the gates plan was a
+recorded warning with an exit criterion rather than an unfinished fix; it
+closed on 2026-10-02 by that criterion's second branch (a `filterwarnings`
+limited to the forked-pool tests), so the suite no longer prints it.
 
 Cycles 7 and 8 moved to `archive/` in cycle 9, which is also when their two
 mis-ticked tasks were found. **The lesson is in the archive convention itself:

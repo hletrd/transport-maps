@@ -2,18 +2,138 @@
 
 `check_ramps` is the scripts/check_ramps.py module, loaded by a conftest
 fixture rather than by mutating sys.path for the whole session.
+
+TE-20 (cycle 1, closed 2026-10-02). The parser's count guard was a literal:
+`len(found) == 12` said nothing about WHICH twelve, and the reading regex is
+strict about field order, so a scheme written any other way was skipped
+without a word. And only the eleven anchors were measured, never the 37
+colours the page paints from them. Now the parser refuses to skip (a second,
+looser count of the declared keys must agree), node evaluates the RAMPS
+literal and expandRamp themselves as the independent source, and the painted
+bands are measured.
 """
+
+import json
+import shutil
+import subprocess
+
+import pytest
+
+from tests.web import _js
+
+
+@pytest.fixture(scope="module")
+def page_ramps(tmp_path_factory):
+    """RAMPS and every scheme's painted bands as app.js computes them, in
+    node: the JavaScript engine's reading of the literal, not a regex's."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH; the page's RAMPS cannot be evaluated")
+    from transport_maps import config
+
+    n = len(config.BAND_EDGES_MIN) + 1
+    src = f"""
+{_js.statement("const RAMPS = ")}
+{_js.function("hexToOklab")}
+{_js.function("oklabToHex")}
+{_js.function("expandRamp")}
+const bands = Object.fromEntries(
+  Object.entries(RAMPS).map(([k, r]) => [k, expandRamp(r.c, {n})]));
+process.stdout.write(JSON.stringify({{ ramps: RAMPS, bands }}));
+"""
+    path = tmp_path_factory.mktemp("ramps") / "ramps.cjs"
+    path.write_text(src, encoding="utf-8")
+    done = subprocess.run([node, str(path)], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
 
 
 def test_every_ramp_is_monotonic_and_separable(check_ramps):
     found = check_ramps.ramps()
-    # `>= 6` tolerated losing half the schemes: app.js ships twelve, and a
-    # parser that silently matched only the first six would have kept this
-    # green while six schemes went unmeasured.
-    assert len(found) == 12, f"RAMPS parsed {len(found)} schemes from app.js, expected 12"
+    # The count is no longer a literal here: `== 12` could not say which
+    # twelve, and the old `>= 6` tolerated losing half. ramps() itself now
+    # refuses to return fewer schemes than RAMPS declares, and the node test
+    # below holds both against the object the page actually builds.
+    assert found, "no schemes parsed from app.js"
     for key, r in found.items():
         assert len(r["c"]) == 11, f"{key}: {len(r['c'])} anchors, expected 11"
         assert not check_ramps.problems(r["c"]), f"{key}: {check_ramps.problems(r['c'])}"
+
+
+def test_the_parser_reads_every_scheme_the_page_defines(check_ramps, page_ramps):
+    """The independent source: node's own evaluation of the RAMPS literal.
+    Same keys in the same order, and the same name, sea, grey and anchors for
+    each -- so no scheme can be measured partly or not at all.
+
+    Mutations performed and reverted, each -> red: one scheme in app.js
+    written with `grey` before `sea` (ramps() raises: 12 declared, 11 read);
+    the looser count in ramps() disabled, with the same app.js edit (red here,
+    11 != 12 keys; every other test in this file stays green, which is the
+    old failure); each scheme's anchor list truncated to ten (red here).
+    """
+    found = check_ramps.ramps()
+    page = {k: {"name": r["name"], "sea": r["sea"], "grey": r["grey"], "c": r["c"]}
+            for k, r in page_ramps["ramps"].items()}
+    assert list(found) == list(page), (
+        f"parsed {list(found)} but the page defines {list(page)}")
+    assert found == page
+
+
+def test_the_parser_refuses_a_scheme_it_cannot_read(check_ramps):
+    """The failure TE-20 named, reproduced on a copy: one entry written in an
+    order the reading regex does not expect. Before, ramps() returned the
+    other eleven and every test in this file measured those."""
+    src = check_ramps.APP.read_text(encoding="utf-8")
+    entry = 'rose:     { name: "Rose",     sea: "#1c141b", grey: "#484848",'
+    assert entry in src, "the rose entry moved; re-pick the entry this test edits"
+    bad = src.replace(entry, 'rose:     { name: "Rose",     grey: "#484848", sea: "#1c141b",')
+    with pytest.raises(ValueError, match="12 scheme.*read 11.*rose"):
+        check_ramps.ramps(bad)
+
+
+def test_the_measured_bands_are_the_bands_the_page_paints(check_ramps, page_ramps):
+    """painted() must equal expandRamp, run in node, colour for colour.
+    Measuring a Python copy of the interpolation is only worth something if
+    the copy is exact -- including the rounding to hex.
+
+    Mutations performed and reverted, each -> red: `(n - 1)` -> `n` in
+    expand(), and separately in app.js's expandRamp; `round(c * 255)` ->
+    `int(c * 255)` in oklab_to_srgb; painted() returning the anchors.
+    """
+    for key, r in check_ramps.ramps().items():
+        assert check_ramps.painted(r["c"]) == page_ramps["bands"][key], key
+
+
+def test_every_painted_band_falls_in_lightness(check_ramps):
+    """The 37 painted bands, not only the 11 anchors (TE-20's other half).
+
+    Asserted: lightness strictly decreasing from band to band after rounding
+    to hex, and no two adjacent bands identical -- what the anchor rules
+    guarantee (see band_problems). Not asserted: a ΔE floor. Measured at
+    2026-10-02, the smallest adjacent ΔE between painted bands is 1.61 (mono),
+    then 1.65 warm, 1.67 lavender, 1.69 forest and sand, 1.70 muted, 1.77
+    twilight, 1.78 copper, 1.81 rose, 1.83 ice, 2.12 ember, 2.38 vivid; the
+    smallest lightness step is 0.89 (x100, vivid). `uv run python
+    scripts/check_ramps.py` prints the current figures.
+    """
+    for key, r in check_ramps.ramps().items():
+        bands = check_ramps.painted(r["c"])
+        assert len(bands) == check_ramps.n_bands()
+        assert not check_ramps.band_problems(bands), f"{key}: {check_ramps.band_problems(bands)}"
+
+
+def test_a_painted_band_reversal_is_caught(check_ramps):
+    """band_problems must be able to fail: a repeated band and a band lighter
+    than the one before it, each on otherwise good bands. Disabling either of
+    its two checks -> red here (and only here, because the shipped bands pass
+    both)."""
+    good = check_ramps.painted(check_ramps.ramps()["muted"]["c"])
+    assert not check_ramps.band_problems(good)
+    repeated = good[:10] + [good[9]] + good[11:]
+    assert any("identical" in p for p in check_ramps.band_problems(repeated))
+    assert any("not strictly decreasing" in p for p in check_ramps.band_problems(repeated))
+    swapped = good[:10] + [good[11], good[10]] + good[12:]
+    assert any("10-11" in p for p in check_ramps.band_problems(swapped))
 
 
 def test_a_ramp_with_a_lightness_reversal_is_caught(check_ramps):

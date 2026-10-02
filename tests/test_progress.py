@@ -7,7 +7,7 @@ import pytest
 
 from transport_maps import cli, progress, variants
 
-from .test_cli import _stub_pipeline
+from .test_cli import _stub_pipeline, forks_a_threaded_process
 
 ORIGINS = {"first": {"slug": "first", "lat": 0.0, "lon": 0.0},
            "second": {"slug": "second", "lat": 1.0, "lon": 0.0}}
@@ -273,6 +273,7 @@ def test_a_partial_resumed_run_still_never_publishes(monkeypatch, tmp_path, part
     assert solved == ["first"] and calls == []
 
 
+@forks_a_threaded_process   # W1: why this is safe is beside its definition
 def test_forked_workers_report_each_origin_as_it_finishes(monkeypatch, tmp_path, capsys):
     """imap_unordered: a slow first origin does not hold back the row of one
     that finished behind it.
