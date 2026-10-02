@@ -56,6 +56,25 @@ def _hermetic_cache(request, monkeypatch, scratch_cache):
     monkeypatch.setattr(config, "CACHE", scratch_cache)
 
 
+@pytest.fixture(autouse=True)
+def _offline_inputs():
+    """No test asks an upstream whether a raw input changed (G2).
+
+    `sources._fetch` checks every input once per process; under pytest that
+    would be a live request from any test that reaches a download, and the
+    per-process memo would carry one test's answer into the next. Every test
+    starts offline with an empty memo; tests/sources/test_fetch.py turns the
+    network back on against a stub.
+    """
+    from transport_maps.sources import _fetch
+
+    _fetch.reset()
+    _fetch.set_offline(True)
+    yield
+    _fetch.set_offline(None)
+    _fetch.reset()
+
+
 @pytest.fixture
 def hermetic_build(monkeypatch, tmp_path):
     """Redirect `config.BUILD` at a scratch directory for one test.
