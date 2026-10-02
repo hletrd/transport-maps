@@ -93,9 +93,14 @@ def test_a_truncated_array_is_refused(check_dist, tmp_path):
     assert any("seoul.bin has 2 entries" in m for m in check_dist.check_dist(d))
 
 
-def test_the_modes_width_comes_from_the_emitter(check_dist, tmp_path):
-    """A seventh channel must not drift past the gate: the expected width is
-    2 * len(CHANNELS), passed in, never a literal 12."""
+def test_the_modes_width_comes_from_the_index_the_page_reads(check_dist, tmp_path):
+    """A seventh channel must not drift past the gate, and the gate must judge
+    the arrays by the channel list the PAGE reads them by -- index.json's
+    `modeChannels` -- not by the emitter this checkout imports (J1b(d), AA44).
+
+    Mutation: `n_channels = len(CHANNELS)` in place of the index's count -> RED
+    (the seven-channel dist/ below is refused although it is consistent).
+    """
     d = _good_dist(tmp_path)
     p = d / "origins" / "seoul.modes.bin"
     p.write_bytes(b"\0" * 2 * (len(CHANNELS) + 1) * N_CELLS)
@@ -103,7 +108,36 @@ def test_the_modes_width_comes_from_the_emitter(check_dist, tmp_path):
     idx = json.loads((d / "index.json").read_text())
     idx["modeChannels"].append("hovercraft")
     (d / "index.json").write_text(json.dumps(idx))
-    assert check_dist.check_dist(d, n_channels=len(CHANNELS) + 1) == []
+    assert check_dist.check_dist(d) == []
+    # The override entry width follows the same count: 4 + 2 + 2 * channels.
+    idx["overrideUrlSuffix"] = ".over.bin"
+    (d / "index.json").write_text(json.dumps(idx))
+    (d / "origins" / "seoul.over.bin").write_bytes(b"\0" * (4 + 2 + 2 * (len(CHANNELS) + 1)))
+    assert check_dist.check_dist(d) == []
+    # An explicit expectation is still checked against the index.
+    assert any("modeChannels has 7 entries, expected 6" in m
+               for m in check_dist.check_dist(d, n_channels=len(CHANNELS)))
+
+
+def test_the_emitter_channel_count_is_only_a_fallback(check_dist, tmp_path):
+    """No `modeChannels` is itself refused (the page then cannot check the
+    channel order), and the arrays are measured against the emitter's count,
+    so the one message names the real cause instead of every origin.
+
+    Mutation: return 0 from the fallback branch of `_channel_count` -> RED.
+    """
+    d = _good_dist(tmp_path)
+    idx = json.loads((d / "index.json").read_text())
+    del idx["modeChannels"]
+    (d / "index.json").write_text(json.dumps(idx))
+    problems = check_dist.check_dist(d)
+    assert problems == [
+        "index.json has no modeChannels: the page cannot check the .modes.bin channel "
+        "order. Run `uv run transport-maps reindex`."], problems
+    idx["modeChannels"] = "rail,ferry"
+    (d / "index.json").write_text(json.dumps(idx))
+    problems = check_dist.check_dist(d)
+    assert len(problems) == 1 and "not a list of channel names" in problems[0], problems
 
 
 def test_rail_files_must_ship_together_and_when_advertised(check_dist, tmp_path):

@@ -338,6 +338,45 @@ def test_reindex_refuses_when_the_unreachable_sentinel_has_moved(dist, monkeypat
         cli._reindex(dist)
 
 
+def test_reindex_refuses_when_the_contract_version_has_moved(dist, monkeypatch):
+    """J1b(b). `contractVersion` names the layout the arrays were written in.
+    Stamping today's number over a dist/ built under another one tells the
+    page that old arrays have the new layout, which is the one thing the
+    number exists to prevent.
+
+    Mutation: drop "contractVersion" from cli._CURRENT_INDEX_CONSTANTS.
+    """
+    _artifacts(dist, "seoul")
+    _previous(dist, contractVersion=cli.index.CONTRACT_VERSION - 1)
+    monkeypatch.setattr(cli.index, "load_origins", lambda *a, **k: [_origin("seoul")])
+    with pytest.raises(SystemExit, match="contractVersion"):
+        cli._reindex(dist)
+    assert json.loads((dist / "index.json").read_text())["contractVersion"] == (
+        cli.index.CONTRACT_VERSION - 1), "the refusal must leave the existing index untouched"
+
+
+def test_an_index_from_before_the_contract_version_still_reindexes(dist, monkeypatch):
+    """An absent key passes, as for every other frozen key: an index.json from
+    before the field existed is the one every shipped dist/ has today, and
+    refusing it would make reindex unusable on exactly the builds it serves."""
+    _artifacts(dist, "seoul")
+    _previous(dist)
+    idx = _reindex(dist, [_origin("seoul")], monkeypatch)
+    assert idx["contractVersion"] == cli.index.CONTRACT_VERSION
+
+
+def test_the_contract_version_refusal_reads_todays_emitter(monkeypatch):
+    """A lambda returning a frozen 2 would pass both tests above until the
+    first bump, and then refuse every dist/ written by the new code.
+
+    Mutation: `"contractVersion": lambda: 2` in cli._CURRENT_INDEX_CONSTANTS.
+    """
+    current = cli._CURRENT_INDEX_CONSTANTS["contractVersion"]
+    before = current()
+    monkeypatch.setattr(cli.index, "CONTRACT_VERSION", before + 1)
+    assert current() == before + 1
+
+
 def test_every_constant_write_index_derives_is_in_the_refusal_set():
     """The refusal set was three of five, and stayed three of five while
     write_index grew. Derive the question from the artifact instead of
@@ -429,12 +468,23 @@ def _config_derived_index_keys() -> set[str]:
         and any(getattr(t, "id", None) == "payload" for t in node.targets))
     assert isinstance(payload, ast.Dict), "write_index no longer builds a dict literal"
 
+    # emit/index.py's own module-level integer constants are the code's
+    # constants too. CONTRACT_VERSION is one, and it was the key this parse
+    # could not see: it is a bare name, not `config.X`, so the field sat
+    # outside the refusal set with this test green (J1b).
+    module_ints = {
+        t.id for node in ast.parse(src).body if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Constant) and type(node.value.value) is int
+        for t in node.targets if isinstance(t, ast.Name)}
+    assert "CONTRACT_VERSION" in module_ints, "re-derive: the version constant moved"
+
     derived = set()
     for key, value in zip(payload.keys, payload.values):
         if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
             continue
         names = {n.value.id for n in ast.walk(value)
                  if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)}
-        if names & _CONSTANT_MODULES:
+        bare = {n.id for n in ast.walk(value) if isinstance(n, ast.Name)}
+        if names & _CONSTANT_MODULES or bare & module_ints:
             derived.add(key.value)
     return derived

@@ -94,3 +94,24 @@ def test_every_shared_file_the_deploy_requires_has_a_row():
     doc = _first_column_names(_section("Shared, once per site"))
     required = {"index.json", "hover_cells.bin", "reading_parents.bin", *check_dist.REQUIRED_EXTRAS}
     assert required - doc == set(), f"shared files with no row: {required - doc}"
+
+
+def test_the_fields_marked_frozen_are_the_ones_reindex_refuses():
+    """The table marks a field *frozen* when `reindex` refuses to carry it
+    across a change in today's code. That set is `cli._CURRENT_INDEX_CONSTANTS`,
+    and the two must name the same fields: J1b added `contractVersion` to the
+    refusal set, and a reader of this document is owed the same answer.
+
+    Mutations performed (2026-10-02), each RED, each restored:
+      - drop "; *frozen*" from the contractVersion row             -> RED
+      - drop "contractVersion" from cli._CURRENT_INDEX_CONSTANTS     -> RED
+    """
+    from transport_maps import cli
+
+    frozen: set[str] = set()
+    for line in _section("`index.json`").splitlines():
+        if line.startswith("| ") and "*frozen*" in line:
+            frozen.update(re.findall(r"`([^`]+)`", line.split("|")[1]))
+    code = set(cli._CURRENT_INDEX_CONSTANTS)
+    assert frozen == code, (f"marked frozen but not refused: {frozen - code}; "
+                            f"refused but not marked frozen: {code - frozen}")

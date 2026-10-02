@@ -127,6 +127,27 @@ build.
       (`docs/contract.md`, "Node-offset arithmetic"). This was ARCH3-3.
       (d) `check_dist` should take the channel width from `index.json`'s
       `modeChannels` rather than the emitter's `CHANNELS`. This was AA44/AA34.
+      (2026-10-02, (b) and (d) DONE; (a) and (c) still open, so the box stays
+      open. (b): `"contractVersion": lambda: index.CONTRACT_VERSION` is in
+      `cli._CURRENT_INDEX_CONSTANTS`; an index without the key still
+      reindexes. `tests/cli/test_reindex.py` gains three tests (refusal,
+      absent key, the lambda reads today's constant), and its derived-key
+      parse now also counts `emit/index.py`'s module-level integer constants,
+      which is why it could not see `contractVersion` before.
+      `tests/test_contract_doc.py` now keeps the contract's *frozen* marks
+      equal to the refusal set, and the `contractVersion` row is marked
+      *frozen*. (d): `scripts/check_dist.py` no longer imports `CHANNELS` at
+      module level. `_channel_count()` reads `len(modeChannels)` from
+      `index.json`, falls back to `emit.modes.CHANNELS` only when the field
+      is absent or not a list of names, and reports that case. `n_channels`
+      is now an optional extra expectation. Mutations, each RED and restored:
+      drop the refusal key (3 tests red); freeze the lambda at 2; use the
+      emitter's count in place of the index's; return 0 from the fallback;
+      accept any non-None `modeChannels`; drop the *frozen* mark from the
+      doc row. Not touched: AA34/AA44's shared publishability predicate,
+      which is a separate refactor. The width table is still typed in both
+      `cli.py` and `check_dist.py`, but `check_dist`'s copy now follows the
+      index and no longer follows the emitter.)
 - [x] **B2 (table move)** `[ground]`, `[urban]` and the air-bound constants
       into `calibration.toml` with labels; one `calibrate.load()` threaded
       through the build context; `_land_border_min` no longer parsed per origin

@@ -38,6 +38,11 @@ Raise the number when an existing field or file changes meaning, width or
 order. Adding an optional field that an older page can ignore does not need a
 new version.
 
+`reindex` treats the number as *frozen*: it refuses to stamp today's version
+over a dist/ whose `index.json` names another one, because that would tell the
+page that old arrays have the new layout. An `index.json` without the field
+still reindexes, as for every other frozen field.
+
 The page does not read `contractVersion` yet. When it does, an unknown
 version must produce a console warning, not `fatal()`. The page reads every
 field with a fallback, and the deploy gates (`scripts/check_dist.py`,
@@ -141,7 +146,7 @@ file when a field marked *frozen* no longer matches today's code
 
 | Field | Type | Meaning | Page if absent |
 |---|---|---|---|
-| `contractVersion` | int | this contract's version (above) | read as 1 |
+| `contractVersion` | int | this contract's version (above); *frozen* | read as 1 |
 | `bandEdgesMin` | int[] | upper edge of each band in minutes, strictly ascending, 36 edges and 37 bands; *frozen* | `fatal()` |
 | `unreachable` | int | the uint16 sentinel, 65,535; *frozen* | 65,535 |
 | `hoverRes`, `solveRes`, `fineRes` | int | 4, 6 and 7; *frozen* | 4 and 6; `fineRes` is not read by the page (`plan/deferred.md` AB26) |
@@ -194,15 +199,20 @@ file when a field marked *frozen* no longer matches today's code
   required fields and attribution.
 - `tests/test_contract_doc.py`: this file against `write_index`'s keys and
   `progress.SUFFIXES`.
-- `tests/cli/test_reindex.py`: the *frozen* fields.
+- `tests/cli/test_reindex.py`: the *frozen* fields, including
+  `contractVersion`. `tests/test_contract_doc.py` keeps the *frozen* marks in
+  this file equal to `cli._CURRENT_INDEX_CONSTANTS`.
 - `tests/emit/test_index.py`: `contractVersion` and the other fields.
 - The page itself: `hoverCellCount` and per-origin length checks.
 
+`check_dist` measures `.modes.bin` and `.over.bin` against the channel count
+in `index.json`'s `modeChannels`, the list the page reads them by. It falls
+back to `emit/modes.py:CHANNELS` only when the field is absent, and reports
+the absence (J1b(d), 2026-10-02).
+
 Not done yet (J1's code half, recorded in the plan): the page warning on an
-unknown `contractVersion`, one `NodeIndex.offsets` in place of the six
-hand-derived sites, `check_dist` reading channel widths from `index.json`'s
-`modeChannels` instead of the emitter's, and `reindex` refusing a
-`contractVersion` that has moved.
+unknown `contractVersion`, and one `NodeIndex.offsets` in place of the seven
+hand-derived sites.
 
 ## Rules that cross the layer boundary
 

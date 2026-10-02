@@ -757,6 +757,13 @@ _CURRENT_INDEX_CONSTANTS = {
     "readingRes": lambda: config.READING_RES,
     "readingParentRes": lambda: config.READING_PARENT_RES,
     "readingSlots": lambda: config.READING_SLOTS,
+    # The layout version the artifacts were written under (docs/contract.md,
+    # "Versioning"). It goes up exactly when a file changes meaning, width or
+    # order, so stamping today's number over a dist/ built under another one
+    # would tell the page the old arrays have the new layout. An index.json
+    # from before the field existed has no key and still reindexes, as for
+    # every other key here (J1b).
+    "contractVersion": lambda: index.CONTRACT_VERSION,
 }
 
 

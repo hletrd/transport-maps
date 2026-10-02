@@ -24,7 +24,6 @@ import numpy as np
 
 from transport_maps import progress, variants
 from transport_maps.config import READING_SLOTS
-from transport_maps.emit.modes import CHANNELS
 
 REQUIRED_EXTRAS = ("places.json", "airports.json", "borders.json", "water.pmtiles")
 # Evidence of an aborted writer; a deploy that merely excluded them would ship
@@ -259,14 +258,44 @@ def _record_problems(dist: Path, root: Path, listed: list[dict], inputs_hash: st
                         "(another build's origin, whole)")
 
 
+def _channel_count(idx: dict, bad: list[str]) -> int:
+    """The `.modes.bin` channel count this dist/ was written with.
+
+    Read from index.json's `modeChannels`, because that is what the page reads
+    the arrays by (`MODE_NAMES = meta.modeChannels ?? [...]`), not from the
+    emitter this checkout happens to import. A dist/ built before a channel
+    was added is consistent with its own index. This gate asks whether the
+    files agree with each other, not with today's code: `reindex` is what
+    refuses a `modeChannels` that has moved since the build (J1b, AA44).
+
+    The emitter's `CHANNELS` is the fallback only when the field is absent or
+    unusable, and that case is reported too, because the page then has
+    nothing to check the channel order against.
+    """
+    names = idx.get("modeChannels")
+    if isinstance(names, list) and names and all(isinstance(n, str) for n in names):
+        return len(names)
+    if names is None:
+        bad.append("index.json has no modeChannels: the page cannot check the .modes.bin channel "
+                   "order. Run `uv run transport-maps reindex`.")
+    else:
+        bad.append(f"index.json modeChannels is not a list of channel names: {names!r}")
+    from transport_maps.emit.modes import CHANNELS
+    return len(CHANNELS)
+
+
 def check_dist(dist: Path, origins: list[dict] | None = None,
-               n_channels: int = len(CHANNELS),
+               n_channels: int | None = None,
                warn_out: list[str] | None = None) -> list[str]:
     """Every problem found under `dist`, or an empty list.
 
     `origins` is the expected origin list (data/origins.toml); when given,
     index.json must list exactly those slugs -- a partial build never
     rewrites index.json, so a mismatch means a stale one.
+
+    `n_channels` is the `.modes.bin` channel count to expect. Left as None,
+    it is read from index.json's `modeChannels` (`_channel_count`). Given, it
+    is an extra expectation the index must also meet.
 
     `warn_out` collects findings that are REPORTED but do not fail the deploy.
     There is exactly one class of those: a build-host path in a PMTiles
@@ -308,11 +337,11 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
     # a long build publishes, since the parent writes index.json at the end
     # using the module it imported at the start -- passed this gate with the
     # guards silently off. `transport-maps reindex` rewrites the file alone.
-    if "modeChannels" not in idx:
-        bad.append("index.json has no modeChannels: the page cannot check the .modes.bin channel "
-                   "order. Run `uv run transport-maps reindex`.")
-    elif len(idx["modeChannels"]) != n_channels:
-        bad.append(f"index.json modeChannels has {len(idx['modeChannels'])} entries, emitter has {n_channels}")
+    declared = _channel_count(idx, bad)
+    if n_channels is None:
+        n_channels = declared
+    elif declared != n_channels:
+        bad.append(f"index.json modeChannels has {declared} entries, expected {n_channels}")
 
     # app.js: `const EDGES = meta.bandEdgesMin` and then expandRamp(EDGES) --
     # fatal() on load without it, which is a blank page, not a degraded one.
