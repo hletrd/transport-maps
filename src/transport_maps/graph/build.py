@@ -90,8 +90,11 @@ def _air_edges(
         # Border control is a property of the ROUTE, not of either airport, so
         # it is charged here where both countries are known. Schengen and the
         # Ireland/UK Common Travel Area count as single zones: those flights
-        # cross a national border but no passport desk.
-        if transfers.crosses_border(country1, country2):
+        # cross a national border but no passport desk. The country is the
+        # one whose control the airport's passengers pass, which for Ercan
+        # is not OurAirports' (transfers.AIRPORT_COUNTRY).
+        if transfers.crosses_border(transfers.airport_country(src, country1),
+                                    transfers.airport_country(dst, country2)):
             block += transfers.border_min(max(size1, size2, key=_SIZE_RANK.get), cal)
         # The flight edge carries block time ONLY. Waiting is charged on the
         # connection edge instead (see _transfer_edges), because a traveller

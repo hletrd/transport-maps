@@ -164,3 +164,44 @@ def test_a_connection_costs_the_larger_of_mct_and_the_wait_and_needs_a_departure
     assert edges == {(idx.airport_arr_index(a), idx.airport_index(a)): float(w)
                      for a, w in want.items()}
     # FRA, XSM and SML have nothing (plausible) departing: no connection at all.
+
+
+def test_a_flight_is_charged_by_the_zone_its_passengers_actually_enter(monkeypatch):
+    """A15's corrected memberships, through the flight edge itself: the Isle
+    of Man is in the Common Travel Area (no border to Heathrow), Ercan is the
+    north's airport whatever OurAirports files it under (a border to Larnaca),
+    and Réunion is outside Schengen with its check at Paris (a border).
+
+    Mutations performed and reverted, each -> red: drop "IM" from the CTA
+    (IOM->LHR charged); call `crosses_border` on the raw OurAirports countries
+    (ECN->LCA free); add "RE" to Schengen (CDG->RUN free).
+    """
+    apts = [("IOM", 54.0833, -4.6239, "medium", "IM"),
+            ("LHR", 51.4706, -0.4619, "large", "GB"),
+            ("ECN", 35.1547, 33.4961, "medium", "CY"),
+            ("LCA", 34.8751, 33.6249, "medium", "CY"),
+            ("CDG", 49.0097, 2.5479, "large", "FR"),
+            ("RUN", -20.8871, 55.5103, "medium", "RE")]
+    pairs = [("IOM", "LHR"), ("ECN", "LCA"), ("CDG", "RUN")]
+    monkeypatch.setattr(build.airports, "scheduled_airports", lambda: pl.DataFrame(
+        apts, schema=["iata", "lat", "lon", "size", "country"], orient="row"))
+    monkeypatch.setattr(build.routes, "route_network", lambda: pl.DataFrame(
+        pairs, schema=["src", "dst"], orient="row"))
+    cells = [h3.latlng_to_cell(lat, lon, config.SOLVE_RES) for _, lat, lon, _, _ in apts]
+    iatas = [a[0] for a in apts]
+    small = NodeIndex(cells=cells, airports=iatas,
+                      _cell_pos={c: i for i, c in enumerate(cells)},
+                      _airport_pos={a: len(cells) + i for i, a in enumerate(iatas)},
+                      _airport_cell={a: i for i, a in enumerate(iatas)})
+    meta = {a[0]: a[1:] for a in apts}
+
+    def block(a, b):
+        km = h3.great_circle_distance(meta[a][:2], meta[b][:2], unit="km")
+        return air.block_time_min(km, meta[a][2], meta[b][2], CAL)
+
+    edges = _edges(build._air_edges(small))
+    want = {("IOM", "LHR"): block("IOM", "LHR"),
+            ("ECN", "LCA"): block("ECN", "LCA") + CAL.border_min["medium"],
+            ("CDG", "RUN"): block("CDG", "RUN") + CAL.border_min["large"]}
+    assert edges == {(small.airport_index(a), small.airport_arr_index(b)): float(w)
+                     for (a, b), w in want.items()}

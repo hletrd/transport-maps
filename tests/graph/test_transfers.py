@@ -86,3 +86,80 @@ def test_border_is_a_real_cost_not_a_rounding_error(cal):
     for size in SIZES:
         assert transfers.border_min(size, cal) >= 0.3 * transfers.processing_min(size, cal)
 
+
+# --- zone membership, checked against official sources 2026-10-02 (A15) -----
+#
+# Each pair names the sourced fact in `graph/transfers.py`. Mutations performed
+# and reverted, each -> red: drop "AX" from the Schengen list (Åland pairs);
+# drop "MC", "SM" or "VA" (its own pair); drop "IM", "JE" or "GG" from the CTA
+# (its pairs); add "AD" to Schengen, or any overseas department to it (the
+# not-shared pairs); empty AIRPORT_COUNTRY (Ercan).
+
+@pytest.mark.parametrize("a,b,why", [
+    ("AX", "FI", "Åland is Finland, inside Schengen; its border is for tax"),
+    ("AX", "SE", "the Stockholm-Mariehamn ferry passes no passport desk"),
+    ("MC", "FR", "Monaco: Schengen through France, no routine control"),
+    ("SM", "IT", "San Marino follows Schengen rules, no border control"),
+    ("VA", "IT", "Vatican City: open border with Rome"),
+    ("LI", "CH", "Liechtenstein is a full Schengen member"),
+    ("IM", "GB", "Isle of Man: Common Travel Area"),
+    ("JE", "GB", "Jersey: Common Travel Area"),
+    ("GG", "IE", "Guernsey: Common Travel Area"),
+    ("JE", "GG", "between two Crown Dependencies"),
+])
+def test_corrected_members_share_a_zone(a, b, why):
+    assert not transfers.crosses_border(a, b), why
+
+
+@pytest.mark.parametrize("a,b,why", [
+    ("AD", "FR", "Andorra is outside Schengen"),
+    ("AD", "ES", "Andorra is outside Schengen"),
+    ("RE", "FR", "Réunion: France, but outside Schengen, checked at Paris"),
+    ("GP", "FR", "Guadeloupe: outside Schengen"),
+    ("MQ", "FR", "Martinique: outside Schengen"),
+    ("GF", "FR", "French Guiana: outside Schengen"),
+    ("YT", "FR", "Mayotte: outside Schengen"),
+    ("CY", "GR", "Cyprus has not had internal controls lifted"),
+    ("CYN", "CY", "the Green Line is a controlled crossing"),
+    ("IM", "FR", "the CTA is not Schengen"),
+])
+def test_places_that_keep_a_border_keep_it(a, b, why):
+    assert transfers.crosses_border(a, b), why
+
+
+def test_ercan_is_the_norths_airport_and_no_other_cypriot_one_is():
+    """OurAirports files ECN under CY; its passengers pass the northern
+    administration's control, which the ground calls CYN."""
+    assert transfers.airport_country("ECN", "CY") == "CYN"
+    assert transfers.crosses_border(transfers.airport_country("ECN", "CY"), "CY")
+    assert transfers.airport_country("LCA", "CY") == "CY"
+    assert transfers.airport_country("PFO", "CY") == "CY"
+
+
+def test_air_and_ground_put_each_corrected_place_in_the_same_zone(monkeypatch):
+    """The air model reads OurAirports' code for an airport, the ground reads
+    Natural Earth's for a cell; through one table they must name one zone.
+    The ISO_A2_EH values are Natural Earth 10m's own (CYN has none, so
+    `countries.iso2` keeps the A3), read from the cached zip on 2026-10-02.
+
+    Mutation performed and reverted: route `ground.cell_zones` around
+    `immigration_zone` -> red.
+    """
+    from transport_maps.graph import ground
+    from transport_maps.sources import countries
+
+    monkeypatch.setattr(countries, "A3_TO_A2", {
+        "ALD": "AX", "FIN": "FI", "IMN": "IM", "JEY": "JE", "GGY": "GG", "GBR": "GB",
+        "MCO": "MC", "FRA": "FR", "SMR": "SM", "VAT": "VA", "ITA": "IT", "CYP": "CY",
+    })
+    # (Natural Earth A3 of the land, OurAirports iso_country and IATA of an
+    # airport on it)
+    for a3, oa_country, iata in (("ALD", "FI", "MHQ"), ("IMN", "IM", "IOM"),
+                                 ("JEY", "JE", "JER"), ("GGY", "GG", "GCI"),
+                                 ("CYN", "CY", "ECN"), ("CYP", "CY", "LCA")):
+        ground_zone = ground.cell_zones([a3])[0]
+        air_zone = transfers.immigration_zone(transfers.airport_country(iata, oa_country))
+        assert ground_zone == air_zone, (a3, iata, ground_zone, air_zone)
+    assert len(set(ground.cell_zones(["MCO", "FRA", "SMR", "VAT", "ITA", "ALD", "FIN"]))) == 1
+    assert len(set(ground.cell_zones(["IMN", "JEY", "GGY", "GBR"]))) == 1
+
