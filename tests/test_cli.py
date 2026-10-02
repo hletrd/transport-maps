@@ -30,6 +30,11 @@ def test_slug_rejects_path_separators():
         _slug("a/b")
 
 
+# Where the stubbed solver-bundle writer records its calls (kept out of
+# `written`, whose length several tests count).
+BUNDLES: list = []
+
+
 def _stub_pipeline(monkeypatch, written, coverages):
     """Replace every collaborator `_build_all` calls with a cheap stand-in, so
     the test exercises only the sequencing of `_build_all` itself: two fake
@@ -52,11 +57,18 @@ def _stub_pipeline(monkeypatch, written, coverages):
             h3.latlng_to_cell(37.5665, 126.9780, config.READING_RES)]
         base_index: ClassVar[np.ndarray] = np.zeros(1, dtype=np.int64)
         fine: ClassVar[np.ndarray] = np.zeros(1, dtype=bool)
+        _split: ClassVar[frozenset] = frozenset()
 
         def try_cell_index(self, cell):
             return None
 
     monkeypatch.setattr(cli.nodes, "build_index", lambda **kw: FakeIdx())
+    # The solver bundle goes to the real data/build; a test must never write it.
+    from transport_maps.service import bundle as solver_bundle
+
+    BUNDLES.clear()
+    monkeypatch.setattr(solver_bundle, "write_bundle",
+                        lambda out, *a, **k: BUNDLES.append(out))
     # The staging sweep touches a directory shared with every build on the
     # machine; the sequencing tests must never reach it.
     monkeypatch.setattr(cli.tiles, "sweep_scratch", lambda: 0)

@@ -538,6 +538,17 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # design, so the no-air variant is the one graph it cannot judge.
     if exclude != "air":
         validate.check_airport_connectivity(idx, csr)
+    # The resident solver's copy of this graph (service/bundle.py): written
+    # here, from the graph every origin below is solved on, so an uncharted
+    # departure is answered by exactly the model the map was drawn with. Not
+    # in dist/ -- it is 1.2 GB the page never reads; the deploy ships it
+    # separately. Variants are not served on demand, so they write none.
+    if exclude is None:
+        from transport_maps.service import bundle
+
+        bundle.write_bundle(config.BUILD / "solver", idx.cells, idx._split, csr.shape[0],
+                            csr, identity)
+        logging.getLogger(__name__).info("solver bundle written to %s", config.BUILD / "solver")
     # The render grid (land + sea fringe, neighbour table) is the same for
     # every origin; computed once here, inherited copy-on-write.
     hover_parents = hover.hover_cells(idx)

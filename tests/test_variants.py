@@ -294,3 +294,21 @@ def test_a_partial_variant_run_leaves_the_finished_one_on_offer(monkeypatch, tmp
     monkeypatch.setattr(cli.bands, "band_feature_collection", lambda *a, **kw: {"features": []})
     cli._build_all(only=["first"], exclude="air")
     assert (root / variants.MARKER).exists()
+
+
+def test_only_the_full_build_writes_the_solver_bundle(monkeypatch, tmp_path):
+    """The resident solver serves the full map's graph; a variant writing its
+    graph to the same place would replace it with a map missing a mode.
+
+    Mutation performed and reverted: drop `if exclude is None:` before the
+    bundle write -> red.
+    """
+    from .test_cli import BUNDLES
+
+    _run_variant(monkeypatch, tmp_path, "air")
+    assert BUNDLES == []
+    monkeypatch.setattr(cli.config, "DIST", tmp_path / "full")
+    _stub_pipeline(monkeypatch, [], coverages=[1.0, 1.0])
+    monkeypatch.setattr(cli.index, "write_index", lambda *a, **k: None)
+    cli._build_all()
+    assert len(BUNDLES) == 1
