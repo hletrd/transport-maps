@@ -172,6 +172,26 @@ Controls, focus, tooltips, semantics
       and `.json` lazily on the first click through the C5 path; `borders.json`
       as a URL source (H8). Design and flags in `architect.md` §4 D13 — M3 is
       the prerequisite and must stay first.
+      (2026-10-02: reorder MEASURED and NOT shipped. A prototype started the
+      `hover_cells.bin` fetch where it is, built the map without waiting and
+      awaited the cells after the map's `load`; both it and HEAD were served
+      from the main checkout's dist/ with web/ overlaid and timed with
+      performance marks in headless Chromium at 1280x800, alternating, 12 runs
+      each. Medians, HEAD then prototype: map created 38 / 39 ms, map `load`
+      63 / 61 ms, first idle frame with bands 525 / 517 ms (ranges 497-578 and
+      494-630); the `hover_cells.bin` request itself took 5-6 ms. The gain is
+      inside the noise because `index.html` already preloads the file, so it
+      is in hand before app.js asks for it. With the server holding
+      `hover_cells.bin` back 400 ms (6 runs each), the map was created at
+      432 / 51 ms but the first frame with bands still came at 923 / 936 ms:
+      the band tiles take ~450 ms of their own and the map draws nothing but
+      its background until the layers are added. Getting more would mean
+      painting the origin before the cells exist, i.e. making `hoverCells`
+      nullable through `cellIndex`, `chartedSlice`, `capCities` and every
+      listener above the await -- the TDZ class this page has gone blank from
+      three times -- for a gain under the 150 ms bar. The lazy `.modes.bin` /
+      `.json` half and `borders.json` as a URL source are separate and still
+      open.)
 - [x] **D2 (subset)** Vendor `latin-ext` only (26 of the 900 label-pool names
       need it; cyrillic/greek are not needed — gazetteer names are romanised).
       (2026-10-02: latin-ext 400/500/600 from @fontsource/ibm-plex-sans 5.3.0,
@@ -255,3 +275,14 @@ Controls, focus, tooltips, semantics
   unfinished web task from the cycle-1 plan (now archived) under its original ID.
 - 2026-09-10 cycle 2 done: every cycle-2 task shipped in 9d0a401 (page) with N21 in 269e17c and the parity test in 1d382c8; verified on the local preview with agent-browser at 1280x800, 820x1180, 390x844 and 844x390 (0 console errors) and by scripts/browser_verify.sh against the preview (all checks passed, including the folded-sheet legend, the tap reading, the departure label, borders and ?from=tokyo). Checks recorded in the commit body. Not deployed: the rebuild owns dist/ (see the build plan's deploy note).
 - 2026-09-10 cycle 2 closed at `29c6330`: every Cycle 2 task above is ticked; the Cycle 3 section stays open, so this plan is not archived. Both gates green on the whole repo at that commit (ruff clean; pytest 356 passed, 4 deselected, 5 warnings, exit 0) -- recorded in `plan/2026-09-10-c2-gates-and-tests.md`.
+- 2026-10-02 R8, C3 (page half) and D13 (measured, not shipped): verified on a
+  local preview of the main checkout's dist/ (read-only) with web/ overlaid,
+  served by a threaded keep-alive server with byte ranges and a 1,024 backlog.
+  `scripts/browser_verify.sh` against it: ALL CHECKS PASSED, 0 console errors,
+  all four viewports. Per viewport with agent-browser (canvas, bands and water
+  rendered, 61 list rows, a click gives a reading and the Route panel, 0 page
+  or console errors): hovering a land point near Seoul drew a 6.3-6.8 km ring
+  beside a res-6 reading at 1280x800, 820x1180, 390x844 and 844x390. With the
+  server holding `seoul.r6.bin` back 15 s, the same pointer read "· read from
+  the wider grid" inside a 47.5 km ring, and once the tier landed, the pointer
+  still, the ring was 6.8 km and the disclosure gone. Not deployed.
