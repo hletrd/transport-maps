@@ -1,8 +1,7 @@
 """`solvePoint()` runs under node, against a stubbed network.
 
-The service it talks to does not exist yet and cannot be started here: it would
-hold 3.4 GiB of graph on a box that is already swapping under a 39-hour build.
-What CAN be tested, and is what actually matters, is the half that decides what
+The service it talks to (service/server.py) cannot be started here: it maps a
+full build's graph, gigabytes of it. What CAN be tested, and is what actually matters, is the half that decides what
 the page does with every answer the service can give -- including the answers
 where there is no service at all.
 
@@ -73,20 +72,53 @@ def test_no_failure_path_can_blank_the_page():
         "solvePoint uses a loader whose failure path calls fatal()")
 
 
-def test_the_flag_is_off_by_default_and_the_address_cannot_arm_it():
-    """A third URL parameter would let a pasted link turn on an experimental
-    network dependency in someone else's browser, and spend their share of a
-    rate limit doing it.
+def test_the_address_and_the_stored_preferences_cannot_arm_it():
+    """A URL parameter would let a pasted link turn on a network dependency in
+    someone else's browser, and spend their share of a rate limit doing it. The
+    stored-preference flag this replaced is gone too: the owner's decision of
+    2026-10-02 arms the solver from index.json alone, so a deploy without a
+    service is exactly the page it was before.
 
-    Mutation performed and reverted: change the default to `true` -> red.
-    Add `params.get("solver")` to the initialiser -> red.
+    Mutation performed and reverted: append `|| URL_PARAMS.get("solver") ===
+    "1"` to the initialiser -> red. Append `|| store.get("solver", false)` ->
+    red here, and red in test_only_index_json_arms_it below.
     """
-    assert 'store.get("solver", false)' in CONST_SRC, (
-        "the solver flag is not read as a stored preference defaulting to off")
-    assert "params.get" not in CONST_SRC and "searchParams" not in CONST_SRC, (
-        "the solver flag can be set from the address")
+    init = CONST_SRC[CONST_SRC.index("let solverEnabled = "):]
+    for reader in ("params.get", "URL_PARAMS", "searchParams", "store.get", "localStorage"):
+        assert reader not in init, f"the solver is armed through {reader}"
     # ...and no other part of the file reads it from the URL either.
-    assert 'params.get("solver")' not in APP and "params.has(\"solver\")" not in APP
+    assert 'get("solver")' not in APP and 'has("solver")' not in APP
+    assert re.findall(r"solverEnabled\s*=(?!=)", APP) == ["solverEnabled ="], (
+        "something other than the initialiser assigns solverEnabled")
+
+
+@pytest.mark.parametrize("solver,armed", [
+    (None, False),                      # index.json has no key: today's page
+    ({"wire": 1}, True),                # what write_index writes
+    ({"wire": 2}, False),               # a service speaking another version
+    ({"wire": "1"}, False),             # not the number the page was written for
+    ({}, False),
+    (True, False),                      # truthy, but no wire version
+    (1, False),
+])
+def test_only_index_json_arms_it(node, tmp_path, solver, armed):
+    """`meta.solver.wire === SOLVER_WIRE_VERSION`, and nothing else. The store
+    stub answers `true` to every key, so a preference still being consulted
+    shows up here as an armed solver on the rows that must stay off.
+
+    Mutation performed and reverted: `=== SOLVER_WIRE_VERSION` -> `>= 1` ->
+    red on the version-2 row. `meta.solver?.wire === ...` -> `!!meta.solver`
+    -> red on the `{"wire": 2}`, `True` and `1` rows.
+    """
+    meta = {} if solver is None else {"solver": solver}
+    probe = tmp_path / "arm.mjs"
+    probe.write_text(f"const meta = {json.dumps(meta)};\n"
+                     "const store = { get: () => true, set: () => {} };\n"
+                     + CONST_SRC + "\nconsole.log(JSON.stringify(solverEnabled));\n",
+                     encoding="utf-8")
+    done = subprocess.run([node, str(probe)], capture_output=True, text=True, timeout=20)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) is armed
 
 
 @pytest.fixture(scope="module")
@@ -101,9 +133,10 @@ def _run(node: str, tmp_path, scenario: dict) -> dict:
     """Run solvePoint once with a stubbed fetch, and return its result."""
     harness = f"""
 const scenario = JSON.parse(process.argv[2]);
-const store = {{ get: (k, d) => scenario.enabled, set: () => {{}} }};
+// Armed the way the page is: through index.json, by the real initialiser.
+const meta = scenario.enabled ? {{ solver: {{ wire: 1 }} }} : {{}};
+const store = {{ get: () => true, set: () => {{}} }};
 {CONST_SRC}
-solverEnabled = scenario.enabled;
 let calls = 0;
 let lastUrl = null;
 globalThis.fetch = (url, opts) => {{
@@ -138,7 +171,7 @@ globalThis.fetch = (url, opts) => {{
 """
     # A hanging or cancelled fetch must not wait the real 30 s deadline.
     if scenario.get("kind") in ("hang", "cancel"):
-        harness = harness.replace("const SOLVER_TIMEOUT_MS = 30000;",
+        harness = harness.replace("const SOLVER_TIMEOUT_MS = 45000;",
                                   "const SOLVER_TIMEOUT_MS = 40;")
     path = tmp_path / "harness.mjs"
     path.write_text(harness, encoding="utf-8")
@@ -289,7 +322,7 @@ def test_the_fallback_sentence_names_the_city_still_being_measured_from(node, tm
     """
     assert "SOLVER_FALLBACK" in CONST_SRC
     harness = tmp_path / "fallback.mjs"
-    harness.write_text(CONST_SRC.replace("let solverEnabled = store.get(\"solver\", false);", "")
+    harness.write_text("const meta = {};\n" + CONST_SRC
                        + '\nconsole.log(JSON.stringify([SOLVER_FALLBACK("Tokyo"), SOLVER_FALLBACK(null)]));\n',
                        encoding="utf-8")
     done = subprocess.run([node, str(harness)], capture_output=True, text=True, timeout=20)

@@ -1224,18 +1224,20 @@ function fmtKm(km) {
 //
 // ---- on-demand solving for an arbitrary departure point ----
 //
-// OFF BY DEFAULT, and this is the non-negotiable part: the 1,464-city site
-// must keep working with zero dependency on a service. Nothing below runs
-// unless a visitor turns it on, nothing below can call fatal(), and every
-// failure path ends with a sentence and a working page rather than a blank
-// one. The design is plan/2026-09-14-c13-solver-service.md.
+// OFF unless the build says the service is there, and this is the
+// non-negotiable part: the 1,464-city site must keep working with zero
+// dependency on a service. Nothing below sends a request unless index.json
+// arms it, nothing below can call fatal(), and every failure path ends with a
+// sentence and a working page rather than a blank one. The design is
+// plan/2026-09-14-c13-solver-service.md.
 //
-// Deliberately NOT readable from the address. `?from=` and `?to=` are read
-// twenty lines above and a third URL parameter here would let a pasted link
-// arm an experimental network dependency in someone else's browser -- and
-// under a rate limit, one shared link is a way to spend a stranger's quota.
-// It is a stored preference, like the two Settings switches, and only the
-// viewer sets it.
+// Armed by index.json and by nothing else. The build that writes the solver
+// bundle writes `"solver": {"wire": 1}` beside it, so a deploy without a
+// service -- or with one speaking a wire version this page was not written
+// for -- leaves the page exactly as it was. Deliberately NOT readable from
+// the address: a URL parameter would let a pasted link arm a network
+// dependency in someone else's browser, and under a rate limit one shared link
+// is a way to spend a stranger's quota.
 const SOLVER_PATH = "./api/solve";
 // The wire version the page was written against. A response carrying any
 // other number is refused rather than parsed: a field that changed meaning
@@ -1244,11 +1246,18 @@ const SOLVER_PATH = "./api/solve";
 // src/transport_maps/service/wire.py; tests/service/test_wire.py compares the
 // code table below against that module's, so the two cannot drift silently.
 const SOLVER_WIRE_VERSION = 1;
-// A measured solve is about ten seconds on the full graph. Thirty is the
-// point past which the answer is no longer worth the wait, and it must be
-// bounded here as well as at the server: a fetch with no timeout is how one
-// stalled request becomes a page that never resolves.
-const SOLVER_TIMEOUT_MS = 30000;
+// A measured solve is 6-7 s on the full graph, and the server solves one at a
+// time: service/server.py holds the rest in a listen backlog of four, so a
+// request that is accepted at all can wait behind the solve in progress and
+// four queued ones -- six solves, about 42 s, before its own answer is back.
+// Thirty, the figure written when a solve was guessed at ten seconds and
+// nothing was queued, would abandon a request the server was about to answer
+// and then report it as too slow. Forty-five covers that queue and stays under
+// nginx's own 60 s proxy_read_timeout, so the page gives up first and says so
+// in its own words. It must be bounded here as well as at the server: a fetch
+// with no timeout is how one stalled request becomes a page that never
+// resolves.
+const SOLVER_TIMEOUT_MS = 45000;
 // Every code the service can emit, and what each one says to a visitor. The
 // page branches on these strings, so they are a contract: the service's
 // ERRORS table and this one are asserted equal by
@@ -1264,17 +1273,11 @@ const SOLVER_CODES = {
 };
 // The sentence that follows every one of them. The static map is still on
 // screen and still correct, and saying so is the difference between a failure
-// and a dead end.
-//
-// Not called from this file YET, and deliberately kept rather than written
-// later with the UI: the copy IS the contract for a failure path, and
-// tests/web/test_solver_client.py pins it. Written at the same time as the
-// error taxonomy it belongs to, it gets reviewed as part of the design; added
-// hurriedly beside a spinner, it becomes "Something went wrong".
+// and a dead end. tests/web/test_solver_client.py pins it.
 const SOLVER_FALLBACK = (name) => name
-  ? ` The times below are still measured from ${name}, the nearest charted departure city.`
+  ? ` The times on the map are still measured from ${name}, the nearest charted departure city.`
   : " The charted departure cities are unaffected; pick one from the list.";
-let solverEnabled = store.get("solver", false);
+let solverEnabled = meta.solver?.wire === SOLVER_WIRE_VERSION;
 
 // Returns a result object and NEVER throws, so no caller can turn a network
 // hiccup into an unhandled rejection -- which on this page reaches boot.js's

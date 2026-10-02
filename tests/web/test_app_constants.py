@@ -116,9 +116,16 @@ def test_every_index_json_key_the_page_reads_is_written(tmp_path):
     # every origin has its .over.bin, so the one origin here gets one.
     (tmp_path / "origins").mkdir()
     (tmp_path / "origins" / "s.over.bin").write_bytes(b"")
+    # `solver` is written only beside a solver bundle stamped by the same
+    # build, so the bundle is faked with that build's id.
+    identity = index.build_identity()
+    bundle = tmp_path / "solver"
+    bundle.mkdir()
+    (bundle / "meta.json").write_text(json.dumps({"identity": {"buildId": identity["buildId"]}}))
     index.write_index([{"slug": "s", "name": "S", "lat": 0.0, "lon": 0.0}], out,
                       hover_cell_count=1, reading_parent_count=1,
-                      graph={"rail": True, "ferry": True}, identity=index.build_identity())
+                      graph={"rail": True, "ferry": True}, identity=identity,
+                      solver_bundle=bundle)
     written = set(json.loads(out.read_text()))
     read = set(re.findall(r"meta\.(\w+)", APP))
     assert read <= written, f"app.js reads {sorted(read - written)} which write_index never writes"
