@@ -105,7 +105,12 @@ DOM-write table).
       from 5.24.0's by at most 0.02% of pixels. Not deployed. CSP unchanged
       (the page also ran with `blob:` removed; that tightening is left to a
       server-side change).
-- [ ] **N22 / DOC-12** Attribution visibility (owner judgement, web plan).
+- [x] **N22 / DOC-12** Attribution visibility (owner judgement, web plan).
+      (2026-10-02: DONE as U18, in `099f55b`. The permanent "Map data ©
+      OpenStreetMap contributors · Privacy" credit sits in the legend, which
+      the design policy keeps visible, including on the folded sheet. Pinned
+      by `tests/web/test_attribution_and_privacy.py`. See N22 in the web
+      plan.)
 
 ## Blocked on owner (recorded, not deferred)
 
@@ -126,6 +131,15 @@ DOM-write table).
   licences satisfies CC BY-SA for the Wikipedia-derived network.
 
 ## Progress
+
+- 2026-10-02: N22/DOC-12 ticked, which was the last checkbox. The
+  blocked-on-owner list above is resolved as follows. **E3** is DONE: the
+  headers were installed on 2026-09-13 and all six were verified on `/`,
+  `app.js` and `origins/seoul.bin` (`deploy/README.md`, "Before deploying").
+  **A6d** is WON'T DO, by the owner's decision of 2026-10-02 to keep one live
+  copy (build plan A6d). **E4**, **SEC-6** and **SEC-17** are still the
+  owner's decisions; they are carried to `plan/deferred.md`, "Owner decisions
+  carried from the archived c2 security plan". The plan moves to `archive/`.
 
 - 2026-09-10 cycle 2: plan written from the cycle-2 aggregate; carries every
   unfinished task from the cycle-1 security plan (now archived) under its

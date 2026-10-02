@@ -174,6 +174,11 @@ whose output only changes at the next build; both say so.
       qualifier, and must use weight and colour for hierarchy — no uppercase, no
       letter-spacing, no tabular figures. Recompute the cost at 553 rows before
       shipping; if it exceeds one frame, rank lazily.
+      CORRECTION (C13-11 / V13-5, 2026-10-02): the re-benchmark did not happen in
+      cycle 4. It was done in `c45ca3e` (2026-09-17) at 1,464 origins, with
+      the list capped at 60 rows: one `lookup()` 1.73-2.10 µs, the row loop
+      0.112 ms, and a whole resting `render()` 11.1-11.4 ms. The note beside
+      the code says so. The tick holds today, but late.
 
 - [x] **U10 / T26 carried (UX3-9, UX3-10, UX3-12, UX3-14)** Carried from cycle 3
       for the second time, and now load-bearing: after U5 the Route panel is the
@@ -352,6 +357,13 @@ whose output only changes at the next build; both say so.
       about 635 k at res 5) and is the only per-origin build fingerprint, and both
       `check_dist` and the page discard it. Two free checks: cross-origin equality
       (all 349 agree today, byte-identical) and the bound `49·H ≤ n_cells ≤ 343·H`.
+      CORRECTION (C13-11 / V13-4, 2026-10-02): only the first free check landed. The
+      cross-origin equality is in `scripts/check_dist.py`, now keyed on the
+      `(offsets.airports, offsets.stations)` pair. The bound
+      `49·H ≤ n_cells ≤ 343·H` is nowhere in `check_dist.py` and never was.
+      Since the res-6/7 refinement, `n_cells` is the refined universe, which a
+      bound written for one solve resolution does not describe. Re-derive it
+      before adding it.
       Mutation: perturb one origin's `offsets.airports` in a fixture → red.
       **TE4-3** rides along, being the same file: the summary test asserted
       `bands == 1` from an expression it computed the same way the code does,
@@ -442,7 +454,11 @@ whose output only changes at the next build; both say so.
       where every other reader uses `>= MAX_MINUTES`, vacuous today and a trap for
       the next emitter change (DBG4-6); two assertions pinning the six surface
       mode names to `modes.CHANNELS` in the four places they live, of which only
-      `MODE_NAMES` is pinned today (ARCH4-3); and the non-text contrast of T31's
+      `MODE_NAMES` is pinned today (ARCH4-3) [CORRECTION (C13-11 / V13-6, 2026-10-02): one
+      of the two landed:
+      `tests/emit/test_index.py::test_the_mode_prose_covers_every_channel_the_page_expects`
+      (`80947e5`). Nothing pins the keys of `web/app.js`'s `MODE_FALLBACK` to
+      `modes.CHANNELS`. Half done]; and the non-text contrast of T31's
       own controls, measured from shipped pixels at 1.08:1 fill and 1.40:1 border
       for zoom and compass over space, 1.08:1 and 1.30:1 for `#q` on the panel
       (UX4-10) -- WCAG 1.4.11 wants 3:1 on the boundary that identifies a control,

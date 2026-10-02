@@ -1,5 +1,5 @@
 > Archived 2026-09-10 (cycle 2). Every cycle-1 task in this plan is done; every
-> unfinished cycle-2/3 task was carried into `plan/2026-09-10-c2-security-and-policy.md`
+> unfinished cycle-2/3 task was carried into `plan/archive/2026-09-10-c2-security-and-policy.md`
 > under its original ID (see `.context/reviews/_aggregate.md` for the cycle-2
 > evidence). This file is kept for provenance and is not updated further.
 

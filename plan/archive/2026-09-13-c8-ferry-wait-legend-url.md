@@ -125,6 +125,13 @@ mis-tagged; accepting an `HHH:MM` duration books a five-day sail. Reject, count,
       Greenland error, that it invents ~10.6 h on Dalian–Yantai, that three of eight anchors
       share the same 168 h value inside a 140 km span and so carry the exponent, and that
       over-charging is silent while under-charging is loud.
+      CORRECTION (C13-11 / V13-3, 2026-10-02): THREE of the five are recorded in the
+      `[ferry]` comment of `calibration.toml`: the ±1.97× spread, the ~10 h on
+      Dalian–Yantai, and under-charging loud while over-charging is silent. Two
+      are not: "fixes only 41% of the Greenland error", and that three of the
+      eight anchors share 168 h inside 140 km and so carry the exponent. The
+      anchor table lists those three, but says nothing about the exponent.
+      Partially done.
 - [x] **T1.10** Emit `ferry` in `index.json`'s `graph` block (L8-18) and regenerate the ferry
       sentence in `emit/index.py::mode_detail` from the new calibration so the page cannot
       drift from the model.
@@ -133,6 +140,13 @@ mis-tagged; accepting an `HHH:MM` duration books a five-day sail. Reject, count,
       ferry edges (test-engineer: deleting the wiring left 12 tests green), every accepted and
       every rejected duration/interval format, the knee, the floor, the floor's
       `MAX_MINUTES` headroom, the seasonal derate, and the anchor residuals.
+      CORRECTION (C13-11 / V13-2, 2026-10-02): the terminal-term mutation was red in
+      cycle 13 (`225a012`). The wiring mutation, dropping the ferry branch of
+      `build_graph`, was NOT: at cycle 13's HEAD every
+      `build_graph(..., ferry_links=...)` call asserted nothing about ferry
+      edges. It goes red only since `c67c59b` (2026-09-25), through four tests
+      in `tests/test_variants.py`. The tick holds today, but it did not hold
+      in cycle 8.
 - [x] **T1.12** Report the before/after modelled cost for all eight anchors and the
       door-to-door effect on at least one remote destination. Read the Greenland figure with
       critic C4 in mind: `airports.SIZE_BY_TYPE` excludes heliports and seaplane bases, which
@@ -306,8 +320,15 @@ the console" failure CLAUDE.md records as having shipped twice.
       distance and against `np.median([])`.
 - [x] **T5.5** L8-8: restore "(cities15000)" to the GeoNames attribution in `emit/index.py`,
       which README.md calls canonical.
-- [x] **T5.6** L8-16: the historical pipeline plan names `graph/ferry.py`; USER-1 creates it,
+- [ ] **T5.6** L8-16: the historical pipeline plan names `graph/ferry.py`; USER-1 creates it,
       so note that the path is now real.
+      CORRECTION (C13-11 / V13-1, 2026-10-02): unticked. It was never done:
+      `docs/superpowers/plans/2026-09-03-transport-pipeline.md`'s status
+      header does not mention `graph/ferry.py`, the file was last touched
+      before cycle 8 (`a6e6d22`), and no commit cites L8-16 or T5.6. This is
+      cycle 8's THIRD bad tick, after T5.3 and T2.7. It is a one-sentence doc
+      fix, left open here because the archive records history; whoever next
+      edits that plan's header should add it.
 
 ---
 
@@ -361,7 +382,10 @@ H8-2, the blanked page rail — is scheduled as USER-4 and fixed this cycle.
 
 All 38 tasks across USER-1..USER-5 are done, **with two corrections recorded
 below: T5.3 was ticked and half-done, and T2.7 was ticked and not done.** 36 of
-the 38, then. 33 mutations were performed and
+the 38, then. (CORRECTION, C13-11, 2026-10-02: there is a third. T5.6 was
+ticked and never done, and T1.9 recorded three of its five objections. So 35
+of the 38 are fully done: T5.3 was finished in cycle 9, T1.9 is partial, and
+T2.7 and T5.6 are not done.) 33 mutations were performed and
 every one went red; the list is below.
 
 **CORRECTIONS (cycle 9).** The list below actually holds **37** mutations, not

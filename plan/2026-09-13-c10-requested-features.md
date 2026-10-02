@@ -1,4 +1,12 @@
-# Four features the owner asked for — PLANNED, NOT BUILT
+# Four features the owner asked for
+
+**Status at 2026-10-02** (C13-11 / V13-16; the title used to read "PLANNED, NOT
+BUILT", which described cycle 10 and went stale): F1 draggable markers shipped
+in `6214283`. F2, the on-demand solver, is superseded by
+`2026-09-14-c13-solver-service.md` and runs on the web host. F3, many more
+departure cities, shipped in `b21e808`. F4, ETOPS, was answered as a
+documented decision not to build it, in `12e68ac`. The analysis below is
+cycle 10's and is kept as written.
 
 None of these was implemented in cycle 10. The orchestrator's instruction was
 explicit: write them up with enough analysis that a later cycle can pick one up.
@@ -40,6 +48,11 @@ rendered layer feature. One drag implementation in the file, not two.
 inside the `places.json` fetch closure, so a failed gazetteer leaves the visitor
 with no departure marker at all. A draggable control the visitor sometimes does
 not have is worse than a static one.
+CORRECTION (C13-11 / V13-15, 2026-10-02): F1 shipped (`6214283`) WITHOUT this
+precondition. The departure marker is still added only inside `showLabels`,
+which is assigned in the `places.json` `.then`. The `.catch` leaves it a
+no-op, so a failed gazetteer still means no draggable departure marker. C10-11
+remains open in `2026-09-13-c10-four-live-defects.md` ("next page cycle").
 
 ### It needs no new state machine
 

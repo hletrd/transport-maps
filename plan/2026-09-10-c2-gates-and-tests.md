@@ -140,8 +140,26 @@ Gate state at `bf9e5cc` (verifier): ruff **red** (2 errors), pytest 254 passed /
       tolerance once the 553-origin build ships. (2026-10-02: Seoul -> Tokyo
       314 min and -> London 904 min, ±15%, measured on the 1,464-origin graph;
       shifted expectations -> red.)
-- [ ] **K3 test**, **K4 test**, **G1 tests** — with their build-plan tasks if
+- [x] **K3 test**, **K4 test**, **G1 tests** — with their build-plan tasks if
       they do not land in cycle 2.
+      (2026-10-02, verified; all three build-plan tasks are ticked in
+      `2026-09-10-c2-build-robustness.md`. **K3** (`53cd8cf`):
+      `tests/test_cli.py::test_a_worker_killed_by_a_signal_aborts_the_run_instead_of_hanging`.
+      A worker SIGKILLs itself under a 15 s alarm (the plan said 30 s), and
+      the run must raise `SystemExit` matching "died without reporting".
+      **K4** (`53cd8cf`): `test_a_second_build_refuses_while_the_lock_is_held`,
+      `test_a_stale_lock_is_reported_not_reused` and
+      `test_the_lock_is_released_after_a_run` in `tests/test_cli.py`, plus
+      `tests/web/test_check_dist.py::test_a_held_build_lock_is_refused`
+      (`160bb34`). **G1** (`364986b`): the `STAMPED` table and
+      `test_the_cache_path_moves_when_a_stamped_constant_moves`, the
+      whole-cell-list urban key and the route-network cases in
+      `tests/sources/test_cache_provenance.py`. Two parts were later
+      replaced on purpose: a legacy `routes.parquet` is now ignored with a
+      message rather than adopted (CR13-3), and `MIN/MAX_FERRY_KM` were taken
+      out of the ferry key with the reason in `osm._ferry_cache_path`.
+      `tests/sources/test_cache_provenance.py` and `tests/test_cli.py` ran
+      108 passed on this date.)
 
 ## Progress
 

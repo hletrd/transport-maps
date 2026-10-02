@@ -189,7 +189,7 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
     - DOC13-14: `validate.py` gives 82.5 M native / 24.6 M res-6 vertices
       instead of res-5's 3.6 M.
 
-- [ ] **C13-11 — the seventeen plan ticks that did not hold.** V13-1…V13-17,
+- [x] **C13-11 — the seventeen plan ticks that did not hold.** V13-1…V13-17,
   including a third un-recorded false tick in cycle 8 and cycle 12's own
   C12-1c, whose mutation certificate is false: `tests/solve/test_origin_snap.py:108-110`
   raises the `GateFailure` in its own body, so deleting `cli.py:222-223` leaves
@@ -199,6 +199,39 @@ The solver work has its own document: `2026-09-14-c13-solver-service.md`.
     `cli._solve_one` itself; deleting its `except ValueError` -> red, and
     dropping `snap_origin`'s `_nearest_land` branch -> red on the new
     snapped-origin test. The other sixteen V13 ticks remain open.
+  - [x] The other sixteen (2026-10-02). Each was re-verified against the code
+    at `350eff3`. Where the tick does not hold, a dated "CORRECTION (C13-11 /
+    V13-n)" now sits in the plan that carries it.
+    - **Now true, but late.** These are noted with the commit that made them
+      true: V13-2 (c8 T1.11, wiring mutation red only since `c67c59b`), V13-5
+      (c4 U9, re-benchmarked in `c45ca3e`) and V13-8 (c12 F1.3, fixed by
+      C13-5 in `268e98d`).
+    - **Unticked.** V13-1, c8 T5.6, was never done. V13-11, N24, is split
+      out of N23's box in the web plan as its own open item.
+    - **Corrected to what shipped:**
+      - V13-3 (c8 T1.9): three of five objections recorded.
+      - V13-4 (c4 U22): the bound never landed.
+      - V13-6 (c4 U27): `MODE_FALLBACK` is not pinned.
+      - V13-7 (C12-1c): the test does not read `origins.toml`.
+      - V13-9 (C12-3a): code was added, not deleted.
+      - V13-10 (C11-4): three paragraphs, not two.
+      - V13-12 (N10): `aria-activedescendant` was superseded by roving
+        tabindex, and `aria-live` by `#status`.
+      - V13-13 (c12 F2.1): `#snapped`, not `#where`.
+      - V13-14 (c12 F2.5): no keyboard equivalent for the destination handle.
+      - V13-15 (c10 F1): shipped without fixing C10-11 first, and C10-11 is
+        still open.
+      - V13-16: the c10 features title now carries a per-feature status.
+      - V13-17: the c8 row in `plan/README.md` now reads 35 of 38, and the
+        two A3-A8 passages are reconciled.
+    - **Not done here:** making the four partial ticks true. That means two
+      lines in `calibration.toml`'s `[ferry]` comment (V13-3), a
+      re-derived bound in `check_dist` (V13-4), an assertion on
+      `MODE_FALLBACK`'s keys (V13-6), and an assertion tying `KOTA_KINABALU`
+      to `origins.toml` (V13-7). Each correction note says which change it
+      needs. **Scope:** the deferred table below lists this group as
+      "V13-1…V13-26, V13-33…V13-44", but this task's own text names only
+      V13-1…V13-17, and only those seventeen were re-verified.
 
 ---
 
@@ -408,9 +441,9 @@ committed.
 | V13-4 | `plan/archive/2026-09-10-c4-page-deploy-and-licence.md:354` | MEDIUM | High | · c4 U22 — only one of the two "free checks" landed |
 | V13-5 | `plan/archive/2026-09-10-c4-page-deploy-and-licence.md:175` | MEDIUM | High | · c4 U9 — the re-benchmark the tick required never happened, and the code says so |
 | V13-6 | `plan/archive/2026-09-10-c4-page-deploy-and-licence.md:443` | LOW | High | · c4 U27 — one of the two named assertions landed |
-| V13-7 | `plan/2026-09-14-c12-review-findings.md:42` | MEDIUM | High | · c12 C12-1c — the "red before the fix" test never reads origins.toml, and its mutation certificate is false |
+| V13-7 | `plan/archive/2026-09-14-c12-review-findings.md:42` | MEDIUM | High | · c12 C12-1c — the "red before the fix" test never reads origins.toml, and its mutation certificate is false |
 | V13-8 | `plan/archive/2026-09-14-c12-requested-features.md:50` | MEDIUM | High | · c12 F1.3 — the `esc()` sink inventory is blind to 3 of the 6 live sinks |
-| V13-9 | `plan/2026-09-14-c12-review-findings.md:75-77` | LOW | High | · c12 C12-3a — "deletes code rather than adding it" is false; neither thing was deleted |
+| V13-9 | `plan/archive/2026-09-14-c12-review-findings.md:75-77` | LOW | High | · c12 C12-3a — "deletes code rather than adding it" is false; neither thing was deleted |
 | V13-10 | `plan/archive/2026-09-13-c11-design-slop.md:97` | LOW | High | · c11 — "four `<p>` to two" shipped as three, paired differently |
 | V13-11 | `plan/2026-09-10-c2-web-ui-detail.md:181-184` | LOW | High | · c2 N24 — ticked inside N23's box, never done |
 | V13-12 | `plan/2026-09-10-c2-web-ui-detail.md:146-148` | LOW | High | · c2 N10/D4 — `aria-activedescendant` was ticked and has never existed |
