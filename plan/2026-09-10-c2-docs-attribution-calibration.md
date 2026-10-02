@@ -240,6 +240,35 @@ build.
       `validate.check_monotonic_ground`, and that one is gone, which was the
       correctness half. What is left is the refactor half. It touches `cli.py` and `graph/build.py`, so it
       waits for a lane that may edit them.
+      (2026-10-02, looked at and SKIPPED as not contained. The lane could
+      edit `cli.py` and `graph/build.py`, but the change reaches further than
+      those two. Measured at `ffa2ff0`: nine run-time parses of the file in
+      `src/`. Five are in `graph/build.py` (air three times, rail, ferry),
+      three in `emit/index.py` (rail, ferry, carry-on) and one in
+      `emit/rail_detail.py`. Four more sites read the import-time
+      `_land_border_min()`. There are six loaders across five modules, plus
+      `index.carry_on_saving`, and three of them run at import time to set the
+      module constants
+      `SPEED_BY_ROAD_CLASS_KMH`, `LAND_BORDER_MIN`, `URBAN_*`, `KNEE_KM` and
+      `MIN_FLIGHTS_PER_WEEK`. Those constants are read from 9 sites in other
+      modules, and forked workers inherit them. 17 test files name a loader.
+      Eight monkeypatches in `test_cli.py`, `test_variants.py` and
+      `emit/test_index.py` replace a loader by its module attribute, and so
+      assume the build calls it there (`build.rail.load_rail_calibration`,
+      `ground._land_border_min`) rather than reading a snapshot. `test_calibration_moved.py` pins by
+      AST that each constant is assigned only from its own loader, and checks
+      that each loader follows an edit to a file passed by path. One
+      `calibrate.load()` snapshot means moving the import-time constants into
+      it. They then have to travel to the workers through `BuildContext`,
+      which rewrites how `ground.cell_speed_kmh`, the urban mask key and the
+      air frequency model get their numbers. That is the S2/ARCH13-9 refactor,
+      not a small item. A contained first step, if wanted before then: have
+      `build_graph` read `air.load_calibration()` once and pass it to
+      `_air_edges`, `_access_edges` and `_transfer_edges`. That closes
+      ARCH13-9's "one graph weighted from several reads" for the one loader
+      read three times, changes no value, and leaves the import-time
+      constants alone. It was not done here because it is not B2b, and doing
+      it under B2b's name would tick a task that is not finished.)
 - [ ] **E13** Owner decision on the `pyproject.toml` author email.
 - [x] **I5 (docs part)** The vendored JS hashes table (recorded by the security
       reviewer) in `web/README.md`, and a test that recomputes them (with Q6).
