@@ -282,10 +282,11 @@ STAMPED = [
     # checked.
     (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), _routes_path),
     (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), _routes_path),
-    # The other two regexes parse_destinations applies (CR13-13). Both now
-    # reach the network path through routes._parser_key, so each row proves
-    # the constant is in that key AND that the key is in the path.
-    (routes, "_NEXT_TOP_HEADING_RE", re.compile(r"^=[^=]", re.MULTILINE), _routes_path),
+    # The link regex was the one parse_destinations applied with no row and
+    # no place in the key (CR13-13). It reaches the network path through
+    # routes._parser_key, so this row proves the constant is in that key AND
+    # that the key is in the path. (_NEXT_TOP_HEADING_RE, the fourth, is gone:
+    # the section now closes at its own level -- see routes._section_end.)
     (routes, "_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]"), _routes_path),
     (wikidata, "RESOLVER_VERSION", 999, _routes_path),
     # The landmass ids are computed over the land universe, so anything that
@@ -551,7 +552,7 @@ def test_a_section_regex_FLAG_change_moves_the_parser_key(monkeypatch):
 @pytest.mark.parametrize("name,new", [
     ("PARSER_VERSION", 999),
     ("_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]")),
-    ("_NEXT_TOP_HEADING_RE", re.compile(r"^=[^=]", re.MULTILINE)),
+    ("_SECTION_RE", re.compile(r"^(==)\s*Destinations\s*==\s*$", re.MULTILINE)),
 ])
 def test_a_parser_change_empties_the_destination_cache(monkeypatch, tmp_path, name, new):
     """The per-airport cache stores PARSED titles, so it is the cache a parser

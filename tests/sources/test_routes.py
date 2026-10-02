@@ -8,6 +8,7 @@ from transport_maps import config
 from transport_maps.sources import routes, wikidata
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "icn_wikitext.txt"
+FIXTURES = Path(__file__).parent.parent / "fixtures" / "routes"
 
 
 def test_parses_destination_article_titles_from_real_page():
@@ -63,6 +64,43 @@ def test_cargo_cut_does_not_discard_a_later_passenger_subsection():
     assert "Alpha_Airport" in titles
     assert "Beta_Airport" in titles
     assert "Cargo_Destination_Airport" not in titles
+
+
+def test_a_level_3_section_stops_at_its_next_sibling():
+    """CR13-2. Filed under "== Operations ==", the section is a level-3
+    heading, and it used to run on to the next LEVEL-2 heading -- through the
+    accident report and the traffic table after it, so an aircraft type and a
+    crash's intended destination became scheduled routes.
+
+    The fixture is constructed in the shape of such an article (no network in
+    tests). Mutation, measured: closing the section at the next level-2
+    heading again (the old `^==[^=]` cut) turns this red.
+    """
+    titles = routes.parse_destinations((FIXTURES / "level3_section.wikitext").read_text())
+    assert titles == [
+        "Air_Example", "Hub_International_Airport", "Coastal_Airport",
+        "Island_Air", "Remote_Island_Airport",
+    ]
+    # Spelled out, because the list above is what a regression would change:
+    for sibling in ("McDonnell_Douglas_DC-9", "Distant_City_Airport", "Busy_Hub_Airport"):
+        assert sibling not in titles
+    # A deeper Cargo subsection inside the level-3 section is still cut.
+    assert "Cargo_Hub_Airport" not in titles
+
+
+def test_a_level_2_section_keeps_its_own_subsections():
+    """The other half: closing at "same level or shallower" must not close a
+    level-2 section at its own level-3 Passenger heading."""
+    wikitext = (
+        "== Airlines and destinations ==\n"
+        "=== Passenger ===\n"
+        "[[Alpha Airport]]\n"
+        "=== Seasonal ===\n"
+        "[[Beta Airport]]\n"
+        "== Statistics ==\n"
+        "[[Gamma Airport]]\n"
+    )
+    assert routes.parse_destinations(wikitext) == ["Alpha_Airport", "Beta_Airport"]
 
 
 @pytest.mark.network

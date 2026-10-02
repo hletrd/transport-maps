@@ -24,12 +24,14 @@ TITLES_PER_REQUEST = 50
 HEADERS = {"User-Agent": "transport-maps/0.1 (open-data isochrone build; https://worldmap.atik.kr/)"}
 MAX_RETRIES = 6
 
-_SECTION_RE = re.compile(r"^==+\s*Airlines and destinations\s*==+\s*$", re.IGNORECASE | re.MULTILINE)
+# Both heading patterns capture the leading "=" run so the section can be
+# closed at the next heading of the same level or shallower (_section_end).
+# The section is not always level 2: an article that files it under
+# "== Operations ==" has it at level 3, and closing it only at the next
+# level-2 heading read its sibling sections as destinations (CR13-2).
+_SECTION_RE = re.compile(r"^(==+)\s*Airlines and destinations\s*==+\s*$", re.IGNORECASE | re.MULTILINE)
 # Cargo routes carry no passengers, so they must not become graph edges.
-# Captures the heading's leading "=" run so its level can be compared
-# against later headings (see _strip_cargo_subsections).
 _CARGO_RE = re.compile(r"^(===+)\s*(?:Cargo|Freight)[^=]*=+\s*$", re.IGNORECASE | re.MULTILINE)
-_NEXT_TOP_HEADING_RE = re.compile(r"^==[^=]", re.MULTILINE)
 _LINK_RE = re.compile(r"\[\[([^\]|#]+?)(?:\|[^\]]*)?\]\]")
 _SKIP_PREFIXES = (
     "File:", "Category:", "Help:", "Template:", "Special:", "Portal:", "Wikipedia:",
@@ -41,6 +43,13 @@ _SKIP_PREFIXES = (
 # this pipeline have twice produced a network that "built successfully"
 # while missing it.
 _SANITY_PAIRS: tuple[tuple[str, str], ...] = (("ICN", "NRT"),)
+
+
+def _section_end(text: str, level: int, pos: int) -> int:
+    """Offset of the first heading at `level` or shallower (a sibling or a
+    parent) at or after `pos`, or the end of `text` if there is none."""
+    boundary = re.compile(rf"^={{2,{level}}}[^=]", re.MULTILINE).search(text, pos)
+    return boundary.start() if boundary is not None else len(text)
 
 
 def _strip_cargo_subsections(body: str) -> str:
@@ -56,10 +65,7 @@ def _strip_cargo_subsections(body: str) -> str:
         cargo = _CARGO_RE.search(body)
         if cargo is None:
             return body
-        level = len(cargo.group(1))
-        next_boundary_re = re.compile(rf"^={{2,{level}}}[^=]", re.MULTILINE)
-        boundary = next_boundary_re.search(body, cargo.end())
-        end = boundary.start() if boundary is not None else len(body)
+        end = _section_end(body, len(cargo.group(1)), cargo.end())
         body = body[: cargo.start()] + body[end:]
 
 
@@ -69,11 +75,7 @@ def parse_destinations(wikitext: str) -> list[str]:
     if match is None:
         return []
 
-    body = wikitext[match.end():]
-    nxt = _NEXT_TOP_HEADING_RE.search(body)
-    if nxt is not None:
-        body = body[: nxt.start()]
-
+    body = wikitext[match.end(): _section_end(wikitext, len(match.group(1)), match.end())]
     body = _strip_cargo_subsections(body)
 
     titles: list[str] = []
@@ -173,7 +175,8 @@ def _fetch_wikitext_with_retry(
 # need no bump: _parser_key hashes them directly, so editing one is a miss on
 # its own (CR13-13: two of the four regexes used to be left out of the key,
 # so a fix to _LINK_RE would have been a silent cache hit).
-PARSER_VERSION = 1
+# 2: the section closes at its own level, not at the next level-2 heading.
+PARSER_VERSION = 2
 
 
 def _parser_key() -> str:
@@ -185,7 +188,6 @@ def _parser_key() -> str:
     return _params_hash(PARSER_VERSION, _SKIP_PREFIXES,
                         _SECTION_RE.pattern, _SECTION_RE.flags,
                         _CARGO_RE.pattern, _CARGO_RE.flags,
-                        _NEXT_TOP_HEADING_RE.pattern, _NEXT_TOP_HEADING_RE.flags,
                         _LINK_RE.pattern, _LINK_RE.flags)
 
 

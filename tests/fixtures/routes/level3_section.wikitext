@@ -1,0 +1,33 @@
+'''Example Regional Airport''' is a public airport serving [[Example City]].
+
+== History ==
+The airport opened in 1962 with a daily service to [[Old Capital Airport]].
+
+== Operations ==
+=== Terminal ===
+The terminal has four gates and a single baggage belt.
+
+=== Airlines and destinations ===
+==== Passenger ====
+{{Airport destination list
+| [[Air Example]] | [[Hub International Airport]], [[Coastal Airport]]
+| [[Island Air]] | [[Remote Island Airport|Remote Island]]
+}}
+
+==== Cargo ====
+{{Airport destination list
+| [[Freight Example]] | [[Cargo Hub Airport]]
+}}
+
+=== Accidents and incidents ===
+* On 4 March 1987, a [[McDonnell Douglas DC-9]] bound for [[Distant City Airport]] overran the runway on landing.
+
+=== Statistics ===
+{| class="wikitable"
+! Destination !! Passengers
+|-
+| [[Busy Hub Airport]] || 120,000
+|}
+
+== See also ==
+* [[List of airports in Example]]
