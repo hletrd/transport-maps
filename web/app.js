@@ -1246,7 +1246,8 @@ function fmtKm(km) {
 // for -- leaves the page exactly as it was. Deliberately NOT readable from
 // the address: a URL parameter would let a pasted link arm a network
 // dependency in someone else's browser, and under a rate limit one shared link
-// is a way to spend a stranger's quota.
+// is a way to spend a stranger's quota. `?dep=` below carries a POINT, never
+// the switch.
 const SOLVER_PATH = "./api/solve";
 // The wire version the page was written against. A response carrying any
 // other number is refused rather than parsed: a field that changed meaning
@@ -1461,6 +1462,24 @@ function forgetExactFrom() {
   snapNotice();
   refreshExact();
   syncPermalink();
+}
+
+//: `?dep=lat,lon` -> {lat, lon}, or null. Only beside a `from=` that names a
+//: charted city, and only when that city is the nearest one to the point --
+//: which is what a drag produces and what the restored notice says. A point
+//: paired with any other city would be printed under a map measured from
+//: somewhere the notice does not describe. Restoring it never arms the
+//: solver: that is index.json's alone.
+function parseDep(raw, from) {
+  if (!raw || !from) return null;
+  const p = raw.split(",");
+  // Number("") is 0, so an empty half would otherwise be the Gulf of Guinea.
+  if (p.length !== 2 || p.some((x) => x.trim() === "")) return null;
+  const lat = Number(p[0]), lon = Number(p[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)
+      || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  if (nearestOrigin(lat, lon)?.origin.slug !== from.slug) return null;
+  return { lat, lon };
 }
 
 // The first version took an HTML string and relied on every call site
@@ -1841,6 +1860,10 @@ function syncPermalink() {
     const put = (k, v) => (v == null ? q.delete(k) : q.set(k, String(v)));
 
     put("from", active ? active.slug : null);
+    // The point a dragged departure was dropped on, at the same five
+    // decimals as `to`. Never without `from`: the reader refuses it alone.
+    put("dep", exactFrom && active
+      ? `${exactFrom.lat.toFixed(5)},${exactFrom.lon.toFixed(5)}` : null);
     put("to", pinB ? `${pinB.lat.toFixed(5)},${pinB.lon.toFixed(5)}` : null);
     // Only for a pin whose label is a NAME. A coordinate pin's label is
     // already `to`, spelled differently, and repeating it doubles the URL.
@@ -4868,7 +4891,7 @@ $("where").textContent = IDLE_PROMPT;
 // silently swallowing it and then rewriting the address made a mistyped link
 // indistinguishable from a working one.
 const FALLBACK = bySlug.get("seoul") ?? cities[0];
-let requested = null, requestedPin = null, badSlug = "", requestedCamera = null;
+let requested = null, requestedPin = null, badSlug = "", requestedCamera = null, requestedDep = null;
 try {
   const q = URL_PARAMS;
   const want = q.get("from") ?? "";
@@ -4896,6 +4919,12 @@ try {
     requestedCamera = parseCamera(q.get("at"));
     if (!requestedCamera) URL_REJECTED.push("at");
   }
+  // ?dep= -- the exact point of a dragged departure. Meaningless without the
+  // city the map was snapped to, so it needs a usable `from=`; see parseDep.
+  if (q.get("dep") != null) {
+    requestedDep = parseDep(q.get("dep"), requested);
+    if (!requestedDep) URL_REJECTED.push("dep");
+  }
 } catch { /* no URL API */ }
 
 function nearest(lat, lon) {
@@ -4911,6 +4940,18 @@ function nearest(lat, lon) {
 // first frame wait on a permission prompt is exactly the initial wait we do not
 // want. If a position arrives later, quietly re-centre on the nearest city.
 paintOrigin(requested ?? FALLBACK);
+// AFTER paintOrigin, which drops any exact point. parseDep has already
+// required `from=` to name the city nearest to it. Unarmed, the point is held
+// and carried on in the address but nothing is said and nothing is asked.
+if (requestedDep) {
+  exactFrom = requestedDep;
+  syncPermalink();
+  if (solverEnabled) {
+    snapNotice("The map is measured from ", { b: requested.name },
+      ", the nearest departure city to the point in this link, not from that point."
+      + EXACT_NOTE);
+  }
+}
 // The signal boot.js's watchdog waits for. It must be a fact about THIS
 // module having run to the end, not about anything the visitor can change:
 // the watchdog used to count `.results button[data-slug]`, which is the

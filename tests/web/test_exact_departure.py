@@ -20,11 +20,13 @@ passes while the branch is dead:
 4. The extra line says what the answer is -- door to door, computed on
    demand, how far the point was moved -- and every failure names the city the
    map is still measured from.
+5. `dep=` is restored only beside a `from=` naming the city nearest to it.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 
@@ -42,7 +44,7 @@ CONST_SRC = CONST_SRC[:CONST_SRC.index("\n", CONST_SRC.index("let solverEnabled 
 
 FN = {name: _js.function(name, with_async=True) for name in (
     "solvePoint", "exactReading", "refreshExact", "paintExact", "forgetExactFrom",
-    "originDragEnd", "paintOrigin", "nearestOrigin", "haversineKm",
+    "parseDep", "originDragEnd", "paintOrigin", "nearestOrigin", "haversineKm",
     "fmtKm", "fmtTime")}
 CONSTS = "\n".join(_js.statement(a) for a in (
     "const EXACT_MIN_KM = ", "const EXACT_NOTE = ", "const fmtDur = ", "const AVOIDABLE = "))
@@ -503,3 +505,74 @@ def test_every_city_route_reaches_the_clearing_path():
         "the label route skips paintOrigin for the current city, so an exact "
         "point dragged near it survives a click on the city's own name")
 
+
+# ------------------------------------------------------- the address ---
+
+def _dep(node, tmp_path, cases: dict) -> dict:
+    block = APP[APP.index("  // ?dep= -- the exact point"):APP.index("} catch { /* no URL API */ }")]
+    assert 'q.get("dep")' in block and "parseDep(" in block
+    return _run(node, tmp_path, f"""
+const meta = {{ origins: {json.dumps(CITIES)} }};
+const bySlug = new Map(meta.origins.map((c) => [c.slug, c]));
+{FN["haversineKm"]}
+{FN["nearestOrigin"]}
+{FN["parseDep"]}
+function parse(search) {{
+  const q = new URLSearchParams(search);
+  const URL_REJECTED = [];
+  let requestedDep = null;
+  // As the reader before it does: a slug that names a city, or nothing.
+  const requested = bySlug.get(q.get("from") ?? "") ?? null;
+{block}
+  return {{ requestedDep, URL_REJECTED }};
+}}
+console.log(JSON.stringify(Object.fromEntries(
+  Object.entries({json.dumps(cases)}).map(([k, v]) => [k, parse(v)]))));
+""")
+
+
+def test_dep_is_restored_only_beside_the_from_it_belongs_to(node, tmp_path):
+    """Mutation performed and reverted: drop `|| !from` from parseDep -> red on
+    "alone". Drop the nearest-city check -> red on "wrong city". Drop the
+    empty-half check -> red on "empty half".
+    """
+    got = _dep(node, tmp_path, {
+        "good": "from=seoul&dep=37.80000,127.25000",
+        "alone": "dep=37.80000,127.25000",
+        "bad from": "from=atlantis&dep=37.80000,127.25000",
+        "wrong city": "from=tokyo&dep=37.80000,127.25000",
+        "out of range": "from=seoul&dep=91,127",
+        "junk": "from=seoul&dep=north",
+        "empty half": "from=seoul&dep=37.8,",
+        "three": "from=seoul&dep=37.8,127.2,4",
+        "none": "from=seoul",
+    })
+    assert got["good"] == {"requestedDep": {"lat": 37.8, "lon": 127.25}, "URL_REJECTED": []}
+    for case in ("alone", "bad from", "wrong city", "out of range", "junk",
+                 "empty half", "three"):
+        assert got[case] == {"requestedDep": None, "URL_REJECTED": ["dep"]}, case
+    assert got["none"] == {"requestedDep": None, "URL_REJECTED": []}
+
+
+def test_dep_is_restored_after_the_departure_and_never_arms_anything():
+    """paintOrigin drops any exact point, so restoring it first would restore
+    nothing. And the restore must not touch the switch.
+
+    Mutation performed and reverted: move the restore block above
+    `paintOrigin(requested ?? FALLBACK);` -> red.
+    """
+    paint = APP.index("paintOrigin(requested ?? FALLBACK);")
+    restore = APP.index("exactFrom = requestedDep;")
+    assert paint < restore
+    block = APP[restore:APP.index("\n}\n", restore)]
+    assert "solverEnabled =" not in block
+    assert re.search(r"if \(solverEnabled\) \{\s*snapNotice\(", block), (
+        "an unarmed page says something about a point it will never compute")
+
+
+def test_the_writer_puts_dep_only_beside_from():
+    writer = _js.function("syncPermalink")
+    dep = writer[writer.index('put("dep"'):]
+    dep = dep[:dep.index(");") + 2]
+    assert "exactFrom && active" in dep
+    assert "toFixed(5)" in dep

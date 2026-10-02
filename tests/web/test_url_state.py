@@ -86,7 +86,8 @@ const dump = (el) => el.children.map((c) => ({
 
 #: Every parameter the writer emits must be read back. The pair is the test:
 #: the two halves live 1,800 lines apart and a rename in either was invisible.
-URL_KEYS = ("from", "to", "label", "scheme", "sea", "north", "places", "at", "avoid", "carryon")
+URL_KEYS = ("from", "dep", "to", "label", "scheme", "sea", "north", "places", "at", "avoid",
+            "carryon")
 
 
 def test_every_parameter_the_writer_emits_is_read_back_on_load():
