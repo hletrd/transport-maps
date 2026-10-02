@@ -1037,3 +1037,39 @@ def test_batches_are_refused_when_the_cell_layout_changed(tmp_path):
     same = hashlib.sha256(b"layout").hexdigest()
     assert run(same) == 0
     assert run("0" * 64) == 1
+
+
+def test_completion_records_never_leave_the_build_machine(tmp_path):
+    """`<root>/.progress/` describes the build machine's dist/, not the site:
+    neither the whole-tree rsync nor a batch list may carry it.
+
+    Mutation performed and reverted: `.*` and `.progress/` both removed from
+    deploy/rsync-excludes.txt -> red.
+    """
+    import shutil
+    import subprocess
+
+    rsync = shutil.which("rsync")
+    if rsync is None:
+        import pytest
+        pytest.skip("rsync is not on PATH")
+    d = tmp_path / "dist"
+    for root in (d, d / "v" / "no-air"):
+        (root / "origins").mkdir(parents=True)
+        (root / ".progress").mkdir()
+        (root / "origins" / "a.pmtiles").write_bytes(b"x")
+        (root / ".progress" / "a.json").write_text("{}")
+    dest = tmp_path / "server"
+    done = subprocess.run([rsync, "-a", f"--exclude-from={ROOT / 'deploy' / 'rsync-excludes.txt'}",
+                           f"{d}/", f"{dest}/"], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    shipped = sorted(p.relative_to(dest).as_posix() for p in dest.rglob("*") if p.is_file())
+    assert shipped == ["origins/a.pmtiles", "v/no-air/origins/a.pmtiles"], shipped
+
+    out = tmp_path / "lists"
+    out.mkdir()
+    script = "CHUNK=150\n" + _bash_fn("chunk_lists") + f"chunk_lists {out}\n"
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, cwd=tmp_path)
+    assert done.returncode == 0, done.stderr
+    listed = [ln for p in sorted(out.iterdir()) for ln in p.read_text().split()]
+    assert listed == ["origins/a.pmtiles", "v/no-air/origins/a.pmtiles"], listed

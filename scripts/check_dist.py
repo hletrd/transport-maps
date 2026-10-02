@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
+from transport_maps import progress, variants
 from transport_maps.config import READING_SLOTS
 from transport_maps.emit.modes import CHANNELS
 
@@ -214,6 +215,50 @@ def _water_problems(path: Path) -> list[str]:
     return bad
 
 
+def _record_problems(dist: Path, root: Path, listed: list[dict], inputs_hash: str | None,
+                     bad: list[str], warn: list[str]) -> None:
+    """Hold each listed origin's files against its completion record.
+
+    `transport_maps.progress` writes `<root>/.progress/<slug>.json` as
+    "writing" before an origin's first file is replaced and as "complete",
+    with every size, after its last. A record still "writing" is an origin a
+    build stopped inside: half its files may be one build's and half
+    another's, at lengths every other check here accepts. That is refused, as
+    is a complete record whose files have since changed size or gone.
+
+    Not refused, only reported: a root with no records at all (built before
+    they existed: nothing is known either way), an origin with no record in a
+    root that has them (the same, for one origin), and a record from other
+    inputs than `inputs_hash` names. That last one is two builds side by side,
+    each origin whole -- the state scripts/deploy_verify.sh's batched upload
+    already accepts while the cell layouts agree, which the length and
+    node-universe checks here enforce.
+    """
+    if not (root / progress.DIRNAME).is_dir():
+        return
+    try:
+        where = root.relative_to(dist).as_posix()
+    except ValueError:
+        where = str(root)
+    prefix = "" if where == "." else f"{where}/"
+    for o in listed:
+        slug = o["slug"]
+        name = f"{prefix}origins/{slug}"
+        rec = progress.read(root, slug)
+        if rec is None:
+            warn.append(f"{name} has no completion record (built before records existed), so "
+                        "nothing says its files are from one build")
+        elif rec.get("state") != progress.COMPLETE:
+            bad.append(f"{name}: a build stopped while writing it ({rec.get('buildId', 'record unreadable')}); "
+                       "its files may come from two builds. Resume with `transport-maps build-all "
+                       "--skip-existing`" + (f" --exclude {rec['exclude']}" if rec.get("exclude") else ""))
+        elif why := progress.files_problem(root, rec):
+            bad.append(f"{name}: {why} since its completion record was written")
+        elif inputs_hash and rec.get("inputsHash") != inputs_hash:
+            warn.append(f"{name} was built from other inputs than its index names "
+                        "(another build's origin, whole)")
+
+
 def check_dist(dist: Path, origins: list[dict] | None = None,
                n_channels: int = len(CHANNELS),
                warn_out: list[str] | None = None) -> list[str]:
@@ -379,6 +424,15 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
                 elif over.stat().st_size % entry:
                     bad.append(f"variant no-{v.get('exclude')}: {over.name} is "
                                f"{over.stat().st_size} bytes, not whole {entry}-byte entries")
+        # A variant is built by its own run, so its records answer to the
+        # identity in its own marker, not to index.json's.
+        try:
+            marker = json.loads((vdir.parent / variants.MARKER).read_text(encoding="utf-8"))
+            v_inputs = (marker.get("identity") or {}).get("inputsHash")
+        except (OSError, ValueError, AttributeError):
+            v_inputs = None
+        _record_problems(dist, vdir.parent, listed, v_inputs, bad, warn)
+    _record_problems(dist, dist, listed, idx.get("inputsHash"), bad, warn)
     n_nodes: dict[int, list[str]] = {}
     rail_advertised = bool(idx.get("railDetail"))
     for o in listed:

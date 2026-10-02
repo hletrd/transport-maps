@@ -11,3 +11,6 @@ tmp*
 .build-*
 .release-*
 README.md
+# Per-origin completion records (transport_maps/progress.py). `.*` already
+# covers them; named so narrowing that rule cannot start publishing them.
+.progress/

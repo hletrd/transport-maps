@@ -749,3 +749,86 @@ def test_the_page_draws_the_layer_the_emitter_writes():
         f"the page draws source-layer {layer.group(1)!r} and the emitter writes {water.LAYER!r}")
     assert 'url: "pmtiles://./water.pmtiles"' in app, (
         "the page no longer loads water.pmtiles, which REQUIRED_EXTRAS gates")
+
+
+# --- A6b/A6c: per-origin completion records (transport_maps.progress) --------
+
+def _records(root, slugs=("seoul",), state="complete", inputs="in-1", exclude=None):
+    """A record per origin, listing the files on disk at their sizes, as
+    `progress.finish` writes it (or as `progress.begin` does, for "writing")."""
+    from transport_maps import progress
+
+    for s in slugs:
+        rec = {"slug": s, "state": state, "inputsHash": inputs, "buildId": f"{inputs}-t0",
+               "exclude": exclude}
+        if state == "complete":
+            rec["files"] = {p.name: p.stat().st_size for p in (root / "origins").glob(f"{s}.*")}
+        path = progress.record_path(root, s)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(rec))
+
+
+def test_an_origin_a_build_stopped_inside_is_refused(check_dist, tmp_path):
+    """Every length agrees, the node universe agrees -- and the origin is half
+    one build and half another, which only its record can say.
+
+    Mutation performed and reverted: the `state != COMPLETE` branch removed
+    from `_record_problems` -> red.
+    """
+    d = _good_dist(tmp_path, slugs=("seoul", "tokyo"))
+    _advertise(d, inputsHash="in-1")
+    _records(d, slugs=("seoul", "tokyo"))
+    assert check_dist.check_dist(d) == []
+    _records(d, slugs=("tokyo",), state="writing")
+    problems = check_dist.check_dist(d)
+    assert len(problems) == 1 and "origins/tokyo: a build stopped while writing it" in problems[0]
+    assert "skip-existing" in problems[0], "the refusal names no way forward"
+
+
+def test_a_recorded_file_that_changed_since_is_refused(check_dist, tmp_path):
+    """Mutation performed and reverted: the `files_problem` branch removed -> red."""
+    d = _good_dist(tmp_path)
+    _records(d)
+    p = d / "origins" / "seoul.pmtiles"
+    p.write_bytes(p.read_bytes() + b"\0" * 16)          # still a sane PMTiles header
+    assert any("seoul.pmtiles is 4,112 bytes, recorded 4,096" in m
+               for m in check_dist.check_dist(d))
+
+
+def test_what_records_cannot_vouch_for_is_reported_not_refused(check_dist, tmp_path):
+    """No records at all, an origin without one, and a whole origin from other
+    inputs: none is a mixed origin, so none blocks the deploy -- but each is
+    said. Mutation performed and reverted: the inputsHash comparison turned
+    into a refusal -> red."""
+    d = _good_dist(tmp_path, slugs=("seoul", "tokyo"))
+    _advertise(d, inputsHash="in-2")
+    warn: list = []
+    assert check_dist.check_dist(d, warn_out=warn) == [] and warn == []
+    _records(d, slugs=("seoul",), inputs="in-1")
+    assert check_dist.check_dist(d, warn_out=warn) == []
+    assert any(w.startswith("origins/seoul ") and "other inputs" in w for w in warn)
+    assert any(w.startswith("origins/tokyo ") and "no completion record" in w for w in warn)
+
+
+def test_an_offered_variants_records_answer_to_its_own_marker(check_dist, tmp_path):
+    """A variant is built by its own run: its records are held against the
+    identity in its marker, and one stopped mid-origin is refused there too.
+
+    Mutations performed and reverted, each red: the `_record_problems` call
+    for variant roots removed; the variant held against index.json's
+    inputsHash instead of its marker's.
+    """
+    from transport_maps import variants
+
+    test_an_offered_variant_must_hold_every_origins_files(check_dist, tmp_path)
+    d = tmp_path / "dist"
+    _advertise(d, inputsHash="in-full")
+    root = d / "v" / "no-air"
+    variants.write_marker(root, "air", ["seoul"], {"inputsHash": "in-air"})
+    _records(root, inputs="in-air", exclude="air")
+    warn: list = []
+    assert check_dist.check_dist(d, warn_out=warn) == [] and warn == []
+    _records(root, state="writing", exclude="air")
+    problems = check_dist.check_dist(d)
+    assert any("v/no-air/origins/seoul: a build stopped while writing it" in m
+               and "exclude air" in m for m in problems), problems

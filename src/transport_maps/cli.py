@@ -23,7 +23,7 @@ import types
 from datetime import UTC, datetime
 from pathlib import Path
 
-from transport_maps import _io, config, validate, variants
+from transport_maps import _io, config, progress, validate, variants
 from transport_maps.contour import bands, grid
 from transport_maps.emit import (
     hover,
@@ -334,8 +334,17 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
                                        skip_native=slim, flags=shared["band_flags"])
     validate.check_bands_cover(idx, shared["grid"], shared["native"], fc, skip_native=slim)
 
-    out = shared.get("out_root", config.DIST) / "origins"
+    root = shared.get("out_root", config.DIST)
+    out = root / "origins"
     out.mkdir(parents=True, exist_ok=True)
+    # Every gate has passed; nothing of this origin has been replaced yet. From
+    # here until `finish` below its record says "writing", so a build that
+    # stops between two of the nine files -- the pool terminated by another
+    # worker's gate, a kill -- leaves an origin check_dist refuses and
+    # --skip-existing rebuilds, not one that is quietly half of each build.
+    stamp = shared.get("stamp")
+    if stamp is not None:
+        progress.begin(root, origin, stamp)
     tiles.write_pmtiles(fc, out / f"{slug}.pmtiles", workers=shared.get("workers"),
                         max_zoom=variants.VARIANT_MAX_ZOOM if slim else tiles.MAX_ZOOM)
     # Computed ONCE per origin and handed to every writer below. Each used to
@@ -365,8 +374,11 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     rail_detail.write_rail_detail(idx, minutes, predecessors, shared.get("rail_tables"),
                                   out / f"{slug}.rail.bin", out / f"{slug}.rail.json",
                                   parents=parents, rep=rep)
+    # LAST: the record is what says the nine files above are one origin.
+    if stamp is not None:
+        progress.finish(root, origin, stamp)
 
-    size_kb = (out / f"{slug}.pmtiles").stat().st_size // 1024
+    size_kb =(out / f"{slug}.pmtiles").stat().st_size // 1024
     # Read last, after every writer has run, so the origin's own peak is in it.
     return (f"{slug:<20}{coverage:>9.1%}{len(fc['features']):>8}{size_kb:>12}"
             f"{os.getpid():>8}{_peak_rss_mb():>10,.0f}")
@@ -578,6 +590,12 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
               "hover_groups": hover.hover_groups(idx, hover_parents),
               "base_hover": hover.base_hover_index(idx, hover_parents),
               "out_root": variants.variant_dir(config.DIST, exclude)}
+    # What each origin's completion record is keyed on (transport_maps.progress):
+    # the identity sampled at the start plus a digest of the graph itself,
+    # which is where the data inputs the identity cannot see come in.
+    shared["stamp"] = progress.Stamp.of(
+        identity, progress.graph_hash(csr, hover_parents, cell_class, shared["rail_tables"]),
+        exclude)
 
     # hover_cells.bin depends only on the graph, not on any origin, so it is
     # safe to write eagerly. index.json is different: it lists the origins the
@@ -641,6 +659,19 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     if partial:
         print("partial build (--limit / --only): index.json left untouched")
         return
+    # Published from the records, not from "the loop ended": every origin the
+    # index or the marker is about to name must be complete under THIS run's
+    # key, whether this run wrote it or found it. A worker that returned
+    # without recording, or a file removed behind the build's back, stops the
+    # publication here instead of reaching the site.
+    unfinished = [(o["slug"], why) for o in origins
+                  if (why := progress.problem(shared["out_root"], o, shared["stamp"]))]
+    if unfinished:
+        raise SystemExit(
+            f"{len(unfinished)} of {len(origins)} origin(s) are not complete for this build, so "
+            "nothing was published: "
+            + "; ".join(f"{slug}: {why}" for slug, why in unfinished[:5])
+            + (" ..." if len(unfinished) > 5 else ""))
     if exclude is not None:
         # Never index.json: that describes the full set. The marker is what
         # `reindex` reads to decide the variant is complete enough to offer.
