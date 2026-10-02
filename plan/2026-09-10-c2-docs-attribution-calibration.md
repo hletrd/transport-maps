@@ -292,7 +292,10 @@ build.
       read three times, changes no value, and leaves the import-time
       constants alone. It was not done here because it is not B2b, and doing
       it under B2b's name would tick a task that is not finished.)
-- [ ] **E13** Owner decision on the `pyproject.toml` author email.
+- [x] **E13** ~~Owner decision on the `pyproject.toml` author email.~~ **Closed
+      2026-10-02, not a defect:** the owner confirmed it is their real address
+      (it is also the git author). The finding was wrong to call it a
+      placeholder; nothing changes.
 - [x] **I5 (docs part)** The vendored JS hashes table (recorded by the security
       reviewer) in `web/README.md`, and a test that recomputes them (with Q6).
       (2026-10-02: found already done and never ticked. The table landed in
