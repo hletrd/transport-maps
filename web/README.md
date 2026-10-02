@@ -14,31 +14,58 @@ explicit search or a click, never per keystroke — its usage policy forbids
 autocomplete), and the Google tag for page-view counting.
 
 `vendor/` is generated, not hand-edited. To refresh it, re-download each package
-from jsdelivr and rewrite any `/npm/...` imports to local siblings.
+from jsdelivr and rewrite any `/npm/...` imports to local siblings. MapLibre is
+the exception: its three ES modules are taken from the npm tarball itself (see
+below), not from a jsDelivr `+esm` rebuild.
 
 ## Pinned versions, and why
 
 | package | version | note |
 |---|---|---|
-| maplibre-gl | **5.24.0** | NOT 6.x — see below |
-| pmtiles | 4.5.0 | |
+| maplibre-gl | **6.11.2** | ES modules from the npm tarball, renamed `.mjs` to `.js` |
+| pmtiles | 4.5.0 | still the latest; works unchanged with MapLibre 6 |
 | h3-js | 4.2.1 | |
 | fflate | 0.8.3 | transitive dep of pmtiles |
 
-**Do not upgrade MapLibre to 6.x without testing tile loading.** Observed on
-6.x: its ESM bundle drops the default export (needs `import * as`), and
-pmtiles 4.x's `addProtocol` handler is called once for the source metadata and
-then never for tiles, so the map renders an empty globe with no console error.
-The root cause of the second symptom has not been isolated; retest tile
-loading end to end before any upgrade. MapLibre 5.24 has globe projection and
-works correctly.
+**MapLibre 6 ships as three ES modules**, not one UMD bundle:
+`maplibre-gl.js` (the API, imported by `app.js`), `maplibre-gl-shared.js` (a
+chunk both of the others import) and `maplibre-gl-worker.js` (the worker,
+started as a module worker from this origin). Upstream names them `.mjs`. They
+are vendored as `.js` because every caching and gzip rule in
+`deploy/worldmap.atik.kr.conf` keys on `.js`: an `.mjs` file would fall
+through to `location /` with no `Cache-Control` (a revalidated `app.js` beside
+a heuristically cached old bundle is the blank-globe mismatch
+`deploy/README.md` describes), and would depend on the server's `mime.types`
+mapping `.mjs` to JavaScript, without which a module script is refused
+outright. The rename costs two edits and one call:
 
-5.24.0 is the last 5.x release and carries CVE-2026-85061 (a `DOM.sanitize`
-bypass, fixed only in 6.4.1; advisory:
-https://advisories.gitlab.com/npm/maplibre-gl/CVE-2026-85061/). It is
-unreachable here because `attributionControl` is false and no popup is used;
-do not enable either without upgrading or patching (security plan I2). The
-vendored bundle carries a one-token local patch (see the hashes table below).
+- the static import `from"./maplibre-gl-shared.mjs"` is rewritten to
+  `from"./maplibre-gl-shared.js"` in `maplibre-gl.js` and in
+  `maplibre-gl-worker.js` -- exactly one occurrence in each, nothing else
+  touched;
+- `app.js` calls `maplibregl.setWorkerUrl()` with `vendor/maplibre-gl-worker.js`
+  before the Map is built, since the bundle otherwise guesses the upstream
+  name, `maplibre-gl-worker.mjs`, and a worker that 404s draws no tiles.
+
+The worker is same-origin, so MapLibre 6 constructs it directly
+(`new Worker(url, {type: "module"})`); it only routes through a `blob:` URL
+when the worker is cross-origin. The page was measured working under the
+production CSP with `blob:` removed from `script-src` and `worker-src` on
+2026-10-02, but the CSP is left as it is: dropping `blob:` is a separate,
+server-side change.
+
+The 5.x note that used to stand here -- pmtiles' protocol handler "called once
+for the metadata and then never for tiles" on 6.x -- does not reproduce on
+6.11.2 with pmtiles 4.5.0: bands and water render at every viewport and past
+zoom 9, and the page renders within 0.02% of the pixels 5.24.0 drew from the
+same data (cycle-3 I2 note in `plan/2026-09-10-c2-security-and-policy.md`).
+
+CVE-2026-85061 (a `DOM.sanitize` bypass in 5.x; advisory:
+https://advisories.gitlab.com/npm/maplibre-gl/CVE-2026-85061/) was fixed
+upstream in 6.4.1, so 6.11.2 needs no local patch: its sanitizer walks
+`getAttributeNames()`, a static array, and keeps only allow-listed
+attributes. `attributionControl` stays false and the page still opens no
+popup, which `tests/web/test_vendor.py` pins.
 
 ## Vendored file hashes (sha256)
 
@@ -48,11 +75,13 @@ in the same commit.
 
 | file | sha256 |
 |---|---|
-| maplibre-gl.js | `b2b139c104732232252c74b66bee0ab6302d22a3c98723ac6d07589f9bd1c052` (patched: `removeAttributes` iterates `Array.from(t.attributes)`, CVE-2026-85061; upstream 5.24.0 was `c51e43e844402c587c55f43ff09de18989cacb80850d2ea7365f21088a332b0b`) |
+| maplibre-gl.js | `d4dc7a9076fbdec1e74868c627fe58769b04cf83dd9cf1adbcf7d4118d7312f8` (upstream `dist/maplibre-gl.mjs` 6.11.2 was `3f55566295583644617fe17d008a36c580414b8c71dd2e1fcff1309de6fdee5d`; one import specifier renamed) |
+| maplibre-gl-shared.js | `76b5f55bdee928c65d592684aaff2b913d50b6b17b0ec6334e88b09b6aa47960` (byte for byte upstream `dist/maplibre-gl-shared.mjs` 6.11.2) |
+| maplibre-gl-worker.js | `620e4c950804cab5b9a2c530de8c57110d7bdc288fde44215fe741235309fa58` (upstream `dist/maplibre-gl-worker.mjs` 6.11.2 was `01ad197aa7f4cec258a890febd71b7515e96309881b036a7095befc01a45296e`; one import specifier renamed) |
 | pmtiles.js | `ea53f031446436ac57b420eeda2cc81092ed8b9b6dcbd15207f1b63495fad0bc` |
 | h3.js | `fcaa69b16ddfdd26e8544bf326eeb2c6d25ae3ba94ffa27c0a484cb5318cfd32` |
 | fflate.js | `d22d603594fe32208e563d2f2fbe9e53f8addc1c845320786c7de62464c288a8` |
-| maplibre-gl.css | `ab1e70d59ec40465bae7e7030da2f3ccf28133fd502e62bd598eefbadfd7a732` |
+| maplibre-gl.css | `d8617d8421930e3fc6185365400e788c374c1a5d9fbe87999998c0bc14a202d3` |
 | fonts.css | `ca06ffa19cbf1148916985a311fb10def2a7f34504e667ecc015dbf30f9ab1aa` |
 | ibm-plex-sans-latin-400-normal.woff2 | `3b646991d30055a93a4ecc499713d4347953a74a947ecab435ab72070cbdab0e` |
 | ibm-plex-sans-latin-500-normal.woff2 | `0717336fb31fcdcde4b8deb3675bb4a0f7f6d484864afcd6751ac29975962203` |
@@ -61,11 +90,11 @@ in the same commit.
 | ibm-plex-sans-latin-ext-500-normal.woff2 | `2846035d85100f84c79393f80f1442d4ee720129ab8b3ffa8969aae281db8c6c` |
 | ibm-plex-sans-latin-ext-600-normal.woff2 | `b25dfd4f979e442ae1e25cd0894463434cf01ba21ac1a35d39f4a82bd4cc060e` |
 | OFL.txt | `7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da` |
-| licences/README.md | `8c1826ebbd28d7ebb77dcc11c114f831492637cbdffebc9c729de19ea4f95054` |
+| licences/README.md | `94230e180572384f8680a6f99b4072fa99ea12af33f9e3ff8da37c27f9ad369b` |
 | licences/fflate.LICENSE.txt | `0a1df3a083d0c010560aa342e87959c8c1070e6fd54545741f083f22d0c8b551` |
 | licences/h3-js.LICENSE.txt | `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |
 | licences/h3-js.NOTICE.txt | `a265b8d138fa9064bbe12c1e9d6785705bdc91a3655b241b1fd01a7a0ead6663` |
-| licences/index.html | `679b99d8f16f457605f7a874b49064dedb519f98bd52818d84508ea9c77c354f` |
+| licences/index.html | `e4526e175eb8892ee52835e2f6a69035b6adaf3292ac2f1445ab78475bff965e` |
 | licences/maplibre-gl.LICENSE.txt | `ee5fc05a0677eaf69601d2c7db0d9ecd6cc27c3abc1d0733bc9ed34707cf8ef2` |
 | licences/pmtiles.LICENSE.txt | `0371c38f338835f7fc13ed71176f3d92144e22c8b736a31cced57adbbeb647b3` |
 
@@ -81,18 +110,28 @@ content, so a swapped face would be cached for a year with no other signal.
 ## Where each file came from
 
 The hashes above pin what is on disk. This table records what it was taken
-from, checked against upstream on 2026-10-02. The four `.js` bundles are
-jsDelivr `+esm` builds, which jsDelivr generates on demand (each file's own
-header says not to use SRI on it), so they have no stable upstream hash to
-compare. For those the provenance is the original file each header names.
+from, checked against upstream on 2026-10-02. `pmtiles.js`, `h3.js` and
+`fflate.js` are jsDelivr `+esm` builds, which jsDelivr generates on demand
+(each file's own header says not to use SRI on it), so they have no stable
+upstream hash to compare. For those the provenance is the original file each
+header names.
+
+MapLibre's four files come from the npm tarball of 6.11.2, whose sha512
+(`sha512-Xh06pxoipjX/Ad1sUPGhiNh9go9naCNGZZ1IJm3sIeqK1kYGuMaMDSTIGDQ2igOLfVyukJU7kvEOA089VO7Z7g==`,
+sha1 `25f1266666c16f6b935cabccba554c238a3cf394`) matched the `dist.integrity`
+the npm registry publishes for that version, and whose `dist/` files hash
+identically to the copies jsDelivr and unpkg serve. Each `.js` file's own banner
+names its version and licence.
 
 | file | upstream | matches upstream byte for byte |
 |---|---|---|
-| maplibre-gl.js | jsDelivr `+esm` of `/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js` | no: one-token CVE-2026-85061 patch, upstream hash in the table above |
+| maplibre-gl.js | `dist/maplibre-gl.mjs` of the npm tarball `maplibre-gl-6.11.2.tgz` | no: `./maplibre-gl-shared.mjs` import renamed to `.js`, upstream hash in the table above |
+| maplibre-gl-shared.js | `dist/maplibre-gl-shared.mjs` of the same tarball | yes |
+| maplibre-gl-worker.js | `dist/maplibre-gl-worker.mjs` of the same tarball | no: same one-import rename, upstream hash in the table above |
 | pmtiles.js | jsDelivr `+esm` of `/npm/pmtiles@4.5.0/dist/esm/index.js` | no: its `fflate` import is rewritten to `./fflate.js` |
 | h3.js | jsDelivr `+esm` of `/npm/h3-js@4.2.1/dist/browser/h3-js.es.js` | generated, see above |
 | fflate.js | jsDelivr `+esm` of `/npm/fflate@0.8.3/esm/browser.js` | generated, see above |
-| maplibre-gl.css | `https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css` | yes |
+| maplibre-gl.css | `dist/maplibre-gl.css` of the maplibre-gl 6.11.2 tarball | yes |
 | ibm-plex-sans-latin-{400,500,600}-normal.woff2, ibm-plex-sans-latin-ext-{400,500,600}-normal.woff2 | `https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5.3.0/files/` (IBM Plex Sans 3.201; 5.2.5 to 5.3.0 ship the same bytes) | yes |
 | OFL.txt | `LICENSE.txt` of github.com/IBM/plex (also `@ibm/plex-sans@1.1.0`) | yes |
 | fonts.css | written here | not applicable |

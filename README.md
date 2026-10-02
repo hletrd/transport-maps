@@ -6,7 +6,7 @@
 
 [![Live site](https://img.shields.io/badge/live-worldmap.atik.kr-1f6feb)](https://worldmap.atik.kr/)
 ![Python 3.14](https://img.shields.io/badge/python-3.14-3776ab)
-![MapLibre GL JS 5.24](https://img.shields.io/badge/MapLibre_GL_JS-5.24-396cb2)
+![MapLibre GL JS 6.11](https://img.shields.io/badge/MapLibre_GL_JS-6.11-396cb2)
 ![PMTiles](https://img.shields.io/badge/tiles-PMTiles-6b4fbb)
 ![H3 resolution 6/7](https://img.shields.io/badge/grid-H3_res_6%2F7-e8802b)
 

@@ -127,7 +127,9 @@ def test_every_index_json_key_the_page_reads_is_written(tmp_path):
                       graph={"rail": True, "ferry": True}, identity=identity,
                       solver_bundle=bundle)
     written = set(json.loads(out.read_text()))
-    read = set(re.findall(r"meta\.(\w+)", APP))
+    # Not `import.meta.url` (app.js resolves the MapLibre worker with it) or any
+    # other `x.meta`: only reads of the index.json object itself.
+    read = set(re.findall(r"(?<![\w.])meta\.(\w+)", APP))
     assert read <= written, f"app.js reads {sorted(read - written)} which write_index never writes"
 
 

@@ -1,10 +1,11 @@
-"""The vendored bundles are pinned by content, and the one local patch and the
-mitigation that make CVE-2026-85061 unreachable are guarded.
+"""The vendored bundles are pinned by content, the MapLibre build is the one
+that fixes CVE-2026-85061, and the page still hands MapLibre no HTML.
 
-MapLibre 5.24.0 is the last 5.x release and its DOM.sanitize is vulnerable
-(fixed upstream only in 6.4.1). The page never hands MapLibre untrusted HTML
-because the attribution control is off; the bundle also carries a one-token
-patch so the sanitizer no longer mutates the NamedNodeMap it iterates.
+MapLibre 5.x's DOM.sanitize iterated the live NamedNodeMap while removing from
+it (CVE-2026-85061, fixed upstream in 6.4.1). 5.24.0 was vendored with a
+one-token local patch; 6.11.2 carries the upstream fix, a rewritten
+allow-list sanitizer that walks `getAttributeNames()`. The attribution control
+stays off and no popup is opened, so the sanitizer is not reached either way.
 """
 
 import hashlib
@@ -59,10 +60,64 @@ def test_every_vendored_file_matches_the_hash_the_readme_records():
         assert actual == recorded[name], f"{name}: on disk {actual[:12]}…, README {recorded[name][:12]}…"
 
 
-def test_the_sanitizer_patch_is_in_the_vendored_maplibre():
+def test_the_vendored_maplibre_carries_the_sanitizer_fix():
+    """6.4.1 replaced the live-NamedNodeMap loop with an allow list walked over
+    `getAttributeNames()`, a static array, so removing an attribute cannot skip
+    the next one.
+
+    Mutation performed and reverted: put the 5.x loop shape
+    `for(let a of t.attributes)` in place of `for(let a of n.call(t))` in
+    removeDisallowedAttributes -> red.
+    """
     bundle = (WEB / "vendor" / "maplibre-gl.js").read_text(encoding="utf-8")
-    assert "of Array.from(t.attributes))" in bundle, "the CVE-2026-85061 patch is missing"
-    assert "of t.attributes)pe.isPossiblyDangerous" not in bundle, "the vulnerable loop is back"
+    m = re.search(r"static removeDisallowedAttributes\((\w)\)\{(.{0,200}?)\}static", bundle)
+    assert m, "removeDisallowedAttributes is not in the vendored bundle; re-derive this test"
+    elem, body = m.groups()
+    assert "getAttributeNames" in body, "the sanitizer no longer walks getAttributeNames()"
+    assert f"of {elem}.attributes)" not in body, "the sanitizer iterates the live NamedNodeMap again"
+    assert "isPossiblyDangerous" not in bundle, "the 5.x deny-list sanitizer is back"
+    assert "MapLibre GL JS" in bundle[:200] and "v6." in bundle[:300], (
+        "maplibre-gl.js is not the 6.x build its banner should name")
+
+
+def test_the_maplibre_module_graph_resolves_to_files_this_site_serves():
+    """MapLibre 6 is three ES modules, and every way of getting their wiring
+    wrong ends the same way: a blank globe, the failure CLAUDE.md records twice.
+
+    * 6.x has no default export, so `import maplibregl from` is a SyntaxError
+      at link time and app.js never runs;
+    * upstream names the files `.mjs`; vendor/ renames them `.js` (web/README.md
+      says why), so a static import left at `./maplibre-gl-shared.mjs` 404s;
+    * the bundle guesses its worker as `maplibre-gl-worker.mjs`, so without
+      `setWorkerUrl` ahead of the Map the worker 404s and no tile is drawn;
+    * WebGL 1 is gone, so a `getContext("webgl")` fallback lets a WebGL1-only
+      browser past the guard and into a constructor that throws.
+
+    Mutations performed and reverted, each red: `import maplibregl from`;
+    delete the setWorkerUrl line; move it below `new maplibregl.Map(`; put
+    `.mjs` back in maplibre-gl-worker.js's import; add
+    `|| c.getContext("webgl")` back to the WebGL check.
+    """
+    vendor = WEB / "vendor"
+    for name in ("maplibre-gl.js", "maplibre-gl-worker.js"):
+        text = (vendor / name).read_text(encoding="utf-8")
+        specs = re.findall(r'(?:from|import)\s*"(\.[^"]+)"', text)
+        assert specs, f"{name} imports nothing; re-derive this test"
+        for spec in specs:
+            assert (vendor / spec).is_file(), f"{name} imports {spec}, which vendor/ does not hold"
+    main = (vendor / "maplibre-gl.js").read_text(encoding="utf-8")
+    assert " as default" not in main[-6000:], "re-derive: the bundle now has a default export"
+
+    app = (WEB / "app.js").read_text(encoding="utf-8")
+    assert 'import * as maplibregl from "./vendor/maplibre-gl.js";' in app, (
+        "MapLibre 6 has no default export; app.js must import the namespace")
+    m = re.search(r'maplibregl\.setWorkerUrl\(new URL\("\./(vendor/[^"]+)", import\.meta\.url\)\.href\)', app)
+    assert m, "app.js does not point MapLibre at the vendored worker"
+    assert (WEB / m.group(1)).is_file(), f"setWorkerUrl names {m.group(1)}, which does not exist"
+    assert m.start() < app.index("new maplibregl.Map("), (
+        "setWorkerUrl must run before the Map constructor builds the worker pool")
+    guard = app[app.index('getContext("webgl2")') - 200:app.index("new maplibregl.Map(")]
+    assert 'getContext("webgl")' not in guard, "MapLibre 6 needs WebGL2; a WebGL1 fallback misleads the guard"
 
 
 def test_the_page_never_hands_maplibre_an_attribution_string():
@@ -83,6 +138,8 @@ LICENCES = config.ROOT / "web" / "vendor" / "licences"
 #: "BSD|Apache License|MIT License|Copyright"` returned 0 on all four bundles.
 NOTICE_FOR = {
     "maplibre-gl.js": "maplibre-gl.LICENSE.txt",
+    "maplibre-gl-shared.js": "maplibre-gl.LICENSE.txt",
+    "maplibre-gl-worker.js": "maplibre-gl.LICENSE.txt",
     "maplibre-gl.css": "maplibre-gl.LICENSE.txt",
     "pmtiles.js": "pmtiles.LICENSE.txt",
     "h3.js": "h3-js.LICENSE.txt",

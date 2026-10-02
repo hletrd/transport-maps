@@ -126,7 +126,7 @@ transfer_kb() {
 # artifacts and the licence firewall used to run before web/ was merged into
 # dist/, so index.html, app.js, llms.txt and vendor/ were covered by neither --
 # and --page-only, which ships nothing but those files, ran no gate at all.
-# The vendored-bundle pins (the CVE-2026-85061 patch) and the CSP inline-script
+# The vendored-bundle pins (and the CVE-2026-85061 fix they carry) and the CSP inline-script
 # hash added in cycle 2 were tests that never ran on the deploy path.
 page_gate() {
   echo "=== page-asset gate: licence firewall, vendor pins, CSP hash, obligations ==="
