@@ -212,7 +212,7 @@ build.
       "halved". Three mutations, all RED: the literal back; `urban_slowdown`
       returning "halved" whatever the factor; `mode_detail` passing a frozen
       2.0.)
-- [ ] **CR3-7b (page half)** `web/app.js` `MODE_FALLBACK` still says "halved
+- [x] **CR3-7b (page half)** `web/app.js` `MODE_FALLBACK` still says "halved
       inside cities" three times. It was outside this lane, which could not
       edit `web/`. The fallback is used only for an `index.json` with no
       `modeDetail`, so it cannot know the factor. Re-typing "halved" or
@@ -230,6 +230,14 @@ build.
       it by putting "halved" back, and confirm it goes red. A browser check is
       not needed: the fallback is reached only on an `index.json` older than
       `modeDetail`.
+      (2026-10-02, DONE. The three entries are exactly the text above, with a
+      comment saying why the fallback states no quantity.
+      `tests/web/test_app_constants.py::test_the_mode_prose_fallback_states_no_quantity`
+      strips comments from the literal and fails on "halved" or any digit.
+      Two mutations, both RED: "halved inside cities" back in the highway
+      entry; "divided by 2" in the major-road entry. Left alone and outside
+      the item: `web/llms.txt:56` still says "halved inside cities" in its
+      model summary.)
 - [ ] **B2b** One calibration loader threaded through the build context
       (`calibrate.load()`), replacing the per-module loaders: air, rail,
       ferry, ground, urban and carry-on each still open `calibration.toml`

@@ -284,13 +284,16 @@ const N_BANDS = EDGES.length + 1;
 
 // How each surface mode is modelled, when index.json predates the emitter
 // that ships the calibrated sentence (builds before modeDetail existed).
+// No quantities: the page cannot know the build's calibration.toml, and a
+// figure typed here ("halved") is the drift emit/index.mode_detail stopped
+// by deriving its wording from [urban] congestion_factor (CR3-7).
 const MODE_FALLBACK = {
   "rail": "Scheduled trains from OpenStreetMap route relations, stop to stop, plus boarding time.",
   "ferry": "Scheduled ferry routes from OpenStreetMap, sailing time plus time at the terminals.",
-  "highway": "Motorways and expressways at a fitted free-flow speed, halved inside cities.",
-  "major road": "Primary and secondary roads at fitted speeds, halved inside cities.",
+  "highway": "Motorways and expressways at a fitted free-flow speed, slowed inside cities by a fitted congestion factor.",
+  "major road": "Primary and secondary roads at fitted speeds, slowed inside cities by a fitted congestion factor.",
   "minor road": "Tertiary roads at a fitted speed; local roads at a published-figure "
-                + "default. Both halved inside cities.",
+                + "default. Both slowed inside cities by a fitted congestion factor.",
   "track": "No mapped road: walking pace.",
 };
 const NO_AIRPORT = 0xFFFF;

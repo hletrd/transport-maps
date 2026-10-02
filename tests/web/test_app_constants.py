@@ -57,6 +57,23 @@ def test_the_mode_prose_fallback_has_one_entry_per_channel():
     assert keys == list(modes.CHANNELS), keys
 
 
+def test_the_mode_prose_fallback_states_no_quantity():
+    """CR3-7b. `MODE_FALLBACK` is shown only for an index.json older than
+    `modeDetail`, so it cannot know the build's calibration. The pipeline
+    derives "halved" from `[urban] congestion_factor` (CR3-7); a fallback
+    that types it, or any other figure, is the drift that removed. Read over
+    the comment-stripped literal, so the comment above it may explain why.
+
+    Mutations performed and reverted, each RED: put "halved inside cities"
+    back in the highway entry; write "divided by 2" in the major-road entry.
+    """
+    m = re.search(r"const MODE_FALLBACK\s*=\s*\{(.*?)\n\};", APP, re.S)
+    assert m, "MODE_FALLBACK not found in app.js"
+    body = re.sub(r"/\*.*?\*/|//[^\n]*", "", m.group(1), flags=re.S)
+    assert "halved" not in body.lower()
+    assert not re.search(r"\d", body), re.findall(r"[^\"]*\d[^\"]*", body)
+
+
 def test_sentinels_match_the_emitters():
     assert int(_js_const("NO_AIRPORT"), 16) == itinerary.NO_AIRPORT
     assert int(_js_const("NO_RAIL"), 16) == rail_detail.NO_RAIL
