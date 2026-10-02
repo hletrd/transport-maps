@@ -940,3 +940,33 @@ def test_the_city_list_check_is_what_the_gate_runs():
         "the gate no longer runs check_city_list on the city-list eval")
     for key in ("noRoute:", "blank:", "departing:"):
         assert key in code, f"the city-list eval no longer reports {key}"
+
+
+def test_a_deploy_offering_the_solver_checks_the_servers_bundle(tmp_path):
+    """index.json may offer an on-demand departure only if the server holds
+    the bundle from the same build; the deploy refuses otherwise.
+
+    Mutation performed and reverted: make solver_gate `return 0` first -> red.
+    """
+    import json
+    import subprocess
+
+    fn = re.search(r"\nsolver_gate\(\) \{.*?\n\}\n", DEPLOY, re.S)
+    assert fn, "solver_gate has moved; re-derive this test"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "dist").mkdir()
+
+    def run(index: dict, server_build: str) -> subprocess.CompletedProcess:
+        (tmp_path / "dist" / "index.json").write_text(json.dumps(index))
+        ssh = bin_dir / "ssh"
+        ssh.write_text(f"#!/bin/bash\necho {server_build}\n")
+        ssh.chmod(0o755)
+        script = "DEPLOY_HOST=h\n" + fn.group(0) + "solver_gate\necho PASSED\n"
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                              cwd=tmp_path, env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
+
+    assert "PASSED" in run({"buildId": "b1"}, "zzz").stdout, "no solver offered: nothing to check"
+    assert "PASSED" in run({"buildId": "b1", "solver": {"wire": 1}}, "b1").stdout
+    bad = run({"buildId": "b1", "solver": {"wire": 1}}, "b0")
+    assert bad.returncode == 1 and "deploy_solver.sh" in bad.stdout

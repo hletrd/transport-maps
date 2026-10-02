@@ -35,6 +35,24 @@ RSYNC_COMMON=(-a --chmod=D755,F644 --exclude-from=deploy/rsync-excludes.txt)
 # counting the whole tree refused a deploy that needed half the free space.
 # Unchanged files are not copied, so they cost nothing to stage. Falls back to
 # the whole tree when the dry run cannot answer -- the conservative figure.
+# An index.json that offers the on-demand solver must find, on the server, the
+# bundle written by the SAME build (emit/index._solver_matches made the same
+# check locally). Otherwise the time from an exact point is computed on
+# another graph than the map beside it. scripts/deploy_solver.sh ships it.
+solver_gate() {
+  local want have
+  want=$(python3 -c "import json;d=json.load(open('dist/index.json'));print(d.get('buildId','') if d.get('solver') else '')")
+  [ -n "$want" ] || return 0
+  have=$(ssh -o BatchMode=yes "$DEPLOY_HOST" \
+    "python3 -c \"import json;print(json.load(open('/home/ubuntu/worldmap-solver/current/meta.json'))['identity'].get('buildId',''))\"" 2>/dev/null || true)
+  if [ "$have" != "$want" ]; then
+    echo "  index.json offers the solver for build $want, but the server's bundle is '${have:-none}'."
+    echo "  Run scripts/deploy_solver.sh first."
+    exit 1
+  fi
+  echo "  solver bundle on the server matches build $want"
+}
+
 transfer_kb() {
   local bytes
   bytes=$(rsync "${RSYNC_COMMON[@]}" --delete --dry-run --stats \
@@ -231,6 +249,7 @@ if [ "$MODE" = full ]; then
   # before the merge (as the licence firewall was) it scanned the PREVIOUS
   # deploy's copies and said nothing about the new ones.
   page_gate
+  solver_gate
   # --delay-updates stages the new payload alongside the old one before it
   # renames anything, so the peak requirement is the payload plus whatever the
   # old set already occupies. The 553-origin payload measures 15.69 GiB against
