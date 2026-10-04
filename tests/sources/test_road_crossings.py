@@ -116,6 +116,22 @@ def test_land_parts_are_read_at_each_point():
     assert LAND([a[0], b[0], w[0]], [a[1], b[1], w[1]]).tolist() == [1, 2, WATER]
 
 
+def test_land_near_a_coast_is_not_trusted_to_be_on_its_part():
+    """Natural Earth's coast can reach across a narrow strait onto the far
+    shore: Baubau's streets, on Buton, lay in two slivers of "Muna"."""
+    land = rc.LandParts([(1, shapely.box(0.0, 0.0, 1.0, 1.0))], margin=0.005)
+    assert land([0.5, 0.5], [0.002, 0.5]).tolist() == [WATER, 1]
+
+
+def test_natural_earth_parts_are_read_with_the_coast_margin(monkeypatch):
+    from transport_maps.sources import landmask
+
+    monkeypatch.setattr(landmask, "_land_parts", lambda: [shapely.box(10.0, 10.0, 11.0, 11.0)])
+    land = rc.LandParts.natural_earth()
+    inside = 10.0 + rc.COAST_MARGIN_DEG / 2
+    assert land([10.5, 10.5], [inside, 10.5]).tolist() == [WATER, 0]
+
+
 def test_the_parse_keeps_only_the_roads_that_run_from_one_part_onto_another(tmp_path):
     centre = {c: h3.cell_to_latlng(c) for c in (A, B, C, W, F, F2)}
     nodes = {1: centre[A], 2: centre[B], 3: centre[C], 4: centre[W], 5: centre[F],

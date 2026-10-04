@@ -352,6 +352,7 @@ STAMPED = [
     (road_crossings, "SEASONAL", frozenset({"ice_road"}), _road_crossings_path),
     (road_crossings, "SEAM_RING", 3, _road_crossings_path),
     (road_crossings, "BIN_DEG", 1.0, _road_crossings_path),
+    (road_crossings, "COAST_MARGIN_DEG", 0.01, _road_crossings_path),
     (road_crossings, "ROAD_CROSSING_PARSER_VERSION", 999, _road_crossings_path),
     # The schema is fixed_links', so a change there must move this parse too.
     (fixed_links, "SCHEMA", {"way_id": pl.Int64}, _road_crossings_path),

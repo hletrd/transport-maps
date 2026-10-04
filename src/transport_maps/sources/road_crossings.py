@@ -30,17 +30,21 @@ SEAMS, the only places a crossing can matter:
 
 A crossing is then judged by the ROAD and the land under it, not by the cells
 it passes (`_crossing_edges`). Every tracked node is placed on the land part
-whose polygon holds it, or on water. A road step from one part straight onto
-another is a crossing; so is a stretch of road over water -- however many
-ways OSM cuts it into, the Sihwa seawall is a dozen -- that reaches land on
-two parts. Two versions were measured and dropped first, both on Asia:
+whose polygon holds it at least COAST_MARGIN_DEG inside its coast, or on
+water. A road step from one part straight onto another is a crossing; so is a
+stretch of road over water -- however many ways OSM cuts it into, the Sihwa
+seawall is a dozen -- that reaches land on two parts. Three versions were
+measured and dropped first, all on Asia:
 
   * judging by the cells' land-part labels kept 29,680 "crossings", most of
     them coastal roads through a strait cell Natural Earth's coarse coast puts
     on the far shore -- a road on Bali's west coast "reached" Java -- and
     joined Bali, Chiloe, Guimaras and K'gari, which only ferries reach;
   * judging way by way kept 62 and joined none of Daebu-do, Jido or Apdo: no
-    single way of the seawall runs from land to land.
+    single way of the seawall runs from land to land;
+  * judging by the land right up to the coast joined Buton to Muna and
+    Adonara to Flores, through Natural Earth slivers a few dozen metres deep
+    on the wrong shore (COAST_MARGIN_DEG).
 
 The rows have the fixed-link SCHEMA with kind "road", one per run of crossing
 steps along a way, so linked_pairs and spanning_links read them as they read
@@ -92,13 +96,25 @@ SEAM_RING = 2
 # Coarse bins over the vicinity, a fast reject before the H3 lookup of each of
 # hundreds of millions of road nodes; 0.5 degrees is several cells wide.
 BIN_DEG = 0.5
+# Natural Earth's 1:10M coast is generalised, and across a strait a few
+# kilometres wide its polygons can reach onto the other shore. A road node this
+# close inside a part's coast is not trusted to be on it and counts as water:
+# only land this far in says which part a road is on. Measured on Asia's road
+# steps (2026-10-04): with no margin, Baubau's streets on Buton "reached" Muna
+# through two Natural Earth islets 19 and 52 m deep, and Adonara joined Flores;
+# at 0.005 degrees (about 550 m) neither does, and every named case in
+# scripts/check_fixed_links.py holds. 1,609 of the 6,985 parts are narrower
+# than twice this: no road crossing reaches them, and they stay as cut as they
+# were before road crossings were read.
+COAST_MARGIN_DEG = 0.005
 # Marks a node on no land part.
 WATER = -(2 ** 31)
 
 # Bumped when the parse changes shape.
 # 3: a crossing is judged by the land parts under the road's nodes, across
 #    every way it runs along (the module docstring has the two before).
-ROAD_CROSSING_PARSER_VERSION = 3
+# 4: and only by land COAST_MARGIN_DEG inside a part.
+ROAD_CROSSING_PARSER_VERSION = 4
 
 STEM = "road_crossings"
 
@@ -150,13 +166,17 @@ def seams(cells: list[str], parts: list[tuple[int, ...]]) -> Seams:
 
 class LandParts:
     """Which land part a point lies on: the polygons
-    landmask.land_cell_landmasses numbers, by the same ids; WATER on none."""
+    landmask.land_cell_landmasses numbers, by the same ids; WATER on none, and
+    on the outer `margin` degrees of every part (COAST_MARGIN_DEG)."""
 
-    def __init__(self, polygons: list[tuple[int, object]]):
+    def __init__(self, polygons: list[tuple[int, object]], margin: float = 0.0):
         import shapely
 
-        self._ids = [i for i, _ in polygons]
-        self._polys = [p for _, p in polygons]
+        shrunk = shapely.buffer([p for _, p in polygons], -margin) if margin else \
+            [p for _, p in polygons]
+        kept = [(i, p) for (i, _), p in zip(polygons, shrunk) if not p.is_empty]
+        self._ids = [i for i, _ in kept]
+        self._polys = [p for _, p in kept]
         for poly in self._polys:
             shapely.prepare(poly)
         self._tree = shapely.STRtree(self._polys)
@@ -165,7 +185,8 @@ class LandParts:
     def natural_earth(cls) -> LandParts:
         """Antarctica's wedges are one landmass, as they are there."""
         return cls([(landmask.ANTARCTICA_LANDMASS if p.bounds[3] <= landmask.ANTARCTICA_MAX_LAT
-                     else i, p) for i, p in enumerate(landmask._land_parts())])
+                     else i, p) for i, p in enumerate(landmask._land_parts())],
+                   margin=COAST_MARGIN_DEG)
 
     def __call__(self, lats, lons) -> np.ndarray:
         import shapely
@@ -325,6 +346,7 @@ def _params_key() -> str:
     """Every constant that governs the parquet's content, and the land parts:
     the seams and the crossings move with them, so a new coast is a new parse."""
     return _params_hash(sorted(ROAD_HIGHWAYS), sorted(SEASONAL), SEAM_RING, BIN_DEG,
+                        COAST_MARGIN_DEG,
                         sorted((k, str(v)) for k, v in fixed_links.SCHEMA.items()),
                         ROAD_CROSSING_PARSER_VERSION, _landmass_key())
 
