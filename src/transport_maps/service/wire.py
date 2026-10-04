@@ -23,6 +23,7 @@ only thing standing between a query string and `h3.latlng_to_cell(nan, nan)`.
 
 from __future__ import annotations
 
+import base64
 import math
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -32,6 +33,14 @@ from typing import Any, Protocol
 # was not written for -- which is the failure that leaves a visitor with a
 # number and no idea what it measures.
 WIRE_VERSION = 1
+
+# The layout of `/api/map`'s body, versioned on its own. The map is additive
+# to wire 1 -- a page that never asks for it is unaffected, and index.json's
+# `solver.wire` arms both endpoints -- so it does not move WIRE_VERSION; but its
+# `times` field is a binary array with an order and a width, and a change to
+# either is exactly the silent kind (a plausible time in the wrong place), so
+# the page checks this number too and refuses any other.
+MAP_VERSION = 1
 
 # The whole error taxonomy, in one place, because both ends need to agree on
 # it: the page branches on `code`, and `tests/service/test_wire.py` asserts the
@@ -85,6 +94,14 @@ class SolveRequest:
     to_lon: float
 
 
+@dataclass(frozen=True)
+class MapRequest:
+    """A validated `/api/map` request: one point, and nothing else."""
+
+    from_lat: float
+    from_lon: float
+
+
 class Solver(Protocol):
     """What the handler needs from the half that does hold the graph.
 
@@ -99,6 +116,10 @@ class Solver(Protocol):
     """
 
     def solve(self, req: SolveRequest) -> dict[str, Any]:
+        ...
+
+    def map(self, req: MapRequest) -> dict[str, Any]:
+        """The whole map from one point, as `map_body` shapes it."""
         ...
 
 
@@ -146,8 +167,8 @@ def _point(raw: str | None) -> tuple[float, float]:
 MAX_QUERY_CHARS = 256
 
 
-def parse_query(query: str, getter=None) -> SolveRequest:
-    """Validate a query string into a `SolveRequest`, or raise `WireError`.
+def _getter(query: str, getter):
+    """The parameter reader both endpoints use, after the length test.
 
     `getter` is for callers that already hold a parsed mapping (a framework's
     request object, say). It must return the FIRST value for a repeated
@@ -165,9 +186,24 @@ def parse_query(query: str, getter=None) -> SolveRequest:
             values = parsed.get(name)
             return values[0] if values else None
 
+    return getter
+
+
+def parse_query(query: str, getter=None) -> SolveRequest:
+    """Validate a query string into a `SolveRequest`, or raise `WireError`."""
+    getter = _getter(query, getter)
     from_lat, from_lon = _point(getter("from"))
     to_lat, to_lon = _point(getter("to"))
     return SolveRequest(from_lat, from_lon, to_lat, to_lon)
+
+
+def parse_map_query(query: str, getter=None) -> MapRequest:
+    """Validate `/api/map`'s query string into a `MapRequest`, or raise
+    `WireError`. The same length bound, the same first-value rule and the same
+    coordinate checks as `parse_query`: one point is the whole request, and a
+    map costs exactly the full solve a journey does."""
+    getter = _getter(query, getter)
+    return MapRequest(*_point(getter("from")))
 
 
 # The three kinds of leg and the integer fields each carries, all of them
@@ -247,6 +283,42 @@ def ok_body(*, minutes: int | None, snapped_km: float, snapped_lat: float,
     return body
 
 
+def map_body(*, times: bytes, count: int, hover_res: int, build_id: str | None,
+             snapped_km: float, snapped_lat: float, snapped_lon: float) -> dict[str, Any]:
+    """The success shape of `/api/map`.
+
+    `times` is the map itself: `count` little-endian uint16 minutes, one per
+    hover_cells.bin cell in that file's order -- `{slug}.bin`'s layout exactly,
+    65,535 for "no route" included (docs/contract.md). It travels as base64
+    inside the same JSON envelope every other answer uses, so the page has ONE
+    parse path for a map, a journey and every failure, and a body that is not
+    this service's -- a captive portal's HTML, a truncated transfer -- fails
+    `JSON.parse` and reads as `unavailable` rather than as an array of
+    garbage. The 33% that base64 adds is mostly given back by nginx's gzip.
+
+    `count`, `hoverRes` and `buildId` are there to be checked, not read: the
+    page refuses a map whose cell count is not its hover_cells.bin's length,
+    whose grid is not its own, or whose build is not its index.json's. Any of
+    the three would otherwise paint every time in the wrong place.
+
+    `snappedKm` is always present, for the reason ok_body gives.
+    """
+    if type(count) is not int or count < 0 or len(times) != 2 * count:
+        raise ValueError(f"{len(times)} bytes is not {count} uint16 minutes")
+    return {
+        "v": WIRE_VERSION,
+        "status": "ok",
+        "mapVersion": MAP_VERSION,
+        "hoverRes": int(hover_res),
+        "count": count,
+        "buildId": build_id,
+        "snappedKm": round(float(snapped_km), 2),
+        "snappedLat": round(float(snapped_lat), 5),
+        "snappedLon": round(float(snapped_lon), 5),
+        "times": base64.b64encode(bytes(times)).decode("ascii"),
+    }
+
+
 def error_body(code: str) -> dict[str, Any]:
     """The failure shape. Same envelope, enumerated code, fixed sentence."""
     status, message = ERRORS[code]
@@ -254,7 +326,8 @@ def error_body(code: str) -> dict[str, Any]:
 
 
 def handle(query: str, solver: Solver) -> tuple[int, dict[str, str], dict[str, Any]]:
-    """One request. Returns `(http status, headers, body)`; never raises.
+    """One `/api/solve` request. Returns `(http status, headers, body)`; never
+    raises.
 
     The default-deny shape is the point: every exception that is not a
     `WireError` or a `TimeoutError` becomes `unavailable` with a fixed
@@ -262,12 +335,23 @@ def handle(query: str, solver: Solver) -> tuple[int, dict[str, str], dict[str, A
     internal error into an information leak, and this one solves with a graph
     built from paths on the owner's machine.
     """
+    return _answer(lambda: solver.solve(parse_query(query)))
+
+
+def handle_map(query: str, solver: Solver) -> tuple[int, dict[str, str], dict[str, Any]]:
+    """One `/api/map` request, under exactly `handle`'s rules: validation
+    before the solver is reached, the same codes, the same caching, and no
+    exception that gets out."""
+    return _answer(lambda: solver.map(parse_map_query(query)))
+
+
+def _answer(call) -> tuple[int, dict[str, str], dict[str, Any]]:
     try:
-        body = solver.solve(parse_query(query))
+        body = call()
         headers = {"Content-Type": "application/json; charset=utf-8",
-                   # A solve depends only on the two points, and the graph
-                   # changes once per build. Let nginx and the browser make an
-                   # identical click free; 3,600 s is far below a build.
+                   # A solve or a map depends only on its points, and the
+                   # graph changes once per build. Let nginx and the browser
+                   # make an identical click free; 3,600 s is far below a build.
                    "Cache-Control": "public, max-age=3600"}
         return 200, headers, body
     except WireError as err:

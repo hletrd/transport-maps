@@ -1,4 +1,5 @@
-"""The resident solver behind nginx: `GET /api/solve?from=lat,lon&to=lat,lon`.
+"""The resident solver behind nginx: `GET /api/solve?from=lat,lon&to=lat,lon`
+and `GET /api/map?from=lat,lon`.
 
     python -m transport_maps.service.server --bundle /srv/worldmap-solver/current
 
@@ -11,7 +12,11 @@ answers `busy` itself when the backlog is full. Bound to loopback only.
 
 The bundle is mapped before the socket opens, so a request that reaches this
 process always finds a solver; until then nginx gets a refused connection and
-the page says the service is not ready (wire code `unavailable`).
+the page says the service is not ready (wire code `unavailable`). So is the
+map's hover index (service/hovermap.py, 1.7 s and 2.7 MB measured on the
+shipped bundle), and when a hover_cells.bin sits beside the bundle, or is named
+with `--hover-cells`, the process refuses to start unless the two list the
+same cells in the same order.
 """
 
 from __future__ import annotations
@@ -24,10 +29,13 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlsplit
 
 from transport_maps.service.bundle import GraphSolver, load_bundle
-from transport_maps.service.wire import error_body, handle
+from transport_maps.service.wire import error_body, handle, handle_map
 
 log = logging.getLogger("transport_maps.service")
 PATH = "/api/solve"
+MAP_PATH = "/api/map"
+#: Each path, its handler, and the word its log line uses.
+ROUTES = {PATH: (handle, "solve"), MAP_PATH: (handle_map, "map")}
 
 
 class _Server(HTTPServer):
@@ -51,16 +59,19 @@ def make_handler(solver):
 
         def do_GET(self) -> None:                          # noqa: N802
             url = urlsplit(self.path)
-            if url.path != PATH:
+            route = ROUTES.get(url.path)
+            if route is None:
                 self._send(404, {"Content-Type": "application/json; charset=utf-8",
                                  "Cache-Control": "no-store"}, error_body("bad_request"))
                 return
-            t0 = time.monotonic()
-            status, headers, body = handle(url.query, solver)
+            answer, word = route
+            t0, solves = time.monotonic(), getattr(solver, "solves", 0)
+            status, headers, body = answer(url.query, solver)
             self._send(status, headers, body)
-            # The status and the time only: never the points, which are where
-            # a visitor is or is going.
-            log.info("solve %d in %.1f s", status, time.monotonic() - t0)
+            # The status, the time and whether a kept tree answered: never the
+            # points, which are where a visitor is or is going.
+            kept = "" if getattr(solver, "solves", 0) != solves else ", kept tree"
+            log.info("%s %d in %.1f s%s", word, status, time.monotonic() - t0, kept)
 
         def log_message(self, fmt, *args) -> None:        # the default logs the URL
             pass
@@ -72,10 +83,13 @@ def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--bundle", required=True)
     ap.add_argument("--port", type=int, default=8787)
+    ap.add_argument("--hover-cells", default=None,
+                    help="the site's hover_cells.bin, to refuse a map in another order "
+                         "(default: BUNDLE/hover_cells.bin when it exists)")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     t0 = time.monotonic()
-    solver = GraphSolver(load_bundle(args.bundle))
+    solver = GraphSolver(load_bundle(args.bundle), hover_cells=args.hover_cells)
     log.info("bundle mapped in %.1f s: %s", time.monotonic() - t0, solver.bundle.meta)
     httpd = _Server(("127.0.0.1", args.port), make_handler(solver))
     log.info("serving on 127.0.0.1:%d", args.port)

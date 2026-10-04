@@ -494,3 +494,106 @@ def test_the_solver_route_keeps_no_access_log():
     conf = (config.ROOT / "deploy" / "worldmap.atik.kr.conf").read_text()
     block = re.search(r"location = /api/solve \{(.*?)\n    \}", conf, re.S)
     assert block and re.search(r"^\s*access_log off;", block.group(1), re.M)
+
+
+# ---- /api/map ------------------------------------------------------------
+
+# 12 minutes, 65,535 ("no route") and 7 h 3 min, as `{slug}.bin` would hold them.
+MAP_TIMES = bytes([12, 0, 0xFF, 0xFF, 0xA7, 0x01])
+
+
+class MapStub(Stub):
+    """A solver that answers `/api/map` with a three-cell map."""
+
+    def __init__(self, raises: Exception | None = None) -> None:
+        super().__init__(raises=raises)
+        self.answer = wire.map_body(times=MAP_TIMES, count=3, hover_res=4, build_id="b",
+                                    snapped_km=0.0, snapped_lat=1.0, snapped_lon=2.0)
+
+    def map(self, req: wire.MapRequest):
+        return self.solve(req)
+
+
+def test_a_map_request_is_one_point_and_reaches_the_solver():
+    stub = MapStub()
+    status, headers, body = wire.handle_map("from=37.5665,126.9780", stub)
+    assert status == 200 and body["status"] == "ok", body
+    assert stub.calls == [wire.MapRequest(37.5665, 126.978)]
+    assert "max-age" in headers["Cache-Control"]
+
+
+@pytest.mark.parametrize("query,code", [
+    ("", "bad_request"),
+    ("to=37.5,127.0", "bad_request"),
+    ("from=37.5", "bad_request"),
+    ("from=37.5,127.0,9", "bad_request"),
+    ("from=true,false", "bad_request"),
+    ("from=nan,127.0", "out_of_range"),
+    ("from=37.5,inf", "out_of_range"),
+    ("from=91,127.0", "out_of_range"),
+    ("from=37.5,-400", "out_of_range"),
+    ("from=37.5,127.0&" + "x" * wire.MAX_QUERY_CHARS, "bad_request"),
+])
+def test_a_bad_map_request_never_reaches_the_solver(query, code):
+    """The map is the same full solve a journey is, so it is refused on the
+    same terms before the solver is woken.
+
+    Mutations performed and reverted, each RED: drop the length test from
+    `_getter` (the long row); read `to=` as the map's point ("to=").
+    """
+    stub = MapStub()
+    status, headers, body = wire.handle_map(query, stub)
+    assert stub.calls == [], "an invalid map request reached the solver"
+    assert body == wire.error_body(code) and status == wire.ERRORS[code][0]
+    assert headers["Cache-Control"] == "no-store"
+
+
+def test_a_repeated_map_point_takes_the_first():
+    stub = MapStub()
+    status, _, _ = wire.handle_map("from=37.5,127.0&from=0,0", stub)
+    assert status == 200 and stub.calls[0].from_lat == 37.5
+
+
+def test_the_map_handler_never_raises_and_says_nothing_of_the_error():
+    """Mutation performed and reverted: call `solver.map` outside `_answer`'s
+    try in handle_map -> RED (the RuntimeError escapes)."""
+    secret = "/Users/someone/data/build/solver/cells.npy"
+    for boom, code in ((RuntimeError(secret), "unavailable"), (MemoryError(), "unavailable"),
+                       (TimeoutError(), "timeout"), (wire.WireError("not_on_land"), "not_on_land"),
+                       (wire.WireError("busy"), "busy")):
+        status, headers, body = wire.handle_map("from=1,2", MapStub(raises=boom))
+        assert body == wire.error_body(code) and status == wire.ERRORS[code][0]
+        assert secret not in json.dumps(body) and headers["Cache-Control"] == "no-store"
+
+
+def test_the_map_shape_is_exactly_these_fields():
+    """Set equality, as for a journey: an added field is how a shape drifts
+    from the page that reads it. `times` is base64 of the little-endian
+    uint16 minutes, and nothing else.
+
+    Mutation performed and reverted: encode `times` as hex -> RED.
+    """
+    import base64
+
+    body = MapStub().answer
+    assert set(body) == {"v", "status", "mapVersion", "hoverRes", "count", "buildId",
+                         "snappedKm", "snappedLat", "snappedLon", "times"}
+    assert body["v"] == wire.WIRE_VERSION and body["mapVersion"] == wire.MAP_VERSION
+    assert base64.b64decode(body["times"], validate=True) == MAP_TIMES
+    assert (body["count"], body["hoverRes"], body["snappedKm"]) == (3, 4, 0.0)
+    json.dumps(body, allow_nan=False)
+
+
+@pytest.mark.parametrize("times,count", [(MAP_TIMES, 2), (MAP_TIMES[:-1], 3), (MAP_TIMES, 3.0),
+                                         (b"", -1)])
+def test_a_map_that_is_not_count_minutes_is_refused(times, count):
+    """The page checks the decoded length against hover_cells.bin; the
+    service must never send one that fails it.
+
+    Mutation performed and reverted: drop the length test from map_body ->
+    RED on the first two rows.
+    """
+    with pytest.raises(ValueError):
+        wire.map_body(times=times, count=count, hover_res=4, build_id="b",
+                      snapped_km=0.0, snapped_lat=0.0, snapped_lon=0.0)
+
