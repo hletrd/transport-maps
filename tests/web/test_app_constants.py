@@ -413,16 +413,25 @@ def test_flights_are_great_circles_and_ground_legs_are_not():
 def test_the_route_layers_exist_and_sit_under_the_pins():
     """Three layers: one dark halo under both kinds, then solid for air and
     dashed for ground -- line-dasharray is not data-driven in MapLibre, so one
-    layer cannot do both. They are lifted above the borders with the rest, but
-    before the pins, so a destination marker is never hidden by its own line."""
+    layer cannot do both. They sit above the borders, but below the pins, so a
+    destination marker is never hidden by its own line.
+
+    Every one of these is added at module scope without a beforeId, so the
+    order they are added in IS the stacking order; the borders used to arrive
+    by fetch and be appended last, and needed the rest lifted back over them.
+    Mutation performed and reverted: moving the borders layers below the pins
+    turns this red."""
     for layer in ("route-halo", "route-air", "route-ground"):
         assert f'id: "{layer}"' in APP, f"{layer} is not added"
-    lifted = APP[APP.index('for (const id of ["route-halo"'):]
-    lifted = lifted[:lifted.index("]")]
+    at = {layer: APP.index(f'map.addLayer({{ id: "{layer}"')
+          for layer in ("borders", "borders-other", "route-halo", "route-air",
+                        "route-ground", "pin-halo")}
     for layer in ("route-halo", "route-ground", "route-air"):
-        assert layer in lifted, f"{layer} is not lifted above the borders"
-    assert lifted.index("route-air") < lifted.index("pin-halo"), (
-        "the route must be lifted before the pins, so the pins end up on top")
+        assert at["borders"] < at[layer] and at["borders-other"] < at[layer], (
+            f"{layer} is added before the borders, so they draw over it")
+        assert at[layer] < at["pin-halo"], (
+            "the route must be added before the pins, so the pins end up on top")
+    assert ".moveLayer(" not in APP, "a layer is moved after it is added; recheck the order"
 
 
 def test_the_boot_watchdog_tests_a_start_signal_not_the_visible_list():
