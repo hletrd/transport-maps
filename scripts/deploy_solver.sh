@@ -41,6 +41,14 @@ echo "  $PINS"
 
 echo "=== bundle upload"
 rsync -a --delete "$BUNDLE/" "$DEPLOY_HOST:$HOME_DIR/bundle.new/"
+# The site's hover_cells.bin beside the bundle: the service compares its own
+# res-4 order with it at start and refuses to serve /api/map in another order
+# (service/hovermap.py). From dist/ -- the same build the bundle came from,
+# which deploy_verify.sh's solver_gate holds the release to.
+if [ -f dist/hover_cells.bin ]; then
+  rsync -a dist/hover_cells.bin "$DEPLOY_HOST:$HOME_DIR/bundle.new/hover_cells.bin"
+  echo "  hover_cells.bin shipped beside the bundle"
+fi
 
 echo "=== unit and nginx"
 scp -q deploy/worldmap-solver.service deploy/worldmap.atik.kr.conf "$DEPLOY_HOST:/tmp/"
@@ -80,5 +88,11 @@ if [ -z "$ok" ]; then
   exit 1
 fi
 echo "  Seoul -> Gumi through nginx: $ok"
+# And the whole map from one point: the array must have the site's length.
+map=$(curl -s -m 90 "$SITE_URL/api/map?from=37.80000,127.25000" || true)
+case $map in
+  *'"status":"ok"'*'"mapVersion":'*) echo "  /api/map: $(printf '%s' "$map" | head -c 160)..." ;;
+  *) echo "  /api/map did not answer a map: $(printf '%s' "${map:-nothing}" | head -c 200)"; exit 1 ;;
+esac
 ssh -o BatchMode=yes "$DEPLOY_HOST" "rm -rf $HOME_DIR/previous $HOME_DIR/bundle-test"
 echo "SOLVER DEPLOYED"
