@@ -509,25 +509,34 @@ def test_a_full_build_stamps_identity_count_and_graph_flags_into_index_json(monk
 
 def test_each_origin_row_logs_its_process_and_peak_memory(monkeypatch, tmp_path, capsys):
     """R4: the per-origin row carries the pid and the resident high-water mark,
-    so a worker's peak is a measured number in the build log. The figure is
-    held against `ps`, which reports this process's current RSS in KB: a peak
-    can be no lower than that, and no higher than the machine. A wrong unit
-    either way (getrusage is bytes on macOS, KB on Linux) misses by 1024x and
-    fails one bound or the other -- tried both, both red."""
+    so a worker's peak is a measured number in the build log.
+
+    Lower bound: this process's RSS from `ps` (KB) taken BEFORE the build -- a
+    high-water mark printed later can be no lower. (Taken after, as it first
+    was, it failed on Linux whenever memory grew after the rows were printed.)
+    Upper bound: on Linux, /proc/self/status VmHWM (KB), an independent read of
+    the same high-water mark; elsewhere the machine's RAM. A wrong unit either
+    way (getrusage is bytes on macOS, KB on Linux) misses by 1024x -- and on a
+    2 TB machine only VmHWM, not the RAM, is tight enough to see it."""
     monkeypatch.setattr(cli.config, "DIST", tmp_path)
     _stub_pipeline(monkeypatch, [], [1.0, 1.0])
     monkeypatch.setattr(cli.index, "write_index", lambda origins, out, **kw: None)
+    before_kb = int(subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())],
+                                   capture_output=True, text=True, check=True).stdout)
     cli._build_all()
     rows = [ln.split() for ln in capsys.readouterr().out.splitlines()
             if ln.split()[:1] in (["first"], ["second"])]
     assert len(rows) == 2
-    rss_kb = int(subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())],
-                                capture_output=True, text=True, check=True).stdout)
-    physical_mb = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / (1 << 20)
+    try:
+        status = open("/proc/self/status").read()
+        hwm_kb = int(next(ln.split()[1] for ln in status.splitlines() if ln.startswith("VmHWM:")))
+        ceiling_mb = hwm_kb / 1024 * 1.01
+    except OSError:
+        ceiling_mb = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / (1 << 20)
     for row in rows:
         assert int(row[-2]) == os.getpid()
         peak_mb = float(row[-1].replace(",", ""))
-        assert rss_kb / 1024 * 0.9 <= peak_mb <= physical_mb, (peak_mb, rss_kb, physical_mb)
+        assert before_kb / 1024 * 0.9 <= peak_mb <= ceiling_mb, (peak_mb, before_kb, ceiling_mb)
 
 
 def test_the_build_derives_border_and_speed_inputs_once_for_the_graph(monkeypatch, tmp_path):
