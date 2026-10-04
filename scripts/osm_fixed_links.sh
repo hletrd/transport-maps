@@ -66,6 +66,10 @@ for r in "${REGIONS[@]}"; do
   # The `osmium` COMMAND-LINE tool is not installed here -- only the Python
   # binding the pipeline already depends on. Filtering therefore happens in
   # sources/fixed_links.py, which reads this raw extract and writes a parquet
-  # of spans; the raw can be deleted once that cache exists.
+  # of spans, and in sources/road_crossings.py, which reads it again for the
+  # plain roads across a land-part seam. The raw can be deleted once BOTH
+  # caches exist -- but the road-crossing cache is keyed on the land parts as
+  # well, so a new Natural Earth coast needs the raw again, and without it
+  # the build severs on bridges and tunnels alone (and says so).
 done
 echo "[ALL DONE]"
