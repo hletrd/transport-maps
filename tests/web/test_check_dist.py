@@ -7,7 +7,7 @@ import struct
 import pytest
 
 from transport_maps import config
-from transport_maps.emit import water
+from transport_maps.emit import borders, water
 from transport_maps.emit.index import ATTRIBUTION
 from transport_maps.emit.modes import CHANNELS
 
@@ -51,6 +51,13 @@ def _water(path, layers=(water.LAYER,), zooms=(water.MIN_ZOOM, water.MAX_ZOOM), 
     _pmtiles(path, metadata=metadata, tile_type=tile_type, zooms=zooms, **kw)
 
 
+def _borders(path, layers=(borders.LAYER,), zooms=(borders.MIN_ZOOM, borders.MAX_ZOOM)):
+    """The same for borders.pmtiles (emit/borders.py)."""
+    metadata = json.dumps({"name": "borders", "format": "pbf", "vector_layers": [
+        {"id": i, "minzoom": zooms[0], "maxzoom": zooms[1]} for i in layers]}).encode()
+    _pmtiles(path, metadata=metadata, tile_type=1, zooms=zooms, gzipped=True)
+
+
 def _good_dist(tmp_path, slugs=("seoul",), rail=True):
     d = tmp_path / "dist"
     (d / "origins").mkdir(parents=True)
@@ -67,9 +74,10 @@ def _good_dist(tmp_path, slugs=("seoul",), rail=True):
         if rail:
             (d / "origins" / f"{s}.rail.bin").write_bytes(b"\0" * 2 * N_CELLS)
             (d / "origins" / f"{s}.rail.json").write_text('{"fields":[],"stations":[]}')
-    for extra in ("places.json", "airports.json", "borders.json"):
+    for extra in ("places.json", "airports.json"):
         (d / extra).write_text("{}")
     _water(d / "water.pmtiles")
+    _borders(d / "borders.pmtiles")
     (d / "index.json").write_text(json.dumps({
         "origins": [{"slug": s, "name": s, "lat": 0, "lon": 0} for s in slugs],
         "bandEdgesMin": [30, 60], "railDetail": rail, "hoverCellCount": N_CELLS,
@@ -633,7 +641,7 @@ def test_a_missing_web_tree_is_reported_not_silently_empty(check_dist, tmp_path)
 
 
 @pytest.mark.parametrize("extra", ["places.json", "airports.json",
-                                   "borders.json", "water.pmtiles"])
+                                   "borders.pmtiles", "water.pmtiles"])
 def test_each_required_extra_is_refused_when_missing(check_dist, tmp_path, extra):
     """One case per file, because a guard over the tuple passes when one
     member is dropped from it.
@@ -663,7 +671,7 @@ def test_the_required_extras_list_still_names_water(check_dist):
         "REQUIRED_EXTRAS no longer names water.pmtiles, which CLAUDE.md makes "
         "a standing deploy invariant: without it the page shows no error and "
         "the shore silently goes back to being hex-shaped")
-    for name in ("places.json", "airports.json", "borders.json"):
+    for name in ("places.json", "airports.json", "borders.pmtiles"):
         assert name in check_dist.REQUIRED_EXTRAS, f"{name} left REQUIRED_EXTRAS"
 
 
@@ -756,7 +764,7 @@ def test_the_real_water_archive_shape_passes(check_dist, tmp_path):
 ])
 def test_a_water_archive_at_the_wrong_zoom_range_is_refused(check_dist, tmp_path, zooms, why):
     """Mutation performed and reverted: delete the zoom comparison from
-    `_water_problems` -> all three cases red."""
+    `_archive_problems` -> all three cases red."""
     d = _good_dist(tmp_path)
     _water(d / "water.pmtiles", zooms=zooms)
     bad = check_dist.check_dist(d, [{"slug": "seoul"}])
@@ -800,7 +808,7 @@ def test_the_water_rules_are_applied_to_water_pmtiles_only(check_dist, tmp_path)
     every build.
 
     Mutation performed and reverted: drop the `extra == "water.pmtiles"`
-    condition and call `_water_problems` on the origin archives too -> red."""
+    condition and call `_archive_problems` on the origin archives too -> red."""
     d = _good_dist(tmp_path)
     assert check_dist.check_dist(d, [{"slug": "seoul"}]) == []
 
@@ -821,6 +829,64 @@ def test_the_page_draws_the_layer_the_emitter_writes():
         f"the page draws source-layer {layer.group(1)!r} and the emitter writes {water.LAYER!r}")
     assert 'url: "pmtiles://./water.pmtiles"' in app, (
         "the page no longer loads water.pmtiles, which REQUIRED_EXTRAS gates")
+
+
+# --- borders.pmtiles: the same rules, against emit/borders.py ----------------
+#
+# It replaced borders.json, which check_dist only checked existed. It is the
+# second static archive outside build-all, so it can go stale the same way.
+
+def test_the_borders_archive_is_named_with_how_to_rebuild_it(check_dist, tmp_path):
+    """A missing borders.pmtiles names the command that writes it, not the
+    water script. Mutation performed and reverted: the old remedy rule (every
+    .pmtiles -> scripts/build_water_tiles.py) -> red."""
+    d = _good_dist(tmp_path)
+    (d / "borders.pmtiles").unlink()
+    bad = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any("borders.pmtiles missing" in b and "transport-maps assets borders.pmtiles" in b
+               for b in bad), bad
+
+
+@pytest.mark.parametrize(("zooms", "why"), [
+    ((0, 8), "a z8 archive overzoomed to 11 is the 2 km line LSIB replaced"),
+    ((0, 12), "tiles no page zoom can request"),
+])
+def test_a_borders_archive_at_the_wrong_zoom_range_is_refused(check_dist, tmp_path, zooms, why):
+    """Mutation performed and reverted: applying the archive rules to
+    water.pmtiles only (`extra == "water.pmtiles"`) -> red."""
+    d = _good_dist(tmp_path)
+    _borders(d / "borders.pmtiles", zooms=zooms)
+    bad = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any(f"borders.pmtiles spans z{zooms[0]}-z{zooms[1]}" in b
+               and "emit/borders.py" in b for b in bad), (why, bad)
+
+
+@pytest.mark.skipif(__import__("shutil").which("tippecanoe") is None,
+                    reason="tippecanoe is not on PATH")
+def test_an_archive_the_borders_emitter_writes_passes(check_dist, tmp_path):
+    """The positive control is the real thing: emit/borders.py's own tiling,
+    run on two lines, through the same gate. A gate that disagreed with the
+    emitter about the header, the zooms or the layer would refuse every
+    deploy. Mutation performed and reverted: tippecanoe's `-l` given
+    "lines" instead of LAYER in emit/borders.py -> red."""
+    import shapely
+
+    d = _good_dist(tmp_path)
+    borders.tile([{"kind": "international",
+                   "geometry": shapely.LineString([(35.0, 31.0), (35.1, 31.1)])},
+                  {"kind": "other",
+                   "geometry": shapely.LineString([(35.2, 31.0), (35.3, 31.1)])}],
+                 d / "borders.pmtiles")
+    assert check_dist.check_dist(d, [{"slug": "seoul"}]) == []
+    assert check_dist._pmtiles_metadata_leak(d / "borders.pmtiles") is None
+
+
+def test_a_borders_archive_without_the_borders_layer_is_refused(check_dist, tmp_path):
+    d = _good_dist(tmp_path)
+    _borders(d / "borders.pmtiles", layers=("water",))
+    bad = check_dist.check_dist(d, [{"slug": "seoul"}])
+    assert any("borders.pmtiles has vector layers ['water'], not 'borders'" in b
+               for b in bad), bad
 
 
 # --- A6b/A6c: per-origin completion records (transport_maps.progress) --------

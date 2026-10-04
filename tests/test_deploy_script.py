@@ -669,6 +669,25 @@ def test_the_browser_stage_still_asks_whether_water_rendered():
         "the water failure no longer sets fail=1 with a message")
 
 
+def test_the_borders_archive_is_probed_and_both_its_layers_must_render():
+    """borders.pmtiles (emit/borders.py) is the second static archive and
+    fails the same quiet way: a missing file or a server that stops
+    byte-serving it leaves the page running with no borders. The live stage
+    asks for a 206 on it, and the browser stage counts rendered features on
+    the solid and the dashed layer both, at Korea, where each has lines.
+
+    Mutations performed and reverted, each red: deleting the borders range
+    probe; deleting the bordersOther grep from browser_verify.sh."""
+    assert re.search(r'probe "borders\.pmtiles range" "borders\.pmtiles" 206 -r 0-99', DEPLOY), (
+        "deploy_verify.sh no longer asks for a 206 on borders.pmtiles")
+    assert "borders.json" not in re.findall(r"\nfor f in index\.json[^\n]*", DEPLOY)[0], (
+        "the live probe still asks for borders.json, which no build writes now")
+    for layer, key in (("borders", "borders"), ("borders-other", "bordersOther")):
+        assert f'queryRenderedFeatures({{layers:["{layer}"]}})' in BROWSER, layer
+        assert re.search(rf'grep -qE \'"{key}":\[1-9\]\' \|\| \{{[^}}]*fail=1', BROWSER), (
+            f"a zero {layer} count no longer fails the browser stage")
+
+
 def _run_transfer_kb(tmp_path, rsync_body: str) -> str:
     """The script's own transfer_kb, run with a stub rsync first on PATH."""
     import subprocess

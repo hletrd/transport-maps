@@ -122,7 +122,8 @@ disagree about which child speaks for a cell.
 - Wikidata (CC0) - IATA code resolution
 - OpenStreetMap (ODbL) - coastlines drawn on the map; rail route relations and ferry ways
 - GRIP4 (CC0) - global road density; itself built partly from OpenStreetMap
-- Natural Earth (public domain) - land mask, country borders, populated places behind the urban mask
+- Natural Earth (public domain) - land mask, the de facto lines LSIB does not draw, populated places behind the urban mask
+- LSIB, U.S. Department of State (public domain) - international boundaries; dashed lines are armistice lines, lines of control and claims
 - GeoNames (CC BY 4.0) - departure cities and the place names under the cursor (cities15000)
 - HydroLAKES (CC BY 4.0) - lake outlines drawn on the map
 - adsb.lol (ODbL) - observed flights behind the fitted cruise speed and climb/descent penalty

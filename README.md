@@ -35,16 +35,18 @@ uv run transport-maps build-all --only seoul,tokyo   # a smoke test through ever
 uv run transport-maps build-all --skip-existing     # resume a build that died: rebuild only unfinished origins
 uv run transport-maps build-all --offline  # read every raw input from data/cache, ask no upstream
 uv run transport-maps reindex              # rewrite dist/index.json from the artifacts on disk
-uv run transport-maps assets               # places.json, airports.json, borders.json -> dist/
+uv run transport-maps assets               # places.json, airports.json, borders.pmtiles -> dist/
 uv run python scripts/check_dist.py        # is dist/ consistent enough to deploy?
 uv run python scripts/build_water_tiles.py # the coast, once -> dist/water.pmtiles
 ```
 
-`assets` writes the three static JSON files the page loads beside the
-per-origin arrays (`transport-maps assets airports.json` for one). They depend
-on no graph and no origin, so `build-all` does not write them; rerun it when
-the GeoNames, OurAirports or Natural Earth inputs change. It takes the same
-build lock as `build-all` and `reindex`.
+`assets` writes the three static files the page loads beside the per-origin
+arrays (`transport-maps assets airports.json` for one). They depend on no graph
+and no origin, so `build-all` does not write them; rerun it when the GeoNames,
+OurAirports, LSIB or Natural Earth inputs change. `borders.pmtiles` needs
+tippecanoe, like the coast, and refuses a new LSIB edition until
+`emit/borders.py` has been reviewed against it. It takes the same build lock
+as `build-all` and `reindex`.
 
 `--only` and `--limit` make a PARTIAL build: `index.json` is left untouched, but
 `dist/hover_cells.bin` and the named origins under `dist/origins/` **are**
@@ -104,7 +106,8 @@ from `dist/` must carry the same credits; `dist/index.json` ships them in its
 | [Wikipedia](https://en.wikipedia.org/) | CC BY-SA 4.0 | airline route network, from 'Airlines and destinations' sections |
 | [Wikidata](https://www.wikidata.org/) | CC0 1.0 | resolving destination articles to IATA codes (property P238) |
 | [OurAirports](https://ourairports.com/data/) | Public Domain | airport locations, sizes and scheduled-service status |
-| [Natural Earth](https://www.naturalearthdata.com/) | Public Domain | 1:10m land polygons defining the H3 cell universe; country borders; populated places behind the urban mask |
+| [Natural Earth](https://www.naturalearthdata.com/) | Public Domain | 1:10m land polygons defining the H3 cell universe; the de facto lines LSIB does not draw (Crimea, Northern Cyprus, Somaliland, Western Sahara, Siachen); populated places behind the urban mask |
+| [LSIB (U.S. Department of State)](https://catalog.data.gov/dataset/large-scale-international-boundaries) | Public Domain | international boundaries and other lines of separation (Large Scale International Boundaries, v11.4) |
 | [GRIP4 (Global Roads Inventory Project)](https://www.globio.info/download-grip-dataset) | CC0 1.0 | road-density rasters setting per-cell ground speed |
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) | ODbL 1.0 | coastlines drawn on the map (water polygons via [osmdata.openstreetmap.de](https://osmdata.openstreetmap.de/)); rail route relations and ferry ways; upstream source of the GRIP4 road network |
 | [GeoNames](https://www.geonames.org/) | CC BY 4.0 | departure cities and the place names under the cursor (cities15000) |

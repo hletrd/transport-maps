@@ -1,6 +1,6 @@
 """`transport-maps assets`: the static page files, from the repository (E6 / O6).
 
-places.json, airports.json and borders.json are required by check_dist and
+places.json, airports.json and borders.pmtiles are required by check_dist and
 fetched by the page, and until this command nothing in the repository called
 the three `build(out)` functions that write them. Every test points the
 command at a tmp_path; none touches the real dist/.
@@ -40,7 +40,7 @@ def test_assets_writes_all_three_files_and_releases_the_lock(tmp_path, stub_emit
     """Mutation performed and reverted: dropping an entry from cli.ASSETS
     turns this red."""
     cli._assets(tmp_path)
-    assert {p.name for p in tmp_path.iterdir()} == {"places.json", "airports.json", "borders.json"}
+    assert {p.name for p in tmp_path.iterdir()} == {"places.json", "airports.json", "borders.pmtiles"}
     assert sorted(stub_emitters) == ["airports", "borders", "places"]
     assert not (tmp_path / cli.LOCK_NAME).exists()
 
@@ -76,9 +76,9 @@ def test_the_subcommand_dispatches_to_assets(monkeypatch):
     seen: list = []
     monkeypatch.setattr(cli, "_assets", lambda names=None: seen.append(names))
     monkeypatch.setattr(cli.config, "ensure_dirs", lambda: None)
-    monkeypatch.setattr(sys, "argv", ["transport-maps", "assets", "borders.json"])
+    monkeypatch.setattr(sys, "argv", ["transport-maps", "assets", "borders.pmtiles"])
     cli.main()
-    assert seen == [["borders.json"]]
+    assert seen == [["borders.pmtiles"]]
 
 
 def test_airports_json_is_the_columnar_table_the_page_reads(tmp_path, monkeypatch):

@@ -25,7 +25,16 @@ import numpy as np
 from transport_maps import progress, variants
 from transport_maps.config import FINE_RES, HOVER_RES, READING_SLOTS
 
-REQUIRED_EXTRAS = ("places.json", "airports.json", "borders.json", "water.pmtiles")
+REQUIRED_EXTRAS = ("places.json", "airports.json", "borders.pmtiles", "water.pmtiles")
+#: The static vector archives in REQUIRED_EXTRAS: the emitter module whose
+#: MIN_ZOOM, MAX_ZOOM and LAYER each must match, the command that rebuilds it,
+#: and what the page shows -- with no error -- when its layer is missing.
+STATIC_ARCHIVES = {
+    "water.pmtiles": ("water", "scripts/build_water_tiles.py",
+                      "the shore would go hex-shaped"),
+    "borders.pmtiles": ("borders", "transport-maps assets borders.pmtiles",
+                        "the country borders would vanish"),
+}
 # Evidence of an aborted writer; a deploy that merely excluded them would ship
 # the partial file next to them.
 STRAY = re.compile(r"^(\..*|.*-journal|.*\.tmp|.*\.part|.*\.partial|tmp.*)$")
@@ -166,25 +175,28 @@ def _pmtiles_ok(path: Path) -> str | None:
     return None
 
 
-def _water_problems(path: Path) -> list[str]:
-    """water.pmtiles against what emit/water.py builds and web/app.js reads.
+def _archive_problems(path: Path) -> list[str]:
+    """A static archive (water.pmtiles, borders.pmtiles) against what its
+    emitter builds and web/app.js reads.
 
     `_pmtiles_ok` proves only that the header is a PMTiles header whose ranges
-    fit the file. That passed the 867 MB z0-12 archive whose z12 tiles -- 42.7%
-    of the tile section -- no page zoom can request (E15), and it would pass an
-    archive whose one layer is not called `water`, which the page's
+    fit the file. That passed the 867 MB z0-12 water archive whose z12 tiles --
+    42.7% of the tile section -- no page zoom can request (E15), and it would
+    pass an archive whose one layer is not called `water`, which the page's
     `"source-layer": "water"` then draws nothing from: no error, the shore just
-    goes back to being hex-shaped, the failure CLAUDE.md names. This file is
-    not produced by build-all, so a stale copy is the normal way to get one
+    goes back to being hex-shaped, the failure CLAUDE.md names. Neither file
+    is produced by build-all, so a stale copy is the normal way to get one
     wrong, and the deploy is the last place that can notice.
 
-    The expected zoom range and layer name come from `emit/water.py`, the
-    emitter, never from a second copy here; tests/emit/test_water.py ties the
-    emitter's zoom to the page's maxZoom and tests/web/test_check_dist.py the
-    layer name to the page's source-layer.
+    The expected zoom range and layer name come from the emitter, never from a
+    second copy here; tests/emit/test_water.py and test_borders.py tie the
+    emitters' zoom to the page's maxZoom, and tests/web/test_check_dist.py and
+    test_borders.py the layer names to the page's source-layers.
     """
-    from transport_maps.emit import water
+    import importlib
 
+    module, remedy, consequence = STATIC_ARCHIVES[path.name]
+    emitter = importlib.import_module(f"transport_maps.emit.{module}")
     bad = []
     with open(path, "rb") as fh:
         head = fh.read(127)
@@ -193,10 +205,10 @@ def _water_problems(path: Path) -> list[str]:
     if tile_type != 1:
         bad.append(f"{path.name} holds tile type {tile_type}, not vector (MVT, 1): "
                    "the page adds it as a vector source")
-    if (zmin, zmax) != (water.MIN_ZOOM, water.MAX_ZOOM):
-        bad.append(f"{path.name} spans z{zmin}-z{zmax}, emit/water.py builds "
-                   f"z{water.MIN_ZOOM}-z{water.MAX_ZOOM}: a stale archive; rebuild it with "
-                   "scripts/build_water_tiles.py")
+    if (zmin, zmax) != (emitter.MIN_ZOOM, emitter.MAX_ZOOM):
+        bad.append(f"{path.name} spans z{zmin}-z{zmax}, emit/{module}.py builds "
+                   f"z{emitter.MIN_ZOOM}-z{emitter.MAX_ZOOM}: a stale archive; rebuild it "
+                   f"with {remedy}")
     blob = _pmtiles_metadata_bytes(path)
     try:
         meta = json.loads(blob) if blob else None
@@ -205,12 +217,12 @@ def _water_problems(path: Path) -> list[str]:
     layers = meta.get("vector_layers") if isinstance(meta, dict) else None
     if not isinstance(layers, list):
         bad.append(f"{path.name} metadata has no vector_layers, so nothing confirms the "
-                   f"{water.LAYER!r} layer the page draws the coast from")
+                   f"{emitter.LAYER!r} layer the page draws from")
     else:
         ids = sorted(str(lyr.get("id")) for lyr in layers if isinstance(lyr, dict))
-        if water.LAYER not in ids:
-            bad.append(f"{path.name} has vector layers {ids}, not {water.LAYER!r}: the page's "
-                       "water layer would render nothing and the shore would go hex-shaped")
+        if emitter.LAYER not in ids:
+            bad.append(f"{path.name} has vector layers {ids}, not {emitter.LAYER!r}: the "
+                       f"page's {module} layer would render nothing and {consequence}")
     return bad
 
 
@@ -603,7 +615,7 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
         if not p.exists():
             # Name the producer: for years nothing in the repository could
             # make the three JSON files, and the refusal gave no way forward.
-            remedy = ("scripts/build_water_tiles.py" if extra.endswith(".pmtiles")
+            remedy = (STATIC_ARCHIVES[extra][1] if extra in STATIC_ARCHIVES
                       else f"transport-maps assets {extra}")
             bad.append(f"{extra} missing (write it with `{remedy}`)")
         elif extra.endswith(".pmtiles"):
@@ -611,8 +623,8 @@ def check_dist(dist: Path, origins: list[dict] | None = None,
             if problem:
                 bad.append(problem)
             else:
-                if extra == "water.pmtiles":
-                    bad.extend(_water_problems(p))
+                if extra in STATIC_ARCHIVES:
+                    bad.extend(_archive_problems(p))
                 leak = _pmtiles_metadata_leak(p)
                 if leak:
                     warn.append(leak)

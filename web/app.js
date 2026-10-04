@@ -662,12 +662,15 @@ if (document.fonts?.ready) document.fonts.ready.then(() => refreshScale()).catch
 
 // Credits: the pipeline's list from index.json, plus what the PAGE itself
 // adds (the address search), so a build whose index.json predates a source
-// still credits it. GeoNames and HydroLAKES are listed here too for the
-// build that predates their rows; tests/emit/test_index.py keeps the licence
-// strings in step with the emitter's.
+// still credits it. GeoNames, HydroLAKES and LSIB are listed here too for the
+// build that predates their rows -- borders.pmtiles is a static asset and can
+// reach the site before the next build rewrites index.json;
+// tests/emit/test_index.py keeps the licence strings in step with the emitter's.
 const PAGE_CREDITS = [
   { name: "GeoNames", licence: "CC BY 4.0", url: "https://www.geonames.org/" },
   { name: "HydroLAKES", licence: "CC BY 4.0", url: "https://www.hydrosheds.org/products/hydrolakes" },
+  { name: "LSIB (U.S. Department of State)", licence: "Public Domain",
+    url: "https://catalog.data.gov/dataset/large-scale-international-boundaries" },
   { name: "Nominatim (OpenStreetMap)", licence: "ODbL 1.0", url: "https://nominatim.org/" },
 ];
 {
@@ -757,6 +760,8 @@ const map = new maplibregl.Map({
 //: two readers, so `noteTileTrouble` and `addSource` cannot drift apart and
 //: leave the notice naming the wrong layer.
 const WATER_SOURCE = "water";
+//: The same, for the international boundaries (emit/borders.py).
+const BORDERS_SOURCE = "borders";
 map.on("error", (e) => {
   const msg = e?.error?.message || String(e?.error || "unknown map error");
   console.error("map error:", msg);
@@ -813,7 +818,8 @@ function noteTileTrouble(msg, sourceId) {
   // sourceId is the map's own answer to "which layer?"; the URL in the message
   // is a guess that only worked while the message happened to carry one.
   const water = sourceId ? sourceId === WATER_SOURCE : /water\.pmtiles/i.test(msg);
-  const key = (water ? "water:" : "bands:") + (active?.slug || "");
+  const borders = sourceId ? sourceId === BORDERS_SOURCE : /borders\.pmtiles/i.test(msg);
+  const key = (water ? "water:" : borders ? "borders:" : "bands:") + (active?.slug || "");
   if (tileTroubleFor === key) return;      // do not restate the same failure
   tileTroubleFor = key;
   // "The travel times BELOW are still correct" pointed at the colour key at
@@ -825,6 +831,9 @@ function noteTileTrouble(msg, sourceId) {
   const say = water
     ? "The coastline could not be loaded, so the map has no shoreline. The "
       + "bands and the travel times are unaffected."
+    : borders
+    ? "The country borders could not be loaded. The bands and the travel "
+      + "times are unaffected."
     : "The shaded bands could not be loaded, so the globe is blank. The "
       + "travel times themselves are unaffected.";
   el.textContent = say + detail;
@@ -900,6 +909,30 @@ function paintSea() {
 }
 paintSea();
 
+// International boundaries (emit/borders.py), above the coast and the bands
+// and below the cursor, the route and the pins. A tiled source added here, in
+// order, rather than a borders.json fetched and appended last and then lifted
+// back under everything that had to stay on top: paintOrigin inserts each
+// origin's bands beneath "water", so they cannot land above these either.
+//
+// LSIB, the source, ranks every line and asks that rank 1 be drawn most
+// prominently, rank 2 less, rank 3 least; `kind` carries the rank. Solid for
+// an international boundary; dashed for every other line of separation --
+// armistice lines, lines of control, claims -- because none of them is a
+// border the page should present as settled; and fainter for the special
+// lines (DMZ edges, the UNDOF lines, leases). Same white, same width.
+map.addSource(BORDERS_SOURCE, { type: "vector", url: "pmtiles://./borders.pmtiles" });
+const BORDER_WIDTH = ["interpolate", ["linear"], ["zoom"], 1, 0.6, 5, 1.1];
+map.addLayer({ id: "borders", type: "line", source: BORDERS_SOURCE, "source-layer": "borders",
+  filter: ["==", ["get", "kind"], "international"],
+  paint: { "line-color": "#ffffff", "line-opacity": 0.42, "line-width": BORDER_WIDTH } });
+// line-dasharray is not data-driven, so the dashed lines need a layer of their
+// own; line-opacity is, so rank 2 and rank 3 share one.
+map.addLayer({ id: "borders-other", type: "line", source: BORDERS_SOURCE, "source-layer": "borders",
+  filter: ["!=", ["get", "kind"], "international"],
+  paint: { "line-color": "#ffffff", "line-width": BORDER_WIDTH, "line-dasharray": [3, 2],
+           "line-opacity": ["match", ["get", "kind"], "special", 0.28, 0.42] } });
+
 // The hovered cell, outlined so the reading has a visible footprint.
 map.addSource("hover", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 // A dark halo under the white line. White alone measured 1.15:1 against the
@@ -973,23 +1006,6 @@ map.addLayer({ id: "pin-halo", type: "circle", source: "pin",
 map.addLayer({ id: "pin-dot", type: "circle", source: "pin",
   paint: { "circle-radius": 4.5, "circle-color": "#e48f35",
            "circle-stroke-color": "#0a0b0d", "circle-stroke-width": 1.5 } });
-
-// International boundaries, drawn above the bands and below the labels.
-fetch("./borders.json").then((r) => (okOr(r, "borders.json") ? r.json() : null)).then((g) => {
-  if (!g) return;
-  map.addSource("borders", { type: "geojson", data: g });
-  // Appended on top: this fetch resolves AFTER paintOrigin has added the
-  // bands, so inserting before "hover-line" put the borders under them and
-  // they were invisible. Add last, then lift the hover and position layers
-  // back above.
-  map.addLayer({ id: "borders", type: "line", source: "borders",
-    paint: { "line-color": "#ffffff", "line-opacity": 0.42,
-             "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.6, 5, 1.1] } });
-  for (const id of ["route-halo", "route-ground", "route-air",
-                    "hover-halo", "hover-fill", "hover-line",
-                    "pin-halo", "pin-dot", "me-halo", "me-dot", "exactpt-halo", "exactpt-ring"])
-    if (map.getLayer(id)) map.moveLayer(id);
-}).catch(() => {});
 
 // A flyTo arc becomes a cut when the visitor asked for less motion.
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");

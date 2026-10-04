@@ -1061,12 +1061,13 @@ def _reindex(dist: Path | None = None) -> None:
 #: nothing called those `build` functions at all, so the copies in dist/ were
 #: made by hand and could not be reproduced (E6 / O6, AA13, C11-D8).
 #: `water.pmtiles`, the fourth static file check_dist requires, is still
-#: scripts/build_water_tiles.py: it needs the OSM water polygons and
-#: tippecanoe, not a JSON emitter.
+#: scripts/build_water_tiles.py: it needs the 1.5 GB OSM water polygons and
+#: minutes of tippecanoe. borders.pmtiles needs tippecanoe too, but its
+#: inputs are 71 MB and it builds in about 15 seconds.
 ASSETS = {
     "places.json": "places",
     "airports.json": "airports_json",
-    "borders.json": "borders",
+    "borders.pmtiles": "borders",
 }
 
 
@@ -1193,7 +1194,7 @@ def main() -> None:
 
     assets = sub.add_parser(
         "assets",
-        help="write the static page assets (places.json, airports.json, borders.json) "
+        help="write the static page assets (places.json, airports.json, borders.pmtiles) "
              "into dist/; no graph, no origins",
     )
     assets.add_argument("names", nargs="*", metavar="NAME",
