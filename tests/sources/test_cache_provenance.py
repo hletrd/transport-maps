@@ -58,6 +58,7 @@ from transport_maps.sources import (
     fixed_links,
     landmask,
     osm,
+    road_crossings,
     roads,
     routes,
     urban,
@@ -187,6 +188,7 @@ def test_land_cells_reads_the_stamped_path(tmp_path, monkeypatch):
      lambda: landmask._cells_cache_path(5, SRCS[:3]),
      lambda: landmask._landmasses_cache_path(5, SRCS[:3]),
      lambda: fixed_links._cache_path("north-america", "0123abcd"),
+     lambda: _road_crossings_path(),
      lambda: routes._network_cache_path(["AAA"], {"AAA": "Alpha_Airport"}, SRC, DAY)],
 )
 def test_every_stamped_path_carries_a_hash(path_fn):
@@ -244,6 +246,18 @@ def test_atomically_written_files_are_readable_by_other_users(tmp_path):
 def _routes_path():
     """The route network's path for one fixed pair of inputs."""
     return routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"}, SRC, DAY)
+
+
+def _road_crossings_path(sources=None):
+    """The road-crossing parse's path, its land parts drawn from `sources`.
+
+    The parse is keyed on the landmass cache's own stamp (the seams move with
+    the coast), which reads the archives' hashes; they are pinned here so the
+    path is a function of the constants alone, as every other row's is."""
+    from unittest import mock
+
+    with mock.patch.object(landmask, "_sources", lambda: sources or SRCS[:3]):
+        return road_crossings._cache_path("asia", "k")
 
 
 STAMPED = [
@@ -334,6 +348,18 @@ STAMPED = [
     (fixed_links, "KEEP_RES", 8, lambda: fixed_links._cache_path("asia", "k")),
     (fixed_links, "SCHEMA", {"way_id": pl.Int64}, lambda: fixed_links._cache_path("asia", "k")),
     (fixed_links, "FIXED_LINK_PARSER_VERSION", 999, lambda: fixed_links._cache_path("asia", "k")),
+    (road_crossings, "ROAD_HIGHWAYS", frozenset({"motorway"}), _road_crossings_path),
+    (road_crossings, "SEASONAL", frozenset({"ice_road"}), _road_crossings_path),
+    (road_crossings, "SEAM_RING", 3, _road_crossings_path),
+    (road_crossings, "SAMPLE_KM", 1.0, _road_crossings_path),
+    (road_crossings, "BIN_DEG", 1.0, _road_crossings_path),
+    (road_crossings, "ROAD_CROSSING_PARSER_VERSION", 999, _road_crossings_path),
+    # Read through fixed_links, so a change there must move this parse too.
+    (fixed_links, "KEEP_RES", 8, _road_crossings_path),
+    (fixed_links, "SCHEMA", {"way_id": pl.Int64}, _road_crossings_path),
+    # The land parts reach the key through `_landmass_key()`, a call the AST
+    # reader drops as "how the key is computed": this row is what proves it.
+    (landmask, "LANDMASS_VERSION", 999, _road_crossings_path),
 ]
 
 
@@ -349,6 +375,7 @@ INPUT_KEYED = [
     ("urban.mask", lambda s: urban._mask_cache_path(["a", "b"], s)),
     ("countries.cell_country", lambda s: countries._cache_path(["a", "b"], s)),
     ("routes.network", lambda s: routes._network_cache_path(["AAA"], {"AAA": "A"}, s, DAY)),
+    ("road_crossings.landmasses", lambda s: _road_crossings_path([s, SRC, SRC])),
 ]
 
 
@@ -395,6 +422,7 @@ _COVERED_BY_TABLE = {
     "routes._parser_key",
     "landmask._landmasses_cache_path",
     "fixed_links._params_key",
+    "road_crossings._params_key",
     "countries._cache_path",
 }
 #: Stamping functions deliberately outside it, each with the reason. A new
