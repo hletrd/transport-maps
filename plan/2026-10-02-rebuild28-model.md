@@ -157,3 +157,149 @@ for the full map, because a worker peaks at 8-11 GB.
   test does go red on Linux (checked).
 - Output comes back to the Mac over ssh (ProxyJump aws-proxy) and is deployed
   from there as usual; h200 holds no credentials for the web host.
+
+## Year-round scheduled service only (owner decision 2026-10-04)
+
+Reported: China Eastern's Shanghai Pudong-Adelaide flights are seasonal
+(20 June - 2 August 2026; chinadaily.com.cn 2026-03-03, visahq 2026-02-01),
+yet the network had PVG<->ADL as if year-round. Both articles mark it
+'''Seasonal:''', and the parser read every link regardless of its label.
+
+Decision: only year-round scheduled service is a route. Seasonal, Charter,
+Seasonal charter and suspended or terminated service is not. "begins <date>"
+and "resumes <date>" count once the date is on or before the build date,
+"ends <date>" while the date is after it.
+
+Landed on branch `year-round` (from `origin/rebuild28`):
+
+- `5ef2610` feat(routes): parse each destination's service class and dates.
+- `5087011` feat(routes): keep only year-round scheduled pairs on the build day.
+
+### What changes (`sources/routes.py`; the rules, with examples, are its docstring)
+
+1. **Each link is a `Listing`**: its class (scheduled, seasonal, charter,
+   seasonal charter, or "other" for any other label such as
+   '''Hajj & Umrah:'''), any begins/ends/resumes/suspended change with its
+   date, and the airline of its row. A label runs to the end of its table
+   cell, not just to the next `<br>`. A month or a year alone is read at its
+   conservative end (begins June 2027 = 30 June; ends 2027 = 1 January), and
+   a date that does not parse ("begins TBA") leaves the link out.
+   "(suspended until <date>)" counts as resuming on that date.
+2. **Only destination tables are read.** Links in prose ("formerly served
+   by", "no scheduled services"), references, footnotes and destination maps
+   (`{{Location map~}}` pins mark seasonal and future service by colour
+   alone) are not. Neither are subsections headed Charter, Seasonal,
+   Historical / Former / Previous, Statistics / Top destinations / Busiest,
+   Map(s), Military or Medevac (Cargo was already cut).
+3. **Two articles that disagree.** A pair is usually listed by both
+   airports. If one lists an airline's service as year-round and the other
+   lists the same airline's as seasonal (Aberdeen and Charles de Gaulle on
+   easyJet's Paris flights), that airline does not keep the pair; another
+   airline flying it year-round does.
+4. **Build date.** `routes.service_date()`: the UTC day the process first
+   asks, fixed for the run (`TRANSPORT_MAPS_SERVICE_DATE=YYYY-MM-DD` pins it,
+   for an offline rebuild of a past build). It is in the route network's key
+   and recorded as `serviceDate` in index.json's
+   `inputs["wikipedia:airline-destinations"]`.
+5. **Caches.** `PARSER_VERSION` 3, and every new pattern is in
+   `_parser_key`, so `airline_destinations.json` is re-crawled (about 80
+   requests, which G2 already makes once a day). The article cache keeps the
+   parse, not the decision, so a build on another day judges the dates again
+   without fetching anything.
+
+### Measured (2026-10-04, worktree re-crawl)
+
+Method: one fresh fetch of all 3,962 articles linked from rebuild 27's
+airport table (`airports_a1c21b5e`, 4,008 airports) and its OurAirports CSV,
+written only into the worktree; titles resolved through a copy of the
+resolver cache. "Before" is rebuild 28's parser on the same wikitext.
+Scripts kept in the session scratchpad, not the repository.
+
+| Network | Undirected pairs | Directed pairs |
+|---|---|---|
+| Rebuild 27 (`routes_21691ca7`, crawled 2026-10-02) | 34,187 | 68,374 |
+| Before: rebuild 28 parser, this crawl | 34,203 | 68,406 |
+| After, service date 2026-10-04 | 25,899 | 51,798 |
+| After, service date 2026-10-26 (winter schedule) | 25,967 | 51,934 |
+
+8,304 undirected pairs dropped (24.3%), none added. By why (a pair counts
+under the classes of all its listings):
+
+| Why | Pairs |
+|---|---|
+| Seasonal | 5,420 |
+| Seasonal charter | 874 |
+| Disputed: the other article lists the same airline's service as not year-round | 872 |
+| No longer read (prose, map, reference, statistics or other subsection) | 333 |
+| Begins after the build date | 269 |
+| Seasonal and seasonal charter | 221 |
+| Charter | 141 |
+| Resumes after the build date | 53 |
+| Begins later and seasonal | 27 |
+| Suspended | 22 |
+| Charter and seasonal | 17 |
+| Charter and seasonal charter | 14 |
+| Other mixes, each under 10 (5 ended, 3 other labels, ...) | 41 |
+
+Listing-level on 2026-10-04: 17,951 seasonal, 2,400 seasonal charter, 1,019
+begin later, 443 charter, 298 resume later, 184 suspended, 24 ended, 11
+other labels, 3 undated changes.
+
+Samples:
+
+- PVG-ADL dropped (seasonal in both articles). Pudong loses 3 pairs (ADL
+  seasonal, ALG begins 26 October, MDC charter); Adelaide 8 (CHC, HKG, LST,
+  PPP, PVG, SFO seasonal; PUG, PXH charter).
+- Leisure airports lose most: PMI 153, RHO 138, HER 133, AYT 133, CFU 105,
+  ZRH 97, CPH 95, PRG 95, HRG 90, CHQ 88, FRA 87, LGW 85.
+- ICN loses 13: ATH, MRS, SAI (seasonal charter), DAC, OSL (charter), MEL,
+  TOY, YUL, YYC, ZAG, ZRH (seasonal), BTH (resumes 23 December), TLV
+  (begins/resumes later).
+- LHR loses 48, nearly all seasonal sun routes (ADB, BJV, CFU, DBV, FAO,
+  HER, IBZ, ...), plus MEL (resumes later), DND (ended) and CGK (read from a
+  prose comparison in Jakarta's article -- never a route).
+- DEN loses 29: BIH, BZE, FAI, FCO, GCM, NAS, PVD, SJO, ... (seasonal), CDG
+  (Air France seasonal, ending 10 October; United's begins later), PLS
+  (begins later).
+- Hub to hub (rebuild 27 degree >= 150): 155 of 1,627 pairs go, e.g.
+  ATH-JFK, JFK-LGW (Norse, seasonal at both ends), LGW-VIE, STN-ZRH, BER-DXB
+  (disputed: Condor seasonal at BER, year-round at DXB), FRA-KUL and MAD-SIN
+  (both resume in late October).
+- No longer read, e.g. ABQ-LGB (a future-destination map pin), ABL-ORV (a
+  statistics table), ARM-ABX (history prose), AAA-PPT (Anaa's section is one
+  sentence of prose, and no table lists the pair).
+
+Spot checks, all still present on 2026-10-04: ICN-NRT, LHR-JFK, ICN-TAG,
+PUS-TAG, SIN-SYD (one airline's listing begins later, others year-round),
+ICN-HND, GMP-HND, ICN-KIX, ICN-FUK, ICN-CJU, GMP-CJU, ICN-BKK, ICN-SGN,
+ICN-CEB, ICN-DPS, ICN-GUM, ICN-SPN, ICN-CXR, ICN-DAD, ICN-LAX, ICN-PVG,
+LHR-CDG, CDG-JFK, FRA-JFK, DXB-JFK, DXB-LHR, HKG-TPE, HND-CTS, JFK-LAX,
+LAX-SFO, ATL-LAX, SYD-MEL, SYD-AKL, ADL-SYD, PVG-SYD. 51,798 directed pairs
+is well above route_network's 20,000-pair floor, and its sanity pair ICN-NRT
+is in.
+
+### Ambiguities, and which way each was resolved
+
+- A link after a `<br>` that follows a label, with no new label: about a
+  dozen in the whole crawl, read as the label's class (Norse at JFK:
+  "'''Seasonal:''' Athens, London-Gatwick, <br />Rome", the comma before
+  the break showing the list goes on).
+- 216 pairs are still kept on one article's word while the other article
+  lists them only as not year-round: the year-round listing names an
+  airline the other article does not list on that pair (an omission, or
+  the same airline under another link, [[Jet2.com]] / [[Jet2]]), so the two
+  are not compared.
+- `(both begin <date>)` covers the two links before it, `(all ...)` every
+  link in the cell.
+
+### When the next build runs
+
+- [ ] The network depends on the day the build starts: net +68 undirected
+      pairs between 4 and 26 October as the winter schedule begins.
+      index.json records the day as `serviceDate`.
+- [ ] Check the built `routes_*.parquet` (PVG-ADL absent, ICN-NRT present)
+      and the build log's `routes:` line (pairs, listings left out by
+      reason, disputed pairs).
+- [ ] When this ships, say "year-round scheduled flights" where the page and
+      `web/llms.txt` describe the route network. Not changed here: no shipped
+      artifact is year-round only until rebuild 28 is.

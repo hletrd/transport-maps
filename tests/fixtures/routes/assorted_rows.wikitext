@@ -1,0 +1,56 @@
+<!-- Rows from several real articles (October 2026 revisions), trimmed and put
+in one section: Keflavík (both begin), Toronto Pearson (suspended until),
+Nnamdi Azikiwe (suspended), Captain Rolden (unbolded Charter:), Mitiga (Hajj &
+Umrah), Tokushima ((Seasonal)), Rickenbacker ((charter)), T. F. Green (a
+label that ends its line), JFK (a seasonal list that wraps at a <br />),
+Palma de Mallorca (three classes in one row), Eastern Sierra (prose, a whole row seasonal and
+a statistics table that name the same airports), Wabush (historical service)
+and Cambridge Bay (a Charter subsection). -->
+== Airlines and destinations ==
+=== Passenger ===
+Effective December 19, 2021, [[SkyWest Airlines]], operating as [[United Express]], began nonstop service to the airport. Daily flights to [[San Francisco International Airport|San Francisco]] and [[Denver International Airport|Denver]] commenced in December 2022.
+
+{{Airport destination list
+| [[Air China]] | [[Beijing Capital International Airport|Beijing–Capital]], [[Copenhagen Airport|Copenhagen]] (both begin 26 October 2026)<ref>{{cite web |title=Air China to commence Beijing-Copenhagen-Reykjavik service in Oct-2026 |url=https://centreforaviation.com/news/air-china-to-commence-beijing-copenhagen-reykjavik-service-in-oct-2026-1367189 |website=Centre for Aviation |date=23 July 2026 |url-access=subscription}}</ref>
+| [[Air Canada]] | [[Denver International Airport|Denver]], [[Dubai International Airport|Dubai–International]] (suspended until January 18, 2027), [[Dublin Airport|Dublin]]
+| [[Emirates (airline)|Emirates]] | [[Dubai International Airport|Dubai–International]] (suspended)<ref>{{Cite news |url=https://www.reuters.com/business/aerospace-defense/emirates-suspends-nigerian-flights-again-over-trapped-ticket-sales-2022-11-03/ |title=Emirates suspends Nigerian flights again over trapped ticket sales |newspaper=Reuters |date=3 November 2022 |access-date=3 January 2023}}</ref>
+|[[Air Majoro]]| Charter: [[Tnte. Gral. Gerardo Pérez Pinedo Airport|Atalaya]], [[Contamana Airport|Contamana]]
+| [[Libyan Airlines]] | [[Benina International Airport|Benghazi]] <br> '''Hajj & Umrah:''' [[King Abdulaziz International Airport|Jeddah]]
+| [[Japan Airlines]] | [[Haneda Airport|Tokyo-Haneda]], [[New Chitose Airport|Sapporo-Chitose]] (Seasonal)
+| [[Castle Aviation]] | [[Akron–Canton Airport|Akron/Canton]] (charter)
+| [[American Airlines]] | [[Charlotte Douglas International Airport|Charlotte]] <br />'''Seasonal:'''
+[[O'Hare International Airport|Chicago–O'Hare]], [[Philadelphia International Airport|Philadelphia]]|
+
+| [[Norse Atlantic Airways]] | '''Seasonal:''' [[Athens International Airport|Athens]], [[London–Gatwick]], <br />[[Rome–Fiumicino]]
+
+| [[British Airways]] | [[London City Airport|London–City]], [[Gatwick Airport|London-Gatwick]] <br /> '''Seasonal:''' [[Edinburgh Airport|Edinburgh]], [[Glasgow Airport|Glasgow]] <br /> '''Seasonal charter:''' [[Belfast City Airport|Belfast–City]], [[Guernsey Airport|Guernsey]]
+| [[United Express]] | '''Seasonal:''' [[Denver International Airport|Denver]], [[San Francisco International Airport|San Francisco]]}}
+
+===Top destinations===
+{| class="wikitable" style="font-size: 95%" width= align=
+|+ '''Busiest domestic routes out of BIH'''<br />'''(May 2025 – April 2026)'''
+! Rank
+! City
+! Passengers
+! Carriers
+|-
+| 1
+| [[Denver International Airport|Denver, CO]]
+| 7,840
+| United
+|-
+| 2
+| [[San Francisco International Airport|San Francisco, CA]]
+| 7,770
+| United
+|-
+|}
+
+=== Historical airline service ===
+According to the [[Official Airline Guide]] (OAG), the Wabush Airport was served by several airlines operating scheduled passenger jet flights during the 1970s including [[Eastern Provincial Airways]] operating [[Boeing 737-200]] jets with nonstop flights from [[Churchill Falls, Labrador]] and [[Goose Bay, Labrador]].
+
+===Charter===
+{{Airport-dest-list
+| [[Adlair Aviation]] / Kitikmeot Air | Charters
+| [[Keewatin Air|Kivalliq Air]] | [[Medical evacuation|MEDIVAC]]
+}}

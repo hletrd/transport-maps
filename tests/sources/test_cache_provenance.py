@@ -45,6 +45,7 @@ import pkgutil
 import re
 import sys
 import textwrap
+from datetime import date
 
 import numpy as np
 import polars as pl
@@ -63,6 +64,9 @@ from transport_maps.sources import (
     wikidata,
 )
 from transport_maps.sources._utils import _params_hash
+
+#: The service date the route network's path is computed for (routes.service_date).
+DAY = date(2026, 10, 4)
 
 
 def test_hash_is_stable_across_calls():
@@ -183,7 +187,7 @@ def test_land_cells_reads_the_stamped_path(tmp_path, monkeypatch):
      lambda: landmask._cells_cache_path(5, SRCS[:3]),
      lambda: landmask._landmasses_cache_path(5, SRCS[:3]),
      lambda: fixed_links._cache_path("north-america", "0123abcd"),
-     lambda: routes._network_cache_path(["AAA"], {"AAA": "Alpha_Airport"}, SRC)],
+     lambda: routes._network_cache_path(["AAA"], {"AAA": "Alpha_Airport"}, SRC, DAY)],
 )
 def test_every_stamped_path_carries_a_hash(path_fn):
     """A stamp silently dropped from the f-string would leave the old bare
@@ -239,7 +243,7 @@ def test_atomically_written_files_are_readable_by_other_users(tmp_path):
 
 def _routes_path():
     """The route network's path for one fixed pair of inputs."""
-    return routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"}, SRC)
+    return routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"}, SRC, DAY)
 
 
 STAMPED = [
@@ -294,7 +298,19 @@ STAMPED = [
     # either that forgot the version bump was relying on a stamp nothing
     # checked.
     (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), _routes_path),
-    (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), _routes_path),
+    (routes, "_EXCLUDED_SUBSECTION_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), _routes_path),
+    # PARSER_VERSION 3 (year-round service only, 2026-10-04): what the
+    # labels, dated changes, footnotes and maps are read with. _TOKEN_RE is
+    # the scanner built from them, the cell ends and the template brackets.
+    (routes, "_NOISE_RE", re.compile(r"<!--.*?-->"), _routes_path),
+    (routes, "_LABEL_RE", re.compile(r"'{3}Seasonal:'{3}"), _routes_path),
+    (routes, "_CHANGE_RE", re.compile(r"\((begins)\b([^()]*)\)"), _routes_path),
+    (routes, "_NOTE_RE", re.compile(r"\((seasonal)\)"), _routes_path),
+    (routes, "_LIST_TEMPLATE_RE", re.compile(r"^airport-dest-list$"), _routes_path),
+    (routes, "_NOT_DESTINATIONS_TEMPLATE_RE", re.compile(r"^location map~$"), _routes_path),
+    (routes, "_DATE_RE", re.compile(r"(\d{4})"), _routes_path),
+    (routes, "_TOKEN_RE", re.compile(r"(?P<link>\[\[[^\]]*\]\])"), _routes_path),
+    (routes, "_MONTHS", ("jan", "feb"), _routes_path),
     # The link regex was the one parse_destinations applied with no row and
     # no place in the key (CR13-13). It reaches the network path through
     # routes._parser_key, so this row proves the constant is in that key AND
@@ -332,7 +348,7 @@ INPUT_KEYED = [
     ("landmask.landmasses", lambda s: landmask._landmasses_cache_path(6, [s, SRC, SRC])),
     ("urban.mask", lambda s: urban._mask_cache_path(["a", "b"], s)),
     ("countries.cell_country", lambda s: countries._cache_path(["a", "b"], s)),
-    ("routes.network", lambda s: routes._network_cache_path(["AAA"], {"AAA": "A"}, s)),
+    ("routes.network", lambda s: routes._network_cache_path(["AAA"], {"AAA": "A"}, s, DAY)),
 ]
 
 
@@ -572,15 +588,24 @@ def test_the_route_network_path_moves_with_its_inputs(iatas, titles):
     article crawled for each are the other half (CLAUDE.md: constants AND
     inputs). Mutation, measured: dropping `sorted(titles_by_iata.items())`
     from the stamp turns the last two cases red."""
-    assert routes._network_cache_path(iatas, titles, SRC) != _routes_path()
+    assert routes._network_cache_path(iatas, titles, SRC, DAY) != _routes_path()
+
+
+def test_the_route_network_path_moves_with_the_service_date():
+    """The same crawl makes another network on the day a listed route begins
+    or ends (routes._left_out), so the day is an input of the key.
+    Mutation, measured: dropping `day.isoformat()` from the stamp -> red."""
+    path = routes._network_cache_path(["AAA", "BBB"], {"AAA": "Alpha_Airport"}, SRC,
+                                      date(2026, 10, 5))
+    assert path != _routes_path()
 
 
 def test_the_route_network_path_is_stable_when_nothing_changes():
     assert _routes_path() == _routes_path()
     assert _routes_path().name != "routes.parquet"
     # Insertion order is not an input.
-    assert (routes._network_cache_path(["BBB", "AAA"], {"BBB": "B", "AAA": "A"}, SRC)
-            == routes._network_cache_path(["AAA", "BBB"], {"AAA": "A", "BBB": "B"}, SRC))
+    assert (routes._network_cache_path(["BBB", "AAA"], {"BBB": "B", "AAA": "A"}, SRC, DAY)
+            == routes._network_cache_path(["AAA", "BBB"], {"AAA": "A", "BBB": "B"}, SRC, DAY))
 
 
 def test_a_section_regex_FLAG_change_moves_the_parser_key(monkeypatch):
@@ -595,18 +620,21 @@ def test_a_section_regex_FLAG_change_moves_the_parser_key(monkeypatch):
     ("PARSER_VERSION", 999),
     ("_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]")),
     ("_SECTION_RE", re.compile(r"^(==)\s*Destinations\s*==\s*$", re.MULTILINE)),
+    # A parse cached before the year-round labels were read carries no class
+    # at all, and must not be read back as "every listing scheduled".
+    ("_LABEL_RE", re.compile(r"'{3}Seasonal:'{3}")),
 ])
 def test_a_parser_change_empties_the_destination_cache(monkeypatch, tmp_path, name, new):
-    """The per-airport cache stores PARSED titles, so it is the cache a parser
-    fix has to get past. CR13-13: `_LINK_RE` never reached its version check,
-    so the fragment-link fix (CR13-6) would have been read back as a hit.
+    """The per-airport cache stores PARSED listings, so it is the cache a
+    parser fix has to get past. CR13-13: `_LINK_RE` never reached its version
+    check, so the fragment-link fix (CR13-6) would have been read back as a hit.
 
     Mutation, measured: dropping `_LINK_RE.pattern, _LINK_RE.flags` from
     `routes._parser_key` turns the `_LINK_RE` case red (and the STAMPED row).
     """
     monkeypatch.setattr(config, "CACHE", tmp_path)
-    routes._save_destination_cache({"ICN": ["Tokyo"]})
-    assert routes._load_destination_cache() == {"ICN": ["Tokyo"]}
+    routes._save_destination_cache({"ICN": [routes.Listing("Tokyo", "seasonal")]})
+    assert routes._load_destination_cache() == {"ICN": [routes.Listing("Tokyo", "seasonal")]}
     monkeypatch.setattr(routes, name, new)
     assert routes._load_destination_cache() == {}
 

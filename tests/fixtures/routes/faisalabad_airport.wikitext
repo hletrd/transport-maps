@@ -1,0 +1,23 @@
+'''Faisalabad International Airport''' is an international airport serving [[Faisalabad]], Pakistan.
+
+== Airlines and destinations ==
+=== Passenger ===
+The following airlines operate regularly scheduled passenger flights at Faisalabad International Airport:
+
+{| class="wikitable"
+|-
+! Airline !! Destinations
+|-
+| [[Air Arabia]] || [[Abu Dhabi International Airport|Abu Dhabi]], [[Sharjah International Airport|Sharjah]]
+|-
+| [[Fly Jinnah]] || [[Jinnah International Airport|Karachi]]
+|-
+| [[flydubai]] || [[Dubai International Airport|Dubai–International]]
+|-
+| [[Pakistan International Airlines]] || [[Dubai International Airport|Dubai–International]], [[King Abdulaziz International Airport|Jeddah]], [[Jinnah International Airport|Karachi]], [[Prince Mohammad bin Abdulaziz International Airport|Medina]]
+|}
+
+=== Cargo ===
+{{Airport destination list
+|[[Royal Airlines|Royal Airlines Cargo]]| [[Islamabad International Airport|Islamabad]], [[Jinnah International Airport|Karachi]]
+}}

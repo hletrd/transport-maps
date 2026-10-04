@@ -1,0 +1,22 @@
+'''Edmonton International Airport''' is the primary air passenger and air cargo facility in [[Edmonton]].
+
+==Airlines and destinations==
+===Passenger===
+Edmonton International Airport provides scheduled non-stop flights to over 50 destinations. It serves as the hub for [[Flair Airlines]].
+{{Airport-dest-list
+<!-- -->
+| [[WestJet Encore]] | [[Calgary International Airport|Calgary]], [[CFB Comox|Comox]], [[Fort McMurray International Airport|Fort McMurray]] <br/> '''Seasonal:''' [[Kamloops Airport|Kamloops]],<ref>{{cite news|title=WestJet brings back nonstop route between Edmonton & Kamloops; introduces new service to Prince George|url=https://www.travelpress.com/westjet-brings-back-nonstop-route-between-edmonton-introduces-new-service-to-prince-george/|work=Travel Press|date=May 20, 2025|access-date=May 20, 2025}}</ref> [[Nanaimo Airport|Nanaimo]],{{cn|date=September 2026}} [[Northwest Regional Airport Terrace-Kitimat|Terrace/Kitimat]] | <ref name="OAG_World_July2025_YEA_373_374"/>
+<!-- -->
+}}
+
+{| style="border:1px #aaa solid; width:50em; margin:0.2em auto"
+|-
+! Map of North American passenger destinations
+|-
+|{{Location map+|Canada|width=930|float=center|caption= Canadian destinations from Edmonton International Airport <br /> {{font color | red | Red}} = Year-round destination <br /> {{font color | green | Green}} = Seasonal destination <br /> {{font color | blue | Blue}} = Future destination
+|places={{Location map~ | Canada |lat=53.5461| long=-113.4937 |position=right |label=<div style="position:relative; top:-5px;">Edmonton</div>|caption=|mark=Airplane_silhouette.svg|marksize=15 }}
+{{Location map~ |mark = Red pog.svg | Canada |lat=51.1308|long=-114.0138|position=right|label=[[Calgary International Airport|Calgary]]|label_size=80 |marksize=7 }}
+{{Location map~ |mark = Green pog.svg | Canada |lat=50.7052|long=-120.448611|position=right|label=[[Kamloops Airport|Kamloops]]|label_size=80 |marksize=7 }}
+{{Location map~ |mark = Blue pog.svg | Canada |lat=53.889|long=-122.679|position=right|label=[[Prince George Airport|Prince George]]|label_size=80 |marksize=7 }}
+}}
+|}
