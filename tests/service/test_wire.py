@@ -622,3 +622,20 @@ def test_the_map_route_is_rate_limited_and_refused_like_the_solve_route():
                      "proxy_pass http://127.0.0.1:8787;",
                      "include snippets/worldmap-security-headers.conf;"):
             assert re.search(r"^\s*" + re.escape(line), b, re.M), f"{path}: {line}"
+
+def test_the_map_version_moves_on_its_own_and_the_page_knows_it():
+    """The map is additive to wire 1, so WIRE_VERSION stays; MAP_VERSION is
+    the one the page checks for the array's layout, and the two ends agree.
+
+    Mutation performed and reverted: SOLVER_MAP_VERSION = 2 in app.js -> RED.
+    """
+    import pathlib
+    import re
+
+    from transport_maps import config
+
+    assert wire.WIRE_VERSION == 1
+    app = (pathlib.Path(config.ROOT) / "web" / "app.js").read_text()
+    m = re.search(r"^const SOLVER_MAP_VERSION = (\d+);", app, re.M)
+    assert m, "web/app.js has no SOLVER_MAP_VERSION to compare against"
+    assert int(m.group(1)) == wire.MAP_VERSION

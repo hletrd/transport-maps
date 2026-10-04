@@ -85,6 +85,8 @@ def test_the_fine_route_is_found_by_slot_and_nothing_else_is(node, tmp_path):
 
 CARRY_HARNESS = """
 const MAX_MINUTES = 65534, NO_AIRPORT = 0xFFFF;
+// The map from a dropped point is not on screen here (test_point_map.py runs it).
+const pointShown = () => false;
 const meta = {{ carryOn: {{ departureMin: 15, arrivalMin: 10 }} }};
 let carryOn = {on};
 const RAW = {raw};

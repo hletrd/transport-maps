@@ -26,7 +26,6 @@ passes while the branch is dead:
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 
@@ -47,8 +46,8 @@ FN = {name: _js.function(name, with_async=True) for name in (
     "parseDep", "originDragEnd", "paintOrigin", "nearestOrigin", "haversineKm",
     "fmtKm", "fmtTime", "paintExactLegs", "exactLegRows", "solverAirport", "carryOnExact")}
 CONSTS = "\n".join(_js.statement(a) for a in (
-    "const EXACT_MIN_KM = ", "const EXACT_NOTE = ", "const fmtDur = ", "const AVOIDABLE = ",
-    "const MODE_FALLBACK = "))
+    "const EXACT_MIN_KM = ", "const EXACT_NOTE = ", "const POINT_NOTE = ", "const fmtDur = ",
+    "const AVOIDABLE = ", "const MODE_FALLBACK = "))
 
 CITIES = [
     {"slug": "seoul", "name": "Seoul", "lat": 37.5665, "lon": 126.978},
@@ -119,6 +118,10 @@ const MAX_MINUTES = 65534;
 const store = {{ get: () => true, set: () => {{}} }};
 let exactFrom = null, exactAbort = null, exactKey = "", exactResult;
 let pinB = null, avoid = null, carryOn = false, active = null;
+// The map from the point is tests/web/test_point_map.py's subject; here it is
+// off, so the line under test is the only thing the solver is asked for.
+const refreshPointMap = () => {{}};
+const pointShown = () => false;
 const said = [];
 const announce = (t) => said.push(t);
 const fitReading = () => {{}};
@@ -598,7 +601,8 @@ def test_the_exact_legs_box_has_the_tooltips_the_itinerary_has():
 
 # ------------------------------------------------------- the drag ---
 
-def _drag(armed: bool, drop: tuple[float, float], active_slug: str, pin: bool) -> str:
+def _drag(armed: bool, drop: tuple[float, float], active_slug: str, pin: bool,
+          avoided: str | None = None) -> str:
     """originDragEnd, run for real, with paintOrigin stubbed to do what the
     real one does to the exact point: drop it."""
     meta = {"origins": CITIES, **({"solver": {"wire": 1}} if armed else {})}
@@ -612,6 +616,7 @@ const store = {{ get: () => true, set: () => {{}} }};
 {FN["fmtKm"]}
 let exactFrom = {{ lat: 0, lon: 0 }};   // left by an earlier drag
 let pinB = {json.dumps({"lat": 35.0, "lon": 135.0}) if pin else "null"};
+let avoid = {json.dumps(avoided)};
 let active = meta.origins.find((o) => o.slug === {json.dumps(active_slug)});
 const log = [];
 const originLabel = {{ classList: {{ remove() {{}} }} }};
@@ -640,20 +645,37 @@ ON_SEOUL = (37.5690, 126.9790)
 
 def test_a_drop_away_from_the_city_keeps_the_exact_point(node, tmp_path):
     """The "Moved to" branch: the map snaps to Seoul, the point is kept, and
-    the notice says the point's own time is computed on demand.
+    the notice says the map from that point is computed on demand -- and, since
+    it is coming, does NOT say the times are not from that point: #pointmap
+    says which map is on screen at each stage (test_point_map.py).
 
-    Mutation performed and reverted: move `exactFrom = exact` above
-    paintOrigin -> red (paintOrigin drops it). `km > EXACT_MIN_KM` ->
-    `km > 100` -> red.
+    Mutations performed and reverted, each red: move `exactFrom = exact` above
+    paintOrigin (paintOrigin drops it); `km > EXACT_MIN_KM` -> `km > 100`;
+    keep "not from that point" when `mapped`.
     """
     got = _run(node, tmp_path, _drag(True, NEAR_SEOUL, "tokyo", pin=False))
     assert got["active"] == "seoul"
     assert got["exactFrom"] == {"lat": NEAR_SEOUL[0], "lon": NEAR_SEOUL[1]}
-    assert "Moved to Seoul" in got["notice"]
-    assert "not from that point" in got["notice"]
-    assert "computed on demand" in got["notice"]
+    assert got["notice"] == ("Moved to Seoul — the nearest departure city, 35 km from "
+                             "where you dropped the marker. The map from that exact point "
+                             "is computed on demand.")
     # Written after the switch, and then synced into the address.
     assert got["log"].index("paint") < got["log"].index("sync")
+
+
+def test_with_a_mode_avoided_the_notice_is_the_one_line_notice(node, tmp_path):
+    """Avoiding a mode, no map from the point is drawn (the service solves the
+    full network), so the times ARE the city's and the notice says so, with
+    the journey line's own note.
+
+    Mutation performed and reverted: `const mapped = exact && !avoid` ->
+    `const mapped = exact` -> red.
+    """
+    got = _run(node, tmp_path, _drag(True, NEAR_SEOUL, "tokyo", pin=False, avoided="air"))
+    assert got["exactFrom"] == {"lat": NEAR_SEOUL[0], "lon": NEAR_SEOUL[1]}
+    assert got["notice"].endswith("Times are measured from Seoul, not from that point. "
+                                  "The time from that exact point to a destination you "
+                                  "choose is computed on demand.")
 
 
 def test_a_kept_city_still_keeps_the_point_and_asks(node, tmp_path):
@@ -809,17 +831,18 @@ def test_dep_is_restored_only_beside_the_from_it_belongs_to(node, tmp_path):
 
 def test_dep_is_restored_after_the_departure_and_never_arms_anything():
     """paintOrigin drops any exact point, so restoring it first would restore
-    nothing. And the restore must not touch the switch.
+    nothing. And the restore must not touch the switch. (What the restore
+    says and asks, armed and not, is run in test_point_map.py.)
 
-    Mutation performed and reverted: move the restore block above
+    Mutation performed and reverted: move the restore call above
     `paintOrigin(requested ?? FALLBACK);` -> red.
     """
     paint = APP.index("paintOrigin(requested ?? FALLBACK);")
-    restore = APP.index("exactFrom = requestedDep;")
+    restore = APP.index("if (requestedDep) restoreDep(requestedDep, requested);")
     assert paint < restore
-    block = APP[restore:APP.index("\n}\n", restore)]
-    assert "solverEnabled =" not in block
-    assert re.search(r"if \(solverEnabled\) \{\s*snapNotice\(", block), (
+    body = _js.function("restoreDep")
+    assert "solverEnabled =" not in body
+    assert body.index("if (!solverEnabled) return;") < body.index("snapNotice("), (
         "an unarmed page says something about a point it will never compute")
 
 

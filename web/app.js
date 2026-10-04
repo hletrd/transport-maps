@@ -330,6 +330,18 @@ let active = null;              // the departure city
 // repaints the line instead of asking the server again.
 let exactFrom = null;
 let exactAbort = null, exactKey = "", exactResult;
+// The map from that point, once the service is asked for it: null, or
+// {key, from, state, ctl, started, times, snappedKm, code, message}, where
+// `state` is "loading" (the request is out; the city's map is on screen),
+// "drawing" (the answer is in; its hexagons are being tiled), "shown" (they
+// are on screen and every reading comes from them) or "failed" (the city's
+// map stays, with the sentence why). Declared HERE because lookupRaw reads it,
+// and a resize during the top-level await reaches lookupRaw through
+// refreshScale -- the temporal-dead-zone hazard the block above records.
+// `hexRings` is the res-4 hexagon outline cache the painting reads, built in
+// idle slices while the request is out; `busyClock` the overlay's seconds.
+let pointMap = null;
+let hexRings = null, busyClock = 0;
 // Everything fetched per departure. One object, replaced on every switch and
 // guarded by a generation counter: a slow earlier origin's response can no
 // longer land on top of the newer one's arrays (it used to, for four of the
@@ -850,6 +862,10 @@ await Promise.race([
 // For scripts/browser_verify.sh only: lets the post-deploy check ask the map
 // whether the water layer actually rendered rather than trusting a 200.
 window.__map = map;
+// ...and, for the same script and for measuring, the map from a point:
+// its state and how long it took, never its array.
+window.__pointMap = () => pointMap && { state: pointMap.state, key: pointMap.key,
+                                        timing: { ...pointMap.timing } };
 // MapLibre 6 (see web/README.md); this is its projection API.
 map.setProjection({ type: "globe" });
 // A faint atmosphere at the limb, so the globe's edge reads against space
@@ -935,6 +951,18 @@ map.addLayer({ id: "me-dot", type: "circle", source: "me",
   paint: { "circle-radius": 4, "circle-color": "#ffffff",
            "circle-stroke-color": "#0a0b0d", "circle-stroke-width": 1.5 } });
 
+// The point a dragged departure was dropped on (exactFrom), when the solver is
+// armed: the map and the journey from it are measured from here, and the
+// departure marker has gone back to the city. A ring in the accent the
+// departure city's own label wears, hollow so it cannot be read as the
+// destination pin's filled dot.
+map.addSource("exactpt", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+map.addLayer({ id: "exactpt-halo", type: "circle", source: "exactpt",
+  paint: { "circle-radius": 7, "circle-color": "#0a0b0d", "circle-opacity": 0.55 } });
+map.addLayer({ id: "exactpt-ring", type: "circle", source: "exactpt",
+  paint: { "circle-radius": 5, "circle-color": "rgba(0,0,0,0)",
+           "circle-stroke-color": "#e48f35", "circle-stroke-width": 2 } });
+
 // The destination itself. The point-to-point panel described a point the map
 // never drew: `pinB` had no source, no layer and no marker anywhere, so the
 // itinerary named a place with nothing on the globe to say where it was.
@@ -959,7 +987,7 @@ fetch("./borders.json").then((r) => (okOr(r, "borders.json") ? r.json() : null))
              "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.6, 5, 1.1] } });
   for (const id of ["route-halo", "route-ground", "route-air",
                     "hover-halo", "hover-fill", "hover-line",
-                    "pin-halo", "pin-dot", "me-halo", "me-dot"])
+                    "pin-halo", "pin-dot", "me-halo", "me-dot", "exactpt-halo", "exactpt-ring"])
     if (map.getLayer(id)) map.moveLayer(id);
 }).catch(() => {});
 
@@ -1423,6 +1451,65 @@ async function solvePoint(from, to, signal) {
   }
 }
 
+// ---- the map from a point: the service's half ----
+//
+// `/api/map?from=lat,lon` answers the whole map from one point: the minutes to
+// every hover_cells.bin cell, in that file's order, exactly as a charted
+// city's `{slug}.bin` holds them (service/hovermap.py). Same arming, same
+// codes, same timeout and the same never-throw contract as solvePoint above,
+// written out rather than shared so the two can be tested and read alone.
+const SOLVER_MAP_PATH = "./api/map";
+// The layout of the map's `times`, versioned apart from the wire because it is
+// a binary array with an order and a width: a change to either would paint a
+// plausible time in the wrong place. MAP_VERSION in service/wire.py;
+// tests/service/test_wire.py holds the two equal.
+const SOLVER_MAP_VERSION = 1;
+
+// {ok: true, times: Uint16Array, snappedKm, snappedLat, snappedLon} or
+// {ok: false, code, message}. Never throws. Everything the body says about
+// itself is checked before a byte of it is believed: the version, the grid,
+// the cell count against hover_cells.bin and the build against index.json --
+// an array from any other build is a map of plausible times in the wrong
+// places -- and then the decoded length. A captive portal's HTML 200 fails
+// r.json() and is `unavailable`, which is what it is.
+async function solveMap(from, signal) {
+  if (!solverEnabled) return { ok: false, code: "unavailable", message: SOLVER_CODES.unavailable };
+  const ctl = new AbortController();
+  const stop = setTimeout(() => ctl.abort("timeout"), SOLVER_TIMEOUT_MS);
+  const relay = () => ctl.abort("cancelled");
+  if (signal) signal.addEventListener("abort", relay, { once: true });
+  const fail = (code) => ({ ok: false, code, message: SOLVER_CODES[code] });
+  try {
+    const url = `${SOLVER_MAP_PATH}?from=${from.lat.toFixed(5)},${from.lon.toFixed(5)}`;
+    const r = await fetch(url, { signal: ctl.signal, headers: { Accept: "application/json" } });
+    const body = await r.json();
+    if (!body || body.v !== SOLVER_WIRE_VERSION) return fail("unavailable");
+    if (body.status === "error") {
+      return Object.hasOwn(SOLVER_CODES, body.code) ? fail(body.code) : fail("unavailable");
+    }
+    if (!r.ok || body.status !== "ok" || body.mapVersion !== SOLVER_MAP_VERSION) return fail("unavailable");
+    if (body.count !== hoverCells.length || body.hoverRes !== HOVER_RES) return fail("unavailable");
+    if (meta.buildId && body.buildId !== meta.buildId) return fail("unavailable");
+    if (!Number.isFinite(body.snappedKm) || typeof body.times !== "string") return fail("unavailable");
+    // atob throws on anything outside the base64 alphabet, into the catch.
+    const bin = atob(body.times);
+    if (bin.length !== 2 * body.count) return fail("unavailable");
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { ok: true, times: new Uint16Array(bytes.buffer), snappedKm: body.snappedKm,
+             snappedLat: body.snappedLat, snappedLon: body.snappedLon };
+  } catch {
+    // As solvePoint: branch on the signal, never on the rejection value.
+    if (ctl.signal.aborted) {
+      return fail(ctl.signal.reason === "cancelled" ? "unavailable" : "timeout");
+    }
+    return fail("unavailable");
+  } finally {
+    clearTimeout(stop);
+    if (signal) signal.removeEventListener("abort", relay);
+  }
+}
+
 // ---- the exact departure point ----
 //
 // The interaction the plan adopted: a drag still snaps the map to the nearest
@@ -1440,6 +1527,11 @@ const EXACT_MIN_KM = 1;
 // "not from that point" also says where that point's own number will come
 // from. Only when the solver is armed: unarmed, the notice is unchanged.
 const EXACT_NOTE = " The time from that exact point to a destination you choose is computed on demand.";
+// ...and when the service can draw the map from the point as well, which is
+// whenever it is armed and no mode is avoided, the notice says that instead:
+// the line under it (#pointmap) then says, at every stage, which map is on
+// screen -- the city's while the point's is computed, then the point's.
+const POINT_NOTE = " The map from that exact point is computed on demand.";
 
 //: What the extra line says, as snapNotice-style parts (a string, or {b} for
 //: bold). Pure -- every input is an argument -- so each branch runs under
@@ -1448,7 +1540,9 @@ const EXACT_NOTE = " The time from that exact point to a destination you choose 
 //: name when the map avoids one: the service solves the full network, so a
 //: figure from it under a no-flights map would measure a different journey
 //: from every other number on screen, and none is asked for.
-function exactReading(res, { city = null, carryOnOn = false, avoided = null } = {}) {
+//: `pointMapOn` is whether the map on screen is the point's own
+//: (pointShown()): a failure then must not say the map is the city's.
+function exactReading(res, { city = null, carryOnOn = false, avoided = null, pointMapOn = false } = {}) {
   if (avoided) {
     return ["No time is computed from the exact point you chose while the map avoids "
       + `${avoided}: the service that computes it uses every mode.`];
@@ -1456,7 +1550,8 @@ function exactReading(res, { city = null, carryOnOn = false, avoided = null } = 
   if (res === undefined) return ["Computing the time from the exact point you chose…"];
   if (!res.ok) {
     return ["The time from the exact point you chose could not be computed. "
-      + res.message + SOLVER_FALLBACK(city)];
+      + res.message + (pointMapOn
+        ? " The map on screen is still the one from that point." : SOLVER_FALLBACK(city))];
   }
   // The server moves a point in the sea to the nearest land and always says
   // how far. Half a kilometre is well inside one solve cell; past it, the
@@ -1503,7 +1598,12 @@ function carryOnExact(res, save) {
 // destination, the departure, the carry-on choice or the avoided mode
 // changes; a request goes out only when the from/to PAIR changes, and the one
 // in flight for the previous pair is abandoned.
+//:
+//: The map from the point follows the same changes, so it is refreshed from
+//: here too: every route that moves, drops or restores the point, and every
+//: change of the avoided mode, already ends in this call.
 function refreshExact() {
+  refreshPointMap();
   const key = solverEnabled && exactFrom && pinB && !avoid
     ? `${exactFrom.lat.toFixed(5)},${exactFrom.lon.toFixed(5)}>${pinB.lat.toFixed(5)},${pinB.lon.toFixed(5)}`
     : "";
@@ -1541,7 +1641,7 @@ function paintExact(say) {
     : exactResult;
   const parts = exactReading(shown, {
     city: active?.name ?? null, carryOnOn: carryOn,
-    avoided: avoid ? AVOIDABLE[avoid] : null,
+    avoided: avoid ? AVOIDABLE[avoid] : null, pointMapOn: pointShown(),
   });
   // Text nodes and <b> only, for the reason snapNotice gives below.
   el.replaceChildren(...parts.map((part) => {
@@ -1672,6 +1772,417 @@ function parseDep(raw, from) {
   return { lat, lon };
 }
 
+// ---- the map from the point you chose ----
+//
+// The owner's request (2026-10-04): a dropped departure gets the MAP from that
+// point, not only one journey from it, and the wait for it must be plain.
+// plan/2026-09-14-c13-solver-service.md, "The map from any point", has the
+// design; what follows is the page's half.
+//
+// The order a visitor sees it in. The drop snaps the map to the nearest
+// charted city at once, exactly as before -- that map is correct, and it stays
+// on screen. The point's map is asked for (`/api/map`, one full solve, 6-7 s on
+// the web host), and while it is out the reading panel AND a notice over the
+// globe both say so, with the seconds counting and a Cancel that goes back to
+// the city. When it lands, its 90,740 res-4 cells are drawn here as hexagons,
+// coloured by the same bands and the same expression as the tiles, in a GeoJSON
+// layer under the coastline; the city's tile layer is hidden, not removed, so
+// going back costs nothing. Every reading then comes from the point's array.
+// Any failure leaves the city's map where it was, with the sentence why.
+//
+// The service's array is the hover grid, res 4: one value per cell about
+// 45 km across. A charted city's map is painted from res-6 and res-7 cells
+// down to 2.4 km, so this one is coarser, and it says so where it is shown.
+const POINT_SOURCE = "pointbands";
+//: How the point's map is described wherever it is on screen. Res 4 is the
+//: hover grid: cells about 45 km across, 22 km to a side.
+const POINT_GRID = "on a grid of cells about 45 km across (22 km a side), coarser "
+  + "than a charted city's map";
+//: How long the hexagons may take to tile before the layer is shown anyway.
+//: MapLibre says when a GeoJSON source has loaded; this only bounds a wait for
+//: an event that, on a globe turned away from every tile, may not come.
+const POINT_DRAW_MS = 10000;
+//: A cell whose outline spans more longitude than this crosses the
+//: antimeridian; contour/bands.py ANTIMERIDIAN_SPAN_DEG, the same test.
+const ANTIMERIDIAN_SPAN_DEG = 180;
+
+//: Whether the map on screen, and so every reading, is the point's.
+function pointShown() { return pointMap?.state === "shown"; }
+
+//: The key a map from the point is asked for under -- the point at the five
+//: decimals the address carries -- or "" when none should be: unarmed, no
+//: point, or a mode avoided, since the service solves the full network and a
+//: map from it under "avoid flights" would measure other journeys.
+function pointMapKey() {
+  return solverEnabled && exactFrom && !avoid
+    ? `${exactFrom.lat.toFixed(5)},${exactFrom.lon.toFixed(5)}` : "";
+}
+
+//: Bring the map from the point in line with exactFrom and the avoided mode.
+//: Idempotent: a request goes out only when the key changes, and the one in
+//: flight for the previous key is abandoned. Called from refreshExact().
+function refreshPointMap() {
+  drawExactPoint();
+  const key = pointMapKey();
+  if (key !== (pointMap?.key ?? "")) {
+    endPointMap();
+    if (key) startPointMap(key);
+  }
+  paintPointMap();
+}
+
+function startPointMap(key) {
+  const pm = pointMap = {
+    key, from: { lat: exactFrom.lat, lon: exactFrom.lon }, state: "loading",
+    ctl: new AbortController(), started: Date.now(), times: null, timing: {},
+  };
+  // The outlines do not depend on the answer: build them while it is out.
+  primeHexRings();
+  tickBusyClock();
+  announce("Computing travel times from the point you chose. This takes a few seconds.");
+  solveMap(pm.from, pm.ctl.signal).then((res) => {
+    if (pointMap !== pm) return;
+    if (!res.ok) { failPointMap(pm, res); return; }
+    pm.timing.arrived = Date.now() - pm.started;
+    Object.assign(pm, { state: "drawing", times: res.times, snappedKm: res.snappedKm });
+    paintPointMap();
+    drawPointLayer(pm);
+  // solveMap never rejects; this is for a defect in the drawing, which must
+  // not reach boot.js's capturing listener over a map that is still correct.
+  }).catch(() => {
+    if (pointMap === pm) failPointMap(pm, { code: "unavailable", message: SOLVER_CODES.unavailable });
+  });
+}
+
+//: The city's map stays, and the sentence says why. Never fatal(): the map on
+//: screen is a charted city's and entirely correct.
+function failPointMap(pm, res) {
+  pm.state = "failed"; pm.code = res.code; pm.message = res.message; pm.times = null;
+  removePointLayer();
+  stopBusyClock();
+  paintPointMap();
+  announce(`The map from the point you chose could not be computed. ${res.message}`);
+}
+
+function endPointMap() {
+  const pm = pointMap;
+  if (!pm) return;
+  pointMap = null;
+  pm.ctl.abort("cancelled");
+  stopBusyClock();
+  removePointLayer();
+  // Everything read from its array goes stale with it. After this call
+  // returns, so the caller's own re-render (paintOrigin's, say) runs first.
+  if (pm.state === "shown") queueMicrotask(pointMapChanged);
+}
+
+//: Back to the city: the point goes, and with it the map and the extra line.
+function cancelPointMap() {
+  const city = active?.name;
+  forgetExactFrom();
+  if (city) announce(`Back to ${city}'s map.`);
+}
+
+function retryPointMap() {
+  if (pointMap?.state !== "failed") return;
+  pointMap = null;
+  refreshPointMap();
+}
+
+//: Every reading on the page reads through lookup(), the departure card and
+//: the list included, so all of them are redone when the map changes hands.
+function pointMapChanged() {
+  renderPins(); renderLegs(); renderDeparture();
+  render($("q").value);
+  refreshScale();
+  if (pinB || lastPointer) rereadPointer();
+}
+
+function drawPointLayer(pm) {
+  const t0 = performance.now();
+  try {
+    const data = pointFeatures(pm.times);
+    pm.timing.built = Math.round(performance.now() - t0);
+    removePointLayer();
+    map.addSource(POINT_SOURCE, { type: "geojson", data, tolerance: 0, maxzoom: 6 });
+    // The tile layer's paint, so a point's map and a city's are read by one
+    // legend. The cells tile the sphere exactly and share every vertex
+    // (tolerance 0 keeps geojson-vt from moving any), so nothing here needs
+    // the one-cell overlap contour/bands.py builds into the tiles; the sort
+    // key is kept so the two layers stay one recipe.
+    map.addLayer({
+      id: POINT_SOURCE, type: "fill", source: POINT_SOURCE,
+      layout: { "fill-sort-key": ["case", ["<", ["get", "band"], 0], -1000, ["-", ["get", "band"]]] },
+      paint: { "fill-color": bandColorExpression(), "fill-opacity": 1, "fill-antialias": false },
+    }, "water");
+  } catch {
+    failPointMap(pm, { code: "unavailable", message: SOLVER_CODES.unavailable });
+    return;
+  }
+  let done = false;
+  const ready = () => {
+    if (done) return;
+    done = true;
+    map.off("sourcedata", onData);
+    clearTimeout(late);
+    if (pointMap !== pm || pm.state !== "drawing") return;
+    pm.state = "shown";
+    pm.timing.drawn = Math.round(performance.now() - t0);
+    // Hidden, not removed: going back to the city is then instant.
+    if (map.getLayer("bands")) map.setLayoutProperty("bands", "visibility", "none");
+    stopBusyClock();
+    paintPointMap();
+    pointMapChanged();
+    announce("The map from the point you chose is ready. Its times are door to door.");
+  };
+  const onData = (e) => {
+    if (e.sourceId === POINT_SOURCE && map.isSourceLoaded(POINT_SOURCE)) ready();
+  };
+  map.on("sourcedata", onData);
+  const late = setTimeout(ready, POINT_DRAW_MS);
+}
+
+function removePointLayer() {
+  try {
+    if (map.getLayer(POINT_SOURCE)) map.removeLayer(POINT_SOURCE);
+    if (map.getSource(POINT_SOURCE)) map.removeSource(POINT_SOURCE);
+    if (map.getLayer("bands")) map.setLayoutProperty("bands", "visibility", "visible");
+  } catch { /* no style yet: nothing was drawn */ }
+}
+
+//: The dropped point itself, on the globe. The departure marker goes back to
+//: the city it snapped to, so without this a map measured from the point has
+//: nothing at the place it is measured from.
+function drawExactPoint() {
+  const src = map.getSource("exactpt");
+  if (!src) return;
+  src.setData({ type: "FeatureCollection", features: solverEnabled && exactFrom
+    ? [{ type: "Feature", geometry: { type: "Point", coordinates: [exactFrom.lon, exactFrom.lat] } }]
+    : [] });
+}
+
+// ---- res-4 hexagons, from hover_cells.bin ----
+//
+// One outline per hover cell, in hover_cells.bin's order, kept flat (lng, lat
+// pairs in one Float64Array) because the nested arrays GeoJSON wants cost
+// about seven times the memory and are only needed for the moment a map is
+// handed to MapLibre. Built in idle slices while the request is out -- 90,740
+// h3 calls, about 140 ms measured -- and finished at once if the answer beats
+// it. Shared by every map from a point; the outlines never change.
+//
+// A cell across the antimeridian is split into its two halves inside
+// [-180, 180], the way contour/bands.py `_split_at_antimeridian` splits it for
+// the tiles: shift the west longitudes east, clip either side of 180, move the
+// east piece back. Drawn whole it would span the globe the long way round.
+function hexSlice(budget) {
+  const n = hoverCells.length;
+  if (!hexRings) {
+    hexRings = { xy: new Float64Array(n * 14), at: new Uint32Array(n + 1), used: 0, done: 0,
+                 split: new Map() };
+  }
+  const h = hexRings;
+  const end = Math.min(n, h.done + budget);
+  for (let i = h.done; i < end; i++) {
+    const b = h3.cellToBoundary(hoverCells[i].toString(16));     // [lat, lng] pairs
+    let lo = Infinity, hi = -Infinity;
+    for (const [, x] of b) { if (x < lo) lo = x; if (x > hi) hi = x; }
+    if (hi - lo > ANTIMERIDIAN_SPAN_DEG) h.split.set(i, splitAtAntimeridian(b));
+    else {
+      if (h.used + 2 * b.length > h.xy.length) {
+        const grown = new Float64Array(Math.ceil(h.xy.length * 1.25) + 2 * b.length);
+        grown.set(h.xy);
+        h.xy = grown;
+      }
+      for (const [y, x] of b) { h.xy[h.used++] = x; h.xy[h.used++] = y; }
+    }
+    h.at[i + 1] = h.used;
+  }
+  h.done = end;
+  return end === n;
+}
+
+function primeHexRings() {
+  if (hexRings && hexRings.done === hoverCells.length) return;
+  const idle = globalThis.requestIdleCallback
+    || ((fn) => setTimeout(() => {
+      const start = performance.now();
+      fn({ timeRemaining: () => Math.max(0, 8 - (performance.now() - start)) });
+    }, 0));
+  idle(function step(deadline) {
+    while (deadline.timeRemaining() > 1 && !hexSlice(2000)) { /* a slice at a time */ }
+    if (!hexRings || hexRings.done < hoverCells.length) idle(step);
+  });
+}
+
+//: Cell i's outline as a closed GeoJSON ring of [lng, lat].
+function hexRing(i) {
+  const { xy, at } = hexRings;
+  const ring = [];
+  for (let k = at[i]; k < at[i + 1]; k += 2) ring.push([xy[k], xy[k + 1]]);
+  ring.push([xy[at[i]], xy[at[i] + 1]]);
+  return ring;
+}
+
+//: [[ring], ...]: the cell's halves either side of the antimeridian, each a
+//: polygon of its own. `boundary` is h3's [lat, lng] list.
+function splitAtAntimeridian(boundary) {
+  const ring = boundary.map(([y, x]) => [x < 0 ? x + 360 : x, y]);
+  const west = clipAtLongitude(ring, 180, true);
+  const east = clipAtLongitude(ring, 180, false);
+  return [west, east && east.map(([x, y]) => [x - 360, y])]
+    .filter(Boolean).map((r) => [[...r, r[0].slice()]]);
+}
+
+//: One side of x = x0 of an open ring, by Sutherland-Hodgman; null when less
+//: than a triangle is left.
+function clipAtLongitude(ring, x0, west) {
+  const inside = (p) => (west ? p[0] <= x0 : p[0] >= x0);
+  const out = [];
+  for (let k = 0; k < ring.length; k++) {
+    const a = ring[k], b = ring[(k + 1) % ring.length];
+    if (inside(a)) out.push(a);
+    if (inside(a) !== inside(b)) out.push([x0, a[1] + ((x0 - a[0]) / (b[0] - a[0])) * (b[1] - a[1])]);
+  }
+  return out.length >= 3 ? out : null;
+}
+
+//: The map as GeoJSON: one MultiPolygon per band, `band` as the tiles carry
+//: it (-1 for no scheduled route), so bandColorExpression() colours both.
+//: 38 features rather than 90,740: the per-feature cost in the tiler is what
+//: a feature per cell would multiply.
+function pointFeatures(times) {
+  while (!hexSlice(hoverCells.length)) { /* finish the outlines now */ }
+  const byBand = new Map();
+  for (let i = 0; i < times.length; i++) {
+    const band = bandIndexOf(times[i]);
+    let polys = byBand.get(band);
+    if (!polys) byBand.set(band, (polys = []));
+    const halves = hexRings.split.get(i);
+    if (halves) polys.push(...halves);
+    else polys.push([hexRing(i)]);
+  }
+  return { type: "FeatureCollection", features: [...byBand].map(([band, coordinates]) => ({
+    type: "Feature", properties: { band }, geometry: { type: "MultiPolygon", coordinates } })) };
+}
+
+// ---- what the page says about it ----
+
+//: What #pointmap says and which buttons it carries, and what the notice over
+//: the globe says while the map is computed: {say, actions, busy} or null.
+//: `say` is snapNotice-style parts; `actions` [label, name] pairs; `busy`
+//: {title, sub} or null. Pure, so tests/web/test_point_map.py runs every
+//: branch under node. `avoided` is the plural mode name when the map avoids
+//: one and a point is held; `city` the charted city the map snapped to.
+function pointMapReading(pm, { city, avoided = null, carryOnOn = false } = {}) {
+  if (avoided) {
+    return { say: ["No map is computed from the point you chose while the map avoids "
+      + `${avoided}: the service that computes it uses every mode. The map is ${city}'s, `
+      + "the nearest charted departure city."], actions: [], busy: null };
+  }
+  if (!pm) return null;
+  if (pm.state === "loading" || pm.state === "drawing") {
+    const title = pm.state === "loading"
+      ? "Computing travel times from the point you chose…"
+      : "Drawing the map from the point you chose…";
+    const sub = `This takes a few seconds. ${city}'s map stays on screen until it is ready.`;
+    return { say: [{ b: title }, ` ${sub}`], actions: [["Cancel", "cancel"]], busy: { title, sub } };
+  }
+  if (pm.state === "failed") {
+    return { say: ["The map from the point you chose could not be computed. "
+      + pm.message + SOLVER_FALLBACK(city)], actions: [["Try again", "retry"]], busy: null };
+  }
+  // The server moves a point in the sea to the nearest land, as for a journey.
+  const moved = pm.snappedKm > 0.5
+    ? ` The point was moved ${fmtKm(pm.snappedKm)} to the nearest land.` : "";
+  // Carry-on takes its minutes off a journey that flew, and this array does
+  // not say which cells were reached by air -- so its readings stay as solved.
+  const bag = carryOnOn ? " Its times assume a checked bag." : "";
+  return { say: ["This map is measured from ", { b: "the point you chose" },
+                 `, door to door, computed on demand ${POINT_GRID}.${moved}${bag}`],
+           actions: [[`Back to ${city}'s map`, "back"]], busy: null };
+}
+
+function paintPointMap() {
+  const box = $("pointmap"), busy = $("pointbusy");
+  if (!box || !busy) return;
+  const r = pointMapReading(pointMap, {
+    city: active?.name ?? "the departure city", carryOnOn: carryOn,
+    avoided: solverEnabled && exactFrom && avoid ? AVOIDABLE[avoid] : null,
+  });
+  const act = { cancel: cancelPointMap, back: cancelPointMap, retry: retryPointMap };
+  const button = ([label, name]) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "btn"; b.textContent = label;
+    b.dataset.act = name;
+    b.addEventListener("click", () => act[name]());
+    return b;
+  };
+  if (!r) { box.hidden = true; box.replaceChildren(); }
+  else {
+    const p = document.createElement("p");
+    p.append(...r.say.map((part) => {
+      if (typeof part === "string") return document.createTextNode(part);
+      const b = document.createElement("b");
+      b.textContent = part.b;
+      return b;
+    }));
+    box.replaceChildren(p, ...r.actions.map(button));
+    box.hidden = false;
+  }
+  // The line changes the reading's height, which is one of fitReading's inputs.
+  fitReading();
+  if (!r?.busy) { busy.hidden = true; busy.replaceChildren(); return; }
+  const title = document.createElement("b");
+  title.textContent = r.busy.title;
+  const sub = document.createElement("span");
+  sub.className = "sub"; sub.textContent = r.busy.sub;
+  const elapsed = document.createElement("span");
+  elapsed.className = "elapsed";
+  elapsed.textContent = `${Math.round((Date.now() - pointMap.started) / 1000)} s`;
+  const bar = document.createElement("span");
+  bar.className = "bar";
+  busy.replaceChildren(title, sub, elapsed, bar, button(["Cancel", "cancel"]));
+  busy.hidden = false;
+}
+
+//: The seconds on the overlay, so a wait of six reads as progress and not as
+//: a page that has stopped.
+function tickBusyClock() {
+  stopBusyClock();
+  busyClock = setInterval(() => {
+    if (!pointMap || (pointMap.state !== "loading" && pointMap.state !== "drawing")) {
+      stopBusyClock();
+      return;
+    }
+    const el = $("pointbusy")?.querySelector(".elapsed");
+    if (el) el.textContent = `${Math.round((Date.now() - pointMap.started) / 1000)} s`;
+  }, 1000);
+}
+
+function stopBusyClock() {
+  if (busyClock) clearInterval(busyClock);
+  busyClock = 0;
+}
+
+//: A `dep=` from the address, put back. parseDep has already required `from=`
+//: to name the city nearest to it. Armed, the map from the point is asked for
+//: at once, as a drop would ask for it; unarmed, the point is held and carried
+//: on in the address but nothing is said and nothing is asked. Restoring it
+//: never arms anything: that is index.json's alone.
+function restoreDep(dep, city) {
+  exactFrom = dep;
+  syncPermalink();
+  if (!solverEnabled) return;
+  if (avoid) {
+    snapNotice("The map is measured from ", { b: city.name },
+      ", the nearest departure city to the point in this link, not from that point." + EXACT_NOTE);
+  } else {
+    snapNotice({ b: city.name }, " is the nearest departure city to the point in this link."
+      + POINT_NOTE);
+  }
+  refreshExact();
+}
+
 // The first version took an HTML string and relied on every call site
 // remembering esc() -- which is exactly the shape that made railVia() a stored
 // XSS waiting for a second caller, fixed three commits ago. Writing it the
@@ -1724,7 +2235,12 @@ function originDragEnd() {
   // The point itself, kept only when the solver can do something with it and
   // only when it is not the city: unarmed, a drag behaves exactly as before.
   const exact = solverEnabled && km > EXACT_MIN_KM ? { lat, lon: lng } : null;
-  const note = exact ? EXACT_NOTE : "";
+  // With the map from the point coming, "times are measured from the city,
+  // not from that point" is true only until it lands, so the notice names the
+  // substitution and #pointmap below it says, at each stage, which map is on
+  // screen. Unarmed, or with a mode avoided, the notice is as it was.
+  const mapped = exact && !avoid;
+  const note = mapped ? POINT_NOTE : exact ? EXACT_NOTE : "";
   if (o.slug === active?.slug) {
     // Assigned, not only set: a drop back onto the city itself replaces the
     // point an earlier drag kept.
@@ -1750,8 +2266,8 @@ function originDragEnd() {
   refreshExact();
   syncPermalink();
   snapNotice("Moved to ", { b: o.name }, " — the nearest departure city, "
-    + `${fmtKm(km)} from where you dropped the marker. `
-    + `Times are measured from ${o.name}, not from that point.${note}`);
+    + `${fmtKm(km)} from where you dropped the marker.`
+    + (mapped ? "" : ` Times are measured from ${o.name}, not from that point.`) + note);
   // On a phone the readout is inside the bottom sheet; folded, the notice
   // would be written somewhere nothing can see it.
   unfoldSheet();
@@ -1976,13 +2492,16 @@ function renderDepartureInto() {
   if (!box) return;
   if (!active) { box.hidden = true; return; }
   box.hidden = false;
-  $("depart-city").textContent = active.name;
-  const p = places ? nearestPlace(active.lat, active.lon) : null;
-  $("depart-where").textContent = p
-    ? [p.region && p.region !== active.name ? p.region : null, p.country].filter(Boolean).join(", ")
+  // From a point, the card describes the point and reaches from its map.
+  const from = pointShown() ? pointMap.from : null;
+  $("depart-city").textContent = from ? "The point you chose" : active.name;
+  const p = places ? nearestPlace(from?.lat ?? active.lat, from?.lon ?? active.lon) : null;
+  $("depart-where").textContent = from
+    ? [placeLead(p), p?.country].filter(Boolean).join(", ") || fmtCoord(from.lat, from.lon)
+    : p ? [p.region && p.region !== active.name ? p.region : null, p.country].filter(Boolean).join(", ")
     : "";
 
-  const t = origin.times;
+  const t = from ? pointMap.times : origin.times;
   const reach = $("depart-reach");
   if (!t || !t.length) {
     reach.replaceChildren();
@@ -2739,8 +3258,10 @@ function lookup(lat, lon) {
 
 //: Minutes carry-on saves on the journey to a point: the departure and arrival
 //: figures once each, and only when the journey flew at all.
+//: None on the map from a point: its array does not say which cells were
+//: reached by air, and #pointmap says its times assume a checked bag.
 function carryOnSaving(lat, lon) {
-  if (!carryOn || !meta.carryOn) return 0;
+  if (!carryOn || !meta.carryOn || pointShown()) return 0;
   const fine = fineRoute(lat, lon);
   let airport;
   if (fine) airport = fine.airport;
@@ -2762,6 +3283,9 @@ function lookupRaw(lat, lon) {
   // would answer "no route" for every one of them.
   const i = cellIndex(lat, lon);
   if (i < 0) { lastReadingRes = HOVER_RES; return null; }
+  // The map from a dropped point is one res-4 array and nothing finer: the
+  // city's reading tier measures from the city, so it is not consulted.
+  if (pointShown()) { lastReadingRes = HOVER_RES; return pointMap.times[i]; }
   const coarse = origin.times ? origin.times[i] : undefined;
   if (origin.reading && readingParents) {
     const j = readingIndex(lat, lon);
@@ -2952,7 +3476,9 @@ function chainAtCell(i, budget, ordinal = origin.air[i]) {
 // transfer the res-4 array cannot confirm). Closing the last 3.8% needs the
 // pipeline to emit the cell predecessors, which needs a rebuild.
 function legsTo(lat, lon) {
-  if (!origin.air || !origin.routes) return null;
+  // The itinerary arrays are the city's. From a point, the journey is the
+  // on-demand line's (#exact, #exactlegs), and the city's must not stand in.
+  if (pointShown() || !origin.air || !origin.routes) return null;
   const i = cellIndex(lat, lon);
   if (i < 0) return null;
   // Where the fine cell under the point landed somewhere else than its coarse
@@ -3319,7 +3845,7 @@ function bandRangeOf(min) {
 //: The lowest and highest band with a reading on screen, or null when the
 //: sample is too thin to say. Exported shape: {lo, hi, n}.
 function onScreenBandRange() {
-  if (!origin.times) return null;
+  if (!origin.times && !pointShown()) return null;
   let canvas;
   try { canvas = map.getCanvas(); } catch { return null; }
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -3502,7 +4028,7 @@ function showReading(lat, lng, point) {
         : `Loading the times from ${esc(active?.name ?? "the departure city")}…`)
     : t === null ? "Open water."
     : placeLine(lat, lng)
-      + `${band ? " · " + band : ""}${active ? " · from " + esc(active.name) : ""}`
+      + `${band ? " · " + band : ""}${active ? " · from " + esc(originName()) : ""}`
       // Whenever the NUMBER came from a coarser grid than the solved one --
       // the reading tier still in flight, absent from this build, or
       // declined under Save-Data -- the page says so rather than leaving a
@@ -3519,7 +4045,11 @@ function showReading(lat, lng, point) {
 // COMMITTED. The pointer must never reach it: showReading runs once per
 // animation frame, and announcing sixty times a second is the same as
 // announcing nothing.
-const originName = () => active?.name ?? "the departure city";
+//: What every reading is measured from: the city, or the point once its map
+//: is on screen. A declaration, not a const, so it is hoisted.
+function originName() {
+  return pointShown() ? "the point you chose" : active?.name ?? "the departure city";
+}
 function announce(text) {
   const el = $("status");
   if (el) el.textContent = text;
@@ -3529,8 +4059,8 @@ function announceReading(lat, lng, t, label) {
   if (t === null) return announce("Open water: no destination there.");
   const p = !label && namePlaces ? nearestPlace(lat, lng) : null;
   const where = label || (p && placeLead(p)) || fmtCoord(lat, lng);
-  if (t >= MAX_MINUTES) return announce(`${where}: no scheduled route from ${active?.name ?? ""}.`);
-  announce(`${where}: ${fmtDur(t)} from ${active?.name ?? "the departure city"}, door to door.`);
+  if (t >= MAX_MINUTES) return announce(`${where}: no scheduled route from ${originName()}.`);
+  announce(`${where}: ${fmtDur(t)} from ${originName()}, door to door.`);
 }
 
 // Once an origin's times land, the reading under the pointer (or the last
@@ -3662,7 +4192,7 @@ function renderPins() {
   refreshExact();
   const box = $("pins");
   if (!active) { box.replaceChildren(); return; }
-  const rows = [["From", active.name]];
+  const rows = [["From", pointShown() ? "the point you chose" : active.name]];
   if (pinB) {
     const t = lookup(pinB.lat, pinB.lon);
     rows.push(["To", pinB.label]);
@@ -3805,8 +4335,20 @@ function fitReading() {
   document.body.classList.remove("crowded");
   // The small layout puts the reading in the scrolling rail; nothing is fixed
   // and nothing can overlap.
-  if (reading.closest(".rail") || legs.hidden) return;
+  if (reading.closest(".rail")) return;
   const card = document.querySelector(".depart-card");
+  // With no itinerary there is nothing elastic to bound, but the notices
+  // above the legend can still grow the reading up into the card: the snap
+  // notice, the line for the map from a point and the on-demand journey line
+  // together measured 30 px into "Within two days" at 1280x800. The answer
+  // wins there too, as it does below.
+  if (legs.hidden) {
+    if (card && !card.hidden && getComputedStyle(card).display !== "none"
+        && reading.getBoundingClientRect().top < card.getBoundingClientRect().bottom + 10) {
+      document.body.classList.add("crowded");
+    }
+    return;
+  }
   const rest = reading.offsetHeight - legs.offsetHeight;
   const floor = (n) => innerHeight - 14 - n - rest;
   // NOT offsetParent: it is null for a position:fixed element, so the card
@@ -4161,7 +4703,7 @@ function capCities(matched) {
   const timed = matched.map((c) => {
     // -1, not 0: it must sort ahead of a city zero minutes away, and there is
     // no lookup to do for the origin itself.
-    const t = c.slug === active?.slug ? -1 : lookup(c.lat, c.lon);
+    const t = c.slug === active?.slug && !pointShown() ? -1 : lookup(c.lat, c.lon);
     return { c, t: typeof t === "number" && t < MAX_MINUTES ? t : Infinity };
   });
   // Before the arrays land there is nothing to rank by and every entry is
@@ -4341,7 +4883,7 @@ function render(filter = "") {
     // render() is 11.1-11.4 ms live. Quote those, not the 4.5.
     const val = document.createElement("span");
     val.className = "rowtime";
-    if (active?.slug === c.slug) {
+    if (active?.slug === c.slug && !pointShown()) {
       val.textContent = "departing";
     } else {
       const t = lookup(c.lat, c.lon);
@@ -4349,7 +4891,7 @@ function render(filter = "") {
         : t >= MAX_MINUTES ? "no route"
         : fmtDur(t);
       if (typeof t === "number" && t < MAX_MINUTES) {
-        val.title = `${fmtDur(t)} from ${active.name}, door to door`;
+        val.title = `${fmtDur(t)} from ${originName()}, door to door`;
       }
       // A screen reader read the row as "London 15 h 15 min" -- the time TO
       // London -- on a row that DEPARTS from London when activated. The
@@ -4362,7 +4904,7 @@ function render(filter = "") {
       const said = where ? `${c.name}, ${where}` : c.name;
       // The city you are departing FROM can be an ambiguous name too, and
       // "15 h from Suzhou" does not say which Suzhou.
-      const from = active
+      const from = pointShown() ? originName() : active
         ? (disambigLabel(active) ? `${active.name}, ${disambigLabel(active)}` : active.name)
         : "here";
       b.setAttribute("aria-label", val.textContent
@@ -4395,7 +4937,7 @@ function render(filter = "") {
         + "Keep typing to narrow it."
       : active
         ? `Showing ${hits.length} of ${fmtCount(matched.length)} departure cities, `
-          + `the quickest to reach from ${active.name}. Type to search all of them.`
+          + `the quickest to reach from ${originName()}. Type to search all of them.`
         : `Showing ${hits.length} of ${fmtCount(matched.length)} departure cities. `
           + "Type to search all of them.";
     list.append(li);
@@ -4428,7 +4970,7 @@ function render(filter = "") {
   const cap = $("listcap");
   if (cap) {
     cap.textContent = active
-      ? `Each time is how long it takes to reach that city from ${active.name}, door to door. Choosing one departs from it instead.`
+      ? `Each time is how long it takes to reach that city from ${originName()}, door to door. Choosing one departs from it instead.`
       : "Each time is how long it takes to reach that city, door to door. Choosing one departs from it instead.";
   }
   const box = $("results");
@@ -4983,8 +5525,8 @@ function pickRamp(key) {
   refreshScale();
   paintRampPicker();
   // Repaint in place; the tiles are already loaded.
-  if (map.getLayer("bands"))
-    map.setPaintProperty("bands", "fill-color", bandColorExpression());
+  for (const id of ["bands", POINT_SOURCE])
+    if (map.getLayer(id)) map.setPaintProperty(id, "fill-color", bandColorExpression());
   paintSea();
   // "Match the scheme" shows whatever the scheme's sea is, so its swatch
   // has to follow a scheme change.
@@ -5173,15 +5715,7 @@ paintOrigin(requested ?? FALLBACK);
 // AFTER paintOrigin, which drops any exact point. parseDep has already
 // required `from=` to name the city nearest to it. Unarmed, the point is held
 // and carried on in the address but nothing is said and nothing is asked.
-if (requestedDep) {
-  exactFrom = requestedDep;
-  syncPermalink();
-  if (solverEnabled) {
-    snapNotice("The map is measured from ", { b: requested.name },
-      ", the nearest departure city to the point in this link, not from that point."
-      + EXACT_NOTE);
-  }
-}
+if (requestedDep) restoreDep(requestedDep, requested);
 // The signal boot.js's watchdog waits for. It must be a fact about THIS
 // module having run to the end, not about anything the visitor can change:
 // the watchdog used to count `.results button[data-slug]`, which is the

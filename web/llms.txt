@@ -130,10 +130,14 @@ disagree about which child speaks for a cell.
 At runtime the page calls two external services: OpenStreetMap's Nominatim
 for address search and click-to-address (only when a search is submitted or a
 point is clicked), and Google Analytics for page-view counting. Where the
-build enables it, the time from the exact point a departure marker was dragged
-to is computed on demand by this site's own server (`/api/solve`); the map
-itself is still measured from the nearest charted city. Everything else is
-computed in the browser from files on this site.
+build enables it, a departure marker dragged away from the charted cities gets
+the whole map from that exact point (`/api/map`), and a time from it to a
+destination (`/api/solve`), computed on demand by this site's own server. That
+map is drawn on the H3 resolution-4 hover grid (cells about 45 km across), not
+the finer grid a charted city's map is painted from, and is door to door like
+every other figure; while it is computed, and if it fails, the map shown is the
+nearest charted city's. Everything else is computed in the browser from files
+on this site.
 
 ## Links
 

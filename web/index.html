@@ -50,7 +50,7 @@
       ],
       "conditionsOfAccess": "A derivative of mixed-licence open data: ODbL 1.0 (OpenStreetMap, adsb.lol), CC BY-SA 4.0 (Wikipedia), CC BY 4.0 (GeoNames, HydroLAKES), CC0 (Wikidata, GRIP4) and public-domain (OurAirports, Natural Earth) sources. Each source's attribution and share-alike terms apply to the data derived from it; credits are listed in index.json and on the page.",
       "isAccessibleForFree": true,
-      "dateModified": "2026-10-02"
+      "dateModified": "2026-10-04"
     },
     {
       "@type": "WebApplication",
@@ -298,6 +298,46 @@ body.crowded .depart-card{display:none}
    not as the city's itinerary further down. Rows are the itinerary's own
    .leg, .t and .d. */
 .reading .exactlegs{margin:0;padding:1px 8px 3px;border-left:2px solid rgba(228,143,53,.55)}
+/* The map from the point the marker was dropped on: which map is on screen,
+   at every stage, and the one control that goes back to the city. The snap
+   notice's accent rule, since it is that notice's sequel, and a faint fill,
+   because while it is being computed it is the thing the page is doing. */
+.reading .pointmap{margin:6px 0 0;padding:6px 8px 8px;font-size:var(--t-ui);line-height:1.4;
+  color:var(--text-2);background:rgba(228,143,53,.06);
+  border-left:2px solid rgba(228,143,53,.55);border-radius:3px}
+.reading .pointmap p{margin:0}
+.reading .pointmap b{color:var(--text);font-weight:500}
+.reading .pointmap .btn{margin:7px 6px 0 0}
+/* ...and the same wait, said over the globe, which is where a visitor who has
+   just dropped the marker is looking -- and the only place it can be seen
+   when the phone sheet is folded. Centred in the gap between the masthead
+   column (14 + 306 px) and the rail (264 + 20 px) on a desktop; under the
+   masthead, in its column, on anything narrower. */
+.pointbusy{
+  position:fixed;top:14px;left:calc(50% + 18px);transform:translateX(-50%);z-index:7;
+  width:max-content;max-width:min(400px, calc(100vw - 624px));
+  padding:10px 14px 12px;border-radius:var(--r);
+  background:color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-left:2px solid rgba(228,143,53,.7);
+  font-size:var(--t-ui);line-height:1.4;color:var(--text-2);
+}
+.pointbusy b{display:block;color:var(--text);font-weight:500;font-size:var(--t-lbl)}
+.pointbusy .sub{display:block;margin-top:2px}
+.pointbusy .elapsed{display:inline-block;margin-top:4px;color:var(--text-3)}
+.pointbusy .btn{margin:8px 0 0 10px}
+/* An indeterminate bar: it says "working", never how far. Under reduced
+   motion it is not drawn at all -- a still bar would read as 30% done -- and
+   the counting seconds carry the same message. */
+.pointbusy .bar{display:block;position:relative;height:2px;margin-top:8px;overflow:hidden;
+  background:var(--line);border-radius:1px}
+.pointbusy .bar::after{content:"";position:absolute;top:0;bottom:0;left:0;width:30%;
+  background:var(--accent)}
+@media (prefers-reduced-motion:no-preference){
+  .pointbusy .bar::after{animation:pointbusy 1.4s ease-in-out infinite}
+}
+@media (prefers-reduced-motion:reduce){ .pointbusy .bar{display:none} }
+@keyframes pointbusy{from{transform:translateX(-100%)}to{transform:translateX(340%)}}
 
 .legend{margin-top:14px}
 .tints{display:flex;height:9px;border-radius:1px;overflow:hidden;position:relative}
@@ -690,6 +730,9 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   .mapbtn{width:38px;height:34px}
   .compass svg{width:22px;height:22px}
   .tip{display:none}                    /* the sheet readout carries the value */
+  /* In the masthead's column, under it, clear of the compass and the zoom
+     buttons down the right-hand edge. */
+  .pointbusy{position:static;transform:none;max-width:calc(100vw - 78px)}
   .rail{
     top:auto;left:0;right:0;bottom:0;width:auto;max-height:52vh;
     flex-direction:column;gap:0;padding:0;
@@ -811,6 +854,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   .mast{max-width:40vw}
   .compass{right:calc(min(300px,46vw) + 10px)}
   .zoomctl{top:auto;bottom:74px;right:calc(min(300px,46vw) + 10px)}
+  .pointbusy{max-width:calc(100vw - min(300px,46vw) - 84px)}
 }
 </style>
 </head>
@@ -829,6 +873,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 <header class="mast">
   <h1>Isochronic Passage Chart</h1>
 </header>
+<!-- The wait for the map from a dropped point, over the globe: the reading
+     panel says the same in #pointmap, but a visitor who has just dropped the
+     marker is looking at the map, and on a phone the sheet may be folded.
+     Not a live region -- the page keeps exactly one, #status, and app.js
+     announces each stage there. Filled and shown by paintPointMap(). -->
+<div class="pointbusy" id="pointbusy" hidden></div>
 
 <!-- Between the masthead and the reading there were 306 x 413 px of empty
      scrim, and the departure city -- the thing every figure on the page is
@@ -884,6 +934,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
        reason #tiletrouble has one -- showReading rewrites #where on every
        pointer frame and would erase it at the first mouse move. -->
   <p class="snapped" id="snapped" hidden></p>
+  <!-- The map from that point. With the solver armed, a drop away from a city
+       asks this site's own server for the whole map from the point; this line
+       says which map is on screen while it is computed (the city's), once it
+       is drawn (the point's, on a coarser grid) or if it fails (the city's,
+       and why), with Cancel, "Back to <city>'s map" or "Try again". -->
+  <div class="pointmap" id="pointmap" hidden></div>
   <!-- The time from the exact point a dragged departure was dropped on, asked
        of this site's own server once a destination is pinned. Under the
        notice it is the sequel to, and a separate line from the headline: the
@@ -1112,10 +1168,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
       <p>Address search and click-to-address send the typed text or the clicked
          coordinates to OpenStreetMap’s Nominatim service (no more than one request
          a second, and never as you type). Page views are counted
-         by Google Analytics. Where the page offers it, the time from the exact
-         point you drag the departure marker to is computed on demand by this
-         site&rsquo;s own server. Everything else is computed in the browser from
-         files on this site. What each of those collects is set out under
+         by Google Analytics. Where the page offers it, the map from the exact
+         point you drag the departure marker to, and the time from that point to
+         a destination, are computed on demand by this site&rsquo;s own server.
+         That map is drawn on the 45 km grid the readings use rather than the
+         finer one a charted city&rsquo;s map is painted from. Everything else is
+         computed in the browser from files on this site. What each of those collects is set out under
          <a href="#privacy" class="inline-link">Privacy</a> below.</p>
       <h3 id="limits">What this does not know</h3>
       <p>The air model is a regression on 107,366 flight legs. Held out of its
@@ -1231,16 +1289,19 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          there, so it is never reported as the page location — only a place
          name from this site&rsquo;s own gazetteer is — and a clicked point is
          rounded to about 110 m before it is sent to Nominatim. Where the page
-         offers a time from the exact point you drag the departure marker to,
+         offers a map from the exact point you drag the departure marker to,
          that point is written there too, to about a metre, beside the city
          the map was moved to.</p>
-      <p><b>A dragged departure point.</b> Where the page offers it, the time
-         from the exact point you drop the departure marker on is computed by
-         this site&rsquo;s own server rather than in your browser. Once you
-         choose a destination, that point and the destination are sent to it,
-         to about a metre, along with the usual request metadata. It computes
-         that one time from them and passes them to no one else. Picking a
-         city from the list, or dropping the marker on a city, sends nothing.</p>
+      <p><b>A dragged departure point.</b> Where the page offers it, the map
+         from the exact point you drop the departure marker on, and the time
+         from it to a destination, are computed by this site&rsquo;s own server
+         rather than in your browser. When you drop the marker away from a
+         city, or open a link that carries such a point, the point is sent to
+         it, to about a metre, along with the usual request metadata; once you
+         choose a destination, the destination is sent too. It computes the
+         map and that one time from them, keeps no log of either, and passes
+         them to no one else. Picking a city from the list, or dropping the
+         marker on a city, sends nothing.</p>
       <p><b>Google Analytics.</b> Page views are counted by Google Analytics,
          which sets cookies and identifiers in your browser and sends Google
          your approximate location (derived from your IP address), your

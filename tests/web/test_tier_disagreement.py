@@ -70,6 +70,8 @@ def _run(node: str, tmp_path, *, land: bool, fine, coarse, has_reading=True) -> 
 const MAX_MINUTES = 65534;
 const HOVER_RES = 4, READING_RES = 6;
 let lastReadingRes = HOVER_RES;
+// The map from a dropped point is not on screen here (test_point_map.py runs it).
+const pointShown = () => false;
 const LAND = {str(land).lower()};
 const origin = {{
   reading: {"[" + str(fine) + "]" if has_reading else "null"},

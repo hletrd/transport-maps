@@ -61,6 +61,7 @@ def cap(node: str, tmp_path_factory):
     stubbed as a table so a test can say what every city's time is."""
     src = (re.search(r"const UNFILTERED_CAP = \d+;", APP).group(0) + "\n"
            + "const MAX_MINUTES = 65534;\n"
+           + "const pointShown = () => false;\n"
            + "let active = null, TIMES = {};\n"
            + "function lookup(lat, lon) { return TIMES[`${lat},${lon}`]; }\n"
            + _function("capCities") + "\n")
@@ -237,6 +238,7 @@ def filtered(node: str, tmp_path_factory):
            # parse, and a stub would let the filtered branch quietly fall
            # through to it, so it is the real one.
            + "let active = null;\nconst MAX_MINUTES = 65534;\n"
+           + "const pointShown = () => false;\n"
            + "function lookup() { return undefined; }\n"
            + _function("capCities") + "\n"
            + ranking
