@@ -261,7 +261,8 @@ SAFE_PIECES = {
     "band": "bandRangeOf()'s label, built from index.json's numeric band edges",
     'unit ? " " + unit : ""': "the same fixed unit set, or the empty string",
     'band ? " · " + band : ""': "the same band label, or the empty string",
-    'active ? " · from " + esc(active.name) : ""': "escapes the only fetched value",
+    'active ? " · from " + esc(originName()) : ""':
+        "escapes the only fetched value (a city name, or a fixed phrase for a point)",
 }
 
 # Sinks assigned a bare variable rather than a template. Static analysis cannot

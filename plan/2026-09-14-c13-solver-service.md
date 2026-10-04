@@ -545,6 +545,136 @@ Not built, in the order they must happen:
 - [x] **C13-F2.13** The page wiring (2026-10-02): arming from `index.json`,
   `exactFrom` kept from a drag, the on-demand line, `?dep=` in the address.
   See "How the page degrades".
+- [x] **C13-F2.14** The map from any point (2026-10-04, owner-approved):
+  `/api/map`, the kept trees, the nginx route, and the page's loading,
+  drawing, reading and fallback. See "The map from any point". Mutation-
+  checked: 30 service and 35 page mutations, each RED. Open: ship
+  `hover_cells.bin` beside the bundle in `scripts/deploy_solver.sh`, and the
+  `deploy/README.md` runbook's mention of the new route.
+
+## The map from any point (2026-10-04)
+
+The owner approved it on 2026-10-04 and asked only that the loading UI be
+clear. Until now a dragged departure snapped to the nearest of 1,464 charted
+cities, whose map is precomputed tiles, and the exact point got one number, to
+a chosen destination. Now the point gets the MAP. Nothing in the model, the
+graph or the build changes, so the freeze on model and input changes until
+rebuild 27 lands is not touched: this is the service and the page only.
+
+**The service.** `GET /api/map?from=lat,lon` snaps the point, solves once,
+and answers the minutes per `hover_cells.bin` cell in that file's order --
+`{slug}.bin`'s layout exactly -- as base64 inside the usual JSON envelope
+(`docs/contract.md`, "The map from a point"). Decisions:
+
+- **JSON plus base64, not a binary body.** One parse path for a map, a
+  journey and every failure; a captive portal's HTML 200 fails `JSON.parse`
+  as `unavailable`. Measured: 242,149 bytes, 148,706 gzipped (gzip -6),
+  against 130,277 for the raw uint16 array gzipped -- 14 % more on the wire
+  for a page that cannot misread a body.
+- **`WIRE_VERSION` stays 1; `mapVersion` 1 versions the array.** The map is
+  additive and `index.json`'s `solver.wire` (written by the build, frozen)
+  arms both endpoints; bumping the wire would disarm every page against the
+  shipped `index.json`. `count`, `hoverRes` and `buildId` ride along to be
+  checked, and the page refuses any that are not its own.
+- **The representative rule is `emit/hover.py`'s, restated** in
+  `service/hovermap.py` because the seam test bans `emit` from the package:
+  the parents come from `cells.npy` by h3 bit arithmetic (no per-cell Python),
+  the centres by the same arithmetic and a `searchsorted` on the bundle's
+  sorted ids, and the fallback groups are built once, at start. Held to
+  `emit.hover.write_hover` byte for byte, and to `representative_array`
+  child for child (the tie rule is invisible in the minutes), on a fixture
+  with every branch. Measured on the shipped `52660de5` bundle: the index
+  builds in 1.7 s and 2.7 MB (7,238 parents with no land centre, 277,420
+  fallback cells), reproduces `dist/hover_cells.bin` exactly, and the maps
+  from Seoul and from Suva equal `seoul.bin` and `suva.bin` at 0 differing
+  cells of 90,740.
+- **The order is checked at start.** `--hover-cells PATH`, or a
+  `hover_cells.bin` beside the bundle, makes the service refuse to start on
+  any difference. `scripts/deploy_solver.sh` does not ship that file yet
+  (out of this change's scope); until it does, the `buildId` the page checks
+  and `solver_gate`'s same-build rule are what tie the two.
+- **The last two shortest-path trees are kept**, keyed by snapped node, with
+  their predecessors, so the journey the page asks for next from the same
+  point is a lookup and a walk back. 12 bytes a node, 166 MB a tree on the
+  shipped graph; two beside the measured 1.2 GB peak stay inside 80 % of the
+  unit's 2,500 MB `MemoryMax`, and a test holds `TREES` to that. Room is
+  made before a solve, never after, so the peak is the kept trees plus one
+  solve in flight. Measured locally (a loaded Mac, five build workers
+  running): solve + map 9.3-9.4 s, map from a kept tree 4-5 ms (encode and
+  JSON 3.1 ms), `/api/solve` from a kept tree 0.0 s in the server log.
+- nginx: `location = /api/map`, the same `worldmap_solver` zone, the same
+  wire-format `busy` and `unavailable`, `access_log off`.
+
+**The page.** Armed by `meta.solver` only. A drop more than 1 km from the
+city it snaps to (or a `dep=` link) asks for the point's map at once:
+
+- *While it is computed* the reading panel (`#pointmap`) and a notice over
+  the globe (`#pointbusy`, the only place it shows when the phone sheet is
+  folded) both say "Computing travel times from the point you chose…" and
+  "This takes a few seconds. Seoul's map stays on screen until it is ready.",
+  the overlay counts the seconds over an indeterminate bar (none under
+  reduced motion), and both carry Cancel, which goes back to the city. The
+  city's tiles stay on screen. The dropped point is drawn as an accent ring.
+- *When it lands* it is drawn client-side: one outline per hover cell from
+  h3 (`cellToBoundary`, built in idle slices while the request is out, kept
+  flat in a Float64Array), one MultiPolygon per band with the tiles' `band`
+  values, `bandColorExpression()` and sort key, `fill-antialias: false`, in a
+  GeoJSON source with `tolerance: 0`, beneath `water`. A cell across the
+  antimeridian is split in two as `contour/bands.py` splits it. The tile
+  layer is hidden, not removed. Every reading, the departure card, the city
+  list and the legend's zoom detail then read the point's array; the
+  city's itinerary is withdrawn (its arrays are the city's), and the journey
+  from the point is the on-demand line with its legs, answered from the
+  kept tree. The panel says "This map is measured from the point you chose,
+  door to door, computed on demand on a grid of cells about 45 km across
+  (22 km a side), coarser than a charted city's map." with "Back to Seoul's
+  map".
+- *On any failure* -- each wire code, a captive portal, another build's
+  array -- the city's map stays, with "The map from the point you chose could
+  not be computed. <the code's sentence> The times on the map are still
+  measured from Seoul, the nearest charted departure city." and Try again.
+  Never `fatal()`. With a mode avoided nothing is asked for: "No map is
+  computed from the point you chose while the map avoids flights: the
+  service that computes it uses every mode. The map is Seoul's, the nearest
+  charted departure city."
+- Carry-on is not applied to the point's map readings (the array does not
+  say which cells flew) and the panel says its times assume a checked bag.
+
+**Measured in a real browser** (headless Chromium, 1280x800, against the real
+bundle served read-only through a local stand-in for nginx): building the
+GeoJSON 12-130 ms (the high end when the answer beat the idle-slice outline
+build), source loaded and shown 1.2-2.9 s after the answer on the loaded
+Mac. Main-thread heap after a forced GC: about 80 MB with the city's map,
+134 MB with the point's map shown (MapLibre keeps the GeoJSON it was given),
+91 MB after going back (the 15 MB outline cache is kept for the next map).
+The worker's tiling memory cannot be read from the page and is not
+measured. Dissolving each band with `h3.cellsToMultiPolygon` was tried to
+cut the vertex count and did not finish in 120 s in node, so the cells are
+drawn whole.
+
+**Browser evidence.** Loading, drawn, failure (busy and a captive portal),
+Cancel during the wait (the late answer changes nothing and `dep=` leaves the
+address), "Back to Seoul's map", a real drag of the marker, a pinned
+destination (journey answered from the kept tree) and the avoid path, at
+1280x800; loading and drawn at 820x1180, 390x844 and 844x390. No page
+errors, no console errors. At 1280x800 the three notices together grew the
+reading into the departure card; `fitReading` now stands the card down there
+as it does for a long itinerary.
+
+**Deploy, in order:** first make sure the bundle that will be shipped names
+its node layout -- `data/build/solver/meta.json` on the owner's Mac still
+lacked `nAirports` and `nStations` on 2026-10-04, and `deploy_solver.sh`
+rsyncs it over the host's copy with `--delete`, so run `python -m
+transport_maps.service.bundle add-counts data/build/solver dist` first or the
+legs go. Then `scripts/deploy_solver.sh` (ships `service/` and the nginx
+site, `nginx -t` first, restarts the unit; the probe is the same Seoul ->
+Gumi solve; start-up is ~1.7 s longer for the hover index), then check `/api/map` through
+nginx (`curl -s 'https://worldmap.atik.kr/api/map?from=37.8,127.25' | head
+-c 200` answers `"status":"ok"` with `"mapVersion":1`), then
+`scripts/deploy_verify.sh` for the page, then open it: drop the marker away
+from a city at the four viewports and watch the loading state, the drawn
+map and the console. Optionally copy `dist/hover_cells.bin` into the
+bundle directory on the host so the service checks the order at start.
 
 ## The owner's decisions, 2026-09-15 — recorded in full elsewhere
 
@@ -605,3 +735,7 @@ bundle's `meta.json` names its node layout, and the page prints them under
 the on-demand line. The bundle the `52660de5` rebuild wrote predates the
 counts, so the deploy must run `add-counts` on it first
 (`deploy/README.md`, "Legs need the node counts").
+
+2026-10-04: F2.14, the map from any point, is built in the service and the
+page, and verified in a browser against the real bundle; not deployed.
+Nothing in the model or the build changed.

@@ -121,6 +121,8 @@ const _els = {{}};
 const $ = (id) => (_els[id] ||= new El("div"));
 
 const MAX_MINUTES = 65534, NO_AIRPORT = 0xFFFF, NO_RAIL = 0xFFFF;
+// The map from a dropped point is not on screen here (test_point_map.py runs it).
+const pointShown = () => false;
 const MODE_NAMES = ["rail", "ferry", "highway"];
 const MODE_FALLBACK = {{ rail: "by train", ferry: "by boat", highway: "by road" }};
 const meta = {{ modeDetail: null, carryOn: {{ departureMin: 15, arrivalMin: 10 }} }};

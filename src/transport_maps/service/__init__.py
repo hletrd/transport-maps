@@ -14,22 +14,32 @@ an import added for convenience would quietly end that.
 
 from transport_maps.service.wire import (
     ERRORS,
+    MAP_VERSION,
     WIRE_VERSION,
+    MapRequest,
     SolveRequest,
     WireError,
     error_body,
     handle,
+    handle_map,
+    map_body,
     ok_body,
+    parse_map_query,
     parse_query,
 )
 
 __all__ = [
     "ERRORS",
+    "MAP_VERSION",
     "WIRE_VERSION",
+    "MapRequest",
     "SolveRequest",
     "WireError",
     "error_body",
     "handle",
+    "handle_map",
+    "map_body",
     "ok_body",
+    "parse_map_query",
     "parse_query",
 ]

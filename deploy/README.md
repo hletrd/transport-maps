@@ -185,7 +185,8 @@ is down, the page says the service is not ready and keeps working.
 
 ### nginx
 
-`location = /api/solve` in `deploy/worldmap.atik.kr.conf` proxies to the unit:
+`location = /api/solve` and `location = /api/map` in `deploy/worldmap.atik.kr.conf`
+proxy to the unit, with the same rules (one limit zone shared by both):
 
 - `limit_req zone=worldmap_solver` allows 6 requests a minute per address,
   with a burst of 3 (`nodelay`). Past that, nginx answers `busy` itself, as
@@ -263,6 +264,18 @@ exists:
 
 Expect `"status":"ok"` and a `"minutes"` value. Each call uses one of the six a
 minute that nginx allows your address.
+
+**The whole map from one point** (`/api/map`, the page's "map from the point
+you chose"):
+
+    curl -s 'https://worldmap.atik.kr/api/map?from=37.80000,127.25000' | head -c 200
+
+Expect `"status":"ok"`, `"mapVersion":1` and `"count"` equal to the site's
+hover cells (90,740 today); `times` is base64 of that many uint16, in
+`hover_cells.bin`'s order. The service keeps the last two shortest-path trees
+(166 MB each), so a `/api/solve` from the same point right after a map answers
+from memory. `scripts/deploy_solver.sh` ships `dist/hover_cells.bin` beside the
+bundle, and the service refuses to start if its own order differs from it.
 
 ### Rolling back
 

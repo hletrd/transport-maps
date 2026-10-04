@@ -405,3 +405,123 @@ def test_the_counts_come_from_the_same_builds_dist(tmp_path, monkeypatch):
             bundle.counts_from_dist(out, _dist(sub, **kw))
     bundle.main(["add-counts", str(out), str(_dist(tmp_path / "cli"))])
     assert bundle.load_bundle(out).layout == (nc, N_AIR, N_STN, 1)
+
+
+# ---- the kept trees: a map, then journeys from the same point ------------
+
+def _from(cells, i):
+    return wire.MapRequest(*h3.cell_to_latlng(cells[i]))
+
+
+def test_a_journey_from_the_point_a_map_was_drawn_from_is_not_solved_again(built):
+    """The page asks for the map from a point and then, with a destination,
+    for the journey from that same point. The second is a lookup in the tree
+    the first solved, with the same answer a fresh solve gives -- legs
+    included, so the predecessors were kept with the distances.
+
+    Mutations performed and reverted, each RED: key the kept trees on the
+    request's coordinates instead of the snapped node (a journey from the
+    centre of the same cell misses); keep `dist` only, dropping `pred` (the
+    legs go); never store a tree (`trees` ignored).
+    """
+    cells, _split, _csr, _missing, b = built
+    solver = bundle.GraphSolver(b)
+    solver.map(_from(cells, 0))
+    assert solver.solves == 1
+    # Not the map's coordinate: a point elsewhere in the same cell snaps to
+    # the same node, and that is what the tree is kept under.
+    lat, lon = h3.cell_to_boundary(cells[0])[0]
+    lat, lon = (lat + 2 * h3.cell_to_latlng(cells[0])[0]) / 3, (lon + 2 * h3.cell_to_latlng(cells[0])[1]) / 3
+    body = solver.solve(wire.SolveRequest(lat, lon, *h3.cell_to_latlng(cells[-1])))
+    assert solver.solves == 1, "the journey was solved again"
+    fresh = bundle.GraphSolver(b, trees=0).solve(_between(cells, 0, len(cells) - 1))
+    assert body == fresh and body["legs"] == JOURNEY
+
+
+def test_no_more_than_the_kept_trees_are_held(built):
+    """Two trees, most recently used kept. A third departure evicts the
+    oldest, which is then solved again; the one used last survives.
+
+    Mutations performed and reverted, each RED: evict the NEWEST
+    (`popitem(last=True)`); drop the `move_to_end` on a hit (the tree used
+    last is evicted instead of the older one); evict after storing rather
+    than before solving with `> self.trees` (three held at once).
+    """
+    cells, *_rest, b = built
+    solver = bundle.GraphSolver(b)
+    assert solver.trees == bundle.TREES == 2
+    solver.map(_from(cells, 0))
+    solver.map(_from(cells, 5))
+    solver.map(_from(cells, 0))                  # a hit: 0 is now the most recent
+    assert solver.solves == 2
+    solver.map(_from(cells, 9))                  # evicts 5, not 0
+    assert solver.solves == 3 and len(solver._kept) == 2
+    solver.map(_from(cells, 0))
+    assert solver.solves == 3, "the tree used last was evicted"
+    solver.map(_from(cells, 5))
+    assert solver.solves == 4 and len(solver._kept) == 2
+    assert solver.cache_bytes() == 2 * (b.meta["nNodes"] * (8 + 4))
+
+
+def test_the_kept_trees_fit_the_units_memory_limit():
+    """Two trees on the shipped graph, beside the measured peak of one solve
+    in flight, must stay inside the unit's MemoryMax. Raising TREES, or a
+    graph that grows, has to be weighed against that budget and not
+    discovered as an OOM kill on the web host.
+
+    The node count is the shipped `52660de5` bundle's; the 1,200 MB peak is
+    the measured one recorded in deploy/worldmap-solver.service.
+
+    Mutation performed and reverted: TREES = 8 -> RED.
+    """
+    import re
+
+    from transport_maps import config
+
+    unit = (config.ROOT / "deploy" / "worldmap-solver.service").read_text()
+    limit_mb = int(re.search(r"^MemoryMax=(\d+)M$", unit, re.M).group(1))
+    assert re.search(r"1\.2 GB\s+(#\s*)?peak", unit), \
+        "the measured peak this budget rests on is no longer recorded"
+    n_nodes = 13_838_136
+    tree_mb = n_nodes * (8 + 4) / 1e6            # float64 dist + int32 predecessors
+    assert 1200 + bundle.TREES * tree_mb <= 0.8 * limit_mb, (
+        f"{bundle.TREES} kept trees of {tree_mb:.0f} MB beside a 1,200 MB peak leave "
+        f"less than a fifth of MemoryMax={limit_mb}M")
+
+
+def test_the_server_answers_a_map(built):
+    """Over a real socket: the map, decoded, is the solver's own map; a bad
+    point is a 400; the solve path still answers beside it."""
+    import base64
+
+    cells, *_rest, b = built
+    solver = bundle.GraphSolver(b)
+    httpd = server._Server(("127.0.0.1", 0), server.make_handler(solver))
+    port = httpd.server_address[1]
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        la, lo = h3.cell_to_latlng(cells[3])
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/map?from={la},{lo}") as r:
+            body = json.loads(r.read())
+            assert r.status == 200 and body["status"] == "ok" and "max-age" in r.headers["Cache-Control"]
+        want = bundle.GraphSolver(b).map(_from(cells, 3))
+        assert base64.b64decode(body["times"]) == base64.b64decode(want["times"])
+        assert body["count"] == len({h3.cell_to_parent(c, 4) for c in cells})
+        with pytest.raises(urllib.error.HTTPError) as err:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/map?from=91,0")
+        assert err.value.code == 400 and json.loads(err.value.read())["code"] == "out_of_range"
+        lb, lob = h3.cell_to_latlng(cells[5])
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/solve?from={la},{lo}&to={lb},{lob}") as r:
+            assert json.loads(r.read())["status"] == "ok"
+        assert solver.solves == 1, "the journey from the map's point was solved again"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_a_map_from_the_sea_is_not_on_land(built):
+    *_rest, b = built
+    with pytest.raises(wire.WireError) as err:
+        bundle.GraphSolver(b).map(wire.MapRequest(0.0, -30.0))
+    assert err.value.code == "not_on_land"

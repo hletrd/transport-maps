@@ -20,8 +20,9 @@ Three parties touch the contract.
   once.
 - **Page**: `web/app.js`. It reads `dist/` over HTTP and never writes it.
 - **Service**: `src/transport_maps/service/`, the resident solver on the web
-  host. It reads only the solver bundle and answers `GET /api/solve`
-  (`deploy/README.md`, "The on-demand solver").
+  host. It reads only the solver bundle and answers `GET /api/solve` and,
+  since 2026-10-04, `GET /api/map` (`deploy/README.md`, "The on-demand
+  solver"; "The map from a point" below).
 
 The **writer** owns a format. If a layout changes, the writer changes first,
 the reader follows in the same commit, and `contractVersion` goes up (see
@@ -157,7 +158,10 @@ each origin has `pmtiles`, `bin`, `json`, `air.bin`, `modes.bin`, `r6.bin` and
   wire version `WIRE_VERSION` (`service/wire.py`). With the counts, a
   response carries `legs`: surface (with its rail minutes), fly and connect,
   airport ordinals as in `.air.bin`, summing to `minutes`
-  (`service/bundle.py:journey_legs`, `wire.LEG_FIELDS`).
+  (`service/bundle.py:journey_legs`, `wire.LEG_FIELDS`). A `hover_cells.bin`
+  beside the bundle is optional; when it is there, or named with
+  `--hover-cells`, the service refuses to start unless it lists the bundle's
+  own hover parents in the same order (below).
 - `.build.lock`, and every stray an aborted writer leaves (`*-journal`,
   `*.tmp`, `*.part`, `tmp*`). `check_dist` refuses a dist/ that contains them.
 
@@ -190,10 +194,63 @@ file when a field marked *frozen* no longer matches today's code
 | `graph` | {`rail`, `ferry`} | whether rail and ferries were in the graph | not read by the page; `reindex` carries it |
 | `inputsHash`, `buildId`, `builtAt`, `gitHead` | string | `build_identity()`, sampled when the build starts. The page prints `builtAt`; `buildId` ties the solver bundle to the build | no build date |
 | `inputs` | {url-or-name: {...}} | every raw input the build read, as `build-all` checked it first (`sources/_fetch.used`, G2): `sha256`, `size`, `fetchedAt` and the server's `etag`/`lastModified` per download; `snapshot`/`upstream` per OSM extract; the fetch window of the Wikipedia crawl and the Wikidata resolution. Not in `inputsHash`. `reindex` carries it | not read by the page |
-| `solver` | {`wire`} | present only when `data/build/solver` is from this same build (`_solver_matches`) | exact departure off |
+| `solver` | {`wire`} | present only when `data/build/solver` is from this same build (`_solver_matches`); arms both `/api/solve` and `/api/map` | exact departure and the map from a point off |
 
 `deploy_verify.sh`'s `solver_gate` refuses a deploy whose `index.json` offers
 `solver` while the web host's bundle has a different `buildId`.
+
+## The map from a point: `/api/map`
+
+Added 2026-10-04 (`plan/2026-09-14-c13-solver-service.md`, "The map from any
+point"). Writer: `service/bundle.py:GraphSolver.map` through
+`service/hovermap.py` and `service/wire.py:map_body`. Reader: `web/app.js`,
+`solveMap` and `pointFeatures`.
+
+`GET /api/map?from=<lat>,<lon>` answers the whole map from one point as one
+JSON body:
+
+```json
+{"v": 1, "status": "ok", "mapVersion": 1, "hoverRes": 4, "count": 90740,
+ "buildId": "52660de5-20261002T081551Z", "snappedKm": 0.0,
+ "snappedLat": 37.80123, "snappedLon": 127.24567, "times": "<base64>"}
+```
+
+- **`times` is a tier-A array.** Base64 of `count` little-endian uint16
+  minutes, one per `hover_cells.bin` cell in that file's order: exactly the
+  layout of `{slug}.bin`, sentinel included (values at or past 65,534 are
+  65,535), and valued by the same child -- the res-4 parent's centre at
+  `solveRes`, or at `fineRes` where that base cell was split, and its fastest
+  child (ties to the lowest node position) only where neither centre is
+  land. The rule is `emit/hover.py`'s; the service restates it with numpy
+  over `cells.npy` because the package may not import `emit`, and
+  `tests/service/test_hovermap.py` holds the two byte for byte. Measured on
+  the shipped bundle on 2026-10-04: Seoul's and Suva's maps equal their
+  `.bin` at all 90,740 cells.
+- **The order is checked at both ends.** The service derives the hover
+  parents from `cells.npy` (the sorted unique res-4 parents, as
+  `emit/hover.hover_cells` makes them) and, given a `hover_cells.bin`,
+  refuses to start on any difference. The page refuses a body whose `count`
+  is not its `hover_cells.bin` length, whose `hoverRes` is not its own, or
+  whose `buildId` is not `index.json`'s.
+- **`mapVersion`** (`wire.MAP_VERSION`, the page's `SOLVER_MAP_VERSION`, now
+  1) versions `times`' layout. The map is additive to wire 1, so `v` is
+  unchanged; a change to the array's order or width moves `mapVersion`, and
+  `tests/service/test_wire.py` keeps the two ends equal.
+- **Errors** are `/api/solve`'s: the same six codes and bodies, the same
+  validation of the one point, the same nginx limit zone and the same
+  wire-format `busy` and `unavailable` from nginx itself.
+- **Base64 in JSON, not a binary body**, so the page has one parse path for a
+  map, a journey and every failure, and a captive portal's HTML 200 fails
+  `JSON.parse` as `unavailable`. About 242 KB, ~149 KB gzipped by nginx,
+  against ~130 KB for the raw array gzipped.
+
+The page draws `times` as res-4 hexagons in a GeoJSON layer (`pointbands`)
+with the bands layer's paint and sort key, inserted beneath `water` like the
+tiles, and hides the tile layer while it is shown. Rule 2 below does not need
+the one-cell overlap there: the hexagons tile exactly and share every vertex,
+and the source is not simplified (`tolerance: 0`). A cell across the
+antimeridian is split into two polygons as `contour/bands.py
+_split_at_antimeridian` splits it.
 
 ## Sentinels, widths and byte order
 
@@ -230,6 +287,11 @@ file when a field marked *frozen* no longer matches today's code
 - `tests/emit/test_index.py`: `contractVersion` and the other fields.
 - The page itself: `hoverCellCount` and per-origin length checks, and a
   console warning for a newer `contractVersion`.
+- `tests/service/test_hovermap.py`: `/api/map`'s array against
+  `emit/hover.write_hover` byte for byte, its representatives against
+  `representative_array`, and the hover order against `hover_cells.bin`.
+- `tests/web/test_point_map.py`: what the page accepts from `/api/map` and
+  how it draws, reads and abandons it.
 - `tests/web/test_contract_version.py`: that warning, and the page's version
   against `emit/index.py`'s.
 

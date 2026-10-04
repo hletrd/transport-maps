@@ -26,6 +26,17 @@ no-rail; log `data/build/rebuild27.log`).
   The `add-counts` step below still works with that code (FORMAT-1 bundles
   stay readable and are the only ones `add-counts` accepts).
 
+## Code freeze while the chain runs
+Each step of the chain is a fresh `uv run` from the main checkout, so the
+variant builds use whatever `src/` holds when they start. The full build ran
+from `ee35274`; the variants will run with the commits merged since, all
+designed and tested output-identical (fa12fdd, 4924efb, 4d49eb8, 14b7d00,
+72e0163, 6a23da8, c97bdf4, c93c321, 48ca6bb, 353d7a7, 7db64fe, 3c94bfb,
+b3806b3 -- identity, progress records, speed, calibration values moved with
+values unchanged, wording). Nothing that changes the model or the inputs is
+merged until `ALL BUILDS DONE`: A15 waits on branch `rebuild28`, G2 likewise.
+The "no cell faster than the full map" check below is the backstop.
+
 ## Release checklist (in this order)
 - [ ] Chain finished: `ALL BUILDS DONE` in the log, no `CHAIN STOPPED`.
 - [ ] Every variant: no cell faster than the full map (all origins).
@@ -41,6 +52,12 @@ no-rail; log `data/build/rebuild27.log`).
 - [ ] `bash scripts/deploy_verify.sh` (batched if space is short) -- ALL CHECKS.
 - [ ] Browser: four viewports; Avoid options; Tinian; a dragged exact point with
       a destination shows the on-demand line; console clean.
+- [ ] Map from any point (merged 2026-10-04, 3d7878a): drop the marker away from
+      a city -> the loading notice (counter, bar, Cancel) -> the hexagon map
+      "measured from the point you chose" -> hover readings -> a destination's
+      legs answered from the kept tree -> Back to the city's map; Cancel and a
+      failure fall back to the city's map. `curl /api/map` shows mapVersion 1
+      and count 90,740 (deploy_solver.sh checks both).
 - [ ] Then, separately: drop `blob:` from `script-src` and `worker-src` in
       `deploy/worldmap-security-headers.conf` (MapLibre 6 no longer needs it;
       measured working without it), install the snippet, and verify in the

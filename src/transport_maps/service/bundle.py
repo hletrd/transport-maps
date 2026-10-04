@@ -41,6 +41,7 @@ import json
 import math
 import os
 import shutil
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,7 @@ import h3
 import numpy as np
 
 from transport_maps import config
+from transport_maps.service import hovermap
 from transport_maps.snap import _nearest_land
 
 # 2 since A15: the international airport layer (graph/build.py, `_air_edges`).
@@ -157,6 +159,9 @@ class Bundle:
     cell_pos: _SortedLookup
     split: _SortedLookup
     csr: Any
+    #: The directory it was mapped from, where `load_bundle` made it; the
+    #: service looks there for a hover_cells.bin to check its map order against.
+    path: Path | None = None
 
     def cell_at(self, lat: float, lon: float) -> str:
         """As NodeIndex.cell_at: the fine cell where the base cell was split."""
@@ -202,7 +207,7 @@ def load_bundle(path: Path) -> Bundle:
     n = meta["nNodes"]
     csr = sp.csr_matrix((a["data"], a["indices"], a["indptr"]), shape=(n, n), copy=False)
     return Bundle(meta, a["cells"], _SortedLookup(a["sorted_ids"], a["sorted_pos"]),
-                  _SortedLookup(a["split"]), csr)
+                  _SortedLookup(a["split"]), csr, path)
 
 
 def add_counts(path: Path, n_airports: int, n_stations: int) -> dict[str, Any]:
@@ -353,20 +358,76 @@ def walk_back(predecessors: np.ndarray, start: int, end: int) -> list[int]:
     return path
 
 
+# How many shortest-path trees the service keeps. One tree is the solve's
+# `dist` (float64) and, with a node layout, its `predecessors` (int32): 12
+# bytes a node, 166 MB on the shipped 13.8 million-node graph. The unit's
+# MemoryMax is 2,500 MB and the measured peak with one solve in flight is
+# 1.2 GB, so two kept trees (332 MB) leave room for the next solve's own
+# working set; tests/service/test_bundle.py holds the product to that budget.
+# Two, not one, because the page asks for a map from a point and then, once a
+# destination is pinned, for a journey from the SAME point -- and a visitor
+# who drags back to the previous point should not pay for it twice either.
+TREES = 2
+
+
 class GraphSolver:
-    """`wire.Solver` over a bundle: one exact point to one exact point."""
+    """`wire.Solver` over a bundle: one exact point to one exact point, or to
+    every hover cell at once.
 
-    def __init__(self, bundle: Bundle) -> None:
+    Both answers read one shortest-path tree from the departure's snapped
+    node, and the last `trees` of those are kept, keyed by that node. A map
+    and the journeys that follow it from the same point are one solve, not
+    one each: a journey from a kept tree is a lookup and a walk back.
+    """
+
+    def __init__(self, bundle: Bundle, *, trees: int = TREES,
+                 hover_cells: Path | None = None) -> None:
         self.bundle = bundle
+        self.trees = trees
+        self._kept: OrderedDict[int, tuple[np.ndarray, np.ndarray | None]] = OrderedDict()
+        #: Full solves run, for the log and for the test that a kept tree is
+        #: not solved again.
+        self.solves = 0
+        # Built before the first request can arrive, and checked: a map whose
+        # order is not the page's hover_cells.bin is refused here, at start,
+        # rather than painted. The file is looked for beside the bundle unless
+        # one is named.
+        self.hover = hovermap.build_index(bundle.cells, bundle.cell_pos._ids, bundle.cell_pos._pos)
+        shipped = Path(hover_cells) if hover_cells is not None else (
+            bundle.path / "hover_cells.bin" if bundle.path is not None else None)
+        if shipped is not None and (hover_cells is not None or shipped.exists()):
+            hovermap.check_order(self.hover, shipped)
 
-    def solve(self, req) -> dict[str, Any]:
-        """The minutes and, when the bundle names its node layout, the legs.
+    def cache_bytes(self) -> int:
+        """What the kept trees hold, in bytes."""
+        return sum(d.nbytes + (p.nbytes if p is not None else 0) for d, p in self._kept.values())
 
-        Predecessors are asked for only when they can be read: a bundle with
-        no layout answers a number and no `legs`, as before legs existed.
-        """
+    def _tree(self, node: int) -> tuple[np.ndarray, np.ndarray | None]:
+        """(dist, predecessors) from `node`, kept or solved. Predecessors are
+        asked for only when the bundle names its node layout and they can be
+        read; otherwise None, as before legs existed."""
+        kept = self._kept.get(node)
+        if kept is not None:
+            self._kept.move_to_end(node)
+            return kept
         from scipy.sparse.csgraph import dijkstra
 
+        # Make room BEFORE the solve, so the peak is the kept trees plus one
+        # solve in flight, never one more tree than `trees` beside it.
+        while self._kept and len(self._kept) >= self.trees:
+            self._kept.popitem(last=False)
+        if self.bundle.layout is None:
+            tree = (dijkstra(self.bundle.csr, directed=True, indices=node), None)
+        else:
+            tree = dijkstra(self.bundle.csr, directed=True, indices=node,
+                            return_predecessors=True)
+        self.solves += 1
+        if self.trees > 0:
+            self._kept[node] = tree
+        return tree
+
+    def solve(self, req) -> dict[str, Any]:
+        """The minutes and, when the bundle names its node layout, the legs."""
         from transport_maps.service.wire import WireError, ok_body
 
         start = self.bundle.snap(req.from_lat, req.from_lon)
@@ -374,19 +435,31 @@ class GraphSolver:
         if start is None or end is None:
             raise WireError("not_on_land")
         layout = self.bundle.layout
-        if layout is None:
-            dist, pred = dijkstra(self.bundle.csr, directed=True, indices=start[0]), None
-        else:
-            dist, pred = dijkstra(self.bundle.csr, directed=True, indices=start[0],
-                                  return_predecessors=True)
+        dist, pred = self._tree(start[0])
         t = float(dist[end[0]])
         reachable = math.isfinite(t)
         legs = None
-        if reachable and pred is not None:
+        if reachable and pred is not None and layout is not None:
             legs = journey_legs(walk_back(pred, start[0], end[0]), dist, *layout)
         lat, lon = self.bundle.centre(start[0])
         return ok_body(minutes=round(t) if reachable else None,
                        snapped_km=start[1], snapped_lat=lat, snapped_lon=lon, legs=legs)
+
+    def map(self, req) -> dict[str, Any]:
+        """Minutes from one point to every hover cell, as `{slug}.bin` holds
+        them for a charted city (service/hovermap.py)."""
+        from transport_maps.service.wire import WireError, map_body
+
+        start = self.bundle.snap(req.from_lat, req.from_lon)
+        if start is None:
+            raise WireError("not_on_land")
+        dist, _pred = self._tree(start[0])
+        times = hovermap.encode(hovermap.map_minutes(self.hover, dist[: self.bundle.meta["nCells"]]))
+        lat, lon = self.bundle.centre(start[0])
+        return map_body(times=times.tobytes(), count=len(times),
+                        hover_res=config.HOVER_RES,
+                        build_id=self.bundle.meta.get("identity", {}).get("buildId"),
+                        snapped_km=start[1], snapped_lat=lat, snapped_lon=lon)
 
 
 def main(argv: list[str] | None = None) -> None:
