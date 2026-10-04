@@ -44,6 +44,8 @@ REQUIRED_ATTRIBUTION = {
     "GRIP4": None,
     "OurAirports": None,
     "Natural Earth": None,
+    # borders.pmtiles (emit/borders.py); public domain, credited all the same.
+    "LSIB": "Public Domain",
     "GeoNames": "CC BY",
     "HydroLAKES": "CC BY",
     # The fitted cruise speed and climb/descent penalty are derived from their

@@ -87,7 +87,8 @@ from `dist/` must carry the same credits; `dist/index.json` ships them in its
 | [Wikipedia](https://en.wikipedia.org/) | CC BY-SA 4.0 | airline route network, from 'Airlines and destinations' sections |
 | [Wikidata](https://www.wikidata.org/) | CC0 1.0 | resolving destination articles to IATA codes (property P238) |
 | [OurAirports](https://ourairports.com/data/) | Public Domain | airport locations, sizes and scheduled-service status |
-| [Natural Earth](https://www.naturalearthdata.com/) | Public Domain | 1:10m land polygons defining the H3 cell universe; country borders; populated places behind the urban mask |
+| [Natural Earth](https://www.naturalearthdata.com/) | Public Domain | 1:10m land polygons defining the H3 cell universe; the de facto lines LSIB does not draw (Crimea, Northern Cyprus, Somaliland, Western Sahara, Siachen); populated places behind the urban mask |
+| [LSIB (U.S. Department of State)](https://catalog.data.gov/dataset/large-scale-international-boundaries) | Public Domain | international boundaries and other lines of separation (Large Scale International Boundaries, v11.4) |
 | [GRIP4 (Global Roads Inventory Project)](https://www.globio.info/download-grip-dataset) | CC0 1.0 | road-density rasters setting per-cell ground speed |
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) | ODbL 1.0 | coastlines drawn on the map (water polygons via [osmdata.openstreetmap.de](https://osmdata.openstreetmap.de/)); rail route relations and ferry ways; upstream source of the GRIP4 road network |
 | [GeoNames](https://www.geonames.org/) | CC BY 4.0 | departure cities and the place names under the cursor (cities15000) |

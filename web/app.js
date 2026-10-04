@@ -662,12 +662,15 @@ if (document.fonts?.ready) document.fonts.ready.then(() => refreshScale()).catch
 
 // Credits: the pipeline's list from index.json, plus what the PAGE itself
 // adds (the address search), so a build whose index.json predates a source
-// still credits it. GeoNames and HydroLAKES are listed here too for the
-// build that predates their rows; tests/emit/test_index.py keeps the licence
-// strings in step with the emitter's.
+// still credits it. GeoNames, HydroLAKES and LSIB are listed here too for the
+// build that predates their rows -- borders.pmtiles is a static asset and can
+// reach the site before the next build rewrites index.json;
+// tests/emit/test_index.py keeps the licence strings in step with the emitter's.
 const PAGE_CREDITS = [
   { name: "GeoNames", licence: "CC BY 4.0", url: "https://www.geonames.org/" },
   { name: "HydroLAKES", licence: "CC BY 4.0", url: "https://www.hydrosheds.org/products/hydrolakes" },
+  { name: "LSIB (U.S. Department of State)", licence: "Public Domain",
+    url: "https://catalog.data.gov/dataset/large-scale-international-boundaries" },
   { name: "Nominatim (OpenStreetMap)", licence: "ODbL 1.0", url: "https://nominatim.org/" },
 ];
 {

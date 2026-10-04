@@ -62,7 +62,13 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
         "name": "Natural Earth",
         "licence": "Public Domain",
         "url": "https://www.naturalearthdata.com/",
-        "usedFor": "1:10m land polygons defining the H3 cell universe; country borders; populated places behind the urban mask",
+        "usedFor": "1:10m land polygons defining the H3 cell universe; the de facto lines LSIB does not draw (Crimea, Northern Cyprus, Somaliland, Western Sahara, Siachen); populated places behind the urban mask",
+    },
+    {
+        "name": "LSIB (U.S. Department of State)",
+        "licence": "Public Domain",
+        "url": "https://catalog.data.gov/dataset/large-scale-international-boundaries",
+        "usedFor": "international boundaries and other lines of separation (Large Scale International Boundaries, v11.4)",
     },
     {
         "name": "GRIP4 (Global Roads Inventory Project)",
