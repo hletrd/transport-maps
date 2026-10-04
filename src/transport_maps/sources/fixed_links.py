@@ -173,13 +173,18 @@ def cached_snapshot(region: str) -> datetime | None:
     return max(snaps, default=None)
 
 
-def _cache_path(region: str, source_key: str) -> pathlib.Path:
+def _cache_path(region: str, source_key: str, *, stem: str = "fixed_links",
+                params: str | None = None) -> pathlib.Path:
     # Underscore-separated so the stamp is its own field; region names carry
-    # hyphens ("north-america") and never an underscore.
-    return config.CACHE / f"fixed_links_{region}_{_params_key()}_{source_key}.parquet"
+    # hyphens ("north-america") and never an underscore. `stem` and `params`
+    # let sources/road_crossings keep its own parse of the same extracts under
+    # its own constants.
+    params = _params_key() if params is None else params
+    return config.CACHE / f"{stem}_{region}_{params}_{source_key}.parquet"
 
 
-def _source(region: str, extracts_dir: pathlib.Path) -> pathlib.Path | None:
+def _source(region: str, extracts_dir: pathlib.Path, *, stem: str = "fixed_links",
+            params: str | None = None) -> pathlib.Path | None:
     """Where one region's links will come from -- a parquet to read, or a raw
     extract to parse into one -- or None when there is neither.
 
@@ -189,15 +194,16 @@ def _source(region: str, extracts_dir: pathlib.Path) -> pathlib.Path | None:
     present the exact source key must match (a newer download is a MISS); with
     it absent, the newest cache under the current parser constants is used.
     """
+    params = _params_key() if params is None else params
     raw = extracts_dir / f"{region}.osm.pbf"
     if raw.exists():
         from transport_maps.sources import geofabrik
 
-        cached = _cache_path(region, _source_key(raw))
-        geofabrik.adopt(cached, _cache_path(region, _mtime_key(raw)))
+        cached = _cache_path(region, _source_key(raw), stem=stem, params=params)
+        geofabrik.adopt(cached, _cache_path(region, _mtime_key(raw), stem=stem, params=params))
         return cached if cached.exists() else raw
     # The newest snapshot first; mtime only among caches that record none.
-    found = sorted(config.CACHE.glob(f"fixed_links_{region}_{_params_key()}_*.parquet"),
+    found = sorted(config.CACHE.glob(f"{stem}_{region}_{params}_*.parquet"),
                    key=lambda p: (_snapshot_of(p) is not None,
                                   _snapshot_of(p) or datetime.min, p.stat().st_mtime))
     return found[-1] if found else None
