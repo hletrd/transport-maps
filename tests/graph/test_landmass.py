@@ -572,6 +572,23 @@ def test_a_plain_road_dead_ending_over_water_is_not_continued():
     assert landmass.spanning_links(roads, at, ground.SPEED_BY_ROAD_CLASS_KMH) == {}
 
 
+def test_a_road_stretch_touching_a_bridge_end_does_not_stop_it_being_continued():
+    """The King Fahd Causeway: bridge decks between islets, the road across
+    each islet a plain road that itself stops over "water" the coarse coast
+    does not have. With that road counted, a bridge end looked live, was not
+    continued, and Bahrain -- joined before road stretches were read -- was
+    cut (2026-10-04)."""
+    a, far = h3.cell_to_latlng(A), h3.cell_to_latlng(FAR3)
+    e1, e2 = _between(a, far, 0.45), _between(a, far, 0.55)
+    on_islet = _between(a, far, 0.47)
+    at = _at([A, FAR3])
+    assert at(*on_islet) is None, "fixture: the islet road ends over water too"
+    links = pl.DataFrame([_way(1, "motorway", [a, e1]), _way(2, "motorway", [e2, far]),
+                          _road(3, "primary", [e1, on_islet])], schema=fixed_links.SCHEMA)
+    got = landmass.spanning_links(links, at, ground.SPEED_BY_ROAD_CLASS_KMH)
+    assert set(got) == {(0, 1), (1, 0)}
+
+
 def test_two_stretches_of_one_road_way_do_not_share_samples():
     """sources/road_crossings can give one way several stretches. Keyed by way
     id, the k-th sample of each was one vertex, and two stretches that each

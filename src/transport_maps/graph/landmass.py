@@ -285,6 +285,13 @@ def spanning_links(links: pl.DataFrame,
     # class that ends there (a major road only if every way there is one).
     end_at: dict[Vertex, tuple[float, float]] = {}
     end_class: dict[Vertex, int] = {}
+    # How many bridge and tunnel steps meet at each vertex. An end is dead by
+    # THIS count, not by everything joined there: a plain road stretch on a
+    # causeway's embankment, itself stopping over water, used to make the
+    # bridge end it touched look live -- and the King Fahd Causeway, which was
+    # continued from islet to islet before road stretches were read, was cut
+    # (measured 2026-10-04, Bahrain).
+    bridge_degree: dict[Vertex, int] = {}
 
     def vertex(key: Vertex, lat: float, lon: float) -> Vertex:
         if key not in cell_of:
@@ -331,10 +338,13 @@ def spanning_links(links: pl.DataFrame,
                     here = vertex(("s", row, s, k), la, lo)
                 step = seg / n
                 join(prev, here, step, 60.0 * step / speed)
+                if ends:
+                    bridge_degree[prev] = bridge_degree.get(prev, 0) + 1
+                    bridge_degree[here] = bridge_degree.get(here, 0) + 1
                 prev = here
 
-    _continue_dead_ends(cell_of, adj, end_at, end_class, cell_index_at, speed_kmh_by_class,
-                        join)
+    _continue_dead_ends(cell_of, bridge_degree, end_at, end_class, cell_index_at,
+                        speed_kmh_by_class, join)
 
     out: dict[tuple[int, int], float] = {}
     # From every land vertex that touches water, walk through water only.
@@ -366,8 +376,8 @@ def spanning_links(links: pl.DataFrame,
     return out
 
 
-def _continue_dead_ends(cell_of, adj, end_at, end_class, cell_index_at, speed_kmh_by_class,
-                        join) -> None:
+def _continue_dead_ends(cell_of, bridge_degree, end_at, end_class, cell_index_at,
+                        speed_kmh_by_class, join) -> None:
     """Continue major-road fixed links that dead-end over water (ISLET_MAX_CLASS).
 
     Landfall: a dead end joins the nearest land cell in the ring around it.
@@ -383,7 +393,7 @@ def _continue_dead_ends(cell_of, adj, end_at, end_class, cell_index_at, speed_km
     # reaches only land, and the search never walks land to land -- so it is
     # kept for what it says rather than for anything a test can see.
     dead = [v for v, (la, lo) in end_at.items()
-            if cell_of[v] is None and len(adj.get(v, ())) == 1
+            if cell_of[v] is None and bridge_degree.get(v, 0) == 1
             and end_class.get(v, 99) <= ISLET_MAX_CLASS]
     for v in dead:
         la, lo = end_at[v]
