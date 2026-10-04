@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 
 import h3
 import numpy as np
+import polars as pl
 
 from transport_maps import config
 from transport_maps.graph.layout import NodeLayout
@@ -82,7 +83,8 @@ class NodeIndex:
     fine: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool))
     _split: frozenset = frozenset()
     # Ordered (u, v) cell-position pairs that are adjacent on the grid but lie
-    # on different landmasses with no bridge or tunnel between (graph/landmass).
+    # on different landmasses with no road between: no bridge, tunnel or causeway
+    # (graph/landmass).
     # Like rail, optional: empty means the fixed-link extracts were absent and
     # adjacent land cells are joined across water as they always were -- a
     # valid build, but `severed` says which one a caller got.
@@ -286,14 +288,24 @@ def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict]
     Severing reads the ABSENCE of a bridge as evidence of water, so it is only
     sound with every region's links present; `fixed_links.fixed_links` returns
     None otherwise, and the grid then stays joined exactly as it was.
+
+    The plain roads across a seam (`road_crossings`) are links too: a seawall
+    or a polder road joins two land parts as surely as a bridge. Without them
+    -- `road_crossings` returns None when a region has neither parse nor
+    extract -- severing falls back to bridges and tunnels alone, as every
+    build before 2026-10-04 did, and says so.
     """
-    from transport_maps.sources import fixed_links
+    from transport_maps.sources import fixed_links, road_crossings
 
     from . import ground, landmass
 
     links = fixed_links.fixed_links()
     if links is None:
         return frozenset(), {}
+    crossings = road_crossings.road_crossings()
+    n_roads = 0 if crossings is None else crossings.height
+    if crossings is not None:
+        links = pl.concat([links, crossings])
     at = lambda lat, lon: cell_pos.get(cell_at(lat, lon))  # noqa: E731
     linked = landmass.linked_pairs(links, at)
     spans, linked = landmass.split_spans(
@@ -304,10 +316,11 @@ def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict]
                                           landmask._land_parts())
     severed = landmass.severed_pairs(base_cells, base_parts, split_set, cell_pos, linked,
                                      fine_parts=fine_parts)
-    logger.info("%d fixed link(s) join %d adjacent cell pair(s); %d pair(s) severed "
-                "across open water (%d fine cells of %d straddling base cells judged "
-                "one by one); %d road span(s) over water added",
-                len(links), len(linked) // 2, len(severed) // 2, len(fine_parts),
+    logger.info("%d fixed link(s) and %d road crossing(s) join %d adjacent cell pair(s); "
+                "%d pair(s) severed across open water (%d fine cells of %d straddling base "
+                "cells judged one by one); %d road span(s) over water added",
+                len(links) - n_roads, n_roads, len(linked) // 2, len(severed) // 2,
+                len(fine_parts),
                 len({h3.cell_to_parent(c, config.SOLVE_RES) for c in fine_parts}),
                 len(spans) // 2)
     return severed, spans

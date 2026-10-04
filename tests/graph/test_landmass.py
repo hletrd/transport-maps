@@ -537,3 +537,73 @@ def test_a_major_road_dead_end_one_cell_short_of_shore_makes_landfall():
     links = pl.DataFrame([_way(1, "trunk", [a, far])], schema=fixed_links.SCHEMA)
     got = landmass.spanning_links(links, _at([A, shore]), ground.SPEED_BY_ROAD_CLASS_KMH)
     assert set(got) == {(0, 1), (1, 0)}
+
+
+# ---- A16: plain roads across a seam (sources/road_crossings) -----------------
+
+def _road(wid, highway, pts):
+    return {**_way(wid, highway, pts), "kind": "road"}
+
+
+def test_a_plain_road_over_water_is_a_span_as_a_bridge_is():
+    """The Sihwa seawall: 12.7 km of primary road over cells the land mask
+    lacks, with no bridge tag on it. Read as a bridge would be."""
+    links = pl.DataFrame([_road(1, "primary", [h3.cell_to_latlng(A), h3.cell_to_latlng(FAR)])],
+                         schema=fixed_links.SCHEMA)
+    got = landmass.spanning_links(links, _at([A, FAR]), ground.SPEED_BY_ROAD_CLASS_KMH)
+    assert set(got) == {(0, 1), (1, 0)}
+
+
+def test_a_plain_road_dead_ending_over_water_is_not_continued():
+    """The islet rule joins two bridge ends that stop over water. Two plain
+    roads that stop over water a few kilometres apart are two quays or two
+    ferry ramps on facing shores, and joining them would build the road the
+    ferry exists because there is none of."""
+    a, far = h3.cell_to_latlng(A), h3.cell_to_latlng(FAR3)
+    e1, e2 = _between(a, far, 0.45), _between(a, far, 0.55)
+    at = _at([A, FAR3])
+    assert at(*e1) is None and at(*e2) is None, "fixture: both ends over water"
+    bridge = pl.DataFrame([_way(1, "motorway", [a, e1]), _way(2, "motorway", [e2, far])],
+                          schema=fixed_links.SCHEMA)
+    assert landmass.spanning_links(bridge, at, ground.SPEED_BY_ROAD_CLASS_KMH), \
+        "control: as bridges the two ends ARE one crossing over an islet"
+    roads = pl.DataFrame([_road(1, "motorway", [a, e1]), _road(2, "motorway", [e2, far])],
+                         schema=fixed_links.SCHEMA)
+    assert landmass.spanning_links(roads, at, ground.SPEED_BY_ROAD_CLASS_KMH) == {}
+
+
+def test_two_stretches_of_one_road_way_do_not_share_samples():
+    """sources/road_crossings can give one way several stretches. Keyed by way
+    id, the k-th sample of each was one vertex, and two stretches that each
+    stop over water joined across it."""
+    a, far = h3.cell_to_latlng(A), h3.cell_to_latlng(FAR3)
+    links = pl.DataFrame([_road(7, "primary", [a, _between(a, far, 0.4)]),
+                          _road(7, "primary", [_between(a, far, 0.6), far])],
+                         schema=fixed_links.SCHEMA)
+    assert landmass.spanning_links(links, _at([A, FAR3]), ground.SPEED_BY_ROAD_CLASS_KMH) == {}
+
+
+def test_a_road_crossing_keeps_a_pair_joined_as_a_bridge_does(monkeypatch):
+    """Through nodes._severed, which is what the build calls: the road rows
+    must reach the severing at all."""
+    from transport_maps.graph import nodes
+    from transport_maps.sources import road_crossings
+
+    cells = [A, B]
+    pos = {c: i for i, c in enumerate(cells)}
+    monkeypatch.setattr(landmask, "land_cell_landmasses", lambda res: [(1,), (2,)])
+    monkeypatch.setattr(landmask, "_land_parts", lambda: [])
+    monkeypatch.setattr(fixed_links, "fixed_links",
+                        lambda **k: pl.DataFrame([], schema=fixed_links.SCHEMA))
+    seawall = pl.DataFrame([_road(1, "primary", [h3.cell_to_latlng(A), h3.cell_to_latlng(B)])],
+                           schema=fixed_links.SCHEMA)
+
+    def cell_at(lat, lon):
+        return h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
+
+    monkeypatch.setattr(road_crossings, "road_crossings", lambda **k: None)
+    severed, _ = nodes._severed(cells, set(), pos, cell_at)
+    assert (0, 1) in severed, "control: without the road the two parts are cut"
+    monkeypatch.setattr(road_crossings, "road_crossings", lambda **k: seawall)
+    severed, _ = nodes._severed(cells, set(), pos, cell_at)
+    assert not severed

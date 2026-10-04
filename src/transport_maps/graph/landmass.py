@@ -1,4 +1,4 @@
-"""Which adjacent land cells open water separates, with no bridge or tunnel between.
+"""Which adjacent land cells open water separates, with no road between.
 
 `ground.hex_edges` joins every pair of adjacent land cells, and a land cell is
 any cell touching land. At SOLVE_RES two cells on opposite shores of a strait
@@ -11,13 +11,18 @@ A pair of adjacent cells is SEVERED when
 
   * their base cells' hexagons touch no land part in common
     (`landmask.land_cell_landmasses`), and
-  * no bridge or tunnel (`sources/fixed_links`) passes from one into the other.
+  * no road passes from one into the other: no bridge or tunnel
+    (`sources/fixed_links`), and no plain road across the seam
+    (`sources/road_crossings`) -- a seawall, a polder dike, a causeway.
 
 Both halves are needed. Six rules built on geometry alone were measured and
 all failed; so did landmass identity without the bridges, which splits every
 bridged island chain. With both, on named cases (`scripts/check_fixed_links.py`),
 the Great Seto, Akashi-Kaikyo and Naruto bridges stay joined while Shodoshima
-and Tinian, which only ferries and aircraft reach, are cut.
+and Tinian, which only ferries and aircraft reach, are cut. Bridges and
+tunnels alone were not enough either: the Sihwa seawall, Jido's polder roads
+and the islet between the Apdo Bridge's decks carry neither tag, and
+Daebu-do, Jido and Apdo were cut (2026-10-04, A16).
 
 Two finer points, both handled here:
 
@@ -204,6 +209,10 @@ SPAN_ROAD_CLASS = {
     "tertiary": 4, "tertiary_link": 4,
     "unclassified": 5, "residential": 5, "road": 5, "service": 5, "living_street": 5,
 }
+# Link kinds that carry a road: a bridge or tunnel (sources/fixed_links) and a
+# plain road across a land-part seam (sources/road_crossings). Railways cross
+# on the rail graph and are never a span.
+ROAD_KINDS = frozenset({"highway", "road"})
 # The longest fixed road link in service, the Hong Kong-Zhuhai-Macau crossing,
 # is about 55 km including its tunnel. A "span" longer than this is a mapping
 # error or two unrelated land cells, not a bridge.
@@ -254,7 +263,9 @@ def spanning_links(links: pl.DataFrame,
     cut before any severing. This finds, for every such crossing, the land cell
     where it leaves land and the one where it arrives, costed along the link at
     each piece's own road class. Railway links are not returned: trains
-    already cross on the rail graph.
+    already cross on the rail graph. A plain road across cells the land mask
+    lacks -- the Sihwa seawall's 12.7 km -- is a span the same way (kind
+    "road", sources/road_crossings), but is never continued past a dead end.
 
     **Ways are stitched, not taken one at a time.** OSM splits a long crossing
     into several ways -- the bridge deck, a tunnel, the approach viaducts --
@@ -284,32 +295,40 @@ def spanning_links(links: pl.DataFrame,
         adj.setdefault(a, []).append((b, km, minutes))
         adj.setdefault(b, []).append((a, km, minutes))
 
-    for way_id, kind, highway, lats, lons in zip(
-            links["way_id"].to_list(), links["kind"].to_list(), links["highway"].to_list(),
-            links["lat"].to_list(), links["lon"].to_list()):
-        cls = SPAN_ROAD_CLASS.get(highway) if kind == "highway" else None
+    for row, (kind, highway, lats, lons) in enumerate(zip(
+            links["kind"].to_list(), links["highway"].to_list(),
+            links["lat"].to_list(), links["lon"].to_list())):
+        cls = SPAN_ROAD_CLASS.get(highway) if kind in ROAD_KINDS else None
         if cls is None:
             continue
         speed = float(speed_kmh_by_class[cls])
+        # Only a bridge or tunnel is continued past a dead end over water. A
+        # plain road that stops "over water" stops at a coast the mask draws
+        # too far inland -- a quay, a slipway, a ferry ramp -- and two of them
+        # 5 km apart on facing shores are two ferry terminals, not an islet.
+        ends = kind == "highway"
         for s, ((la1, lo1), (la2, lo2)) in enumerate(zip(zip(lats, lons), zip(lats[1:], lons[1:]))):
             if abs(lo2 - lo1) > 180.0:
                 continue
             seg = _haversine_km(la1, lo1, la2, lo2)
             n = max(1, math.ceil(seg / LINK_STEP_KM))
             prev = vertex(("n", round(la1, 7), round(lo1, 7)), la1, lo1)
-            if s == 0:
+            if s == 0 and ends:
                 end_at[prev] = (la1, lo1)
                 end_class[prev] = max(end_class.get(prev, 0), cls)
             for k in range(1, n + 1):
                 t = k / n
                 if k == n:
                     here = vertex(("n", round(la2, 7), round(lo2, 7)), la2, lo2)
-                    if s == len(lats) - 2:
+                    if s == len(lats) - 2 and ends:
                         end_at[here] = (la2, lo2)
                         end_class[here] = max(end_class.get(here, 0), cls)
                 else:
+                    # Keyed by row, not way id: one road way can give several
+                    # stretches (sources/road_crossings), and their samples
+                    # must not be taken for one another's.
                     la, lo = la1 + (la2 - la1) * t, lo1 + (lo2 - lo1) * t
-                    here = vertex(("s", way_id, s, k), la, lo)
+                    here = vertex(("s", row, s, k), la, lo)
                 step = seg / n
                 join(prev, here, step, 60.0 * step / speed)
                 prev = here
