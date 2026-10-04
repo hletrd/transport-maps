@@ -71,6 +71,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import warnings
 from pathlib import Path
 
 import httpx
@@ -161,12 +162,18 @@ def _geoms(table) -> list:
 
 def lsib_features(path: Path) -> list[dict]:
     """LSIB's lines as (kind, geometry) features."""
-    layers = [str(name) for name, _ in pyogrio.list_layers(path)]
-    if LSIB_LAYER not in layers:
-        raise RuntimeError(
-            f"{path.name} holds layers {layers}, not {LSIB_LAYER!r}: a new LSIB edition. "
-            "Review its ranks and the corrections in emit/borders.py, then update LSIB_LAYER.")
-    _, table = pyogrio.read_arrow(path, layer=LSIB_LAYER)
+    with warnings.catch_warnings():
+        # LSIB ships its GeoPackage in WAL mode, and SQLite cannot make the
+        # -wal/-shm files beside it on the NFS mount this repo lives on, so
+        # GDAL warns twice and reopens it immutable -- which is what a cached
+        # input is. The warning is about the mount, not the data.
+        warnings.filterwarnings("ignore", message=".*WAL-enabled database", category=RuntimeWarning)
+        layers = [str(name) for name, _ in pyogrio.list_layers(path)]
+        if LSIB_LAYER not in layers:
+            raise RuntimeError(
+                f"{path.name} holds layers {layers}, not {LSIB_LAYER!r}: a new LSIB edition. "
+                "Review its ranks and the corrections in emit/borders.py, then update LSIB_LAYER.")
+        _, table = pyogrio.read_arrow(path, layer=LSIB_LAYER)
     cols = table.to_pydict()
     golan = {frozenset(p) for p in GOLAN_PAIRS}
     feats = []
