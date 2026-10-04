@@ -167,3 +167,20 @@ def test_a_failed_filter_leaves_the_previous_rail_extract(env):
     assert "[FAIL] filter asia" in out
     assert out_path.read_bytes() == b"old rail"
     assert not list(_osm(env).glob("*.new.osm.pbf"))
+
+
+def test_both_osm_scripts_default_to_the_same_directory():
+    """osm_rail.sh defaulted to ~/osm while osm_fixed_links.sh used the repo's
+    data/cache/osm, so running both on a fresh machine fetched every continent
+    twice and left the rail extracts where the build does not look.
+
+    Mutation performed and reverted: restore `$HOME/osm` -> red.
+    """
+    from transport_maps import config
+
+    def default(name: str) -> str:
+        text = (config.ROOT / "scripts" / name).read_text()
+        line = next(ln for ln in text.splitlines() if ln.startswith('D="${OSM_DIR:-'))
+        return line.split(":-", 1)[1].split("}", 1)[0]
+
+    assert default("osm_rail.sh") == default("osm_fixed_links.sh")

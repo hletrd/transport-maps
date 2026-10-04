@@ -17,15 +17,19 @@
 # -- the one scripts/osm_fixed_links.sh keeps for the bridge parse -- is
 # filtered in place and left alone.
 #
-#   OSM_DIR=~/osm ./scripts/osm_rail.sh
-#   OSM_REPLACE=1 OSM_DIR=~/osm ./scripts/osm_rail.sh asia   # re-filter Geofabrik's current file
-# then copy the filtered extracts to data/cache/osm/ on the build machine.
+#   ./scripts/osm_rail.sh
+#   OSM_REPLACE=1 ./scripts/osm_rail.sh asia   # re-filter Geofabrik's current file
+# The default directory is the repo's data/cache/osm, the same as
+# scripts/osm_fixed_links.sh. It used to be ~/osm (for running this on another
+# host and copying the results back), and on 2026-10-04 that sent a fresh
+# machine to re-download all seven continents beside the raw extracts
+# osm_fixed_links.sh had just fetched. Set OSM_DIR to put them elsewhere.
 #
 # OSM_REPLACE=1 is how `build-all` refreshes a rail extract that has fallen
 # behind Geofabrik (sources/geofabrik.py, G2): the existing *-rail.osm.pbf is
 # rebuilt rather than skipped, and replaced only once the filter succeeds.
 set -uo pipefail
-D="${OSM_DIR:-$HOME/osm}"; mkdir -p "$D"
+D="${OSM_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/data/cache/osm}"; mkdir -p "$D"
 REPLACE="${OSM_REPLACE:-0}"
 REGIONS=("$@")
 [ ${#REGIONS[@]} -eq 0 ] && REGIONS=(europe asia north-america south-america africa australia-oceania central-america)
