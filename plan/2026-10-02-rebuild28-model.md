@@ -131,3 +131,29 @@ the numbers can be re-taken from any build's airport table and route network.
   (each its own code); whether that desk exists was not checked.
 - The B1 interplay above: A15's saving is capped wherever the landside
   reconnect is cheaper than the connection.
+
+## Where rebuild 28 runs: h200 (2026-10-04)
+
+The owner asked for faster rebuilds and named h200 (xylolabs-h200 repo: a
+rented 8x H200 node, 192 cores, 1.9 TB RAM, user `work`, only `/default`
+persistent; it also serves inference, so roughly 687 GB was free when
+checked). Rebuild 27 on the 32 GB Mac ran five workers at most and took 30 h
+for the full map, because a worker peaks at 8-11 GB.
+
+- Environment, all under `/default/worldmap`: micromamba with tippecanoe
+  2.79.0 and osmium-tool 1.19.1 (conda-forge, `tools/`), uv with Python 3.14
+  (`uv-python/`, `uv-cache/`), the repo on branch `rebuild28` (`repo/`).
+  numpy 2.5.2, scipy 1.18.1, h3 4.5.0, the same as the Mac.
+- Workers: `TRANSPORT_MAPS_WORKERS` (bb44988), refused unless 12 GB a worker
+  plus 20 GB fits in 80% of MemAvailable. About 40 fit today, which should
+  bring the full map from 30 h to roughly 2-3 h.
+- Inputs: G2 makes the build fetch what it needs from upstream, so nothing
+  but the code is copied there; OSM extracts come from Geofabrik directly.
+- Fast suite on h200: 1563 passed, 7 failed, none touching build output --
+  two deploy-gate tests that assume `node` is not in /usr/bin (h200 has it;
+  nothing deploys from h200), four departure-list page tests under its node
+  20 (the Mac's is newer), and the peak-memory test, whose lower bound reads
+  a container RSS above getrusage's high-water mark. The unit guard in that
+  test does go red on Linux (checked).
+- Output comes back to the Mac over ssh (ProxyJump aws-proxy) and is deployed
+  from there as usual; h200 holds no credentials for the web host.
