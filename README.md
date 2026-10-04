@@ -34,16 +34,18 @@ uv run transport-maps build-all            # every origin -> dist/ (one build pe
 uv run transport-maps build-all --only seoul,tokyo   # a smoke test through every gate; index.json untouched
 uv run transport-maps build-all --skip-existing     # resume a build that died: rebuild only unfinished origins
 uv run transport-maps reindex              # rewrite dist/index.json from the artifacts on disk
-uv run transport-maps assets               # places.json, airports.json, borders.json -> dist/
+uv run transport-maps assets               # places.json, airports.json, borders.pmtiles -> dist/
 uv run python scripts/check_dist.py        # is dist/ consistent enough to deploy?
 uv run python scripts/build_water_tiles.py # the coast, once -> dist/water.pmtiles
 ```
 
-`assets` writes the three static JSON files the page loads beside the
-per-origin arrays (`transport-maps assets airports.json` for one). They depend
-on no graph and no origin, so `build-all` does not write them; rerun it when
-the GeoNames, OurAirports or Natural Earth inputs change. It takes the same
-build lock as `build-all` and `reindex`.
+`assets` writes the three static files the page loads beside the per-origin
+arrays (`transport-maps assets airports.json` for one). They depend on no graph
+and no origin, so `build-all` does not write them; rerun it when the GeoNames,
+OurAirports, LSIB or Natural Earth inputs change. `borders.pmtiles` needs
+tippecanoe, like the coast, and refuses a new LSIB edition until
+`emit/borders.py` has been reviewed against it. It takes the same build lock
+as `build-all` and `reindex`.
 
 `--only` and `--limit` make a PARTIAL build: `index.json` is left untouched, but
 `dist/hover_cells.bin` and the named origins under `dist/origins/` **are**
