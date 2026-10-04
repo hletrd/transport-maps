@@ -597,3 +597,28 @@ def test_a_map_that_is_not_count_minutes_is_refused(times, count):
         wire.map_body(times=times, count=count, hover_res=4, build_id="b",
                       snapped_km=0.0, snapped_lat=0.0, snapped_lon=0.0)
 
+def test_the_map_route_is_rate_limited_and_refused_like_the_solve_route():
+    """The map costs the same full solve as a journey. Its nginx block must
+    share the limit zone -- or the map is a way round the limit -- answer the
+    same two wire-format refusals (whose bodies the test above pins), and keep
+    no access log of the point.
+
+    Mutations performed and reverted, each RED: give /api/map its own zone;
+    map its 429 to a plain error; delete its `access_log off;`; delete the
+    /api/map block.
+    """
+    import re
+
+    from transport_maps import config
+
+    conf = (config.ROOT / "deploy" / "worldmap.atik.kr.conf").read_text()
+    for path in ("/api/solve", "/api/map"):
+        block = re.search(r"location = " + re.escape(path) + r" \{(.*?)\n    \}", conf, re.S)
+        assert block, f"no exact location for {path}"
+        b = block.group(1)
+        for line in ("access_log off;", "limit_req zone=worldmap_solver burst=3 nodelay;",
+                     "error_page 429 = @solver_busy;",
+                     "error_page 502 503 504 = @solver_unavailable;",
+                     "proxy_pass http://127.0.0.1:8787;",
+                     "include snippets/worldmap-security-headers.conf;"):
+            assert re.search(r"^\s*" + re.escape(line), b, re.M), f"{path}: {line}"
