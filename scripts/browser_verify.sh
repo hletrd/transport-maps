@@ -360,12 +360,16 @@ echo "$C" | grep -q '"noLabel":true' && { echo "  !! no origin label was clickab
 echo "$C" | grep -q '"unchanged":true' && { echo "  !! clicking an origin label did not change the departure"; fail=1; }
 echo "$C" | grep -qE '"to":"pmtiles://\./origins/[a-z0-9-]+\.pmtiles"' || { echo "  !! the bands source is not an origin archive ($C)"; fail=1; }
 # low zoom: the coarse level must paint, the coast must be there, and the
-# borders layer must have rendered features (a 404 on borders.json or a failed
-# addLayer used to pass because the old check looked at the map canvas).
-Z=$(agent-browser eval '(()=>{const m=window.__map;m.jumpTo({center:[127,36],zoom:3.4});return 1})()' >/dev/null 2>&1; sleep 7; agent-browser eval '(()=>{const m=window.__map;return JSON.stringify({z:m.getZoom(),bands:m.queryRenderedFeatures({layers:["bands"]}).length,water:m.queryRenderedFeatures({layers:["water"]}).length,borders:!!m.getLayer("borders")&&m.queryRenderedFeatures({layers:["borders"]}).length})})()' 2>&1 | tail -1 | tr -d '\\')
+# borders layer must have rendered features (a 404 on borders.pmtiles, once
+# borders.json, or a failed addLayer used to pass because the old check looked
+# at the map canvas). The view is Korea: its international lines are solid
+# ("borders") and the Military Demarcation Line dashed ("borders-other"), so
+# both layers are asked for.
+Z=$(agent-browser eval '(()=>{const m=window.__map;m.jumpTo({center:[127,36],zoom:3.4});return 1})()' >/dev/null 2>&1; sleep 7; agent-browser eval '(()=>{const m=window.__map;return JSON.stringify({z:m.getZoom(),bands:m.queryRenderedFeatures({layers:["bands"]}).length,water:m.queryRenderedFeatures({layers:["water"]}).length,borders:!!m.getLayer("borders")&&m.queryRenderedFeatures({layers:["borders"]}).length,bordersOther:!!m.getLayer("borders-other")&&m.queryRenderedFeatures({layers:["borders-other"]}).length})})()' 2>&1 | tail -1 | tr -d '\\')
 echo "  zoom 3: $Z"
 echo "$Z" | grep -qE '"bands":[1-9]' && echo "$Z" | grep -qE '"water":[1-9]' || { echo "  !! nothing painted at zoom 3"; fail=1; }
 echo "$Z" | grep -qE '"borders":[1-9]' || { echo "  !! the borders layer rendered nothing"; fail=1; }
+echo "$Z" | grep -qE '"bordersOther":[1-9]' || { echo "  !! the dashed borders layer rendered nothing at the Korean MDL"; fail=1; }
 agent-browser screenshot "$SHOTS/verify_zoom3.png" >/dev/null 2>&1
 # A permalink selects its departure AND restores the destination -- and now
 # the colours, the camera and the settings too, so a pasted link shows what

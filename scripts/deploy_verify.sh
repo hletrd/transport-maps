@@ -404,7 +404,7 @@ probe() {  # probe <label> <url-path> <expected> [curl args...]
 LIVE_SLUG=$(curl -sf "$SITE_URL/index.json" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["origins"][0]["slug"])' 2>/dev/null || true)
 : "${LIVE_SLUG:=seoul}"
-for f in index.json app.js index.html places.json airports.json borders.json \
+for f in index.json app.js index.html places.json airports.json \
          "origins/$LIVE_SLUG.air.bin" "origins/$LIVE_SLUG.modes.bin" "origins/$LIVE_SLUG.bin"; do
   probe "$f" "$f" 200
 done
@@ -424,6 +424,7 @@ for f in vendor/licences/maplibre-gl.LICENSE.txt vendor/licences/pmtiles.LICENSE
 done
 probe "$LIVE_SLUG.pmtiles range" "origins/$LIVE_SLUG.pmtiles" 206 -r 0-99
 probe "water.pmtiles range" "water.pmtiles" 206 -r 0-99
+probe "borders.pmtiles range" "borders.pmtiles" 206 -r 0-99
 [ "$live_fail" -eq 0 ] || { echo "!! live checks failed"; exit 1; }
 # The security headers are ASSERTED, on every asset class the page loads. This
 # used to print "CSP header: present" for three paths and assert nothing,
