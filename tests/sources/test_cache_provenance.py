@@ -351,11 +351,9 @@ STAMPED = [
     (road_crossings, "ROAD_HIGHWAYS", frozenset({"motorway"}), _road_crossings_path),
     (road_crossings, "SEASONAL", frozenset({"ice_road"}), _road_crossings_path),
     (road_crossings, "SEAM_RING", 3, _road_crossings_path),
-    (road_crossings, "SAMPLE_KM", 1.0, _road_crossings_path),
     (road_crossings, "BIN_DEG", 1.0, _road_crossings_path),
     (road_crossings, "ROAD_CROSSING_PARSER_VERSION", 999, _road_crossings_path),
-    # Read through fixed_links, so a change there must move this parse too.
-    (fixed_links, "KEEP_RES", 8, _road_crossings_path),
+    # The schema is fixed_links', so a change there must move this parse too.
     (fixed_links, "SCHEMA", {"way_id": pl.Int64}, _road_crossings_path),
     # The land parts reach the key through `_landmass_key()`, a call the AST
     # reader drops as "how the key is computed": this row is what proves it.

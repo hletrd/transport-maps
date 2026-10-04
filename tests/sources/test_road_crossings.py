@@ -8,6 +8,7 @@ index.
 """
 
 import h3
+import numpy as np
 import osmium
 import polars as pl
 import pytest
@@ -30,6 +31,7 @@ F = sorted(h3.grid_ring(A, 6))[0]
 F2 = next(c for c in sorted(h3.grid_ring(F, 1)) if h3.grid_distance(A, c) >= 6)
 CELLS = [A, B, C, F, F2]
 PARTS = [(1,), (2,), (1,), (1,), (1,)]
+WATER = rc.WATER
 
 
 def test_the_highways_read_are_the_classes_a_span_is_costed_at():
@@ -45,7 +47,6 @@ def test_seams_are_cells_near_another_land_part_and_nowhere_else():
     assert ints[A] in s.vicinity and ints[B] in s.vicinity and ints[C] in s.vicinity
     assert h3.str_to_int(W) in s.vicinity, "the water a causeway runs over is read too"
     assert ints[F] not in s.vicinity, "land far from any other part is never read"
-    assert s.parts[ints[A]] == {1} and h3.str_to_int(W) not in s.parts
 
 
 def test_a_straddler_is_a_seam_and_a_pole_cell_never_makes_one():
@@ -53,6 +54,38 @@ def test_a_straddler_is_a_seam_and_a_pole_cell_never_makes_one():
     assert h3.str_to_int(F) in s.vicinity, "a cell touching two parts is a seam by itself"
     s = rc.seams([A, B], [(), (1,)])
     assert not s.vicinity, "a cell on no part is no evidence of another part nearby"
+
+
+# ---- which steps belong to a crossing, on bare arrays -----------------------
+
+def _edges(steps, part):
+    a = np.array([x for x, _ in steps]); b = np.array([y for _, y in steps])
+    return rc._crossing_edges(a, b, np.array(part)).tolist()
+
+
+def test_a_step_from_one_part_straight_onto_another_is_a_crossing():
+    assert _edges([(0, 1), (1, 2)], [1, 2, 2]) == [True, False]
+
+
+def test_road_over_water_that_lands_on_two_parts_is_a_crossing_however_it_is_cut():
+    """The Sihwa seawall is a dozen ways, none running land to land: its
+    steps over water are one stretch, and it lands on two parts."""
+    #       land 1 -> water -> water -> water -> land 2
+    steps = [(0, 1), (1, 2), (2, 3), (3, 4)]
+    assert _edges(steps, [1, WATER, WATER, WATER, 2]) == [True] * 4
+
+
+def test_road_out_over_water_and_back_to_the_same_part_is_no_crossing():
+    """A coastal road on reclaimed land Natural Earth lacks, both ends ashore."""
+    steps = [(0, 1), (1, 2), (2, 3)]
+    assert _edges(steps, [1, WATER, WATER, 1]) == [False] * 3
+
+
+def test_two_stretches_over_water_are_judged_apart():
+    """Ferry ramps on facing shores: each stretch lands on one part only, and
+    nothing joins them, so neither is a crossing."""
+    steps = [(0, 1), (2, 3)]
+    assert _edges(steps, [1, WATER, WATER, 2]) == [False, False]
 
 
 def _write(path, nodes, ways):
@@ -80,7 +113,7 @@ LAND = _land(p1=[A, C, F, F2], p2=[B])
 
 def test_land_parts_are_read_at_each_point():
     a, b, w = h3.cell_to_latlng(A), h3.cell_to_latlng(B), h3.cell_to_latlng(W)
-    assert LAND([a[0], b[0], w[0]], [a[1], b[1], w[1]]) == [{1}, {2}, frozenset()]
+    assert LAND([a[0], b[0], w[0]], [a[1], b[1], w[1]]).tolist() == [1, 2, WATER]
 
 
 def test_the_parse_keeps_only_the_roads_that_run_from_one_part_onto_another(tmp_path):
@@ -106,19 +139,33 @@ def test_the_parse_keeps_only_the_roads_that_run_from_one_part_onto_another(tmp_
     assert len(got[17]["lat"]) == 3, "the stretch over water keeps both its land ends"
 
 
+def test_a_seawall_cut_into_several_ways_is_read_whole(tmp_path):
+    """Judged way by way, no piece runs from land to land and none is kept --
+    which is how the second version missed Daebu-do, Jido and Apdo."""
+    a, b, w = h3.cell_to_latlng(A), h3.cell_to_latlng(B), h3.cell_to_latlng(W)
+    w2 = (w[0] + 0.001, w[1])
+    assert h3.latlng_to_cell(*w2, config.SOLVE_RES) == W, "fixture: both wet nodes over water"
+    _write(tmp_path / "x.osm.pbf", {1: a, 2: w, 3: w2, 4: b},
+           [(20, [1, 2], {"highway": "secondary"}), (21, [2, 3], {"highway": "primary"}),
+            (22, [3, 4], {"highway": "secondary"})])
+    rows = rc._crossings(tmp_path / "x.osm.pbf", rc.seams(CELLS, PARTS), LAND)
+    assert sorted(r["way_id"] for r in rows) == [20, 21, 22]
+    assert {r["highway"] for r in rows} == {"primary", "secondary"}, "each piece at its class"
+
+
 def test_a_road_on_one_part_through_a_cell_labelled_another_crosses_nothing(tmp_path):
     """Bali: a coastal road through a strait cell Natural Earth's coarse coast
-    labels Java. The cell labels flag the step; the road never leaves Bali,
-    and the first version, judging by the labels, joined the two islands."""
+    labels Java. The road never leaves Bali; the first version, judging by the
+    labels, joined the two islands."""
     a, b = h3.cell_to_latlng(A), h3.cell_to_latlng(B)
     _write(tmp_path / "x.osm.pbf", {1: a, 2: b}, [(10, [1, 2], {"highway": "trunk"})])
     s = rc.seams(CELLS, PARTS)
-    assert rc._step_matters(a, b, s), "fixture: the labels must flag the step"
+    assert h3.str_to_int(B) in s.vicinity, "fixture: B is read, and labelled part 2"
     assert rc._crossings(tmp_path / "x.osm.pbf", s, _land(p1=[A, B, C, F, F2])) == []
 
 
-def test_a_stretch_is_cut_where_the_road_leaves_the_seams(tmp_path):
-    """A node outside the vicinity was never located: the stretch ends there."""
+def test_a_road_is_read_only_inside_the_seams(tmp_path):
+    """A node outside the vicinity was never located: its steps are not read."""
     centre = {c: h3.cell_to_latlng(c) for c in (A, B, F)}
     _write(tmp_path / "x.osm.pbf", {1: centre[F], 2: centre[A], 3: centre[B]},
            [(10, [1, 2, 3], {"highway": "trunk"})])
@@ -127,13 +174,7 @@ def test_a_stretch_is_cut_where_the_road_leaves_the_seams(tmp_path):
     assert rows[0]["lat"] == pytest.approx([centre[A][0], centre[B][0]], abs=1e-6)
 
 
-def test_a_stretch_ends_at_a_step_across_the_antimeridian():
-    """Interpolated, that step would run the long way round the globe."""
-    assert rc._stretches([(-16.8, 179.9), (-16.8, -179.9)]) == []
-    assert rc._stretches([(0.0, 1.0), None, (0.0, 2.0), (0.0, 2.1)]) == [[(0.0, 2.0), (0.0, 2.1)]]
-
-
-def test_two_crossings_on_one_way_are_two_stretches_not_one(tmp_path):
+def test_two_crossings_on_one_way_are_two_runs_not_one(tmp_path):
     """Out onto part 2, along it, and back: the stretch along part 2 joins
     nothing and must not be carried, or the two crossings would read as one
     road straight across."""
@@ -146,18 +187,15 @@ def test_two_crossings_on_one_way_are_two_stretches_not_one(tmp_path):
     assert [len(r["lat"]) for r in rows] == [2, 2]
 
 
-def test_a_crossing_inside_one_fine_cell_joins_nothing_and_is_dropped(tmp_path):
-    """The fixed-link rule: a road from part 3 onto part 4 whose two nodes
-    share a fine cell cannot join two graph cells."""
-    f = h3.cell_to_latlng(F)
-    f2 = (f[0] + 0.0001, f[1])
-    assert h3.latlng_to_cell(*f, fixed_links.KEEP_RES) == h3.latlng_to_cell(*f2, fixed_links.KEEP_RES)
-    mid = f[0] + 0.00005
-    split = rc.LandParts([(3, shapely.box(f[1] - 1, f[0] - 1, f[1] + 1, mid)),
-                          (4, shapely.box(f[1] - 1, mid, f[1] + 1, f[0] + 1))])
-    assert split([f[0], f2[0]], [f[1], f2[1]]) == [{3}, {4}], "fixture: a real crossing"
-    _write(tmp_path / "x.osm.pbf", {1: f, 2: f2}, [(10, [1, 2], {"highway": "trunk"})])
-    assert rc._crossings(tmp_path / "x.osm.pbf", rc.seams([F], [(3, 4)]), split) == []
+def test_a_step_across_the_antimeridian_is_not_read(tmp_path):
+    """Interpolated, it would run the long way round the globe."""
+    x, y = (-16.8, 179.995), (-16.8, -179.995)
+    cx, cy = (h3.latlng_to_cell(*p, config.SOLVE_RES) for p in (x, y))
+    assert cx != cy and h3.are_neighbor_cells(cx, cy), "fixture: neighbours across it"
+    land = rc.LandParts([(1, shapely.box(179.9, -17.0, 180.0, -16.6)),
+                         (2, shapely.box(-180.0, -17.0, -179.9, -16.6))])
+    _write(tmp_path / "x.osm.pbf", {1: x, 2: y}, [(10, [1, 2], {"highway": "trunk"})])
+    assert rc._crossings(tmp_path / "x.osm.pbf", rc.seams([cx, cy], [(1,), (2,)]), land) == []
 
 
 @pytest.fixture
