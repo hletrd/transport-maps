@@ -12,6 +12,11 @@ A case with `expect=None` is reported, not judged: it is here because its
 answer was not known when the case was written, and guessing one would make
 this script assert whatever the code happens to do.
 
+A case with `expect="ferry"` is an island only a ferry reaches: it must be
+cut on the ground AND joined once the ferry edges the build would emit
+(graph/build._ferry_edges, over the cached OSM ferry links) are added. Cut on
+the ground alone says nothing about whether the island can be reached at all.
+
 The cases are named crossings, not component counts. An earlier check scored
 the Seto Inland Sea against "one connected component" because that was what
 the graph produced -- but that WAS the defect; most of its islands are
@@ -29,7 +34,8 @@ import h3
 from transport_maps import config
 from transport_maps.graph import nodes, refine
 
-# (name, from (lat, lon), to (lat, lon), expected: True joined / False cut / None report)
+# (name, from (lat, lon), to (lat, lon), expected: True joined / False cut /
+#  "ferry" cut on the ground, joined with the ferries / None report)
 CASES = [
     # Real fixed links that must stay joined.
     ("Great Seto Bridge  Kurashiki -> Takamatsu", (34.585, 133.772), (34.342, 134.047), True),
@@ -57,6 +63,26 @@ CASES = [
     ("Oresund Bridge     Copenhagen -> Malmo",    (55.676, 12.568), (55.605, 13.003), True),
     ("Great Belt         Zealand -> Funen",       (55.350, 11.100), (55.330, 10.800), True),
     ("Confederation Br.  PEI -> New Brunswick",   (46.230, -63.500), (46.100, -64.300), True),
+    # Plain roads across a seam, with neither a bridge nor a tunnel tag where
+    # the land part changes (sources/road_crossings) -- all four were cut
+    # until 2026-10-04 and read "no route" from Seoul. Sihwa: a 12.7 km
+    # seawall road from Oido to Daebu-do. Yeongheung: the bridge on from
+    # Daebu-do, joined all along but reachable only through Sihwa. Jeungdo and
+    # Imjado: the polder roads and short bridges of Jido. Apdo: the Apdo
+    # Bridge, whose cell boundary falls on the untagged road across an islet
+    # between its decks, and the Cheonsa Bridge on to Amtae-do.
+    ("Sihwa Seawall      Siheung -> Daebu-do",    (37.345, 126.690), (37.250, 126.580), True),
+    ("Yeongheung Br.     Daebu-do -> Yeongheung", (37.250, 126.580), (37.250, 126.470), True),
+    ("Jido polders       Muan -> Jeungdo",        (35.100, 126.300), (34.990, 126.150), True),
+    ("Imja Bridge        Muan -> Imjado",         (35.100, 126.300), (35.080, 126.100), True),
+    ("Apdo + Cheonsa Br. Mokpo -> Amtae-do",      (34.810, 126.390), (34.830, 126.130), True),
+    # Incheon Airport's island, joined by two bridges and reclaimed land: a
+    # control that a causeway rule must not have been needed for.
+    ("Yeongjong Bridge   Incheon -> ICN",         (37.470, 126.700), (37.460, 126.440), True),
+    # Ferry only: Sangtaedo to Jungtaedo, 0.85 km, the first hop of the only
+    # line on to Hataedo and Gageodo. Below the ferry length floor and
+    # dropped until 2026-10-04, so the chain read "no route".
+    ("Taedo              Sangtaedo -> Jungtaedo", (34.4351, 125.2849), (34.4275, 125.2854), "ferry"),
 ]
 
 # How far past the two endpoints the search may wander, in degrees. A land
@@ -65,7 +91,7 @@ CASES = [
 MARGIN_DEG = 1.5
 
 
-def _joined(idx, a, b) -> bool | str:
+def _joined(idx, a, b, extra: dict[int, list[int]] | None = None) -> bool | str:
     u = idx.try_cell_index(idx.cell_at(*a))
     v = idx.try_cell_index(idx.cell_at(*b))
     if u is None or v is None:
@@ -82,7 +108,7 @@ def _joined(idx, a, b) -> bool | str:
     # neighbours (graph/landmass.spanning_links). Walking grid rings alone,
     # this search could never cross one, and reported the Great Belt cut
     # whatever the graph said.
-    span_to: dict[int, list[int]] = {}
+    span_to: dict[int, list[int]] = {k: list(v) for k, v in (extra or {}).items()}
     for s_from, s_to in getattr(idx, "spans", {}) or {}:
         span_to.setdefault(s_from, []).append(s_to)
 
@@ -114,6 +140,23 @@ def _joined(idx, a, b) -> bool | str:
     return False
 
 
+def _ferry_hops(idx) -> dict[int, list[int]]:
+    """Cell -> the cells one ferry crossing away, exactly the edges the build
+    emits (graph/build._ferry_edges over the cached OSM ferry links)."""
+    from transport_maps.graph import build, ferry
+    from transport_maps.sources import osm
+
+    rows, cols, _ = build._ferry_edges(idx, osm.ferry_links(), ferry.load_ferry_calibration())
+    out: dict[int, list[int]] = {}
+    for a, b in zip(rows.tolist(), cols.tolist()):
+        out.setdefault(a, []).append(b)
+    return out
+
+
+def _shown(x) -> str:
+    return x if isinstance(x, str) else ("joined" if x else "cut")
+
+
 def main() -> int:
     idx = nodes.build_index()
     if not idx.severed:
@@ -125,14 +168,20 @@ def main() -> int:
     # column a "cut" cannot say whether the rule made it or it always was --
     # the Great Belt looked like a regression until it was measured cut both ways.
     before = dataclasses.replace(idx, severed=frozenset(), spans={})
+    ferries = _ferry_hops(idx) if any(e == "ferry" for *_, e in CASES) else {}
     print(f"  {'case':44} {'before':>8}  {'after':<28}")
     wrong = 0
     for name, a, b, expect in CASES:
         got = _joined(idx, a, b)
         was = _joined(before, a, b)
-        shown = got if isinstance(got, str) else ("joined" if got else "cut")
-        was_shown = was if isinstance(was, str) else ("joined" if was else "cut")
-        if expect is None or isinstance(got, str):
+        shown, was_shown = _shown(got), _shown(was)
+        if expect == "ferry" and not isinstance(got, str):
+            by_ferry = _joined(idx, a, b, extra=ferries)
+            shown = f"{shown}; by ferry {_shown(by_ferry)}"
+            ok = got is False and by_ferry is True
+            verdict = "ok" if ok else "!! WRONG, expected cut on the ground, joined by ferry"
+            wrong += not ok
+        elif expect is None or isinstance(got, str):
             verdict = "report" if expect is None else "!! could not judge"
             wrong += isinstance(got, str) and expect is not None
         elif got == expect:
