@@ -9,10 +9,22 @@ from transport_maps.sources import routes, wikidata
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "icn_wikitext.txt"
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "routes"
+L = routes.Listing
+
+
+def _titles(listings: list[routes.Listing]) -> list[str]:
+    return [x.title for x in listings]
+
+
+def _section(*titles: str) -> str:
+    """A destinations section listing `titles` in one row of the list
+    template, under no airline: each parses to `Listing(title)`."""
+    links = ", ".join(f"[[{t}]]" for t in titles)
+    return f"== Airlines and destinations ==\n{{{{Airport destination list\n| | {links}\n}}}}\n"
 
 
 def test_parses_destination_article_titles_from_real_page():
-    titles = routes.parse_destinations(FIXTURE.read_text(encoding="utf-8"))
+    titles = _titles(routes.parse_destinations(FIXTURE.read_text(encoding="utf-8")))
     assert len(titles) > 50
     # Narita and Los Angeles are long-standing ICN destinations.
     assert any("Narita" in t for t in titles)
@@ -27,18 +39,18 @@ def test_ignores_non_destination_links():
     # something.
     wikitext = (
         "== Airlines and destinations ==\n"
-        "{{Airline destination list\n"
+        "{{Airport destination list\n"
         "|[[Test Airlines]]|[[File:Some_icon.svg]] [[Category:Test airports]] "
         "[[Test Destination Airport]]\n"
         "}}\n"
     )
-    titles = routes.parse_destinations(wikitext)
+    titles = _titles(routes.parse_destinations(wikitext))
     assert "Test_Destination_Airport" in titles
     assert not any(t.startswith(("File:", "Category:", "Help:")) for t in titles)
 
 
 def test_ignores_cargo_subsection():
-    titles = routes.parse_destinations(FIXTURE.read_text(encoding="utf-8"))
+    titles = _titles(routes.parse_destinations(FIXTURE.read_text(encoding="utf-8")))
     # ICN's Cargo subsection lists freight-only carriers that never appear
     # among its passenger destinations.
     assert "Cargolux" not in titles
@@ -52,15 +64,15 @@ def test_cargo_cut_does_not_discard_a_later_passenger_subsection():
     wikitext = (
         "== Airlines and destinations ==\n"
         "===Passenger===\n"
-        "[[Alpha Airline]] [[Alpha Airport]]\n"
+        "{{Airport destination list\n| [[Alpha Airline]] | [[Alpha Airport]]\n}}\n"
         "===Cargo===\n"
-        "[[Cargo Only Co]] [[Cargo Destination Airport]]\n"
+        "{{Airport destination list\n| [[Cargo Only Co]] | [[Cargo Destination Airport]]\n}}\n"
         "===More Passenger===\n"
-        "[[Beta Airline]] [[Beta Airport]]\n"
+        "{{Airport destination list\n| [[Beta Airline]] | [[Beta Airport]]\n}}\n"
         "== Ground transportation ==\n"
         "Some unrelated text.\n"
     )
-    titles = routes.parse_destinations(wikitext)
+    titles = _titles(routes.parse_destinations(wikitext))
     assert "Alpha_Airport" in titles
     assert "Beta_Airport" in titles
     assert "Cargo_Destination_Airport" not in titles
@@ -76,7 +88,7 @@ def test_a_level_3_section_stops_at_its_next_sibling():
     tests). Mutation, measured: closing the section at the next level-2
     heading again (the old `^==[^=]` cut) turns this red.
     """
-    titles = routes.parse_destinations((FIXTURES / "level3_section.wikitext").read_text())
+    titles = _titles(routes.parse_destinations((FIXTURES / "level3_section.wikitext").read_text()))
     assert titles == [
         "Air_Example", "Hub_International_Airport", "Coastal_Airport",
         "Island_Air", "Remote_Island_Airport",
@@ -94,13 +106,13 @@ def test_a_level_2_section_keeps_its_own_subsections():
     wikitext = (
         "== Airlines and destinations ==\n"
         "=== Passenger ===\n"
-        "[[Alpha Airport]]\n"
-        "=== Seasonal ===\n"
-        "[[Beta Airport]]\n"
+        "{{Airport destination list\n| | [[Alpha Airport]]\n}}\n"
+        "=== International ===\n"
+        "{{Airport destination list\n| | [[Beta Airport]]\n}}\n"
         "== Statistics ==\n"
-        "[[Gamma Airport]]\n"
+        "{{Airport destination list\n| | [[Gamma Airport]]\n}}\n"
     )
-    assert routes.parse_destinations(wikitext) == ["Alpha_Airport", "Beta_Airport"]
+    assert _titles(routes.parse_destinations(wikitext)) == ["Alpha_Airport", "Beta_Airport"]
 
 
 def test_a_link_with_a_section_fragment_keeps_its_destination():
@@ -111,7 +123,7 @@ def test_a_link_with_a_section_fragment_keeps_its_destination():
 
     Mutation, measured: restoring the old `_LINK_RE` turns this red.
     """
-    titles = routes.parse_destinations((FIXTURES / "fragment_links.wikitext").read_text())
+    titles = _titles(routes.parse_destinations((FIXTURES / "fragment_links.wikitext").read_text()))
     assert titles == [
         "Air_Example", "Hub_International_Airport", "Tokyo_International_Airport",
         "London_Heathrow_Airport", "Seasonal_Air", "Lake_Airport", "Example_Connect",
@@ -201,7 +213,7 @@ def _stub_route_network_inputs(monkeypatch, tmp_path, destinations, unresolved):
 
 def test_route_network_refuses_to_persist_a_partial_crawl(tmp_path, monkeypatch):
     _stub_route_network_inputs(
-        monkeypatch, tmp_path, destinations={"ICN": ["B"]}, unresolved=["NRT"]
+        monkeypatch, tmp_path, destinations={"ICN": [L("B")]}, unresolved=["NRT"]
     )
 
     with pytest.raises(RuntimeError, match="refusing to persist a partial route network"):
@@ -244,7 +256,7 @@ def _stub_full_network(monkeypatch, tmp_path, titles=None, builds=None):
 
     def crawl(titles_by_iata):
         crawls.append(titles_by_iata)
-        return {c: [d for d in codes if d != c] for c in codes}, []
+        return {c: [L(d) for d in codes if d != c] for c in codes}, []
 
     monkeypatch.setattr(routes, "_crawl_destinations", crawl)
     monkeypatch.setattr(routes.wikidata, "iata_for_titles", lambda titles: {c: c for c in codes})
@@ -337,7 +349,7 @@ def test_a_changed_crawl_is_a_miss_and_an_unchanged_one_is_not(tmp_path, monkeyp
     assert len(builds) == 1, "an unchanged crawl rebuilt the network"
     # A000 stops being served: its article lists nothing and no article lists it.
     monkeypatch.setattr(routes, "_crawl_destinations", lambda titles: (
-        {c: [] if c == "A000" else [d for d in codes if d not in (c, "A000")]
+        {c: [] if c == "A000" else [L(d) for d in codes if d not in (c, "A000")]
          for c in codes}, []))
     df = routes.route_network()
     assert len(builds) == 2
@@ -380,7 +392,7 @@ def test_missing_article_is_confirmed_absent_not_merely_unreturned():
     forever as an airport with no destinations.
     """
     body = _wikitext_body([
-        _content_page("Alpha", "== Airlines and destinations ==\n[[Beta Airport]]\n"),
+        _content_page("Alpha", _section("Beta Airport")),
         {"title": "Gamma", "missing": True},
         # "Delta" is not mentioned at all.
     ])
@@ -398,7 +410,7 @@ def test_crawl_caches_none_only_for_confirmed_absent_and_reports_the_rest(
     monkeypatch.setattr(
         routes, "_fetch_wikitext_with_retry",
         lambda client, titles: (
-            {"Alpha": "== Airlines and destinations ==\n[[Beta Airport]]\n"},
+            {"Alpha": _section("Beta Airport")},
             {"Gamma"},
         ),
     )
@@ -407,7 +419,7 @@ def test_crawl_caches_none_only_for_confirmed_absent_and_reports_the_rest(
         {"AAA": "Alpha", "GGG": "Gamma", "DDD": "Delta"}
     )
 
-    assert cache["AAA"] == ["Beta_Airport"]
+    assert cache["AAA"] == [L("Beta_Airport")]
     assert cache["GGG"] is None      # enwiki confirms no such article
     assert "DDD" not in cache        # unconfirmed -> refetched next run
     assert unresolved == ["DDD"]
@@ -448,14 +460,14 @@ def test_a_batch_that_comes_back_paged_is_halved_until_it_resolves(tmp_path, mon
         asked.append(len(titles))
         if len(titles) > 2 or "Huge" in titles:
             raise IncompleteResponse("API response incomplete (continue key present)")
-        return {t: "== Airlines and destinations ==\n[[Hub Airport]]\n" for t in titles}, set()
+        return {t: _section("Hub Airport") for t in titles}, set()
 
     monkeypatch.setattr(routes, "_fetch_wikitext_with_retry", fetch)
     titles = {f"A{i}": f"Article{i}" for i in range(7)} | {"HHH": "Huge"}
     got, unresolved = routes._crawl_destinations(titles)
 
     assert unresolved == ["HHH"]
-    assert got == {f"A{i}": ["Hub_Airport"] for i in range(7)}
+    assert got == {f"A{i}": [L("Hub_Airport")] for i in range(7)}
     assert asked[0] == 8 and max(asked[1:]) < 8, asked
     assert routes._load_destination_cache().keys() == {f"Article{i}" for i in range(7)}
 
@@ -471,13 +483,13 @@ def test_the_crawl_cache_is_keyed_on_the_article_not_the_airport(tmp_path, monke
     """
     monkeypatch.setattr(config, "CACHE", tmp_path)
     now = _now()
-    routes._save_destination_cache({"AAA": ["Old_Destination"], "Shared": ["Hub"]},
+    routes._save_destination_cache({"AAA": [L("Old_Destination")], "Shared": [L("Hub")]},
                                    {"AAA": now, "Shared": now})
     fetched: list[list[str]] = []
 
     def fetch(client, titles):
         fetched.append(list(titles))
-        return {t: "== Airlines and destinations ==\n[[Fresh Airport]]\n" for t in titles}, set()
+        return {t: _section("Fresh Airport") for t in titles}, set()
 
     monkeypatch.setattr(routes, "_fetch_wikitext_with_retry", fetch)
 
@@ -486,7 +498,7 @@ def test_the_crawl_cache_is_keyed_on_the_article_not_the_airport(tmp_path, monke
     )
 
     assert fetched == [["New_Article"]]
-    assert got == {"AAA": ["Fresh_Airport"], "BBB": ["Hub"], "CCC": ["Hub"]}
+    assert got == {"AAA": [L("Fresh_Airport")], "BBB": [L("Hub")], "CCC": [L("Hub")]}
     assert unresolved == []
 
 
@@ -500,7 +512,7 @@ def _now(**ago) -> str:
 
 
 def _fresh_wikitext(titles):
-    return {t: "== Airlines and destinations ==\n[[Fresh Airport]]\n" for t in titles}, set()
+    return {t: _section("Fresh Airport") for t in titles}, set()
 
 
 def test_an_article_older_than_the_max_age_is_refetched_and_a_fresh_one_is_not(
@@ -508,7 +520,7 @@ def test_an_article_older_than_the_max_age_is_refetched_and_a_fresh_one_is_not(
     """Mutation: build `todo` from the uncached titles only (the pre-G2
     crawl) -> red, nothing is refetched and Old keeps its old parse."""
     monkeypatch.setattr(config, "CACHE", tmp_path)
-    routes._save_destination_cache({"Old": ["Stale_Airport"], "New": ["Hub"]},
+    routes._save_destination_cache({"Old": [L("Stale_Airport")], "New": [L("Hub")]},
                                    {"Old": _now(hours=25), "New": _now(hours=1)})
     fetched: list[list[str]] = []
     monkeypatch.setattr(routes, "_fetch_wikitext_with_retry",
@@ -517,7 +529,7 @@ def test_an_article_older_than_the_max_age_is_refetched_and_a_fresh_one_is_not(
     got, unresolved = routes._crawl_destinations({"AAA": "Old", "BBB": "New"})
 
     assert fetched == [["Old"]]
-    assert got == {"AAA": ["Fresh_Airport"], "BBB": ["Hub"]} and unresolved == []
+    assert got == {"AAA": [L("Fresh_Airport")], "BBB": [L("Hub")]} and unresolved == []
     assert routes._load_fetched_at()["Old"] > _now(minutes=5)
 
 
@@ -527,7 +539,7 @@ def test_a_cache_written_before_g2_is_refetched_whole(tmp_path, monkeypatch):
 
     monkeypatch.setattr(config, "CACHE", tmp_path)
     (tmp_path / "airline_destinations.json").write_text(json.dumps(
-        {"_parser_key": routes._parser_key(), "articles": {"A": ["X"], "B": ["Y"]}}))
+        {"_parser_key": routes._parser_key(), "articles": {"A": [["X"]], "B": [["Y"]]}}))
     fetched: list[str] = []
     monkeypatch.setattr(routes, "_fetch_wikitext_with_retry",
                         lambda client, titles: fetched.extend(titles) or _fresh_wikitext(titles))
@@ -540,7 +552,7 @@ def test_a_failed_refetch_keeps_the_cached_parse_and_warns(tmp_path, monkeypatch
     article. Mutation: count a failed refetch as unresolved -> red."""
     monkeypatch.setattr(config, "CACHE", tmp_path)
     old = _now(days=3)
-    routes._save_destination_cache({"Old": ["Stale_Airport"]}, {"Old": old})
+    routes._save_destination_cache({"Old": [L("Stale_Airport")]}, {"Old": old})
 
     def boom(client, titles):
         raise RuntimeError("API error: readonly")
@@ -548,7 +560,7 @@ def test_a_failed_refetch_keeps_the_cached_parse_and_warns(tmp_path, monkeypatch
 
     got, unresolved = routes._crawl_destinations({"AAA": "Old"})
 
-    assert got == {"AAA": ["Stale_Airport"]} and unresolved == []
+    assert got == {"AAA": [L("Stale_Airport")]} and unresolved == []
     assert "could not be refetched" in capsys.readouterr().out
     assert routes._load_fetched_at()["Old"] == old, "a failed refetch must stay stale"
 
@@ -558,7 +570,7 @@ def test_offline_fetches_nothing_and_reads_the_cache(tmp_path, monkeypatch):
     from transport_maps.sources import _fetch
 
     monkeypatch.setattr(config, "CACHE", tmp_path)
-    routes._save_destination_cache({"Old": ["Stale_Airport"]}, {"Old": _now(days=3)})
+    routes._save_destination_cache({"Old": [L("Stale_Airport")]}, {"Old": _now(days=3)})
     _fetch.set_offline(True)
 
     def boom(client, titles):
@@ -566,7 +578,7 @@ def test_offline_fetches_nothing_and_reads_the_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(routes, "_fetch_wikitext_with_retry", boom)
 
     got, unresolved = routes._crawl_destinations({"AAA": "Old", "BBB": "Never_Fetched"})
-    assert got == {"AAA": ["Stale_Airport"]}
+    assert got == {"AAA": [L("Stale_Airport")]}
     assert unresolved == ["BBB"], "offline, an article never fetched is unresolved"
 
 
@@ -579,3 +591,189 @@ def test_the_crawl_is_recorded_for_the_build_identity(tmp_path, monkeypatch):
     routes._crawl_destinations({"AAA": "A", "BBB": "B"})
     rec = _fetch.used()["wikipedia:airline-destinations"]
     assert rec["articles"] == 2 and rec["fetchedFrom"] and rec["fetchedTo"]
+
+
+# --- year-round scheduled service only (owner decision, 2026-10-04) --------
+#
+# The fixtures are real sections (October 2026 revisions), trimmed.
+
+
+def _parse(name: str) -> list[routes.Listing]:
+    return routes.parse_destinations((FIXTURES / name).read_text(encoding="utf-8"))
+
+
+def _by_title(listings: list[routes.Listing]) -> dict[str, list[routes.Listing]]:
+    out: dict[str, list[routes.Listing]] = {}
+    for x in listings:
+        out.setdefault(x.title, []).append(x)
+    return out
+
+
+def test_adelaide_labels_mark_seasonal_and_charter_to_the_end_of_the_cell():
+    """The reported case: China Eastern's Adelaide-Pudong row is all seasonal
+    ("''' Seasonal:'''", a stray space inside the bold), and a label runs to
+    the end of its cell, past the <br/>s, so Virgin's Launceston is seasonal
+    and Olympic Dam after the next label is charter.
+
+    Mutation, measured: `_label_service` always returning None -> red."""
+    got = _by_title(_parse("adelaide_airport.wikitext"))
+    assert got["Shanghai_Pudong_International_Airport"] == [
+        L("Shanghai_Pudong_International_Airport", "seasonal", airline="China_Eastern_Airlines")]
+    assert [x.service for x in got["Christchurch_Airport"]] == ["seasonal"]
+    assert [x.service for x in got["Hong_Kong_International_Airport"]] == ["seasonal"]
+    assert [x.service for x in got["Launceston_Airport"]] == ["seasonal"]
+    assert {x.service for x in got["Ballera_Airport"] + got["Carrapateena_Airport"]} == {"charter"}
+    # Olympic Dam twice: Alliance's scheduled flights, and Virgin's charters.
+    assert {(x.airline, x.service) for x in got["Olympic_Dam_Airport"]} == {
+        ("Alliance_Airlines", "scheduled"), ("Virgin_Australia", "charter")}
+    # Auckland three times: Air NZ year-round, Qantas seasonal ("'''Seasonal: '''"),
+    # Qatar to end on 8 December.
+    assert {(x.airline, x.service, x.change, x.on) for x in got["Auckland_Airport"]} == {
+        ("Air_New_Zealand", "scheduled", None, None),
+        ("Qantas", "seasonal", None, None),
+        ("Qatar_Airways", "scheduled", "ends", "2026-12-08")}
+    assert [x.service for x in got["Singapore_Changi_Airport"]] == ["scheduled"]
+
+
+def test_references_prose_and_cargo_are_not_destinations():
+    """A citation's `publisher=[[Roxby Council]]`, an aircraft in the prose
+    under the table, and the Cargo subsection. Mutation, measured: dropping
+    the two reference alternatives from _NOISE_RE -> red (Roxby_Council)."""
+    titles = _titles(_parse("adelaide_airport.wikitext"))
+    for not_a_destination in ("Roxby_Council", "Boeing_787-9_Dreamliner",
+                              "Western_Sydney_Airport", "Qantas_Freight"):
+        assert not_a_destination not in titles
+
+
+def test_pudong_dated_changes_bind_to_the_link_before_them():
+    """Mutation, measured: binding a change to the cell's first link instead
+    of its last (`cell[:covers]`) -> red."""
+    got = {x.title: x for x in _parse("shanghai_pudong_airport.wikitext")}
+    assert got["Houari_Boumediene_Airport"][2:4] == ("begins", "2026-10-26")
+    assert got["Bangkok–Suvarnabhumi"][2:4] == ("resumes", "2026-10-25")
+    assert got["Josep_Tarradellas_Barcelona–El_Prat_Airport"][2:4] == (None, None)
+    assert got["Mactan–Cebu_International_Airport"][2:4] == ("resumes", "2026-11-18")
+    assert got["Ninoy_Aquino_International_Airport"][2:4] == (None, None)
+    assert got["Dunhuang_Mogao_International_Airport"][2:4] == ("ends", "2026-10-11")
+    assert got["Chinggis_Khaan_International_Airport"][2:4] == ("resumes", "2026-10-29")
+    assert got["Adelaide_Airport"] == L("Adelaide_Airport", "seasonal",
+                                        airline="China_Eastern_Airlines")
+
+
+def test_us_dates_and_a_colon_outside_the_bold():
+    got = _by_title(_parse("denver_airport.wikitext"))
+    # '''Seasonal''': -- the colon outside the bold -- and a US-style end date.
+    assert got["Charles_de_Gaulle_Airport"] == [
+        L("Charles_de_Gaulle_Airport", "seasonal", "ends", "2026-10-10", "Air_France")]
+    assert [x.service for x in got["Ted_Stevens_Anchorage_International_Airport"]] == ["seasonal"]
+    assert [x.service for x in got["Seattle–Tacoma_International_Airport"]] == ["scheduled"]
+    assert got["McKinney_National_Airport"][0][2:4] == ("begins", "2026-12-16")
+    assert got["Fort_Lauderdale-Hollywood_International_Airport"][0][2:4] == (
+        "begins", "2026-11-20")
+    assert [x.service for x in got["Ronald_Reagan_Washington_National_Airport"]] == ["scheduled"]
+    assert [x.service for x in got["Rhode_Island_T._F._Green_International_Airport"]] == [
+        "seasonal"]
+    # The next row starts scheduled again.
+    assert [x.service for x in got["Hartsfield–Jackson_Atlanta_International_Airport"]] == [
+        "scheduled"]
+    # The top-destinations table is not the destination list.
+    assert "Phoenix_Sky_Harbor_International_Airport" not in got
+
+
+def test_a_destination_map_is_not_read():
+    """Edmonton's map marks seasonal (green) and future (blue) destinations
+    by pin colour alone, so Prince George -- a future destination only on the
+    map -- must not appear, and Kamloops only once, as the table's seasonal.
+
+    Mutation, measured: `map` taken out of _NOT_DESTINATIONS_TEMPLATE_RE ->
+    red."""
+    got = _by_title(_parse("edmonton_airport.wikitext"))
+    assert "Prince_George_Airport" not in got
+    assert got["Kamloops_Airport"] == [L("Kamloops_Airport", "seasonal", airline="WestJet_Encore")]
+    assert [x.service for x in got["Calgary_International_Airport"]] == ["scheduled"]
+    # The hub sentence above the table is prose.
+    assert "Flair_Airlines" not in got
+
+
+def test_assorted_forms():
+    """Mutation, measured: reading links outside a table (dropping the
+    `"list" in stack or tables` condition) -> red on San Francisco and
+    Churchill Falls; `(suspended until ...)` read as plain "suspended" ->
+    red on Dubai; a `<br>` ending a label's scope (`<br\\s*/?>` added to
+    _CELL_END_RE) -> red on Rome."""
+    got = _by_title(_parse("assorted_rows.wikitext"))
+
+    def only(title):
+        (x,) = got[title]
+        return x.service, x.change, x.on
+
+    # "(both begin ...)" covers the two links before it.
+    assert only("Beijing_Capital_International_Airport") == ("scheduled", "begins", "2026-10-26")
+    assert only("Copenhagen_Airport") == ("scheduled", "begins", "2026-10-26")
+    # "(suspended until <date>)" is a resumption; "(suspended)" has no date.
+    assert {x[1:4] for x in got["Dubai_International_Airport"]} == {
+        ("scheduled", "resumes", "2027-01-18"), ("scheduled", "suspended", None)}
+    assert only("Dublin_Airport") == ("scheduled", None, None)
+    # An unbolded "Charter:", and any other label ("Hajj & Umrah:").
+    assert only("Contamana_Airport") == ("charter", None, None)
+    assert only("King_Abdulaziz_International_Airport") == ("other", None, None)
+    assert only("Benina_International_Airport") == ("scheduled", None, None)
+    # A class in parentheses after the link reclassifies that link only.
+    assert only("New_Chitose_Airport") == ("seasonal", None, None)
+    assert only("Haneda_Airport") == ("scheduled", None, None)
+    assert only("Akron–Canton_Airport") == ("charter", None, None)
+    # A label that ends its line still labels the next line; and a seasonal
+    # list that wraps at a <br /> (the comma before it) stays seasonal.
+    assert only("Charlotte_Douglas_International_Airport") == ("scheduled", None, None)
+    assert only("O'Hare_International_Airport") == ("seasonal", None, None)
+    assert only("Philadelphia_International_Airport") == ("seasonal", None, None)
+    assert [only(t)[0] for t in ("Athens_International_Airport", "London–Gatwick",
+                                 "Rome–Fiumicino")] == ["seasonal"] * 3
+    # Three classes in one row.
+    assert [only(t)[0] for t in ("Gatwick_Airport", "Glasgow_Airport", "Guernsey_Airport")] == [
+        "scheduled", "seasonal", "seasonal charter"]
+    # The prose above the table, the statistics table below it and the
+    # historical and charter subsections all name airports; only the
+    # table's seasonal row may list Denver and San Francisco.
+    assert {x.service for x in got["San_Francisco_International_Airport"]} == {"seasonal"}
+    assert {(x.airline, x.service) for x in got["Denver_International_Airport"]} == {
+        ("Air_Canada", "scheduled"), ("United_Express", "seasonal")}
+    for absent in ("Churchill_Falls,_Labrador", "Medical_evacuation", "SkyWest_Airlines"):
+        assert absent not in got
+
+
+def test_a_wikitable_row_names_its_airline():
+    """Faisalabad's list is a wikitable whose cells are split by "||". Read
+    as two cell ends around an empty cell, every destination's airline was
+    "" -- every airline in the table one airline.
+
+    Mutation, measured: `_CELL_END_RE = r"\\|"` -> red."""
+    got = _by_title(_parse("faisalabad_airport.wikitext"))
+    assert {x.airline for x in got["Jinnah_International_Airport"]} == {
+        "Fly_Jinnah", "Pakistan_International_Airlines"}
+    assert {x.airline for x in got["Dubai_International_Airport"]} == {
+        "flydubai", "Pakistan_International_Airlines"}
+    assert all(x.service == "scheduled" for xs in got.values() for x in xs)
+    # The table header and the Cargo subsection are not destinations.
+    assert "Islamabad_International_Airport" not in got
+
+
+@pytest.mark.parametrize("change,text,on", [
+    ("begins", " 1 June 2026", "2026-06-01"),
+    ("begins", " October 25, 2026", "2026-10-25"),
+    ("begins", " Sept. 3, 2026", "2026-09-03"),
+    ("begins", " June 2027", "2027-06-30"),     # a month: its last day for a start
+    ("ends", " June 2027", "2027-06-01"),       # ... and its first for an end
+    ("resumes", " 2027", "2027-12-31"),
+    ("ends", " 2027", "2027-01-01"),
+    ("begins", " TBA", None),
+    ("begins", " summer 2027", None),
+    ("begins", " 31 February 2027", None),
+])
+def test_dates_are_read_at_the_conservative_end(change, text, on):
+    """Mutation, measured: `late = False` (a month read as its first day
+    for a start) -> the "June 2027" begins case is red."""
+    assert routes._change_date(change, text) == on
+
+
+

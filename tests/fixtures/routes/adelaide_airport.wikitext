@@ -1,0 +1,37 @@
+'''Adelaide Airport''' is the main airport of [[Adelaide]], South Australia.
+
+==Airlines and destinations==
+===Passenger===
+{{Airport destination list
+<!-- -->
+| [[Air New Zealand]] | [[Auckland Airport|Auckland]]<ref>{{OAGWorldAug2025Ref|title=Auckland, New Zealand AKL|pages=91-93}}</ref> <br/> '''Seasonal:''' [[Christchurch Airport|Christchurch]]<ref>{{cite news|last=Simmons|first=David|title=First-ever direct flight from sister city lands in Adelaide|url=https://www.indailysa.com.au/news/just-in/2025/10/28/first-ever-direct-flight-from-sister-city-lands-in-adelaide|website=www.indailysa.com.au|date=28 October 2025}}</ref>
+<!-- -->
+| [[Alliance Airlines]] | [[Olympic Dam Airport|Olympic Dam]]<ref name=odva/> <br /> '''Charter:''' [[Ballera Airport|Ballera]],<ref name="AllianceAirlinesRoutes"/> [[Moomba Airport|Moomba]]<ref name="AllianceAirlinesRoutes">{{cite web | url=http://allianceairlines.com.au/where-we-fly | title=Where We Fly | publisher=Alliance Airlines | access-date=8 March 2019}}</ref>
+<!-- -->
+| [[Cathay Pacific]] |''' Seasonal:''' [[Hong Kong International Airport|Hong Kong]]<ref>{{cite web|url=https://statedevelopment.sa.gov.au/news/cathay-takes-flight-for-summer|title=Cathay takes flight for summer|date=16 July 2026|website=statedevelopment.sa.gov.au}}</ref>
+<!-- -->
+| [[China Eastern Airlines]] |''' Seasonal:''' [[Shanghai Pudong International Airport|Shanghai–Pudong]]<ref>{{cite web |last=Nelson |first=Jake |title=China Eastern will fly A350s to Adelaide |url=https://australianaviation.com.au/2026/02/china-eastern-will-fly-a350s-to-adelaide/ |website=Australian Aviation |date=2 February 2026 |access-date=2 June 2026}}</ref>
+<!-- -->
+| [[China Southern Airlines]] | [[Guangzhou Baiyun International Airport|Guangzhou]]<ref>{{cite web |title=South Australia secures year-round air link to its biggest tourism market  |url= https://glamadelaide.com.au/south-australia-secures-year-round-air-link-to-its-biggest-tourism-market/ |website=Glam Adelaide |date= 20 December 2025 |access-date=20 December 2025}}</ref>
+<!-- -->
+| {{nowrap|[[National Jet Express]]}} | '''Charter:''' [[Carrapateena Airport|Carrapateena]],<ref name="NationalJetExpressRoutes">{{cite web | url=https://nje.aero/who-we-are/where-we-fly/ | title= Where we fly - Fly in, fly out route map | publisher=nje.aero | access-date=20 December 2025}}</ref> [[Port Augusta Airport|Port Augusta]],<ref name="NationalJetExpressRoutes"/> [[Prominent Hill Airport|Prominent Hill]]<ref name="NationalJetExpressRoutes"/>
+<!-- -->
+| [[Qantas]] |[[Melbourne Airport|Melbourne]],<ref name="QantasRouteMap2026">{{cite web | url=https://www.qantas.com/en-au/where-we-fly/australian-domestic-flight-routes | title=Qantas - Australian domestic flight routes | publisher=qantas.com | access-date=31 May 2026}}</ref> [[Perth Airport|Perth]],<ref name="QantasRouteMap2026"/> [[Sydney Airport|Sydney–Kingsford Smith]]<ref name="QantasRouteMap2026"/> <br/> '''Seasonal: '''[[Auckland Airport|Auckland]]<ref>{{cite news |title=Qantas takes on Air NZ with launch of Auckland to Adelaide direct route |url=https://www.nzherald.co.nz/travel/qantas-to-operate-direct-flights-between-auckland-and-adelaide/7DQUDC5W2FEIHOJ2AKQNFEKTRM/ |access-date=15 May 2025 |work=NZ Herald |date=15 May 2025 |language=en-NZ}}</ref>
+<!-- -->
+| [[Qatar Airways]] | [[Auckland Airport|Auckland]] (ends 8 December 2026),<ref>{{cite web |title=Qatar Airways to commence Melbourne-Auckland service in Dec-2026, replacing Adelaide-Auckland |url=https://centreforaviation.com/news/qatar-airways-to-commence-melbourne-auckland-service-in-dec-2026-replacing-adelaide-auckland-1367203 |website=Centre for Aviation |date=24 July 2026 |url-access=subscription}}</ref> [[Hamad International Airport|Doha]]<ref>{{cite news | url=http://www.qatarairways.com/au/en/press-release.page?pr_id=pressrelease_131015_adelaide | work=Qatar Airways | title=Qatar Airways Announces the Launch of Another Australian Destination – Adelaide | access-date=13 October 2015}}</ref>
+<!-- -->
+| [[Singapore Airlines]] | [[Singapore Changi Airport|Singapore]]<ref>{{OAGWorldAug2025Ref|title=Singapore, Singapore SIN|pages=1214-1219}}</ref>
+<!-- -->
+| [[Virgin Australia]] | [[Alice Springs Airport|Alice Springs]],<ref name="VirginAustraliaRouteMap2025">{{cite web | url=https://brilliantmaps.com/flight-maps/virgin-australia-routes/ | title=Virgin Australia Flight Route Destinations Map In 2025 | publisher=brilliantmaps.com | access-date=11 November 2025}}</ref> [[Brisbane Airport|Brisbane]],<ref name="VirginAustraliaRouteMap2025"/> [[Sydney Airport|Sydney–Kingsford Smith]]<ref name="VirginAustraliaRouteMap2025"/> <br/> '''Seasonal:''' [[Launceston Airport|Launceston]]<ref>{{cite web |title=New direct flights between Launceston and Adelaide take off |url=https://www.tourismtasmania.com.au/news/category/tourism-tasmania/new-direct-flights-between-launceston-and-adelaide/ |website=Tourism Tasmania Corporate |publisher=Tourism Tasmania |date=7 September 2021 |access-date=2 June 2026}}</ref> <br/>'''Charter:''' [[Olympic Dam Airport|Olympic Dam]]<ref name=odva>{{cite web|url=https://www.roxbydowns.sa.gov.au/council/latest-news/bhp-improved-flight-availability|title=BHP - Improved Flight Availability|publisher=[[Roxby Council]]|date=7 July 2026|access-date=22 July 2026}}</ref>
+}}
+
+Qantas formerly operated dedicated "flightseeing" services over Antarctica from Adelaide with the [[Boeing 787-9 Dreamliner]].
+
+===Cargo===
+{{Airport-dest-list
+<!-- -->
+| [[Qantas Freight]] | [[Melbourne Airport|Melbourne]],<ref name="QFFreight">{{cite web | title=Flight Schedule | website=Qantas Freight | url=https://freight.qantas.com/au-en/network/flight-schedule.html | access-date=31 May 2026}}</ref> [[Western Sydney Airport|Sydney–Western]]
+}}
+
+==Statistics==
+Adelaide handled 8.6 million passengers in 2025.

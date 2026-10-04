@@ -1,4 +1,56 @@
-"""Wikipedia 'Airlines and destinations' sections -> airline route network."""
+"""Wikipedia 'Airlines and destinations' sections -> airline route network.
+
+Each destination link in the section is parsed into a `Listing` that
+carries its service class, any dated change and the airline of its row, so
+that only year-round scheduled service can be made a route (owner decision,
+2026-10-04). The section's own markup is the only evidence, so where it is
+ambiguous a link is left out rather than guessed in.
+
+Where. Only links inside a destination table are read: the {{Airport
+destination list}} / {{Airport-dest-list}} template, or a wikitable. Prose in
+the section is mostly what no longer flies ("formerly served by", "there are
+no scheduled services") and says nothing about season. Not read either: links
+in references, in footnote templates, in destination MAPS ({{Location map~}}
+pins mark seasonal and future destinations by colour alone), and in any
+subsection whose heading names something other than year-round scheduled
+passenger flying -- Cargo, Charter, Seasonal, Historical / Former / Previous
+service, Statistics / Top destinations / Busiest routes, Destination maps,
+Military, Medevac.
+
+Service class. A label opens a class that runs to the end of its CELL -- the
+next `|` or `||` of the table, or the template's closing `}}` -- and not just
+to the next `<br>`: by the WikiProject Airports convention the year-round
+list comes first, and a list that wraps carries on under its label.
+
+    | [[Air New Zealand]] | [[Auckland Airport|Auckland]] <br/> '''Seasonal:''' [[Christchurch Airport|Christchurch]]
+        -> Auckland scheduled (kept), Christchurch seasonal (left out)
+    | [[China Eastern Airlines]] |''' Seasonal:''' [[Shanghai Pudong International Airport|Shanghai–Pudong]]
+        -> the whole row is seasonal: ADL-PVG flies 20 June - 2 August only
+    | [[Norse Atlantic Airways]] | '''Seasonal:''' [[Athens]], [[London–Gatwick]], <br />[[Rome–Fiumicino]]
+        -> all three seasonal
+    '''Charter:''', '''Seasonal charter:''', '''Seasonal''':, an unbolded
+        Charter:, and "[[X]] (Seasonal)" / "[[X]] (charter)" after one link -> left out
+    '''Hajj & Umrah:''', '''Mining charter:''', '''Notes:''', any other bold
+        label ending in a colon                                            -> left out
+
+Dated changes: a parenthesis after the link (references are stripped first,
+so `[[X]]<ref>..</ref> (ends ..)` binds to X).
+
+    [[X]] (begins 1 June 2026)     begins 2026-06-01
+    [[X]] (resumes 25 October 2026), (suspended until January 18, 2027)
+                                   resumes on that date (suspended now)
+    [[X]] (ends 8 December 2026)   ends 2026-12-08
+    [[X]] (suspended), (terminated), (begins TBA)
+                                   no date
+    [[X]], [[Y]] (both begin 26 October 2026)   applies to X and Y
+
+A month or a year alone is read at its conservative end: "begins June 2027"
+as 30 June, "ends 2027" as 1 January. A date that does not parse leaves the
+link out.
+
+The article cache keeps the PARSE (every listing with its class and date),
+not a decision about it.
+"""
 
 import collections
 import hashlib
@@ -7,7 +59,8 @@ import json
 import re
 import time
 import urllib.parse
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import NamedTuple
 
 import httpx
 import polars as pl
@@ -44,8 +97,14 @@ ARTICLE_MAX_AGE = timedelta(hours=24)
 # "== Operations ==" has it at level 3, and closing it only at the next
 # level-2 heading read its sibling sections as destinations (CR13-2).
 _SECTION_RE = re.compile(r"^(==+)\s*Airlines and destinations\s*==+\s*$", re.IGNORECASE | re.MULTILINE)
-# Cargo routes carry no passengers, so they must not become graph edges.
-_CARGO_RE = re.compile(r"^(===+)\s*(?:Cargo|Freight)[^=]*=+\s*$", re.IGNORECASE | re.MULTILINE)
+# Subsections that list no year-round scheduled passenger service. Cargo
+# carries no passengers; the rest are charter, seasonal, past, military or
+# ambulance flying, or a statistics table or destination map that repeats the
+# list without its Seasonal/Charter labels.
+_EXCLUDED_SUBSECTION_RE = re.compile(
+    r"^(===+)\s*[^=\n]*?(?:Cargo|Freight|Charter|Seasonal|Histor|Former|Previous|Statistic"
+    r"|Top\b|Busiest|\bMaps?\b|Military|Med[ie]vac|Ambulance)[^=\n]*=+\s*$",
+    re.IGNORECASE | re.MULTILINE)
 # Captures the article title, stopping at a "#Section" fragment, which may
 # precede the "|label". Without the fragment group a link such as
 # [[Tokyo International Airport#Terminal 3|Haneda]] matched nothing at all
@@ -56,12 +115,75 @@ _SKIP_PREFIXES = (
     "File:", "Category:", "Help:", "Template:", "Special:", "Portal:", "Wikipedia:",
     "Image:",
 )
+# Comments and references go before anything is read: a citation names
+# airlines, publishers and, now and then, an airport, and none is a route.
+_NOISE_RE = re.compile(r"<!--.*?-->|<ref\b[^>]*/>|<ref\b[^>]*>.*?</ref\s*>",
+                       re.IGNORECASE | re.DOTALL)
+# A label that opens a service class: '''Seasonal:''', ''' Seasonal:''',
+# '''Seasonal''':, '''Charter:''', '''Seasonal charter:''', and the few written
+# without the bold ("| Charter: [[X]]"). `_service_of` reads the class.
+_LABEL_RE = re.compile(
+    r"'{2,3}\s*([^'\n\[\]{}|<>]{1,40}?)\s*'{2,3}\s*(:?)"
+    r"|\b(?:seasonal(?:\s+ch[ae]rters?)?|charters?)\s*:",
+    re.IGNORECASE)
+# A dated (or undated) change of service in parentheses after a link.
+_CHANGE_RE = re.compile(
+    r"\(\s*(both\s+|all\s+)?(?:temporarily\s+)?"
+    r"(begins?|starts?|commences?|ends?|resumes?|suspended|terminated|cancell?ed)\b([^()]*)\)",
+    re.IGNORECASE)
+# The template that holds the table; any other template is inline, and a "|"
+# inside it does not end a cell.
+_LIST_TEMPLATE_RE = re.compile(r"^\s*airport[- ]?dest(?:ination)?[- ]?list\s*$", re.IGNORECASE)
+# Templates whose links are not destinations: maps, whose pins mark seasonal
+# and future service by colour alone, and footnotes.
+_NOT_DESTINATIONS_TEMPLATE_RE = re.compile(
+    r"^\s*(?:[^|]*map[^|]*|efn(?:-[a-z]+)?|refn|ref|note|sfn[a-z]*)\s*$", re.IGNORECASE)
+# What ends a cell outside any inline template: "|" or "||" (which also
+# covers "|-"). "||" is one token, not two around an empty cell, so the cell
+# before the destinations is still the airline's when they come.
+_CELL_END_RE = re.compile(r"\|\|?")
+# A class written after the link instead of as a label: "[[X]] (Seasonal)".
+_NOTE_RE = re.compile(r"\(\s*(seasonal(?:\s+charters?)?|charters?)\s*\)", re.IGNORECASE)
+_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august",
+           "september", "october", "november", "december")
+_DATE_RE = re.compile(
+    r"\b(?:(\d{1,2})\s+([a-z]{3,9})\.?,?\s+(\d{4})"     # 25 October 2026
+    r"|([a-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})"           # October 25, 2026
+    r"|([a-z]{3,9})\.?,?\s+(\d{4})"                       # October 2026
+    r"|(\d{4}))\b",                                       # 2026
+    re.IGNORECASE)
+# parse_destinations' scanner: a link, a template opening (with its name) or
+# closing, a wikitable opening or closing, a cell end, a label, a dated
+# change, a class note. Earlier alternatives win where two match at one place.
+_TOKEN_RE = re.compile("|".join(f"(?P<{name}>{rx.pattern})" for name, rx in (
+    ("link", _LINK_RE), ("open", re.compile(r"\{\{[^{}|]*")), ("close", re.compile(r"\}\}")),
+    ("table", re.compile(r"\{\||\|\}")), ("end", _CELL_END_RE), ("label", _LABEL_RE),
+    ("change", _CHANGE_RE), ("note", _NOTE_RE))),
+    re.IGNORECASE | re.DOTALL)
 # Routes so well-established that their absence means the crawl or the
 # Wikidata resolution silently broke somewhere, not that the route doesn't
 # exist. ICN<->NRT is one of the world's busiest routes; resolver bugs in
 # this pipeline have twice produced a network that "built successfully"
 # while missing it.
 _SANITY_PAIRS: tuple[tuple[str, str], ...] = (("ICN", "NRT"),)
+
+
+class Listing(NamedTuple):
+    """One destination link as the section lists it.
+
+    `service` is "scheduled", "seasonal", "charter", "seasonal charter" or
+    "other" (any other label). `change` is None or "begins", "ends",
+    "resumes" or "suspended", and `on` the ISO date it takes effect -- already
+    the conservative end of a month or year (module docstring) -- or None
+    when none was given or it did not parse. `airline` is the first link of
+    the cell before the link's own -- the airline column of the row -- or ""
+    when that cell has none."""
+
+    title: str
+    service: str = "scheduled"
+    change: str | None = None
+    on: str | None = None
+    airline: str = ""
 
 
 def _section_end(text: str, level: int, pos: int) -> int:
@@ -71,40 +193,148 @@ def _section_end(text: str, level: int, pos: int) -> int:
     return boundary.start() if boundary is not None else len(text)
 
 
-def _strip_cargo_subsections(body: str) -> str:
-    """Remove Cargo/Freight subsections without discarding what follows them.
+def _strip_excluded_subsections(body: str) -> str:
+    """Remove Cargo, Charter, ... subsections without discarding what follows.
 
-    Cutting everything from the first Cargo heading to the end of the body
+    Cutting everything from the first such heading to the end of the body
     would also throw away any later Passenger subsection. Excise only the
-    span from a Cargo heading up to the next heading at the same level or
+    span from the heading up to the next heading at the same level or
     shallower (a sibling or parent section), or to the end of the body if
     there is none.
     """
     while True:
-        cargo = _CARGO_RE.search(body)
-        if cargo is None:
+        cut = _EXCLUDED_SUBSECTION_RE.search(body)
+        if cut is None:
             return body
-        end = _section_end(body, len(cargo.group(1)), cargo.end())
-        body = body[: cargo.start()] + body[end:]
+        end = _section_end(body, len(cut.group(1)), cut.end())
+        body = body[: cut.start()] + body[end:]
 
 
-def parse_destinations(wikitext: str) -> list[str]:
-    """Wiki article titles linked from the Airlines and destinations section."""
+def _service_of(label: str) -> str:
+    text = label.lower()
+    if "seasonal" in text:
+        return "seasonal charter" if re.search(r"ch[ae]rter", text) else "seasonal"
+    if "charter" in text:
+        return "charter"
+    if re.fullmatch(r"\W*(?:year[- ]round|scheduled)\W*", text):
+        return "scheduled"
+    return "other"
+
+
+def _label_service(token: str) -> str | None:
+    """The class a label token opens, or None for bold text that is no label
+    (a bolded name, "'''Note'''"): one that neither ends in a colon nor says
+    seasonal or charter."""
+    m = _LABEL_RE.fullmatch(token)
+    text = m.group(1) if m.group(1) is not None else token
+    labelled = m.group(1) is None or text.endswith(":") or m.group(2)
+    if not labelled and not re.search(r"seasonal|ch[ae]rter", text, re.IGNORECASE):
+        return None
+    return _service_of(text)
+
+
+def _change_date(change: str, text: str) -> str | None:
+    """ISO date of the first date in `text`, taken at the conservative end of
+    a month or a year: the last day for a start, the first for an end."""
+    m = _DATE_RE.search(text)
+    if m is None:
+        return None
+    day, month, year = ((m.group(1), m.group(2), m.group(3)) if m.group(1) else
+                        (m.group(5), m.group(4), m.group(6)) if m.group(4) else
+                        (None, m.group(7), m.group(8)) if m.group(7) else
+                        (None, None, m.group(9)))
+    month_no = next((i + 1 for i, name in enumerate(_MONTHS)
+                     if month and len(month) >= 3 and name.startswith(month.lower())), None)
+    if month is not None and month_no is None:
+        return None
+    late = change != "ends"
+    try:
+        if day is not None:
+            return date(int(year), month_no, int(day)).isoformat()
+        if month_no is not None:
+            first = date(int(year), month_no, 1)
+            if not late:
+                return first.isoformat()
+            return (date(first.year + first.month // 12, first.month % 12 + 1, 1)
+                    - timedelta(days=1)).isoformat()
+        return date(int(year), 12, 31).isoformat() if late else date(int(year), 1, 1).isoformat()
+    except ValueError:
+        return None
+
+
+def _parse_change(token: str) -> tuple[str, str | None, int]:
+    """(change, date, how many preceding links it covers) of a change token."""
+    m = _CHANGE_RE.fullmatch(token)
+    word, rest = m.group(2).lower(), m.group(3)
+    if word.startswith(("begin", "start", "commence")):
+        change = "begins"
+    elif word.startswith("end"):
+        change = "ends"
+    elif word.startswith("resume") or re.match(r"\s*until\b", rest, re.IGNORECASE):
+        change = "resumes"     # "(suspended until <date>)" is a resumption
+    else:
+        change = "suspended"
+    on = _change_date(change, rest) if change != "suspended" else None
+    covers = 0 if m.group(1) and m.group(1).lower().startswith("all") else (
+        2 if m.group(1) else 1)
+    return change, on, covers
+
+
+def parse_destinations(wikitext: str) -> list[Listing]:
+    """Every destination link in the Airlines and destinations section, with
+    its service class and any dated change (module docstring). Links are
+    listed whatever their class."""
     match = _SECTION_RE.search(wikitext)
     if match is None:
         return []
 
     body = wikitext[match.end(): _section_end(wikitext, len(match.group(1)), match.end())]
-    body = _strip_cargo_subsections(body)
+    body = _strip_excluded_subsections(_NOISE_RE.sub("", body))
 
-    titles: list[str] = []
-    for raw in _LINK_RE.findall(body):
-        title = raw.strip().replace(" ", "_")
-        if not title or title.startswith(_SKIP_PREFIXES):
-            continue
-        titles.append(title)
+    listings: list[Listing] = []
+    stack: list[str] = []          # open templates: "list", "inline" or "skip"
+    tables = 0                     # open wikitables
+    service = "scheduled"
+    cell: list[int] = []           # indices into `listings` of this cell's links
+    airline = ""                   # first link of the cell before this one
+    for tok in _TOKEN_RE.finditer(body):
+        kind, text = tok.lastgroup, tok.group()
+        in_cell_level = not stack or stack[-1] == "list"
+        if kind == "open":
+            name = text[2:]
+            kind = ("list" if _LIST_TEMPLATE_RE.match(name) else
+                    "skip" if _NOT_DESTINATIONS_TEMPLATE_RE.match(name) else "inline")
+            stack.append(kind)
+            if kind == "list":
+                service, cell, airline = "scheduled", [], ""
+        elif kind == "close":
+            if stack and stack.pop() == "list":
+                service, cell, airline = "scheduled", [], ""
+        elif kind == "table":
+            tables = max(0, tables + (1 if text == "{|" else -1))
+            service, cell, airline = "scheduled", [], ""
+        elif kind == "end":
+            if in_cell_level:
+                airline = listings[cell[0]].title if cell else ""
+                service, cell = "scheduled", []
+        elif kind == "label":
+            opened = _label_service(text)
+            if opened is not None:
+                service = opened
+        elif kind == "change":
+            change, on, covers = _parse_change(text)
+            for i in (cell if covers == 0 else cell[-covers:]):
+                listings[i] = listings[i]._replace(change=change, on=on)
+        elif kind == "note":
+            if cell:
+                listings[cell[-1]] = listings[cell[-1]]._replace(service=_service_of(text))
+        elif "skip" not in stack and ("list" in stack or tables):
+            title = _LINK_RE.fullmatch(text).group(1).strip().replace(" ", "_")
+            if title and not title.startswith(_SKIP_PREFIXES):
+                cell.append(len(listings))
+                listings.append(Listing(title, service, airline=airline))
 
-    return list(dict.fromkeys(titles))
+    return list(dict.fromkeys(listings))
 
 
 def _fetch_wikitext(
@@ -196,19 +426,31 @@ def _fetch_wikitext_with_retry(
 # its own (CR13-13: two of the four regexes used to be left out of the key,
 # so a fix to _LINK_RE would have been a silent cache hit).
 # 2: the section closes at its own level, not at the next level-2 heading.
-PARSER_VERSION = 2
+# 3: each link carries its service class and dated change (Listing); maps,
+#    footnotes, references and non-scheduled subsections are not read.
+PARSER_VERSION = 3
 
 
 def _parser_key() -> str:
     """Every constant that governs what `parse_destinations` returns.
 
     Patterns and flags both: dropping re.IGNORECASE from _SECTION_RE changes
-    which headings match while `.pattern` stays byte-identical.
+    which headings match while `.pattern` stays byte-identical. _TOKEN_RE is
+    hashed whole because it is built from the cell-end pattern and the
+    template brackets as well as the regexes named here.
     """
-    return _params_hash(PARSER_VERSION, _SKIP_PREFIXES,
+    return _params_hash(PARSER_VERSION, _SKIP_PREFIXES, _MONTHS,
                         _SECTION_RE.pattern, _SECTION_RE.flags,
-                        _CARGO_RE.pattern, _CARGO_RE.flags,
-                        _LINK_RE.pattern, _LINK_RE.flags)
+                        _EXCLUDED_SUBSECTION_RE.pattern, _EXCLUDED_SUBSECTION_RE.flags,
+                        _LINK_RE.pattern, _LINK_RE.flags,
+                        _NOISE_RE.pattern, _NOISE_RE.flags,
+                        _LABEL_RE.pattern, _LABEL_RE.flags,
+                        _CHANGE_RE.pattern, _CHANGE_RE.flags,
+                        _NOTE_RE.pattern, _NOTE_RE.flags,
+                        _LIST_TEMPLATE_RE.pattern, _LIST_TEMPLATE_RE.flags,
+                        _NOT_DESTINATIONS_TEMPLATE_RE.pattern, _NOT_DESTINATIONS_TEMPLATE_RE.flags,
+                        _DATE_RE.pattern, _DATE_RE.flags,
+                        _TOKEN_RE.pattern, _TOKEN_RE.flags)
 
 
 def _destination_cache_path():
@@ -220,8 +462,8 @@ def _load_raw_destination_cache() -> dict:
     return json.loads(path.read_text()) if path.exists() else {}
 
 
-def _load_destination_cache() -> dict[str, list[str] | None]:
-    """Article title -> parsed destination titles, or None for an absent article.
+def _load_destination_cache() -> dict[str, list[Listing] | None]:
+    """Article title -> parsed listings, or None for an absent article.
 
     Keyed on the ARTICLE, which is what was fetched and parsed, not on the
     IATA code: when OurAirports re-points a code at a different article, an
@@ -242,7 +484,8 @@ def _load_destination_cache() -> dict[str, list[str] | None]:
         print(f"routes: destination cache was parsed under key {stamp}, parser is "
               f"{_parser_key()}; re-crawling", flush=True)
         return {}
-    return raw["articles"]
+    return {t: None if rows is None else [Listing(*row) for row in rows]
+            for t, rows in raw["articles"].items()}
 
 
 def _load_fetched_at() -> dict[str, str]:
@@ -255,7 +498,7 @@ def _load_fetched_at() -> dict[str, str]:
     return raw.get("fetched_at", {})
 
 
-def _save_destination_cache(cache: dict[str, list[str] | None],
+def _save_destination_cache(cache: dict[str, list[Listing] | None],
                             fetched_at: dict[str, str] | None = None) -> None:
     path = _destination_cache_path()
     payload = {"_parser_key": _parser_key(), "articles": cache,
@@ -265,7 +508,7 @@ def _save_destination_cache(cache: dict[str, list[str] | None],
 
 def _crawl_destinations(
     titles_by_iata: dict[str, str],
-) -> tuple[dict[str, list[str] | None], list[str]]:
+) -> tuple[dict[str, list[Listing] | None], list[str]]:
     """Fetch and parse each airport's destinations section, resuming from cache.
 
     Wikipedia's Action API returns up to TITLES_PER_REQUEST full-article
@@ -353,10 +596,11 @@ def _crawl_destinations(
     return destinations, unresolved
 
 
-def _crawl_digest(destinations: dict[str, list[str] | None],
+def _crawl_digest(destinations: dict[str, list[Listing] | None],
                   resolved: dict[str, str]) -> str:
     """sha256 of what the crawl and the resolver answered: each airport's
-    parsed destinations and each destination title's IATA code."""
+    parsed listings, classes and dates included, and each destination
+    title's IATA code."""
     payload = json.dumps({"destinations": destinations, "resolved": resolved},
                          sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -403,7 +647,8 @@ def route_network() -> pl.DataFrame:
     # airport: wikidata.iata_for_titles() already caches by title, so this
     # keeps the crawl from re-querying the same handful of hub airports
     # (Narita, Los Angeles, ...) thousands of times over.
-    all_titles = sorted({t for titles in destinations.values() if titles for t in titles})
+    all_titles = sorted({x.title for listings in destinations.values() if listings
+                         for x in listings})
     resolved = wikidata.iata_for_titles(all_titles)
 
     out = _network_cache_path(sorted(valid), titles_by_iata,
@@ -420,11 +665,9 @@ def route_network() -> pl.DataFrame:
               f"building {out.name}", flush=True)
 
     pairs: set[tuple[str, str]] = set()
-    for iata, dest_titles in destinations.items():
-        if not dest_titles:
-            continue
-        for title in dest_titles:
-            dest_iata = resolved.get(title)
+    for iata, listings in destinations.items():
+        for listing in listings or ():
+            dest_iata = resolved.get(listing.title)
             if dest_iata and dest_iata in valid and dest_iata != iata:
                 pairs.add((iata, dest_iata))
                 pairs.add((dest_iata, iata))  # scheduled service is bidirectional

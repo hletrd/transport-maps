@@ -1,0 +1,16 @@
+'''Shanghai Pudong International Airport''' is one of two international airports of [[Shanghai]].
+
+==Airlines and destinations==
+=== Passenger ===
+{{Airport destination list
+| [[Air Algérie]] | [[Houari Boumediene Airport|Algiers]] (begins 26 October 2026)<ref>{{cite web |title=Air Algérie prévoit d'ouvrir des vols vers Delhi et Shanghai dès l'hiver prochain |url=https://algerie-eco.com/2026/06/20/air-algerie-prevoit-douvrir-des-vols-vers-delhi-et-shanghai-des-lhiver-prochain/ |website=algerie-eco.com |lang=French |date=20 June 2026}}</ref>
+| [[Air China]] | [[Bangkok–Suvarnabhumi]] (resumes 25 October 2026), [[Josep Tarradellas Barcelona–El Prat Airport|Barcelona]], [[Beijing–Capital]], [[Frankfurt Airport|Frankfurt]]
+| [[AirAsia]] | [[Kota Kinabalu International Airport|Kota Kinabalu]] <br /> '''Charter:''' [[Tawau Airport|Tawau]]
+| [[Cebu Pacific]] | [[Mactan–Cebu International Airport|Cebu]] (resumes 18 November 2026),<ref>{{cite news |title=Cebu Pacific to commence services to Vietnam, Japan and China in 4Q2026 |url=https://centreforaviation.com/news/cebu-pacific-to-commence-services-to-vietnam-japan-and-china-in-4q2026-1369006 |publisher=Centre for Aviation |date=August 10, 2026 |url-access=subscription }}</ref> [[Ninoy Aquino International Airport|Manila]]
+| [[China Eastern Airlines]] | [[Zayed International Airport|Abu Dhabi]], [[Auckland Airport|Auckland]], [[Brisbane Airport|Brisbane]], [[Incheon International Airport|Seoul–Incheon]], [[Sydney Airport|Sydney–Kingsford Smith]], [[Tokyo–Narita]], [[Zurich Airport|Zurich]] <br/>'''Seasonal:''' [[Adelaide Airport|Adelaide]]
+| [[Juneyao Air]] | [[Ngurah Rai International Airport|Denpasar]], [[Dunhuang Mogao International Airport|Dunhuang]] (ends 11 October 2026), [[Guangzhou Baiyun International Airport|Guangzhou]]
+| {{nowrap|[[MIAT Mongolian Airlines]]}} | [[Chinggis Khaan International Airport|Ulaanbaatar]] (resumes 29 October 2026)<ref>{{cite web |title=Direct (non-stop) flights from Shanghai to Ulaanbaatar|url=https://www.flightsfrom.com/PVG-UBN|website=www.flightsfrom.com}}</ref>
+| [[Spring Airlines]] | [[Gimhae International Airport|Busan]], [[Incheon International Airport|Seoul–Incheon]] <br/> '''Seasonal:''' [[Kota Kinabalu International Airport|Kota Kinabalu]]
+| [[Sun PhuQuoc Airways]] | [[Tan Son Nhat International Airport|Ho Chi Minh City]] (begins 15 October 2026)
+| [[TransNusa]] | '''Charter:''' [[Sam Ratulangi International Airport|Manado]]
+}}

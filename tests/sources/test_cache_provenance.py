@@ -294,7 +294,19 @@ STAMPED = [
     # either that forgot the version bump was relying on a stamp nothing
     # checked.
     (routes, "_SECTION_RE", re.compile(r"^==+\s*Destinations\s*==+$"), _routes_path),
-    (routes, "_CARGO_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), _routes_path),
+    (routes, "_EXCLUDED_SUBSECTION_RE", re.compile(r"^(===+)\s*Mail[^=]*=+$"), _routes_path),
+    # PARSER_VERSION 3 (year-round service only, 2026-10-04): what the
+    # labels, dated changes, footnotes and maps are read with. _TOKEN_RE is
+    # the scanner built from them, the cell ends and the template brackets.
+    (routes, "_NOISE_RE", re.compile(r"<!--.*?-->"), _routes_path),
+    (routes, "_LABEL_RE", re.compile(r"'{3}Seasonal:'{3}"), _routes_path),
+    (routes, "_CHANGE_RE", re.compile(r"\((begins)\b([^()]*)\)"), _routes_path),
+    (routes, "_NOTE_RE", re.compile(r"\((seasonal)\)"), _routes_path),
+    (routes, "_LIST_TEMPLATE_RE", re.compile(r"^airport-dest-list$"), _routes_path),
+    (routes, "_NOT_DESTINATIONS_TEMPLATE_RE", re.compile(r"^location map~$"), _routes_path),
+    (routes, "_DATE_RE", re.compile(r"(\d{4})"), _routes_path),
+    (routes, "_TOKEN_RE", re.compile(r"(?P<link>\[\[[^\]]*\]\])"), _routes_path),
+    (routes, "_MONTHS", ("jan", "feb"), _routes_path),
     # The link regex was the one parse_destinations applied with no row and
     # no place in the key (CR13-13). It reaches the network path through
     # routes._parser_key, so this row proves the constant is in that key AND
@@ -595,18 +607,21 @@ def test_a_section_regex_FLAG_change_moves_the_parser_key(monkeypatch):
     ("PARSER_VERSION", 999),
     ("_LINK_RE", re.compile(r"\[\[([^\]|]+?)\]\]")),
     ("_SECTION_RE", re.compile(r"^(==)\s*Destinations\s*==\s*$", re.MULTILINE)),
+    # A parse cached before the year-round labels were read carries no class
+    # at all, and must not be read back as "every listing scheduled".
+    ("_LABEL_RE", re.compile(r"'{3}Seasonal:'{3}")),
 ])
 def test_a_parser_change_empties_the_destination_cache(monkeypatch, tmp_path, name, new):
-    """The per-airport cache stores PARSED titles, so it is the cache a parser
-    fix has to get past. CR13-13: `_LINK_RE` never reached its version check,
-    so the fragment-link fix (CR13-6) would have been read back as a hit.
+    """The per-airport cache stores PARSED listings, so it is the cache a
+    parser fix has to get past. CR13-13: `_LINK_RE` never reached its version
+    check, so the fragment-link fix (CR13-6) would have been read back as a hit.
 
     Mutation, measured: dropping `_LINK_RE.pattern, _LINK_RE.flags` from
     `routes._parser_key` turns the `_LINK_RE` case red (and the STAMPED row).
     """
     monkeypatch.setattr(config, "CACHE", tmp_path)
-    routes._save_destination_cache({"ICN": ["Tokyo"]})
-    assert routes._load_destination_cache() == {"ICN": ["Tokyo"]}
+    routes._save_destination_cache({"ICN": [routes.Listing("Tokyo", "seasonal")]})
+    assert routes._load_destination_cache() == {"ICN": [routes.Listing("Tokyo", "seasonal")]}
     monkeypatch.setattr(routes, name, new)
     assert routes._load_destination_cache() == {}
 
