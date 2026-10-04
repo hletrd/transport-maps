@@ -188,18 +188,24 @@ class LandParts:
                      else i, p) for i, p in enumerate(landmask._land_parts())],
                    margin=COAST_MARGIN_DEG)
 
+    # Points per query. Europe's seams hold some 90 million road nodes; a
+    # shapely Point for every one of them at once took the parse to a 15.8 GB
+    # peak (2026-10-04).
+    CHUNK = 1 << 21
+
     def __call__(self, lats, lons) -> np.ndarray:
         import shapely
 
         xs, ys = np.asarray(lons, dtype=float), np.asarray(lats, dtype=float)
         out = np.full(len(xs), WATER, dtype=np.int64)
-        if not len(xs):
-            return out
-        at, poly = self._tree.query(shapely.points(xs, ys))      # bounding boxes only
-        for j in np.unique(poly):
-            near = at[poly == j]
-            # Parts do not overlap, so a point is on at most one.
-            out[near[shapely.contains_xy(self._polys[j], xs[near], ys[near])]] = self._ids[j]
+        for start in range(0, len(xs), self.CHUNK):
+            x, y = xs[start:start + self.CHUNK], ys[start:start + self.CHUNK]
+            at, poly = self._tree.query(shapely.points(x, y))    # bounding boxes only
+            for j in np.unique(poly):
+                near = at[poly == j]
+                # Parts do not overlap, so a point is on at most one.
+                hit = near[shapely.contains_xy(self._polys[j], x[near], y[near])]
+                out[start + hit] = self._ids[j]
         return out
 
 

@@ -116,6 +116,16 @@ def test_land_parts_are_read_at_each_point():
     assert LAND([a[0], b[0], w[0]], [a[1], b[1], w[1]]).tolist() == [1, 2, WATER]
 
 
+def test_land_parts_read_in_chunks_answer_as_one_read(monkeypatch):
+    """Each chunk's hits index that chunk: placed at the wrong offset, every
+    chunk after the first would mark the first chunk's nodes."""
+    a, b, w = h3.cell_to_latlng(A), h3.cell_to_latlng(B), h3.cell_to_latlng(W)
+    lats, lons = [w[0], a[0], w[0], b[0], a[0]], [w[1], a[1], w[1], b[1], a[1]]
+    whole = LAND(lats, lons).tolist()
+    monkeypatch.setattr(rc.LandParts, "CHUNK", 2)
+    assert LAND(lats, lons).tolist() == whole == [WATER, 1, WATER, 2, 1]
+
+
 def test_land_near_a_coast_is_not_trusted_to_be_on_its_part():
     """Natural Earth's coast can reach across a narrow strait onto the far
     shore: Baubau's streets, on Buton, lay in two slivers of "Muna"."""
