@@ -315,9 +315,13 @@ def _crossings(path: pathlib.Path, s: Seams, land: LandParts) -> list[dict]:
     ids, inverse = np.unique(np.concatenate([np.frombuffer(step_a, dtype=np.int64),
                                              np.frombuffer(step_b, dtype=np.int64)]),
                              return_inverse=True)
-    locs = [where.get(int(i)) for i in ids]
-    lat = np.array([loc.lat for loc in locs])
-    lon = np.array([loc.lon for loc in locs])
+    # Read straight into arrays, a slice at a time: Asia's seams hold 29.5
+    # million road nodes, and a Location object for each is gigabytes.
+    lat, lon = np.empty(len(ids)), np.empty(len(ids))
+    for start in range(0, len(ids), 1 << 20):
+        for k, i in enumerate(ids[start:start + (1 << 20)].tolist(), start):
+            loc = where.get(i)
+            lat[k], lon[k] = loc.lat, loc.lon
     a, b = inverse[:len(step_a)], inverse[len(step_a):]
     # A step across the antimeridian would be interpolated the long way round.
     near = np.abs(lon[a] - lon[b]) <= 180.0
