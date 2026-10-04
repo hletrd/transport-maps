@@ -93,6 +93,54 @@ def _worker_count(n_origins: int) -> int:
     return max(1, min(cores - 2, 8, n_origins))
 
 
+# Peak resident memory of one worker on the res-6/7 grid, measured from the
+# per-origin column rebuild 27 logged (2026-10-02..04): median 8.2 GB, max
+# 10.7 GB. Rounded up: an operator asking for more workers is refused by this
+# figure, not by the kernel's OOM killer on a machine that also serves others.
+WORKER_PEAK_GB = 12.0
+# The parent: graph, index and the shared precomputes, before any fork.
+PARENT_GB = 20.0
+
+
+def _requested_workers(n_origins: int, env=None, meminfo: str | None = None) -> int | None:
+    """TRANSPORT_MAPS_WORKERS, when set: the operator's worker count, checked
+    against the memory actually AVAILABLE now, not the machine's total.
+
+    The default (`_worker_cap`, `_worker_count`) is sized for a 32 GB Mac. On a
+    large shared machine -- h200: 1.9 TB, most of it held by inference -- the
+    total says nothing about what is free, so the request is refused unless
+    WORKER_PEAK_GB per worker plus the parent fits in 80% of MemAvailable.
+    Where /proc/meminfo does not exist (macOS) the request is taken as given.
+    """
+    raw = (env if env is not None else os.environ).get("TRANSPORT_MAPS_WORKERS")
+    if not raw:
+        return None
+    try:
+        n = int(raw)
+    except ValueError:
+        raise SystemExit(f"TRANSPORT_MAPS_WORKERS={raw!r} is not a whole number") from None
+    if n < 1:
+        raise SystemExit("TRANSPORT_MAPS_WORKERS must be at least 1")
+    n = min(n, max(1, n_origins))
+    if meminfo is None:
+        try:
+            meminfo = Path("/proc/meminfo").read_text()
+        except OSError:
+            return n
+    avail_kb = next((int(line.split()[1]) for line in meminfo.splitlines()
+                     if line.startswith("MemAvailable:")), None)
+    if avail_kb is None:
+        return n
+    need_gb = n * WORKER_PEAK_GB + PARENT_GB
+    avail_gb = avail_kb / 2**20
+    if need_gb > 0.8 * avail_gb:
+        fits = max(1, int((0.8 * avail_gb - PARENT_GB) // WORKER_PEAK_GB))
+        raise SystemExit(f"TRANSPORT_MAPS_WORKERS={n} needs about {need_gb:.0f} GB but only "
+                         f"{avail_gb:.0f} GB is available (80% of it may be used): "
+                         f"{fits} would fit")
+    return n
+
+
 def _worker_cap(n_cells: int) -> int:
     """Fewer forks for a big grid. Each worker's refcount traffic copies the
     cell-list pages it touches, and its own arrays scale with the graph; at
@@ -700,7 +748,8 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # ~1 GB of scipy arrays, so workers are FORKED to inherit it copy-on-write
     # rather than spawned, which would rebuild it once per worker.
     todo = _still_to_build(origins, shared) if skip_existing else origins
-    workers = min(_worker_cap(len(idx.cells)), _worker_count(len(todo)))
+    workers = (_requested_workers(len(todo))
+               or min(_worker_cap(len(idx.cells)), _worker_count(len(todo))))
     shared["workers"] = workers
     try:
         if workers <= 1:

@@ -768,3 +768,25 @@ def test_what_the_grid_alone_decides_is_computed_once_and_handed_to_every_origin
     assert one is not None and all(p is one for p in seen["parents"])
     assert seen["cells_file"] is one, "hover_cells.bin was written from another list"
     assert seen["count"] == len(one)
+
+
+def test_an_operator_worker_count_is_refused_when_it_would_not_fit():
+    """On a shared machine the total RAM says nothing about what is free; the
+    request is checked against MemAvailable.
+
+    Mutations performed and reverted, each -> red: compare against MemTotal;
+    drop the 0.8 margin; ignore the variable entirely.
+    """
+    mem = lambda gb: f"MemTotal: {2000 * 2**20} kB\nMemAvailable: {gb * 2**20} kB\n"  # noqa: E731
+    assert cli._requested_workers(1464, env={}, meminfo=mem(687)) is None
+    # 40 workers: 40 x 12 + 20 = 500 GB <= 0.8 x 687 = 550 GB.
+    assert cli._requested_workers(1464, env={"TRANSPORT_MAPS_WORKERS": "40"},
+                                  meminfo=mem(687)) == 40
+    with pytest.raises(SystemExit, match="would fit"):
+        cli._requested_workers(1464, env={"TRANSPORT_MAPS_WORKERS": "60"}, meminfo=mem(687))
+    # 50 x 12 + 20 = 620 GB: inside the 687 available, outside the 80% margin.
+    with pytest.raises(SystemExit, match="would fit"):
+        cli._requested_workers(1464, env={"TRANSPORT_MAPS_WORKERS": "50"}, meminfo=mem(687))
+    assert cli._requested_workers(3, env={"TRANSPORT_MAPS_WORKERS": "40"}, meminfo=mem(687)) == 3
+    with pytest.raises(SystemExit):
+        cli._requested_workers(10, env={"TRANSPORT_MAPS_WORKERS": "lots"}, meminfo=mem(687))
