@@ -11,6 +11,7 @@ import h3
 import osmium
 import polars as pl
 import pytest
+import shapely
 
 from transport_maps import config
 from transport_maps.graph import landmass
@@ -63,26 +64,57 @@ def _write(path, nodes, ways):
     w.close()
 
 
-def test_the_parse_keeps_only_the_stretches_that_can_join_two_parts(tmp_path):
+def _hexagon(cell):
+    return shapely.Polygon([(lo, la) for la, lo in h3.cell_to_boundary(cell)])
+
+
+def _land(**parts):
+    """LandParts over whole hexagons: part id -> the cells it covers."""
+    return rc.LandParts([(int(pid[1:]), shapely.union_all([_hexagon(c) for c in cells]))
+                         for pid, cells in parts.items()])
+
+
+# Part 1 is A, C, F and F2; part 2 is B; W is water. The labels agree.
+LAND = _land(p1=[A, C, F, F2], p2=[B])
+
+
+def test_land_parts_are_read_at_each_point():
+    a, b, w = h3.cell_to_latlng(A), h3.cell_to_latlng(B), h3.cell_to_latlng(W)
+    assert LAND([a[0], b[0], w[0]], [a[1], b[1], w[1]]) == [{1}, {2}, frozenset()]
+
+
+def test_the_parse_keeps_only_the_roads_that_run_from_one_part_onto_another(tmp_path):
     centre = {c: h3.cell_to_latlng(c) for c in (A, B, C, W, F, F2)}
     nodes = {1: centre[A], 2: centre[B], 3: centre[C], 4: centre[W], 5: centre[F],
-             6: centre[F2], 7: centre[A], 8: centre[B]}
+             6: centre[F2], 7: centre[A], 8: centre[B], 9: centre[W]}
     primary = {"highway": "primary"}
     _write(tmp_path / "x.osm.pbf", nodes, [
-        (10, [1, 2], {**primary, "name": "seawall"}),        # part 1 onto part 2
+        (10, [1, 2], {**primary, "name": "causeway"}),       # part 1 onto part 2
         (11, [1, 3], primary),                               # within part 1
         (12, [7, 8], {"highway": "footway"}),                # not a road
         (13, [7, 8], {**primary, "ice_road": "yes"}),        # not all year
-        (14, [3, 4, 1], {"highway": "residential"}),         # over water and back
+        (14, [3, 4, 1], {"highway": "residential"}),         # out over water and back
         (15, [5, 6], primary),                               # far from every seam
         (16, [7, 8], {**primary, "route": "ferry"}),         # a sailing
+        (17, [7, 9, 8], {**primary, "name": "seawall"}),     # over water onto part 2
     ])
-    rows = rc._crossings(tmp_path / "x.osm.pbf", rc.seams(CELLS, PARTS))
+    rows = rc._crossings(tmp_path / "x.osm.pbf", rc.seams(CELLS, PARTS), LAND)
     got = {r["way_id"]: r for r in rows}
-    assert set(got) == {10, 14}
-    assert got[10]["kind"] == "road" and got[10]["name"] == "seawall"
+    assert set(got) == {10, 17}
+    assert got[10]["kind"] == "road" and got[10]["name"] == "causeway"
     assert got[10]["highway"] == "primary", "costed at its class, like a bridge"
-    assert len(got[14]["lat"]) == 3, "the stretch over water keeps its land ends"
+    assert len(got[17]["lat"]) == 3, "the stretch over water keeps both its land ends"
+
+
+def test_a_road_on_one_part_through_a_cell_labelled_another_crosses_nothing(tmp_path):
+    """Bali: a coastal road through a strait cell Natural Earth's coarse coast
+    labels Java. The cell labels flag the step; the road never leaves Bali,
+    and the first version, judging by the labels, joined the two islands."""
+    a, b = h3.cell_to_latlng(A), h3.cell_to_latlng(B)
+    _write(tmp_path / "x.osm.pbf", {1: a, 2: b}, [(10, [1, 2], {"highway": "trunk"})])
+    s = rc.seams(CELLS, PARTS)
+    assert rc._step_matters(a, b, s), "fixture: the labels must flag the step"
+    assert rc._crossings(tmp_path / "x.osm.pbf", s, _land(p1=[A, B, C, F, F2])) == []
 
 
 def test_a_stretch_is_cut_where_the_road_leaves_the_seams(tmp_path):
@@ -90,9 +122,15 @@ def test_a_stretch_is_cut_where_the_road_leaves_the_seams(tmp_path):
     centre = {c: h3.cell_to_latlng(c) for c in (A, B, F)}
     _write(tmp_path / "x.osm.pbf", {1: centre[F], 2: centre[A], 3: centre[B]},
            [(10, [1, 2, 3], {"highway": "trunk"})])
-    rows = rc._crossings(tmp_path / "x.osm.pbf", rc.seams(CELLS, PARTS))
+    rows = rc._crossings(tmp_path / "x.osm.pbf", rc.seams(CELLS, PARTS), LAND)
     assert len(rows) == 1
     assert rows[0]["lat"] == pytest.approx([centre[A][0], centre[B][0]], abs=1e-6)
+
+
+def test_a_stretch_ends_at_a_step_across_the_antimeridian():
+    """Interpolated, that step would run the long way round the globe."""
+    assert rc._stretches([(-16.8, 179.9), (-16.8, -179.9)]) == []
+    assert rc._stretches([(0.0, 1.0), None, (0.0, 2.0), (0.0, 2.1)]) == [[(0.0, 2.0), (0.0, 2.1)]]
 
 
 def test_two_crossings_on_one_way_are_two_stretches_not_one(tmp_path):
@@ -104,20 +142,22 @@ def test_two_crossings_on_one_way_are_two_stretches_not_one(tmp_path):
     assert h3.latlng_to_cell(*b2, config.SOLVE_RES) == B, "fixture"
     _write(tmp_path / "x.osm.pbf", {1: a, 2: b, 3: b2, 4: a},
            [(10, [1, 2, 3, 4], {"highway": "trunk"})])
-    rows = rc._crossings(tmp_path / "x.osm.pbf", rc.seams(CELLS, PARTS))
+    rows = rc._crossings(tmp_path / "x.osm.pbf", rc.seams(CELLS, PARTS), LAND)
     assert [len(r["lat"]) for r in rows] == [2, 2]
 
 
-def test_a_stretch_inside_one_fine_cell_joins_nothing_and_is_dropped(tmp_path):
-    """The fixed-link rule: a straddler's step matters, but one whose nodes
+def test_a_crossing_inside_one_fine_cell_joins_nothing_and_is_dropped(tmp_path):
+    """The fixed-link rule: a road from part 3 onto part 4 whose two nodes
     share a fine cell cannot join two graph cells."""
     f = h3.cell_to_latlng(F)
     f2 = (f[0] + 0.0001, f[1])
     assert h3.latlng_to_cell(*f, fixed_links.KEEP_RES) == h3.latlng_to_cell(*f2, fixed_links.KEEP_RES)
+    mid = f[0] + 0.00005
+    split = rc.LandParts([(3, shapely.box(f[1] - 1, f[0] - 1, f[1] + 1, mid)),
+                          (4, shapely.box(f[1] - 1, mid, f[1] + 1, f[0] + 1))])
+    assert split([f[0], f2[0]], [f[1], f2[1]]) == [{3}, {4}], "fixture: a real crossing"
     _write(tmp_path / "x.osm.pbf", {1: f, 2: f2}, [(10, [1, 2], {"highway": "trunk"})])
-    s = rc.seams([F], [(3, 4)])
-    assert rc._step_matters(f, f2, s), "fixture: the step must matter, or the filter is untested"
-    assert rc._crossings(tmp_path / "x.osm.pbf", s) == []
+    assert rc._crossings(tmp_path / "x.osm.pbf", rc.seams([F], [(3, 4)]), split) == []
 
 
 @pytest.fixture

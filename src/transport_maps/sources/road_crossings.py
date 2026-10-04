@@ -28,13 +28,19 @@ SEAMS, the only places a crossing can matter:
   * a road node is tracked when its SOLVE_RES cell, land or water, is within
     SEAM_RING rings of a seam cell.
 
-Of a tracked stretch of road only the steps that can join something are kept
-(`_step_matters`): one between cells on disjoint land parts, one inside or
-into a cell that touches two parts (its children are judged one by one later,
-graph/landmass.fine_cell_parts), and one onto a cell off the land mask, which
-graph/landmass.spanning_links turns into a span when it reaches land again.
-The rows have the fixed-link SCHEMA with kind "road", so linked_pairs and
-spanning_links read them as they read a bridge.
+A crossing is judged by the ROAD, not by the cells it passes: a stretch is
+kept from its last node on one land part to its first node on a disjoint one,
+whatever lies between (`_crossing_runs`; water, for a seawall). Judged by the
+cells' labels instead -- the first version -- a road on Bali's west coast
+passed through a strait cell Natural Earth's coarse coast puts on Java, and
+joined the two: of 29,680 "crossings" that version kept in Asia, most were
+coastal roads like it, and Bali, Chiloe, Guimaras and K'gari, which only
+ferries reach, were joined. The labels still pick the stretches worth
+testing (`_step_matters`: a step between cells on disjoint parts, inside a
+cell touching two, or onto a cell off the land mask), because a road that
+does cross must take one such step. The rows have the fixed-link SCHEMA with
+kind "road", so linked_pairs and spanning_links read them as they read a
+bridge.
 
 Refused, as fixed_links refuses a footbridge: highways that are not roads
 (footways, paths, cycleways -- `ROAD_HIGHWAYS` is the GRIP classes the spans
@@ -87,7 +93,9 @@ SAMPLE_KM = 0.5
 BIN_DEG = 0.5
 
 # Bumped when the parse changes shape.
-ROAD_CROSSING_PARSER_VERSION = 1
+# 2: a crossing is judged by the land parts under the road's own nodes, not by
+#    the labels of the cells it passes (see the module docstring: Bali).
+ROAD_CROSSING_PARSER_VERSION = 2
 
 STEM = "road_crossings"
 
@@ -179,34 +187,84 @@ def _km(a: tuple[float, float], b: tuple[float, float]) -> float:
     return 6371.0088 * 2 * math.asin(math.sqrt(min(1.0, h)))
 
 
-def _runs(pts: list[tuple[float, float] | None], s: Seams) -> list[list[tuple[float, float]]]:
-    """The stretches of one way worth keeping: maximal runs of consecutive
-    steps that matter. `None` is a node outside the seams' vicinity, whose
-    location was never kept; a step to or from it is not read."""
+def _stretches(pts: list[tuple[float, float] | None]) -> list[list[tuple[float, float]]]:
+    """A way's maximal runs of located nodes. `None` is a node outside the
+    seams' vicinity, whose location was never kept: a run ends there, and so
+    does one at a step across the antimeridian."""
     out: list[list[tuple[float, float]]] = []
     run: list[tuple[float, float]] = []
-    for a, b in itertools.pairwise(pts):
-        if a is not None and b is not None and abs(b[1] - a[1]) <= 180.0 \
-                and _step_matters(a, b, s):
-            if not run:
-                run = [a]
-            run.append(b)
+    for p in pts:
+        if p is None or (run and abs(p[1] - run[-1][1]) > 180.0):
+            if len(run) > 1:
+                out.append(run)
+            run = [] if p is None else [p]
             continue
-        if run:
-            out.append(run)
-            run = []
-    if run:
+        run.append(p)
+    if len(run) > 1:
         out.append(run)
     return out
 
 
-def _crossings(path: pathlib.Path, s: Seams) -> list[dict]:
-    """Every road stretch in one extract that can join two land parts.
+def _crossing_runs(pts: list[tuple[float, float]],
+                   parts: list[frozenset[int]]) -> list[list[tuple[float, float]]]:
+    """The pieces of one stretch that run from land on one part onto land on a
+    disjoint one: from the last node on the first to the first node on the
+    second, whatever lies between. `parts[i]` is the land parts node i lies on,
+    empty over water."""
+    out = []
+    last = None
+    for i, p in enumerate(parts):
+        if not p:
+            continue
+        if last is not None and not parts[last] & p:
+            out.append(pts[last:i + 1])
+        last = i
+    return out
+
+
+class LandParts:
+    """Which land parts a point lies on: the polygons
+    landmask.land_cell_landmasses numbers, by the same ids."""
+
+    def __init__(self, polygons: list[tuple[int, object]]):
+        import shapely
+
+        self._ids = [i for i, _ in polygons]
+        self._polys = [p for _, p in polygons]
+        for poly in self._polys:
+            shapely.prepare(poly)
+        self._tree = shapely.STRtree(self._polys)
+
+    @classmethod
+    def natural_earth(cls) -> LandParts:
+        """Antarctica's wedges are one landmass, as they are there."""
+        return cls([(landmask.ANTARCTICA_LANDMASS if p.bounds[3] <= landmask.ANTARCTICA_MAX_LAT
+                     else i, p) for i, p in enumerate(landmask._land_parts())])
+
+    def __call__(self, lats: list[float], lons: list[float]) -> list[frozenset[int]]:
+        import numpy as np
+        import shapely
+
+        found: list[set[int]] = [set() for _ in lats]
+        if not lats:
+            return []
+        xs, ys = np.asarray(lons, dtype=float), np.asarray(lats, dtype=float)
+        at, poly = self._tree.query(shapely.points(xs, ys))      # bounding boxes only
+        for j in np.unique(poly):
+            near = at[poly == j]
+            for i in near[shapely.contains_xy(self._polys[j], xs[near], ys[near])]:
+                found[i].add(self._ids[j])
+        return [frozenset(f) for f in found]
+
+
+def _crossings(path: pathlib.Path, s: Seams, land: LandParts) -> list[dict]:
+    """Every road stretch in one extract that runs from one land part onto another.
 
     Three passes, the filtering in C++ wherever osmium offers it: road ways,
     recording their node ids; those nodes, keeping the location of the ones
     in the seams' vicinity; and the road ways again, only those touching a
-    kept node, cut into the stretches `_runs` keeps.
+    kept node. A stretch with a step that matters (`_step_matters`) is then
+    judged node by node against the land parts themselves (`_crossing_runs`).
     """
     from h3.api import basic_int as h3i
 
@@ -229,7 +287,7 @@ def _crossings(path: pathlib.Path, s: Seams) -> list[dict]:
     del on_roads
 
     known = kept.node_ids()
-    rows = []
+    candidates = []
     road_filter = osmium.filter.TagFilter(*[("highway", h) for h in sorted(ROAD_HIGHWAYS)])
     for way in (osmium.FileProcessor(str(path), osmium.osm.WAY)
                 .with_filter(road_filter).with_filter(kept.contains_filter())):
@@ -243,13 +301,22 @@ def _crossings(path: pathlib.Path, s: Seams) -> list[dict]:
                 pts.append((loc.lat, loc.lon))
             else:
                 pts.append(None)
-        for run in _runs(pts, s):
+        for stretch in _stretches(pts):
+            if any(_step_matters(a, b, s) for a, b in itertools.pairwise(stretch)):
+                candidates.append((way.id, highway, way.tags.get("name") or "", stretch))
+
+    parts = land([p[0] for *_, st in candidates for p in st],
+                 [p[1] for *_, st in candidates for p in st])
+    rows = []
+    k = 0
+    for way_id, highway, name, stretch in candidates:
+        for run in _crossing_runs(stretch, parts[k:k + len(stretch)]):
             # The fixed-link rule: a stretch inside one fine cell joins nothing.
             if len({h3.latlng_to_cell(la, lo, fixed_links.KEEP_RES) for la, lo in run}) < 2:
                 continue
-            rows.append({"way_id": way.id, "kind": "road", "highway": highway,
-                         "name": way.tags.get("name") or "",
+            rows.append({"way_id": way_id, "kind": "road", "highway": highway, "name": name,
                          "lat": [p[0] for p in run], "lon": [p[1] for p in run]})
+        k += len(stretch)
     return rows
 
 
@@ -292,17 +359,18 @@ def road_crossings(*, extracts_dir: pathlib.Path | None = None) -> pl.DataFrame 
                        "stay cut.", ", ".join(missing))
         return None
     frames = []
-    found: Seams | None = None
+    found: tuple[Seams, LandParts] | None = None
     for region, source in sources.items():
         if source.suffix == ".parquet":
             frames.append(pl.read_parquet(source))
             continue
         if found is None:
-            found = seams(landmask.land_cells(config.SOLVE_RES),
-                          landmask.land_cell_landmasses(config.SOLVE_RES))
+            found = (seams(landmask.land_cells(config.SOLVE_RES),
+                           landmask.land_cell_landmasses(config.SOLVE_RES)),
+                     LandParts.natural_earth())
         logger.info("parsing road crossings from %s (%.1f GB)", source.name,
                     source.stat().st_size / 1e9)
-        df = pl.DataFrame(_crossings(source, found), schema=fixed_links.SCHEMA)
+        df = pl.DataFrame(_crossings(source, *found), schema=fixed_links.SCHEMA)
         _atomic_write(_cache_path(region, fixed_links._source_key(source)),
                       lambda tmp, df=df: df.write_parquet(tmp))
         frames.append(df)
