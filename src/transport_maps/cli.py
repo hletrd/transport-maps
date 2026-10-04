@@ -521,6 +521,31 @@ def _log_reading_cost(path: Path) -> None:
           f"(ratio {wire / raw:.3f}) -- one fetch per origin switch", flush=True)
 
 
+def _require_modes(exclude: str | None, *, rail, ferries, severed, env=None) -> None:
+    """Refuse a build whose graph silently lacks a mode it was meant to have.
+
+    `_load_rail` and `_load_ferries` print EXCLUDED and carry on, and without
+    fixed-link data `_severed` keeps every water-crossing join. Each is a
+    different map that looks like the right one: rebuild 28's first run on a
+    fresh machine (2026-10-04) started with no OSM extracts and was solving a
+    road-and-air world before anyone read its log. A variant excludes its own
+    mode on purpose and is not refused for it. TRANSPORT_MAPS_ALLOW_DEGRADED=1
+    is the explicit way to build one anyway.
+    """
+    if (env if env is not None else os.environ).get("TRANSPORT_MAPS_ALLOW_DEGRADED") == "1":
+        return
+    missing = []
+    if rail is None and exclude != "rail":
+        missing.append("rail (run scripts/osm_rail.sh)")
+    if ferries is None and exclude != "ferry":
+        missing.append("ferries (run scripts/osm_rail.sh)")
+    if not severed:
+        missing.append("bridges and tunnels for land severing (run scripts/osm_fixed_links.sh)")
+    if missing:
+        raise SystemExit("refusing to build without " + "; ".join(missing)
+                         + ". Set TRANSPORT_MAPS_ALLOW_DEGRADED=1 to build a degraded map on purpose.")
+
+
 def _load_ferries():
     """Ferry crossings if the OSM extracts are present, else None.
 
@@ -643,6 +668,8 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
         variants.withdraw(variants.variant_dir(config.DIST, exclude))
 
     idx = nodes.build_index(rail_routes=rail_routes)
+    _require_modes(exclude, rail=rail_routes, ferries=ferry_links,
+                   severed=getattr(idx, "severed", None))
     # Before the graph, because the graph is the expensive half and a bad
     # coordinate does not need it. See _preflight_origins: this is the gate
     # that turns a lost day into a message in the first two minutes.

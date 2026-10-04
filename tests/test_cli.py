@@ -140,6 +140,10 @@ def _stub_pipeline(monkeypatch, written, coverages):
             return None
 
     monkeypatch.setattr(cli.nodes, "build_index", lambda **kw: FakeIdx())
+    # The stubs below have no rail, no ferries and no severing on purpose; the
+    # sequencing tests are about the build, not the inputs _require_modes
+    # guards (tested on its own).
+    monkeypatch.setenv("TRANSPORT_MAPS_ALLOW_DEGRADED", "1")
     # The solver bundle goes to the real data/build; a test must never write it.
     from transport_maps.service import bundle as solver_bundle
 
@@ -799,3 +803,22 @@ def test_an_operator_worker_count_is_refused_when_it_would_not_fit():
     assert cli._requested_workers(3, env={"TRANSPORT_MAPS_WORKERS": "40"}, meminfo=mem(687)) == 3
     with pytest.raises(SystemExit):
         cli._requested_workers(10, env={"TRANSPORT_MAPS_WORKERS": "lots"}, meminfo=mem(687))
+
+
+def test_a_build_missing_a_mode_is_refused_unless_asked_for():
+    """Rebuild 28's first run solved a road-and-air world on a machine with
+    no OSM extracts. A variant that excludes a mode is not refused for it.
+
+    Mutations performed and reverted, each -> red: drop the rail check; drop
+    the severing check; ignore `exclude` for the variant case; ignore the
+    override.
+    """
+    ok = dict(rail=object(), ferries=object(), severed=frozenset({(1, 2)}), env={})
+    cli._require_modes(None, **ok)
+    for gone, why in (("rail", "rail"), ("ferries", "ferries"), ("severed", "bridges")):
+        with pytest.raises(SystemExit, match=why):
+            cli._require_modes(None, **{**ok, gone: None})
+    cli._require_modes("rail", **{**ok, "rail": None})
+    cli._require_modes("ferry", **{**ok, "ferries": None})
+    cli._require_modes(None, **{**ok, "rail": None,
+                                "env": {"TRANSPORT_MAPS_ALLOW_DEGRADED": "1"}})
