@@ -44,6 +44,12 @@ The "no cell faster than the full map" check below is the backstop.
 - [ ] `bash scripts/deploy_verify.sh` (batched if space is short) -- ALL CHECKS.
 - [ ] Browser: four viewports; Avoid options; Tinian; a dragged exact point with
       a destination shows the on-demand line; console clean.
+- [ ] Map from any point (merged 2026-10-04, 3d7878a): drop the marker away from
+      a city -> the loading notice (counter, bar, Cancel) -> the hexagon map
+      "measured from the point you chose" -> hover readings -> a destination's
+      legs answered from the kept tree -> Back to the city's map; Cancel and a
+      failure fall back to the city's map. `curl /api/map` shows mapVersion 1
+      and count 90,740 (deploy_solver.sh checks both).
 - [ ] Then, separately: drop `blob:` from `script-src` and `worker-src` in
       `deploy/worldmap-security-headers.conf` (MapLibre 6 no longer needs it;
       measured working without it), install the snippet, and verify in the
