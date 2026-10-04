@@ -607,3 +607,28 @@ def test_a_road_crossing_keeps_a_pair_joined_as_a_bridge_does(monkeypatch):
     monkeypatch.setattr(road_crossings, "road_crossings", lambda **k: seawall)
     severed, _ = nodes._severed(cells, set(), pos, cell_at)
     assert not severed
+
+
+def test_a_ferry_under_the_length_floor_is_kept_where_it_is_the_only_way_across():
+    """Sangtaedo to Jungtaedo is 0.85 km, under MIN_FERRY_KM, and the first hop
+    of the only line on to Hataedo and Gageodo. The floor stands for "a river
+    crossing the road already makes"; across a severed pair it is not one."""
+    ca, cb = h3.cell_to_latlng(A), h3.cell_to_latlng(B)
+    p, q = _between(ca, cb, 0.47), _between(ca, cb, 0.53)
+    assert h3.latlng_to_cell(*p, config.SOLVE_RES) == A and h3.latlng_to_cell(*q, config.SOLVE_RES) == B
+    assert landmass._haversine_km(*p, *q) < ferry.MIN_FERRY_KM, "fixture: under the floor"
+    links = pl.DataFrame([{"way_id": 1, "from_lat": p[0], "from_lon": p[1], "to_lat": q[0],
+                           "to_lon": q[1], "name": "Sangtaedo - Jungtaedo", "duration_min": None,
+                           "interval_min": None, "service_fraction": None}], schema=FERRY_SCHEMA)
+    rules = (np.array(["KOR", "KOR"]), np.array(["K", "K"]), 45.0, lambda a, b: False)
+    cal = ferry.load_ferry_calibration()
+
+    dropped: dict[str, int] = {}
+    r, c, _ = build._ferry_edges(_index([A, B], {(0, 1), (1, 0)}), links, cal,
+                                 dropped_out=dropped, rules=rules)
+    assert set(zip(r.tolist(), c.tolist())) == {(0, 1), (1, 0)} and not dropped
+
+    dropped = {}
+    r, _, _ = build._ferry_edges(_index([A, B]), links, cal, dropped_out=dropped, rules=rules)
+    assert len(r) == 0 and dropped == {"outside length window": 1}, \
+        "between joined neighbours the floor still drops it"

@@ -417,16 +417,29 @@ def _ferry_edges(idx: NodeIndex, links, cal,
     dropped = dropped_out if dropped_out is not None else {}
     cut = 0
     in_window = 0
+    below_window_kept = 0
     for row in links.iter_rows(named=True):
         km = float(ground.haversine_km(
             np.array([[row["from_lat"], row["from_lon"]]]),
             np.array([[row["to_lat"], row["to_lon"]]]))[0])
-        if not ferry.plausible_crossing(km):
-            dropped["outside length window"] = dropped.get("outside length window", 0) + 1
-            continue
-        in_window += 1
         u = idx.try_cell_index(idx.cell_at(row["from_lat"], row["from_lon"]))
         v = idx.try_cell_index(idx.cell_at(row["to_lat"], row["to_lon"]))
+        if not ferry.plausible_crossing(km):
+            # The floor stands for "a river crossing inside one cell, or one
+            # the road already makes". Between two cells open water severs it
+            # is neither: it is the only way over. Sangtaedo to Jungtaedo is
+            # 0.85 km and the first hop of the only line on to Hataedo and
+            # Gageodo, which read "no route" from everywhere while it was
+            # dropped here (2026-10-04: 54 such crossings worldwide). Kept
+            # there and nowhere else; the in-window count and its off-mask
+            # bound below are unchanged.
+            if not (km < ferry.MIN_FERRY_KM and u is not None and v is not None
+                    and u != v and not refine.ground_joined(idx, u, v)):
+                dropped["outside length window"] = dropped.get("outside length window", 0) + 1
+                continue
+            below_window_kept += 1
+        else:
+            in_window += 1
         # Same cell means the crossing is shorter than the grid can see; a
         # self-loop would be a zero-cost edge Dijkstra could sit on.
         if u is None or v is None:
@@ -466,6 +479,10 @@ def _ferry_edges(idx: NodeIndex, links, cal,
 
     if cut:
         logger.info("%d ferry crossing(s) cut at closed borders", cut)
+    if below_window_kept:
+        logger.info("%d ferry crossing(s) under %.0f km kept: open water severs their "
+                    "two cells, so each is the only way across", below_window_kept,
+                    ferry.MIN_FERRY_KM)
     if dropped:
         logger.info("ferry links dropped: %s",
                     ", ".join(f"{k} {v:,}" for k, v in sorted(dropped.items())))
