@@ -1,4 +1,5 @@
 import re
+from datetime import date
 from pathlib import Path
 
 import polars as pl
@@ -595,7 +596,10 @@ def test_the_crawl_is_recorded_for_the_build_identity(tmp_path, monkeypatch):
 
 # --- year-round scheduled service only (owner decision, 2026-10-04) --------
 #
-# The fixtures are real sections (October 2026 revisions), trimmed.
+# The fixtures are real sections (October 2026 revisions), trimmed. The day
+# every date below is judged against is the decision's own.
+
+DAY = date(2026, 10, 4)
 
 
 def _parse(name: str) -> list[routes.Listing]:
@@ -745,7 +749,8 @@ def test_assorted_forms():
 def test_a_wikitable_row_names_its_airline():
     """Faisalabad's list is a wikitable whose cells are split by "||". Read
     as two cell ends around an empty cell, every destination's airline was
-    "" -- every airline in the table one airline.
+    "" -- and two airlines whose listings must not veto each other
+    (_year_round_pairs) became one.
 
     Mutation, measured: `_CELL_END_RE = r"\\|"` -> red."""
     got = _by_title(_parse("faisalabad_airport.wikitext"))
@@ -776,4 +781,133 @@ def test_dates_are_read_at_the_conservative_end(change, text, on):
     assert routes._change_date(change, text) == on
 
 
+@pytest.mark.parametrize("listing,kept", [
+    (L("X"), True),
+    (L("X", "seasonal"), False),
+    (L("X", "charter"), False),
+    (L("X", "seasonal charter"), False),
+    (L("X", "other"), False),
+    (L("X", change="suspended"), False),
+    (L("X", change="begins"), False),                    # undated
+    (L("X", change="begins", on="2026-10-04"), True),    # on the day: flying
+    (L("X", change="begins", on="2026-10-05"), False),
+    (L("X", change="resumes", on="2026-10-03"), True),
+    (L("X", change="resumes", on="2026-10-25"), False),
+    (L("X", change="ends", on="2026-10-05"), True),
+    (L("X", change="ends", on="2026-10-04"), False),     # ends on the day: gone
+    (L("X", "seasonal", "ends", "2027-01-01"), False),
+])
+def test_left_out(listing, kept):
+    """Mutation, measured: `on < day` for a start (instead of `<=`) -> the
+    on-the-day begins case is red; `on >= day` for an end -> its case."""
+    assert (routes._left_out(listing, DAY) is None) is kept
 
+
+def _pairs(destinations, resolved, valid, day=DAY):
+    pairs, left_out, disputed = routes._year_round_pairs(destinations, resolved, valid, day)
+    return {tuple(sorted(p)) for p in pairs}, left_out, disputed
+
+
+_RESOLVE = {
+    "Adelaide_Airport": "ADL", "Shanghai_Pudong_International_Airport": "PVG",
+    "Sydney_Airport": "SYD", "Houari_Boumediene_Airport": "ALG",
+    "Dunhuang_Mogao_International_Airport": "DNH", "Auckland_Airport": "AKL",
+    "Singapore_Changi_Airport": "SIN", "Kota_Kinabalu_International_Airport": "BKI",
+}
+
+
+def test_pudong_adelaide_is_not_a_route_and_the_dates_follow_the_day():
+    """The reported case end to end, from both real articles: each lists the
+    other only as seasonal, so the pair is gone, while Pudong-Sydney (China
+    Eastern, year-round) stays. Algiers begins 26 October and Dunhuang ends
+    11 October, so the network depends on the day it is built.
+
+    Mutation, measured: `_left_out` returning None for every listing (the
+    rebuild-28 behaviour) -> red on ADL-PVG."""
+    destinations = {"ADL": _parse("adelaide_airport.wikitext"),
+                    "PVG": _parse("shanghai_pudong_airport.wikitext")}
+    valid = set(_RESOLVE.values())
+    pairs, left_out, _ = _pairs(destinations, _RESOLVE, valid)
+    assert ("ADL", "PVG") not in pairs
+    assert {("PVG", "SYD"), ("ADL", "SYD"), ("ADL", "SIN"), ("AKL", "PVG")} <= pairs
+    assert ("ALG", "PVG") not in pairs and ("DNH", "PVG") in pairs
+    assert left_out["seasonal"] >= 2
+    # Kota Kinabalu: AirAsia year-round, Spring seasonal -> one airline suffices.
+    assert ("BKI", "PVG") in pairs
+
+    later, _, _ = _pairs(destinations, _RESOLVE, valid, date(2026, 10, 26))
+    assert ("ALG", "PVG") in later and ("DNH", "PVG") not in later
+    assert ("ADL", "PVG") not in later
+
+
+def test_two_articles_that_disagree_about_one_airline_leave_the_pair_out():
+    """Aberdeen lists easyJet's Paris flights as year-round, Charles de
+    Gaulle lists the same flights as seasonal (both real, October 2026). The
+    airline links differ in case ([[EasyJet]] / [[easyJet]]) and are one
+    airline. A second airline that flies the pair year-round keeps it.
+
+    Mutation, measured: keeping a pair when ANY listing is year-round (the
+    union rule) -> red on the first assertion; dropping `.casefold()` -> red
+    as well."""
+    resolved = {"Aberdeen_Airport": "ABZ", "Charles_de_Gaulle_Airport": "CDG"}
+    valid = {"ABZ", "CDG"}
+    abz = [L("Charles_de_Gaulle_Airport", airline="EasyJet")]
+    cdg = [L("Aberdeen_Airport", "seasonal", airline="easyJet")]
+    pairs, _, disputed = _pairs({"ABZ": abz, "CDG": cdg}, resolved, valid)
+    assert pairs == set() and disputed == 1
+
+    cdg_too = cdg + [L("Aberdeen_Airport", airline="Air_France")]
+    pairs, _, disputed = _pairs({"ABZ": abz, "CDG": cdg_too}, resolved, valid)
+    assert pairs == {("ABZ", "CDG")} and disputed == 0
+
+    # An article that does not list the pair at all does not veto it.
+    pairs, _, _ = _pairs({"ABZ": abz, "CDG": []}, resolved, valid)
+    assert pairs == {("ABZ", "CDG")}
+
+
+def test_the_service_date_is_fixed_per_process_and_can_be_pinned(monkeypatch):
+    """Mutation, measured: not keeping `_service_date` -> red (the second
+    call reads the changed environment)."""
+    from datetime import UTC, datetime
+
+    monkeypatch.setattr(routes, "_service_date", None)
+    monkeypatch.setenv(routes.SERVICE_DATE_ENV, "2026-10-04")
+    assert routes.service_date() == DAY
+    monkeypatch.setenv(routes.SERVICE_DATE_ENV, "2027-01-01")
+    assert routes.service_date() == DAY
+    monkeypatch.setattr(routes, "_service_date", None)
+    monkeypatch.delenv(routes.SERVICE_DATE_ENV)
+    assert routes.service_date() == datetime.now(UTC).date()
+
+
+def test_a_route_that_begins_reaches_the_network_on_its_day(tmp_path, monkeypatch):
+    """The network's key carries the service date: built again on the day a
+    listed route begins, the same crawl must not be read back from the
+    parquet the day before made.
+
+    Mutation, measured: dropping `day.isoformat()` from
+    `_network_cache_path`'s stamp -> red (one build; A000-A001 still
+    missing on the second day)."""
+    builds: list[str] = []
+    codes, _, _ = _stub_full_network(monkeypatch, tmp_path, builds=builds)
+    monkeypatch.setattr(routes, "_crawl_destinations", lambda titles: (
+        {c: [L(d, change="begins", on="2026-10-05") if {c, d} == {"A000", "A001"} else L(d)
+             for d in codes if d != c] for c in codes}, []))
+    monkeypatch.setattr(routes, "_service_date", DAY)
+    df = routes.route_network()
+    assert df.filter((pl.col("src") == "A000") & (pl.col("dst") == "A001")).is_empty()
+    monkeypatch.setattr(routes, "_service_date", date(2026, 10, 5))
+    df = routes.route_network()
+    assert len(builds) == 2
+    assert not df.filter((pl.col("src") == "A000") & (pl.col("dst") == "A001")).is_empty()
+
+
+def test_the_service_date_is_recorded_for_the_build_identity(tmp_path, monkeypatch):
+    from transport_maps.sources import _fetch
+
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    monkeypatch.setattr(routes, "_service_date", DAY)
+    monkeypatch.setattr(routes, "_fetch_wikitext_with_retry",
+                        lambda client, titles: _fresh_wikitext(titles))
+    routes._crawl_destinations({"AAA": "A"})
+    assert _fetch.used()["wikipedia:airline-destinations"]["serviceDate"] == "2026-10-04"

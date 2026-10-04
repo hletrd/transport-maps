@@ -1,10 +1,11 @@
 """Wikipedia 'Airlines and destinations' sections -> airline route network.
 
-Each destination link in the section is parsed into a `Listing` that
-carries its service class, any dated change and the airline of its row, so
-that only year-round scheduled service can be made a route (owner decision,
-2026-10-04). The section's own markup is the only evidence, so where it is
-ambiguous a link is left out rather than guessed in.
+Only year-round scheduled service becomes a route (owner decision,
+2026-10-04). Each destination link in the section is parsed into a `Listing`
+that carries its service class, any dated change and the airline of its row,
+and `_left_out` decides, against the build's `service_date`, which listings
+fly on that day and keep flying. The section's own markup is the only
+evidence, so where it is ambiguous a link is left out rather than guessed in.
 
 Where. Only links inside a destination table are read: the {{Airport
 destination list}} / {{Airport-dest-list}} template, or a wikitable. Prose in
@@ -34,28 +35,36 @@ list comes first, and a list that wraps carries on under its label.
         label ending in a colon                                            -> left out
 
 Dated changes: a parenthesis after the link (references are stripped first,
-so `[[X]]<ref>..</ref> (ends ..)` binds to X).
+so `[[X]]<ref>..</ref> (ends ..)` binds to X), judged on the service date D.
 
-    [[X]] (begins 1 June 2026)     begins 2026-06-01
+    [[X]] (begins 1 June 2026)     kept if the date is on or before D
     [[X]] (resumes 25 October 2026), (suspended until January 18, 2027)
-                                   resumes on that date (suspended now)
-    [[X]] (ends 8 December 2026)   ends 2026-12-08
+                                   suspended now: kept if the date is on or before D
+    [[X]] (ends 8 December 2026)   kept if the date is AFTER D
     [[X]] (suspended), (terminated), (begins TBA)
-                                   no date
+                                   left out: no date says it flies on D
     [[X]], [[Y]] (both begin 26 October 2026)   applies to X and Y
 
 A month or a year alone is read at its conservative end: "begins June 2027"
 as 30 June, "ends 2027" as 1 January. A date that does not parse leaves the
 link out.
 
+Two articles. A pair is usually listed twice, once in each airport's article,
+and the two can disagree about the same airline (Aberdeen: easyJet to Paris
+year-round; Charles de Gaulle: the same flights seasonal). An airline's
+service on a pair is year-round only if every listing of it, in either
+article, says so, and the pair is kept if any airline's is (_year_round_pairs).
+
 The article cache keeps the PARSE (every listing with its class and date),
-not a decision about it.
+not the decision, so a build on another day judges the dates again without
+refetching anything; the day is in the route network's key instead.
 """
 
 import collections
 import hashlib
 import itertools
 import json
+import os
 import re
 import time
 import urllib.parse
@@ -90,6 +99,10 @@ MAX_RETRIES = 6
 # would change the graph and void `--skip-existing`. An article whose refetch
 # fails keeps its cached parse, and stays stale, so the next build asks again.
 ARTICLE_MAX_AGE = timedelta(hours=24)
+# Pins the day begins/ends/resumes dates are judged against (YYYY-MM-DD), so
+# an offline rebuild of a past build can judge them as that build did. Unset,
+# it is the UTC day the process first asks (service_date).
+SERVICE_DATE_ENV = "TRANSPORT_MAPS_SERVICE_DATE"
 
 # Both heading patterns capture the leading "=" run so the section can be
 # closed at the next heading of the same level or shallower (_section_end).
@@ -184,6 +197,21 @@ class Listing(NamedTuple):
     change: str | None = None
     on: str | None = None
     airline: str = ""
+
+
+def service_date() -> date:
+    """The day this build judges begins/ends/resumes dates against: the UTC
+    day the process first asks, or SERVICE_DATE_ENV. Fixed per process, like
+    every other input (sources/_fetch), so one build reads one network even if
+    it runs past midnight."""
+    global _service_date
+    if _service_date is None:
+        pinned = os.environ.get(SERVICE_DATE_ENV, "").strip()
+        _service_date = date.fromisoformat(pinned) if pinned else datetime.now(UTC).date()
+    return _service_date
+
+
+_service_date: date | None = None
 
 
 def _section_end(text: str, level: int, pos: int) -> int:
@@ -283,7 +311,7 @@ def _parse_change(token: str) -> tuple[str, str | None, int]:
 def parse_destinations(wikitext: str) -> list[Listing]:
     """Every destination link in the Airlines and destinations section, with
     its service class and any dated change (module docstring). Links are
-    listed whatever their class."""
+    listed whatever their class; `_left_out` decides which become routes."""
     match = _SECTION_RE.search(wikitext)
     if match is None:
         return []
@@ -335,6 +363,23 @@ def parse_destinations(wikitext: str) -> list[Listing]:
                 listings.append(Listing(title, service, airline=airline))
 
     return list(dict.fromkeys(listings))
+
+
+def _left_out(listing: Listing, day: date) -> str | None:
+    """Why `listing` is not year-round scheduled service on `day`, or None
+    if it is."""
+    if listing.service != "scheduled":
+        return listing.service
+    if listing.change is None:
+        return None
+    if listing.change == "suspended":
+        return "suspended"
+    if listing.on is None:
+        return f"{listing.change} undated"
+    on = date.fromisoformat(listing.on)
+    if listing.change == "ends":
+        return None if on > day else "ended"
+    return None if on <= day else f"{listing.change} later"
 
 
 def _fetch_wikitext(
@@ -592,6 +637,9 @@ def _crawl_destinations(
         "articles": len(wanted),
         "fetchedFrom": times[0] if times else None,
         "fetchedTo": times[-1] if times else None,
+        # The day begins/ends/resumes dates were judged against: the same
+        # crawl read on another day can make another network.
+        "serviceDate": service_date().isoformat(),
     })
     return destinations, unresolved
 
@@ -606,11 +654,14 @@ def _crawl_digest(destinations: dict[str, list[Listing] | None],
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _network_cache_path(iatas: list[str], titles_by_iata: dict[str, str], crawl: str):
+def _network_cache_path(iatas: list[str], titles_by_iata: dict[str, str], crawl: str,
+                        day: date):
     """Stamped with everything that shapes the pair set: the parser and the
     resolver, the sanity pairs, and the inputs -- the airports a pair may
-    join, the article crawled for each, and what those articles said
-    (`crawl`, `_crawl_digest`).
+    join, the article crawled for each, what those articles said (`crawl`,
+    `_crawl_digest`), and the day their begins/ends/resumes dates are judged
+    against (`day`, service_date): one crawl makes a different network the
+    day a listed route begins or ends.
 
     The inputs are hashed whole. The airport table's stamped name, which this
     used to carry instead, records the rules the table was built under but not
@@ -621,12 +672,14 @@ def _network_cache_path(iatas: list[str], titles_by_iata: dict[str, str], crawl:
     links can carry different destinations, and a key without them would read
     back the network the old articles made."""
     stamp = _params_hash(_parser_key(), wikidata.RESOLVER_VERSION, _SANITY_PAIRS,
-                         sorted(iatas), sorted(titles_by_iata.items()), crawl)
+                         sorted(iatas), sorted(titles_by_iata.items()), crawl,
+                         day.isoformat())
     return config.BUILD / f"routes_{stamp}.parquet"
 
 
 def route_network() -> pl.DataFrame:
-    """Directed airport pairs with scheduled service. Cached to parquet.
+    """Directed airport pairs with year-round scheduled service on the build's
+    service date (module docstring). Cached to parquet.
 
     The airport table, the article links and the crawl itself are settled
     before the cache is consulted because all three are part of its key. With
@@ -651,8 +704,9 @@ def route_network() -> pl.DataFrame:
                          for x in listings})
     resolved = wikidata.iata_for_titles(all_titles)
 
+    day = service_date()
     out = _network_cache_path(sorted(valid), titles_by_iata,
-                              _crawl_digest(destinations, resolved))
+                              _crawl_digest(destinations, resolved), day)
     if out.exists():
         return pl.read_parquet(out)
     legacy = config.BUILD / "routes.parquet"
@@ -664,13 +718,12 @@ def route_network() -> pl.DataFrame:
         print(f"routes: ignoring legacy {legacy.name}, whose inputs are unknown; "
               f"building {out.name}", flush=True)
 
-    pairs: set[tuple[str, str]] = set()
-    for iata, listings in destinations.items():
-        for listing in listings or ():
-            dest_iata = resolved.get(listing.title)
-            if dest_iata and dest_iata in valid and dest_iata != iata:
-                pairs.add((iata, dest_iata))
-                pairs.add((dest_iata, iata))  # scheduled service is bidirectional
+    pairs, left_out, disputed = _year_round_pairs(destinations, resolved, valid, day)
+    print(f"routes: {len(pairs)} directed pairs of year-round scheduled service on {day}; "
+          "listings left out: "
+          + (", ".join(f"{n} {why}" for why, n in left_out.most_common()) or "none")
+          + f"; {disputed} pairs left out because the other end's article says otherwise "
+          "for the same airline", flush=True)
 
     if len(pairs) < 20_000:
         raise RuntimeError(f"route network implausibly small: {len(pairs)} pairs")
@@ -686,6 +739,43 @@ def route_network() -> pl.DataFrame:
     df = pl.DataFrame(sorted(pairs), schema=["src", "dst"], orient="row")
     _atomic_write(out, lambda tmp: df.write_parquet(tmp))
     return df
+
+
+def _year_round_pairs(destinations: dict[str, list[Listing] | None],
+                      resolved: dict[str, str], valid: set[str], day: date,
+                      ) -> tuple[set[tuple[str, str]], collections.Counter[str], int]:
+    """Directed pairs with year-round scheduled service on `day`, the count of
+    listings left out by reason (`_left_out`), and how many pairs some listing
+    called year-round but the other end's article contradicted.
+
+    A pair is usually listed twice, once in each airport's article, and the
+    two can disagree: Aberdeen lists easyJet's Paris flights as year-round
+    while Charles de Gaulle lists the same flights as seasonal. An airline's
+    service on a pair counts as year-round only if EVERY listing of it, in
+    either article, says so; the pair is kept if any airline's does. A pair
+    one article omits is decided by the other alone. Service is bidirectional,
+    so a kept pair is kept both ways.
+    """
+    by_pair: dict[tuple[str, str], dict[str, bool]] = {}
+    listed_year_round: set[tuple[str, str]] = set()
+    left_out: collections.Counter[str] = collections.Counter()
+    for iata, listings in destinations.items():
+        for listing in listings or ():
+            dest_iata = resolved.get(listing.title)
+            if not (dest_iata and dest_iata in valid and dest_iata != iata):
+                continue
+            pair = (min(iata, dest_iata), max(iata, dest_iata))
+            reason = _left_out(listing, day)
+            if reason is None:
+                listed_year_round.add(pair)
+            else:
+                left_out[reason] += 1
+            # Case-folded: one article links [[EasyJet]], the other [[easyJet]].
+            airline = listing.airline.casefold()
+            by_airline = by_pair.setdefault(pair, {})
+            by_airline[airline] = by_airline.get(airline, True) and reason is None
+    kept = {pair for pair, by_airline in by_pair.items() if any(by_airline.values())}
+    return kept | {(b, a) for a, b in kept}, left_out, len(listed_year_round - kept)
 
 
 def _wikipedia_titles(apts: pl.DataFrame) -> dict[str, str]:
