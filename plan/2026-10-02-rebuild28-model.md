@@ -303,3 +303,227 @@ is in.
 - [ ] When this ships, say "year-round scheduled flights" where the page and
       `web/llms.txt` describe the route network. Not changed here: no shipped
       artifact is year-round only until rebuild 28 is.
+
+## A16: plain roads join land parts; short ferries cross a cut (2026-10-04)
+
+Branch `tianjin-fix`, on `origin/rebuild28`. Not merged, not deployed, no
+`build-all` run. Measured read-only on rebuild 27's caches and `dist/` through
+a scratch mirror (symlinks into `data/cache` and `data/build`, writes kept in
+the scratchpad). A new model input: the road-crossing parse
+(`sources/road_crossings.py`) reads the same raw extracts as the fixed links,
+and its cache is keyed on the land parts as well as the extract.
+
+### What was reported, and what was wrong
+
+1. **Tianjin Binhai (38.7-39.2 N, 117.7-118.1 E): nothing wrong in the
+   graph.** Every land cell of the res-6 universe in 38.5-39.4 N,
+   116.9-118.9 E reads a time from Seoul -- 438 cells, none unreachable, in
+   rebuild 27's `dist/` and in the live build (`366feb5d`) alike. The X's of
+   the sketch are cells NOT in the land universe: 256 of open Bohai Bay and
+   19 of reclaimed coast Natural Earth's 1:10M polygons predate (3 of them
+   at least half OSM land: `863188ba7`, `86318d497`, `863188bb7`, Nangang).
+   Their `.r6.bin` slots are padding, written as the sentinel
+   (`emit/hover.py`), and reading the array directly calls them
+   unreachable. The page does not: `lookupRaw` falls back to the res-4
+   reading there, and the bands are painted one cell past the shore. The
+   hypothesis -- reclaimed land on a land part of its own, cut by severing --
+   was tested and is false here. Not changed.
+2. **Daebu-do, Seonjae-do, Yeongheung-do: cut, cause confirmed.** Land
+   parts 2755 (Daebu, Seonjae) and 2754 (Yeongheung) against the mainland's
+   160. The only road on is the Sihwa seawall, route 301 (`대부황금로`): OSM
+   ways 196334400, 196094623, 550251553/4, 196288805, 196091085 and more,
+   `highway=primary`/`secondary` with no `bridge`, `tunnel`, `embankment` or
+   `man_made` tag over the water. Its one bridge, 550251550/1 at the tidal
+   plant, lies inside one fine cell and is rightly dropped by `KEEP_RES`. 27
+   severed pairs ring Daebu-do; the Yeongheung Bridge (196373778) is in the
+   fixed links and joined Yeongheung to Daebu all along, so the whole chain
+   hung on the seawall. Seoul read 65535 for all three.
+3. **Sinan.** Per island, from Seoul's `.r6.bin`:
+   - Jido, Jeungdo, Imjado (17 cells, "no route"): cause (a). Jido is
+     islands joined by polder dikes; route 805 and route 24 (`해제지도로`)
+     cross from part 160 to 2747/5808/2106 on plain road over reclaimed
+     land. The Jido (278136394) and Jeungdo (361237925) bridges are each
+     inside one fine cell. Imja Bridge (1280736564/6) IS a fixed link.
+   - Apdo (249 min), Amtae (273), Palgeum (260), Anjwa (275), Jaeun (286):
+     reachable, but Mokpo-Apdo only by ferry. Cause (a): the Apdo Bridge's
+     decks (1046101699, 1414211461/2) each lie inside one fine cell, and the
+     cell boundary 8730c6460 / 8730c6461 falls on 1414211460, the untagged
+     road across the islet between them. Cheonsa Bridge on to Amtae was fine.
+   - Taedo and Gageodo (Hataedo 3 cells, Gageodo 3, "no route"): cause (b).
+     The only line is Heuksando -> Sangtaedo -> Jungtaedo -> Hataedo ->
+     Gageodo. Sangtaedo-Jungtaedo (674383655) is 0.85 km, under
+     `MIN_FERRY_KM`, and was dropped as "outside length window" -- the floor
+     assumes a short crossing duplicates a road, but Sangtaedo (part 5754)
+     and Jungtaedo (5746) are severed. Manjaedo has no land cell.
+   - Heuksando 563 min, Hongdo 681, Bigeumdo 347, Dochodo 419, Haui-do 357:
+     ferry only, reached by ferry. Correct.
+4. **Yeongjong (ICN) 64 min, Songdo 41 min:** reachable, unaffected (the
+   Yeongjong and Incheon bridges are fixed links). Also spot-checked and
+   reachable: Penang, Lantau and Chek Lap Kok, Singapore, Walcheren,
+   Schouwen, Goeree, Texel, the Palm Jumeirah, Bahrain, Ganghwa, Gyodong,
+   Geoje, Namhae, Wando, Jindo, Zhoushan, Pingtan, Xiamen, Hainan, Key West.
+
+### How large, before the fix
+
+Seoul's `.r6.bin` (rebuild 27): 33,829 land cells outside Antarctica read
+"no route", in 2,246 clusters; 15,970 cells in 1,033 clusters border a
+reachable land cell -- they were reached before severing existed. The 20
+largest of those, by cell count:
+
+| Cells | Lat, lon | Where |
+|---:|---|---|
+| 1,667 | 75.47, -87.70 | Canadian Arctic (Devon Island) |
+| 1,374 | 79.64, -91.27 | Axel Heiberg / Ellesmere |
+| 1,025 | -49.90, -74.90 | Patagonian channels, Chile |
+| 703 | 75.91, -100.24 | Bathurst / Melville islands |
+| 544 | 79.88, 22.65 | Nordaustlandet, Svalbard |
+| 398 | -53.76, -72.76 | Fuegian channels, Chile |
+| 362 | -45.06, -74.11 | Chonos archipelago |
+| 322 | 73.25, -78.68 | Bylot Island |
+| 322 | 67.82, -75.74 | Prince Charles Island, Foxe Basin |
+| 259 | 77.91, 22.29 | Edgeoya, Svalbard |
+| 218 | 0.14, -50.19 | Amazon mouth (Caviana) |
+| 205 | 72.66, -23.10 | East Greenland islands |
+| 173 | 60.30, 21.23 | Turku archipelago |
+| 159 | -0.86, -51.41 | Amazon delta (Gurupa) |
+| 156 | 70.73, -26.59 | Milne Land, Scoresby Sund |
+| 144 | 73.41, -105.58 | Canadian Arctic island |
+| 135 | 70.05, 59.44 | Vaygach |
+| 118 | 56.47, -134.09 | Kuiu Island, Alaska |
+| 92 | 53.27, -129.81 | Pitt Island, BC |
+| 88 | 61.96, -112.24 | Great Slave Lake islands |
+
+These are islands no road reaches, served by air or boat or not at all:
+severing is right there, and the top of the list is not where this defect
+lives. Its cases are small and many -- Daebu-do 11 cells, Jido 17, Hataedo
+3, Gageodo 3 -- and are counted below by what the fix joins.
+
+### The rule (and the three that were measured and dropped)
+
+A pair of adjacent cells on different Natural Earth land parts stays joined
+when a ROAD runs from one part onto the other, bridge or not
+(`sources/road_crossings.py`, kind "road" rows beside the fixed links):
+
+- Read: the GRIP road classes `graph/landmass.SPAN_ROAD_CLASS` costs a span at
+  (motorway .. living_street; no footways, paths or tracks), except ice and
+  winter roads and ways that are also `route=ferry`.
+- Where: only nodes within `SEAM_RING` (2) rings of a seam -- a land cell
+  touching two parts, or within two rings of a cell on a part it does not
+  touch. 144,381 res-6 cells, 91,325 of them land (2.2 % of the land).
+- How: every located node is placed on the Natural Earth part whose polygon
+  holds it at least `COAST_MARGIN_DEG` (0.005 deg, ~550 m) inside its coast,
+  or on water. A step from one part straight onto another is a crossing; so
+  is every step of a stretch of road over water -- joined through every way
+  that shares a node -- that lands on two parts. The rows are the runs of
+  such steps along each way; `linked_pairs` and `spanning_links` read them as
+  they read a bridge (`graph/landmass.ROAD_KINDS`), but a plain road that
+  stops over water is never continued (the islet rule is for bridge decks).
+
+Dropped on the way, each measured on Asia:
+
+| Version | Asia rows | What went wrong |
+|---|---:|---|
+| cell labels (a step between cells on disjoint parts) | 29,680 | coastal roads through strait cells Natural Earth puts on the far shore joined Bali-Java, Chiloe, Guimaras, K'gari, Rupat, Laut |
+| land under the road, way by way | 62 | no single way of a seawall runs land to land: Daebu-do, Jido and Apdo stayed cut |
+| land under the road, stitched, no margin | 99,137 | Baubau's streets reached "Muna" through two Natural Earth slivers 19 and 52 m deep; Adonara joined Flores |
+| stitched, 0.005-deg margin (shipped) | see below | -- |
+
+Before any of these, an OSM-coastline rule was tried and dropped: "keep a
+severed pair joined where the OSM water polygons (the coast `water.pmtiles`
+is drawn from) leave land continuous across the two cells". Any land piece
+touching both cells joined 16,926 of the 51,439 pairs, Shodoshima and Taedo
+among them, through islets straddling the shared edge; each cell's largest
+piece joined Bali to Java, Tierra del Fuego, Chiloe, Islay and K'gari,
+because Natural Earth labels a mid-strait cell holding a sliver of one island
+with the other; demanding that the land touch each cell's own part kept those
+cut but missed Sihwa and Apdo, and joined Amazon-delta islands across river
+water the coastline does not draw.
+
+Also changed, each found by the measurement:
+
+- `graph/landmass.spanning_links`: a bridge end is dead by its bridge and
+  tunnel steps alone. With road rows counted, a causeway's islet road made
+  the bridge end beside it look live, the islet rule never ran, and the King
+  Fahd Causeway cut Bahrain off (with Wenzhou's and Zhoushan's islets).
+  Sample vertices are keyed by row, not way id: one road way can give
+  several runs.
+- `graph/build._ferry_edges`: a crossing under `MIN_FERRY_KM` is kept when
+  its two cells are distinct and open water severs them -- it is then the
+  only way across. 54 such crossings worldwide on rebuild 27's index
+  (Sangtaedo-Jungtaedo, the Vaxholm and Furusund lines, Bjorko, Cannes -
+  Sainte-Marguerite, Kukup, Santos' catraias, Iloilo-Buenavista ...); 52 once
+  road crossings joined two of their pairs. The in-window count and its
+  off-mask bound are unchanged.
+
+### Measured after (all seven regions parsed, read-only, rebuild 27's inputs)
+
+- Road crossings: 530,393 runs (Asia 197,214, North America 165,898,
+  Europe 150,011, South America 12,559, Central America 2,452, Oceania 1,440,
+  Africa 819), 529,686 once a run in two extracts is counted once.
+- Severed pairs 51,439 -> 49,822 (1,617 joined by a road); road spans over
+  water 159 -> 408; short ferries kept across a cut: 52.
+- `scripts/check_fixed_links.py` on the real index, every region parsed
+  (`before` is the graph with no severing at all, as the script prints it):
+
+  | Case | No severing | Rebuild-28 head | This branch |
+  |---|---|---|---|
+  | Great Seto, Akashi-Kaikyo, Naruto, Bosphorus, Kanmon, Geoga | joined | joined | joined |
+  | Saipan -> Tinian, Shodoshima, Messina | joined | cut | cut |
+  | Paris -> Brussels (control) | joined | joined | joined |
+  | Oresund, Great Belt, Confederation Bridge | joined / cut / cut | joined | joined |
+  | Sihwa Seawall, Siheung -> Daebu-do | joined | **cut** | joined |
+  | Yeongheung Br., Daebu-do -> Yeongheung | joined | joined | joined |
+  | Jido polders, Muan -> Jeungdo | joined | **cut** | joined |
+  | Imja Bridge, Muan -> Imjado | joined | **cut** | joined |
+  | Apdo + Cheonsa Br., Mokpo -> Amtae-do | joined | **cut** | joined |
+  | Yeongjong Bridge, Incheon -> ICN | joined | joined | joined |
+  | Taedo, Sangtaedo -> Jungtaedo (ferry only) | joined | cut, **cut by ferry** | cut, joined by ferry |
+
+  Rebuild-28 head: 13 of the original 13 as expected, 5 of the 7 new cases
+  wrong. This branch: all 20 as expected.
+- Ground components (union of grid adjacency less the severed pairs, plus
+  the spans): 192 components, 8,194 cells (49,931 km2), were cut off and are
+  now joined; none that was joined is cut. The largest, each checked against
+  what joins it: Manitoulin (Little Current swing bridge and causeway),
+  Zhoushan, islands north of Tromso and around Harstad, Padre Island, Whidbey,
+  Phuket, Langeland and Tasinge, Jido and Apdo-Amtae (Sinan), Biliran, Cayo
+  Coco and Cayo Santa Maria (pedraplenes), the Uists and Benbecula
+  (causeways), Hailuoto (`Hailuodon pengertie`, a causeway that opened on
+  2026-06-29 -- the rule found a link three months old), Burray and South
+  Ronaldsay (Churchill Barriers), Antelope Island, Kotlin (the St Petersburg
+  dam), Fehmarn, the Florida Keys, Daebu-do, Mannar, Hecla Island, Pine
+  Island, Key Biscayne, Kallandso, Grand Isle (Lake Champlain). One is
+  inside an island: North and South Bruny meet over The Neck, and Bruny stays
+  ferry-only from Tasmania.
+- Still cut, as before and as they should be: Baffin, Sakhalin, Tierra del
+  Fuego, Devon, Sicily, Mindoro, Chiloe, Corsica, Bali, the Falklands -- the
+  same top of the list, each reached by ferry or air or not at all. Bali,
+  Chiloe, Guimaras, K'gari, Rupat and Laut, which the label rule joined, and
+  Muna-Buton and Adonara-Flores, which the margin-less rule joined, stay
+  cut.
+
+### When the next build runs
+
+- [ ] The road-crossing parse runs once per extract snapshot and land-part
+      set, after the fixed-link parse, and needs the raw `*.osm.pbf` (h200
+      fetches them from Geofabrik, G2). 80 min for all seven on the 32 GB
+      Mac at `nice 19` (Europe 25, Asia 22, North America 18, Africa 7,
+      South America 4, Oceania and Central America 1-2 each), part of it
+      beside rebuild 27's chain. Peak RSS 8.1 GB, Europe, measured with the
+      chunked land test (d6b0b21); 15.8 GB before it, and Europe re-parsed
+      with it gave the same 150,011 rows.
+      The regions are parsed one after another; on h200 they could run side
+      by side, which is not done here. Without a raw extract or a cache for
+      any region, `road_crossings()` returns None and the build severs on
+      bridges and tunnels alone, as rebuild 27 does, with a warning in the
+      log.
+- [ ] `scripts/check_fixed_links.py` on the real index: 20 cases, all as
+      expected (the table above). Re-run after the merge.
+- [ ] Seoul's `.r6.bin` against rebuild 27's: Daebu-do (37.25, 126.58),
+      Yeongheung-do (37.25, 126.47), Jido (35.05, 126.21), Jeungdo
+      (34.99, 126.15), Imjado (35.08, 126.10), Hataedo (34.39, 125.30) and
+      Gageodo (34.06, 125.12) read a time; Apdo (34.86, 126.30) is faster
+      than 249 min; Shodoshima, Tinian, Messina stay ferry-only.
+- [ ] The log lines `N ferry crossing(s) under 1 km kept` (52 on rebuild
+      27's inputs) and `... and N road crossing(s) join ...` (529,686) are
+      present.
