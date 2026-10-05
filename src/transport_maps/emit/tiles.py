@@ -65,11 +65,48 @@ def sweep_scratch(directory: Path | None = None) -> int:
 
 def _threads(workers: int | None) -> dict[str, str]:
     """tippecanoe uses every core by default; with several workers each
-    running one, cap it to the worker's share (it honours this variable)."""
+    running one, cap it to the worker's share (it honours this variable).
+
+    An operator's own TIPPECANOE_MAX_THREADS is a ceiling, not something to
+    overwrite: on h200 (2026-10-05) the container allows 8,192 threads for
+    everything in it, other services hold ~7,750, and the worker-share figure
+    (192 cores / 24 workers = 8) ran it out while the operator had asked for 2.
+    """
     if not workers or workers <= 1:
         return {}
     cores = os.cpu_count() or 1
-    return {"TIPPECANOE_MAX_THREADS": str(max(1, cores // workers))}
+    share = max(1, cores // workers)
+    asked = os.environ.get("TIPPECANOE_MAX_THREADS", "")
+    if asked.isdigit() and int(asked) >= 1:
+        share = min(share, int(asked))
+    return {"TIPPECANOE_MAX_THREADS": str(share)}
+
+
+#: stderr of a tippecanoe that could not start a thread. The process limit is
+#: shared with whatever else runs on the machine, so this is transient: it is
+#: waited out and retried, rather than ending an hours-long build.
+_NO_THREAD = ("pthread_create", "Resource temporarily unavailable")
+TIPPECANOE_RETRIES = 8
+TIPPECANOE_RETRY_S = 30.0
+
+
+def _run_tippecanoe(args: list[str], *, cwd, env, sleep=None) -> subprocess.CompletedProcess:
+    """subprocess.run(args, check=True), retried while it fails for want of a
+    thread (see _NO_THREAD). Any other failure is raised at once."""
+    import time
+
+    sleep = sleep or time.sleep
+    for attempt in range(TIPPECANOE_RETRIES + 1):
+        try:
+            return subprocess.run(args, check=True, capture_output=True, text=True,
+                                  cwd=cwd, env=env)
+        except subprocess.CalledProcessError as exc:
+            if attempt == TIPPECANOE_RETRIES or not any(m in (exc.stderr or "") for m in _NO_THREAD):
+                raise
+            print(f"  tippecanoe could not start a thread; retrying in "
+                  f"{TIPPECANOE_RETRY_S * (attempt + 1):.0f} s", flush=True)
+            sleep(TIPPECANOE_RETRY_S * (attempt + 1))
+    raise AssertionError("unreachable")
 
 
 def write_geojson(feature_collection: dict, fh) -> None:
@@ -115,7 +152,7 @@ def write_pmtiles(feature_collection: dict, out: Path, *, workers: int | None = 
         # line in the archive's metadata, which the page fetches on every
         # source load, so an absolute path here is a local path served to
         # every visitor (CRIT-17).
-        result = subprocess.run([
+        result = _run_tippecanoe([
             "tippecanoe",
             "-o", staged.name, "--force",
             "-l", LAYER, "-n", out.stem, "-N", f"{out.stem} travel-time bands",
@@ -135,8 +172,7 @@ def write_pmtiles(feature_collection: dict, out: Path, *, workers: int | None = 
             "--coalesce-densest-as-needed",
             "--extend-zooms-if-still-dropping",
             src.name,
-        ], check=True, capture_output=True, text=True, cwd=scratch,
-            env={**os.environ, **_threads(workers)})
+        ], cwd=scratch, env={**os.environ, **_threads(workers)})
         # The 650 MB input is done with as soon as tippecanoe returns.
         src.unlink(missing_ok=True)
         # tippecanoe says when it had to coarsen a tile to make it fit, and
