@@ -174,17 +174,21 @@ def files_problem(root: Path, rec: dict) -> str | None:
     return None
 
 
-#: Operator override: accept a record made by the same code (inputsHash) and
-#: the same variant, whatever graph digest it carries. For records written
-#: before graph_hash was made canonical, when the operator knows the inputs
-#: were the same -- rebuild 28's restart on h200 is the case it exists for.
-ACCEPT_GRAPH_ENV = "TRANSPORT_MAPS_RESUME_ACCEPT_GRAPH"
+#: Operator override: trust a complete record for this origin and variant
+#: whatever inputs and graph digests it carries -- the operator asserts the
+#: outputs would be the same. For records written before graph_hash was made
+#: canonical: rebuild 28's restart on h200, where the two starts matched on all
+#: 115 origins compared, and the code changed between them only in ways that
+#: write nothing (the huge-page setting, this digest). Files must still be
+#: intact at their recorded sizes; a half-written origin is never trusted.
+TRUST_RECORDS_ENV = "TRANSPORT_MAPS_RESUME_TRUST_RECORDS"
 
 
 def _accepted_other_graph(rec: dict, origin: dict, stamp: Stamp) -> bool:
-    if os.environ.get(ACCEPT_GRAPH_ENV) != "1" or rec.get("inputsHash") != stamp.inputs_hash:
+    if os.environ.get(TRUST_RECORDS_ENV) != "1":
         return False
-    theirs = dataclasses.replace(stamp, graph_hash=str(rec.get("graphHash", "")))
+    theirs = dataclasses.replace(stamp, inputs_hash=str(rec.get("inputsHash", "")),
+                                 graph_hash=str(rec.get("graphHash", "")))
     return rec.get("key") == theirs.key(origin)
 
 

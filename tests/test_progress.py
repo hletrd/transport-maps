@@ -347,23 +347,26 @@ def test_the_graph_digest_ignores_edge_order_within_a_row_and_set_order():
     assert len(seen) == 1, seen
 
 
-def test_an_operator_can_accept_records_from_another_graph_digest(monkeypatch, tmp_path):
-    """Same code (inputsHash), another graph digest: accepted only when
-    TRANSPORT_MAPS_RESUME_ACCEPT_GRAPH=1, and never for other code.
+def test_an_operator_can_trust_records_from_other_digests(monkeypatch, tmp_path):
+    """Only with TRANSPORT_MAPS_RESUME_TRUST_RECORDS=1, and only a record for
+    the same origin and variant (its key must recompute from its own digests).
 
-    Mutation performed and reverted -> red: ignore the variable. (Dropping the
-    explicit inputsHash comparison stays green, equivalently: the key itself
-    is a hash of inputsHash, so a record from other code never matches.)
+    Mutations performed and reverted, each -> red: ignore the variable; skip
+    the key recomputation (accept any record).
     """
     from transport_maps import progress
 
     origin = {"slug": "x", "lat": 1.0, "lon": 2.0}
     old = progress.Stamp("code1", "b1", "graphA", None)
     new = progress.Stamp("code1", "b2", "graphB", None)
-    other_code = progress.Stamp("code2", "b3", "graphA", None)
+    other_code = progress.Stamp("code2", "b3", "graphB", None)
     rec = {"key": old.key(origin), "inputsHash": "code1", "graphHash": "graphA"}
-    monkeypatch.delenv(progress.ACCEPT_GRAPH_ENV, raising=False)
+    monkeypatch.delenv(progress.TRUST_RECORDS_ENV, raising=False)
     assert not progress._accepted_other_graph(rec, origin, new)
-    monkeypatch.setenv(progress.ACCEPT_GRAPH_ENV, "1")
+    monkeypatch.setenv(progress.TRUST_RECORDS_ENV, "1")
     assert progress._accepted_other_graph(rec, origin, new)
-    assert not progress._accepted_other_graph(rec, origin, other_code)
+    assert progress._accepted_other_graph(rec, origin, other_code)
+    # Another origin's record, or another variant's, is never this one's.
+    assert not progress._accepted_other_graph(rec, {**origin, "slug": "y"}, new)
+    variant = progress.Stamp("code1", "b2", "graphB", "air")
+    assert not progress._accepted_other_graph(rec, origin, variant)
