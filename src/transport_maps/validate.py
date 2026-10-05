@@ -34,6 +34,21 @@ KNOWN_UNREACHABLE_MAX_LAT = -60.0
 # -- but the airport node itself has no edge out. Twelve are unreachable from
 # every origin, for want of any route or ferry in the source data: CCZ, CRI,
 # FHZ, FMT, FUT, GTA, GZO, OCS, PBJ, SSW, TGH, XYA, YAS.
+#
+# Re-measured for rebuild 28 on 2026-10-06 (service date 2026-10-04): 37.
+# The eight new ones came with year-round scheduled service only
+# (sources/routes.py, owner decision 2026-10-04), each read from its cached
+# article parse:
+#   ASI, AWK  charter or military flights only (Saint Helena, Hickam/Travis)
+#   CSH       its year-round flights reach only Vaskovo; the Cherepovets link
+#             that joined it to the network is listed as seasonal
+#   OUI       Brest lists Finist'air to Ushant both year-round and seasonal,
+#             and an airline counts only if every listing agrees
+#   MYE, OIM  the Chofu flights end at a field with no IATA code; the two
+#             reach each other by helicopter and nothing else
+#   AAA, SDS  no destinations in their articles, and none naming them
+# OUI, MYE and OIM keep a time on the map by ferry (the whole graph has
+# ferries; the graph this gate judges in the test does not).
 MAX_ISOLATED_AIRPORT_FRACTION = 0.01
 # The ones measured above, by name. tests/graph/test_build.py fails on any
 # airport cut off that is not in this set.
@@ -41,6 +56,8 @@ KNOWN_ISOLATED_AIRPORTS = frozenset({
     "AGE", "AGJ", "AJN", "BMR", "CCZ", "CRI", "CSA", "CYO", "CYU", "DSD",
     "FHZ", "FMT", "FOA", "FUT", "GTA", "GZO", "IBB", "ICC", "MQC", "NRD",
     "OCS", "PBJ", "PKG", "SSW", "TGH", "TOD", "WDN", "XYA", "YAS",
+    # rebuild 28, year-round scheduled service only (above)
+    "AAA", "ASI", "AWK", "CSH", "MYE", "OIM", "OUI", "SDS",
 })
 
 
