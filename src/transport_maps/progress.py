@@ -33,6 +33,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import os
 import pickle
 from datetime import UTC, datetime
 from pathlib import Path
@@ -61,6 +62,17 @@ def graph_hash(csr, hover_parents, cell_class, rail_tables) -> str:
     the cell classes go into .modes.bin and the rail tables into .rail.json
     without passing through an edge. About a second per GB of graph, once.
     """
+    # Canonical forms, not as-built ones (2026-10-05): rebuild 28's two starts
+    # on h200 read the same inputs with the same code and produced the same
+    # 115 origins to the kilobyte, yet hashed ec7cc57f... and 0a0f2fba..., so
+    # --skip-existing resumed nothing. Edges within a row land in whatever
+    # order assembly reached them, and a set of strings pickles in a different
+    # order in every process (PYTHONHASHSEED). Sorting the row indices on a
+    # copy, and serialising the rail tables with sets and dict keys sorted,
+    # leaves the graph alone and makes the digest a property of its content.
+    csr = csr.copy()
+    csr.sum_duplicates()
+    csr.sort_indices()
     h = hashlib.sha256(repr(tuple(csr.shape)).encode())
     for arr in (csr.indptr, csr.indices, csr.data, np.asarray(cell_class)):
         arr = np.ascontiguousarray(arr)
@@ -69,8 +81,22 @@ def graph_hash(csr, hover_parents, cell_class, rail_tables) -> str:
         # parent is a gigabyte every forked worker would inherit.
         h.update(memoryview(arr.reshape(-1).view(np.uint8)))
     h.update("\n".join(hover_parents).encode())
-    h.update(pickle.dumps(rail_tables, protocol=5))
+    h.update(pickle.dumps(_canonical(rail_tables), protocol=5))
     return h.hexdigest()[:16]
+
+
+def _canonical(obj):
+    """`obj` with every set and dict in a fixed order (see graph_hash)."""
+    if isinstance(obj, dict):
+        return tuple(sorted(((repr(k), _canonical(v)) for k, v in obj.items()),
+                            key=lambda kv: kv[0]))
+    if isinstance(obj, (set, frozenset)):
+        return tuple(sorted((_canonical(v) for v in obj), key=repr))
+    if isinstance(obj, (list, tuple)):
+        return tuple(_canonical(v) for v in obj)
+    if isinstance(obj, np.ndarray):
+        return (obj.dtype.str, obj.shape, obj.tobytes())
+    return obj
 
 
 @dataclasses.dataclass(frozen=True)
@@ -148,6 +174,20 @@ def files_problem(root: Path, rec: dict) -> str | None:
     return None
 
 
+#: Operator override: accept a record made by the same code (inputsHash) and
+#: the same variant, whatever graph digest it carries. For records written
+#: before graph_hash was made canonical, when the operator knows the inputs
+#: were the same -- rebuild 28's restart on h200 is the case it exists for.
+ACCEPT_GRAPH_ENV = "TRANSPORT_MAPS_RESUME_ACCEPT_GRAPH"
+
+
+def _accepted_other_graph(rec: dict, origin: dict, stamp: Stamp) -> bool:
+    if os.environ.get(ACCEPT_GRAPH_ENV) != "1" or rec.get("inputsHash") != stamp.inputs_hash:
+        return False
+    theirs = dataclasses.replace(stamp, graph_hash=str(rec.get("graphHash", "")))
+    return rec.get("key") == theirs.key(origin)
+
+
 def problem(root: Path, origin: dict, stamp: Stamp) -> str | None:
     """Why this origin's files cannot be trusted as this run's, or None.
 
@@ -160,7 +200,7 @@ def problem(root: Path, origin: dict, stamp: Stamp) -> str | None:
         return "no completion record"
     if rec.get("state") != COMPLETE:
         return f"a build stopped while writing it ({rec.get('buildId', 'record unreadable')})"
-    if rec.get("key") != stamp.key(origin):
+    if rec.get("key") != stamp.key(origin) and not _accepted_other_graph(rec, origin, stamp):
         return f"built from other inputs (inputsHash {rec.get('inputsHash')}, " \
                f"graph {rec.get('graphHash')})"
     if set(rec.get("files") or {}) != {f"{slug}{s}" for s in SUFFIXES}:

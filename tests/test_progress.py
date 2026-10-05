@@ -307,3 +307,63 @@ def test_forked_workers_report_each_origin_as_it_finishes(monkeypatch, tmp_path,
     rows = [ln.split()[0] for ln in capsys.readouterr().out.splitlines()
             if ln.split()[:1] in (["first"], ["second"])]
     assert rows == ["second", "first"], rows
+
+
+def test_the_graph_digest_ignores_edge_order_within_a_row_and_set_order():
+    """Rebuild 28's two starts on h200 built the same graph and hashed it two
+    ways, so --skip-existing resumed nothing. Row order and set order are
+    artefacts of assembly, not content.
+
+    Mutations performed and reverted, each -> red: drop both
+    `sum_duplicates()` and `sort_indices()` (either alone is enough, since
+    sum_duplicates sorts too -- dropping only one stays green, equivalently);
+    pickle rail_tables as given instead of `_canonical`.
+    """
+    import subprocess
+    import sys
+
+    import scipy.sparse as sp
+
+    from transport_maps import progress
+
+    rows, cols, w = [0, 0, 1, 2], [2, 1, 0, 1], [5.0, 3.0, 2.0, 7.0]
+    a = sp.csr_matrix((w, (rows, cols)), shape=(3, 3))
+    order = [1, 0, 3, 2]
+    b = sp.csr_matrix(([w[i] for i in order], ([rows[i] for i in order], [cols[i] for i in order])),
+                      shape=(3, 3))
+    # Unsort b's row 0 by hand: coo->csr would otherwise sort it for us.
+    b.indices[:2], b.data[:2] = b.indices[:2][::-1].copy(), b.data[:2][::-1].copy()
+    assert not b.has_sorted_indices or list(b.indices[:2]) != list(a.indices[:2])
+    tables = {"stations": {"b", "a", "c"}}
+    assert progress.graph_hash(a, ["p"], [0, 1, 2], tables) == \
+        progress.graph_hash(b, ["p"], [0, 1, 2], tables)
+    # The set's order depends on PYTHONHASHSEED; two seeds must agree.
+    code = ("import scipy.sparse as sp; from transport_maps import progress; "
+            "m = sp.csr_matrix(([1.0], ([0], [1])), shape=(2, 2)); "
+            "print(progress.graph_hash(m, ['p'], [0, 0], {'s': set('abcdefghij')}))")
+    seen = {subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                           env={**__import__('os').environ, "PYTHONHASHSEED": seed},
+                           check=True).stdout.strip() for seed in ("1", "2", "3")}
+    assert len(seen) == 1, seen
+
+
+def test_an_operator_can_accept_records_from_another_graph_digest(monkeypatch, tmp_path):
+    """Same code (inputsHash), another graph digest: accepted only when
+    TRANSPORT_MAPS_RESUME_ACCEPT_GRAPH=1, and never for other code.
+
+    Mutation performed and reverted -> red: ignore the variable. (Dropping the
+    explicit inputsHash comparison stays green, equivalently: the key itself
+    is a hash of inputsHash, so a record from other code never matches.)
+    """
+    from transport_maps import progress
+
+    origin = {"slug": "x", "lat": 1.0, "lon": 2.0}
+    old = progress.Stamp("code1", "b1", "graphA", None)
+    new = progress.Stamp("code1", "b2", "graphB", None)
+    other_code = progress.Stamp("code2", "b3", "graphA", None)
+    rec = {"key": old.key(origin), "inputsHash": "code1", "graphHash": "graphA"}
+    monkeypatch.delenv(progress.ACCEPT_GRAPH_ENV, raising=False)
+    assert not progress._accepted_other_graph(rec, origin, new)
+    monkeypatch.setenv(progress.ACCEPT_GRAPH_ENV, "1")
+    assert progress._accepted_other_graph(rec, origin, new)
+    assert not progress._accepted_other_graph(rec, origin, other_code)
