@@ -153,6 +153,37 @@ advertising features (added 2026-10-06; until then every hit was refused).
 Ads linking would also need `https://*.g.doubleclick.net`, which the CSP does
 not list.
 
+## Deploying from the build host
+
+`scripts/deploy_from_h200.sh` runs the full `scripts/deploy_verify.sh` ON h200,
+against the build's own `dist/`, so the build goes to the web host in one hop.
+From the operator's machine every changed byte crossed aws-proxy twice: rebuild
+28 (2026-10-06) took ~2.5 h to pull 110 GB at ~13 MB/s and ~3.3 h to push
+144 GiB, where h200 reaches the web host directly at ~160 MB/s (measured
+uploading 1.5 GB). Every gate still runs, on h200; the page is then opened from
+the operator's machine (`browser_verify.sh`), whose status is the script's.
+The solver bundle still goes through `scripts/deploy_solver.sh` from here.
+
+h200 is shared, so its key can do only what `deploy_verify.sh` asks of the web
+host. On the web host, `ubuntu`'s `authorized_keys` names it as
+
+    from="14.63.187.16",restrict,command="/usr/local/bin/worldmap-deploy-gate" ssh-ed25519 ... worldmap-deploy@h200
+
+and `deploy/worldmap-deploy-gate.sh`, installed root-owned at that path, lets
+through rsync confined to `/var/www/worldmap` (`rrsync`) and the four read-only
+checks, each matched as a whole string and run as written in the gate. A shell,
+a path outside the root, `..`, or a check with anything appended is refused;
+`tests/test_deploy_gate.py` reads the checks out of `deploy_verify.sh`, so a
+new one fails there before it fails a deploy. Install or update it with
+
+    scp deploy/worldmap-deploy-gate.sh atik.kr:/tmp/wdg.sh
+    ssh atik.kr 'sudo install -m 755 -o root -g root /tmp/wdg.sh /usr/local/bin/worldmap-deploy-gate'
+
+The key is `/default/worldmap/.deploy-ssh/id_ed25519` on h200 (mode 600), with
+the web host's host key pinned in `known_hosts` beside it. If h200's egress
+address changes (`curl ifconfig.me` there), the `from=` clause refuses the key
+until it is updated. To revoke it, delete that line from `authorized_keys`.
+
 ## The on-demand solver
 
 The page can time a journey from the exact point the visitor dropped, not only

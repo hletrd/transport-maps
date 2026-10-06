@@ -14,6 +14,9 @@
 #                                          # here" until cycle 6. The stage was added in 29c6330
 #                                          # and the sentence contradicting it in 83fb802 -- the
 #                                          # commit that corrected this header for DOC3-14.)
+#   scripts/deploy_from_h200.sh            # the same full deploy, run ON the build host so the
+#                                          # build's files go straight to the web host; the
+#                                          # browser stage then runs from this machine
 #   scripts/deploy_verify.sh --page-only   # web/ only: no dist gate, no --delete (a page fix
 #                                          # while a rebuild owns dist/); the page reads every
 #                                          # new index.json field with a fallback, so it is safe
@@ -495,4 +498,13 @@ check_security_headers "$ROOT/deploy/worldmap-security-headers.conf" \
 echo "=== 4. open it in a browser ==="
 # No deploy is done until the page has been opened and checked (CLAUDE.md):
 # a 200 proves nothing about whether the page runs.
-"$ROOT/scripts/browser_verify.sh" "$SITE_URL/"
+#
+# BROWSER_VERIFY=by-caller is for a run on the build host, which has no
+# browser: scripts/deploy_from_h200.sh sets it there and runs
+# browser_verify.sh from the operator's machine as its very next step, and
+# exits with that check's status. Nothing else sets it.
+if [ "${BROWSER_VERIFY:-}" = "by-caller" ]; then
+  echo "  not from this host: the caller runs scripts/browser_verify.sh next"
+else
+  "$ROOT/scripts/browser_verify.sh" "$SITE_URL/"
+fi
