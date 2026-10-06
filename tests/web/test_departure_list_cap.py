@@ -71,7 +71,7 @@ def cap(node: str, tmp_path_factory):
     # orders "Hamah" after "Yibin" and localeCompare does not -- so a
     # Python-side reference sort would test the wrong thing.
     path.write_text(
-        src + "const inp = JSON.parse(process.argv[2]);\n"
+        src + "const inp = JSON.parse(require(\"fs\").readFileSync(0, \"utf8\"));\n"
         "active = inp.active; TIMES = inp.times || {};\n"
         "const r = capCities(inp.cities);\n"
         "const names = r.hits.map((c) => c.name);\n"
@@ -83,7 +83,8 @@ def cap(node: str, tmp_path_factory):
 
     def call(cities, active=None, times=None):
         payload = {"cities": cities, "active": active, "times": times or {}}
-        done = subprocess.run([node, str(path), json.dumps(payload)],
+        # On stdin: 1,464 cities overrun Linux's 128 KiB limit on one argument.
+        done = subprocess.run([node, str(path)], input=json.dumps(payload),
                               capture_output=True, text=True, check=True)
         return json.loads(done.stdout)
     return call
@@ -229,7 +230,7 @@ def filtered(node: str, tmp_path_factory):
     ranking = _render_slice("  const rankCity =", "  const list = document")
     src = (re.search(r"const UNFILTERED_CAP = \d+;", APP).group(0) + "\n"
            + APP[APP.index("const FOLD_DROP ="):APP.index("const cities =")]
-           + "const inp = JSON.parse(process.argv[2]);\n"
+           + "const inp = JSON.parse(require(\"fs\").readFileSync(0, \"utf8\"));\n"
            + "const cities = inp.cities;\n"
            + "for (const c of cities) c.key = fold(c.name);\n"
            + "const f = fold(inp.query);\n"
@@ -250,7 +251,8 @@ def filtered(node: str, tmp_path_factory):
 
     def call(query: str, cities=None):
         payload = {"query": query, "cities": cities if cities is not None else _real_cities()}
-        done = subprocess.run([node, str(path), json.dumps(payload)],
+        # On stdin: 1,464 cities overrun Linux's 128 KiB limit on one argument.
+        done = subprocess.run([node, str(path)], input=json.dumps(payload),
                               capture_output=True, text=True)
         assert done.returncode == 0, done.stderr
         return json.loads(done.stdout)

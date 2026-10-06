@@ -124,7 +124,10 @@ def _run(node: str, tmp_path, origins: list[dict], probes: list[tuple[float, flo
     it to slice.
     """
     harness = """
-const meta = { origins: JSON.parse(process.argv[2]) };
+// On stdin: the shipped origins and places overrun Linux's 128 KiB limit on
+// one command-line argument (the page gate failed on h200, 2026-10-06).
+const [origins, probes, maxKm] = JSON.parse(require("fs").readFileSync(0, "utf8"));
+const meta = { origins };
 """ + UNDER_TEST + """
 function originNearReference(lat, lon, maxKm) {
   let best = null, bestKm = maxKm;
@@ -134,8 +137,6 @@ function originNearReference(lat, lon, maxKm) {
   }
   return best;
 }
-const probes = JSON.parse(process.argv[3]);
-const maxKm = Number(process.argv[4]);
 let checked = 0, matched = 0;
 const diffs = [];
 for (const [lat, lon] of probes) {
@@ -152,7 +153,7 @@ process.stdout.write(JSON.stringify({ checked, matched, diffs }));
     path = tmp_path / "originNear.cjs"
     path.write_text(harness, encoding="utf-8")
     done = subprocess.run(
-        [node, str(path), json.dumps(origins), json.dumps(probes), str(max_km)],
+        [node, str(path)], input=json.dumps([origins, probes, max_km]),
         capture_output=True, text=True, check=True)
     return json.loads(done.stdout)
 
