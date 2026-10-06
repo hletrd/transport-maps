@@ -1182,3 +1182,33 @@ def test_completion_records_never_leave_the_build_machine(tmp_path):
     assert done.returncode == 0, done.stderr
     listed = [ln for p in sorted(out.iterdir()) for ln in p.read_text().split()]
     assert listed == ["origins/a.pmtiles", "v/no-air/origins/a.pmtiles"], listed
+
+
+def test_a_batch_is_sized_across_every_du_that_xargs_runs(tmp_path):
+    """The free-space check before each batch needs the batch's whole size.
+    xargs splits a long list into several `du` runs; reading the last `-c`
+    total measured one run, ~850 MB of a 15 GB batch on 2026-10-06.
+
+    Mutation performed and reverted: list_kb back to `du -ck ... | awk
+    'END{print $1}'` -> red.
+    """
+    import math
+    import subprocess
+
+    d = tmp_path / "dist" / "origins"
+    d.mkdir(parents=True)
+    names = [f"origins/{'x' * 120}-{i:05d}.bin" for i in range(6000)]
+    for n in names:
+        (tmp_path / "dist" / n).write_bytes(b"x")
+    lst = tmp_path / "list"
+    lst.write_text("\n".join(names) + "\n")
+    # Not vacuous: this list really is more than one xargs invocation.
+    runs = subprocess.run(f"xargs echo < {lst} | wc -l", shell=True, capture_output=True,
+                          text=True, cwd=tmp_path)
+    assert int(runs.stdout) > 1
+    expected = sum(math.ceil((tmp_path / "dist" / n).stat().st_blocks * 512 / 1024)
+                   for n in names)
+    done = subprocess.run(["bash", "-c", _bash_fn("list_kb") + f"list_kb {lst}\n"],
+                          capture_output=True, text=True, cwd=tmp_path)
+    assert done.returncode == 0, done.stderr
+    assert int(done.stdout) == expected

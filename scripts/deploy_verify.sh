@@ -88,12 +88,19 @@ chunk_lists() {  # chunk_lists <outdir>: writes <outdir>/chunk-NNNN, one per bat
   done
 }
 
+list_kb() {  # list_kb <list>: KiB on disk of the files <list> names, paths under dist/
+  # Summed over every line, not read off a `du -c` total: xargs splits a
+  # 5,400-path batch into more than one du, each with its own total, and the
+  # last alone (~850 MB) stood for a 15 GB batch in the free-space check.
+  (cd dist && xargs /usr/bin/du -k < "$1") | awk '{s += $1} END {print s + 0}'
+}
+
 chunked_sync() {
   local dir list kb free
   dir=$(mktemp -d)
   chunk_lists "$dir"
   for list in "$dir"/chunk-*; do
-    kb=$( (cd dist && xargs /usr/bin/du -ck < "$list") | awk 'END{print $1}')
+    kb=$(list_kb "$list")
     free=$(ssh -o BatchMode=yes "$DEPLOY_HOST" "df -Pk '$DEPLOY_ROOT' | awk 'NR==2{print \$4}'" 2>/dev/null || true)
     case ${free:-x} in *[!0-9]*) echo "  could not read free space; stopping between batches"; exit 1 ;; esac
     if [ "$free" -lt $((kb * 13 / 10)) ]; then
