@@ -393,6 +393,31 @@ MAX_OFF_MASK_FERRY_FRACTION = 0.20
 MIN_FERRY_LINKS_TO_BOUND = 200
 
 
+def _ferry_pair_refused(idx: NodeIndex, u: int, v: int, country, is_closed) -> str | None:
+    """Why a ferry may not join cells `u` and `v`, or None if it may."""
+    # Same cell means the crossing is shorter than the grid can see; a
+    # self-loop would be a zero-cost edge Dijkstra could sit on.
+    if u == v:
+        return "both endpoints in one cell"
+    # Cells the ground network already joins are skipped. A crossing
+    # between neighbours is a river ferry a few kilometres long, which you
+    # can also drive around, and emitting it duplicates a (row, col) pair
+    # that coo_matrix would silently SUM -- making the shared edge cost the
+    # road time PLUS the sailing rather than the cheaper of the two.
+    # "Joins" is judged the way ground.hex_edges joins cells: a fine cell
+    # and the unsplit base cell beyond its ring are adjacent too, which a
+    # same-resolution grid_disk test can never see -- and a pair open
+    # water severs is NOT joined, so its ferry is the only way across and
+    # is kept. Judged by adjacency alone, Saipan-Tinian's phantom road was
+    # the reason a real crossing there would have been thrown away.
+    if refine.ground_joined(idx, u, v):
+        return "duplicates a ground edge"
+    # A sailing into a sealed country is no more open than a road.
+    if is_closed(country[u], country[v]):
+        return "closed border"
+    return None
+
+
 def _ferry_edges(idx: NodeIndex, links, cal,
                  dropped_out: dict[str, int] | None = None, rules=None
                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -440,42 +465,38 @@ def _ferry_edges(idx: NodeIndex, links, cal,
             below_window_kept += 1
         else:
             in_window += 1
-        # Same cell means the crossing is shorter than the grid can see; a
-        # self-loop would be a zero-cost edge Dijkstra could sit on.
         if u is None or v is None:
             dropped["endpoint off the land mask"] = dropped.get("endpoint off the land mask", 0) + 1
             continue
-        if u == v:
-            dropped["both endpoints in one cell"] = dropped.get("both endpoints in one cell", 0) + 1
-            continue
-        # Cells the ground network already joins are skipped. A crossing
-        # between neighbours is a river ferry a few kilometres long, which you
-        # can also drive around, and emitting it duplicates a (row, col) pair
-        # that coo_matrix would silently SUM -- making the shared edge cost the
-        # road time PLUS the sailing rather than the cheaper of the two.
-        # "Joins" is judged the way ground.hex_edges joins cells: a fine cell
-        # and the unsplit base cell beyond its ring are adjacent too, which a
-        # same-resolution grid_disk test can never see -- and a pair open
-        # water severs is NOT joined, so its ferry is the only way across and
-        # is kept. Judged by adjacency alone, Saipan-Tinian's phantom road was
-        # the reason a real crossing there would have been thrown away.
-        if refine.ground_joined(idx, u, v):
-            dropped["duplicates a ground edge"] = dropped.get("duplicates a ground edge", 0) + 1
-            continue
-        # A sailing into a sealed country is no more open than a road.
-        if is_closed(country[u], country[v]):
-            cut += 1
-            dropped["closed border"] = dropped.get("closed border", 0) + 1
-            continue
-        extra = crossing if (zone[u] and zone[v] and zone[u] != zone[v]) else 0.0
-        a_cells.append(u)
-        b_cells.append(v)
-        minutes.append(ferry.crossing_min(
-            km, cal,
-            duration_min=row.get("duration_min"),
-            interval_min=row.get("interval_min"),
-            service_fraction=row.get("service_fraction") if row.get("service_fraction") is not None else 1.0,
-            extra=extra))
+        # An end in a water-only straddler child is landed on every shore of
+        # its strait as well as in the child itself (landmass.shore_landings):
+        # Natural Earth's coast put Rupat's pier on Sumatra, so the Dumai ferry
+        # joined Sumatra to itself. Every pair that passes becomes an edge;
+        # the ones back to the shore the ferry starts from cost more than the
+        # road, so only the crossing is ever taken. The child stays an option
+        # so that this only ever adds a way across: measured from Seoul,
+        # replacing it lost 22 cells that only its own landing reached.
+        kept_any, first_reason = False, None
+        for uu in dict.fromkeys((u, *idx.landings.get(u, ()))):
+            for vv in dict.fromkeys((v, *idx.landings.get(v, ()))):
+                reason = _ferry_pair_refused(idx, uu, vv, country, is_closed)
+                if reason is not None:
+                    first_reason = first_reason or reason
+                    continue
+                kept_any = True
+                extra = crossing if (zone[uu] and zone[vv] and zone[uu] != zone[vv]) else 0.0
+                a_cells.append(uu)
+                b_cells.append(vv)
+                minutes.append(ferry.crossing_min(
+                    km, cal,
+                    duration_min=row.get("duration_min"),
+                    interval_min=row.get("interval_min"),
+                    service_fraction=row.get("service_fraction") if row.get("service_fraction") is not None else 1.0,
+                    extra=extra))
+        if not kept_any:
+            if first_reason == "closed border":
+                cut += 1
+            dropped[first_reason] = dropped.get(first_reason, 0) + 1
 
     if cut:
         logger.info("%d ferry crossing(s) cut at closed borders", cut)

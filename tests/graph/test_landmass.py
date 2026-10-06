@@ -289,6 +289,72 @@ def test_siblings_on_opposite_shores_are_severed_from_each_other():
         assert (pos[a], pos[b]) not in out, "siblings on one shore stay joined"
 
 
+def _wide_strait():
+    """A's centre child in open water between a west shore (1) and an east
+    shore (2): the water child `fine_cell_parts` gives the nearer, west."""
+    la, lo = h3.cell_to_latlng(A)
+    polygons = {1: shapely.box(lo - 1.0, la - 1.0, lo - 0.02, la + 1.0),
+                2: shapely.box(lo + 0.03, la - 1.0, lo + 1.0, la + 1.0)}
+    water: set[str] = set()
+    fine = landmass.fine_cell_parts([A], [(1, 2)], {A}, polygons, water=water)
+    kids = h3.cell_to_children(A, config.FINE_RES)
+    return fine, water, kids, {c: i for i, c in enumerate(kids)}
+
+
+def test_a_water_child_is_given_a_landing_on_each_shore():
+    fine, water, kids, pos = _wide_strait()
+    centre = h3.cell_to_center_child(A, config.FINE_RES)
+    assert water == {centre} and fine[centre] == (1,)
+    got = landmass.shore_landings(fine, water, pos)
+    assert set(got) == {pos[centre]}
+    shores = {fine[kids[i]] for i in got[pos[centre]]}
+    assert shores == {(1,), (2,)}, "one landing per shore, the guessed one and the other"
+    la, lo = h3.cell_to_latlng(centre)
+    for i in got[pos[centre]]:
+        part = fine[kids[i]]
+        rivals = [k for k in kids if k not in water and fine[k] == part]
+        dist = lambda k: landmass._haversine_km(la, lo, *h3.cell_to_latlng(k))  # noqa: E731
+        assert dist(kids[i]) == min(dist(k) for k in rivals), "the nearest of that shore"
+
+
+def test_a_ferry_landing_in_a_water_child_crosses_to_the_shore_the_coast_missed():
+    """Rupat (2026-10-06): its pier lies in water Natural Earth gives to
+    Sumatra, so the Dumai ferry joined Sumatra to Sumatra -- dropped as a
+    duplicate of the road -- and the island read "no route" from everywhere.
+
+    Mutation performed and reverted: the landings dropped from both loops in
+    build._ferry_edges, leaving `(u,)` and `(v,)` -> red.
+    """
+    fine, water, kids, pos = _wide_strait()
+    centre = h3.cell_to_center_child(A, config.FINE_RES)
+    lo = h3.cell_to_latlng(A)[1]
+    west = next(k for k in kids if k not in water and fine[k] == (1,)
+                and h3.are_neighbor_cells(k, centre) and h3.cell_to_latlng(k)[1] < lo)
+    severed = landmass.severed_pairs([A], [(1, 2)], {A}, pos, set(), fine_parts=fine)
+    landings = landmass.shore_landings(fine, water, pos)
+    (wla, wlo), (cla, clo) = h3.cell_to_latlng(west), h3.cell_to_latlng(centre)
+    links = pl.DataFrame([{"way_id": 1, "from_lat": wla, "from_lon": wlo, "to_lat": cla,
+                           "to_lon": clo, "name": "Dumai - Tanjung Kapal (Rupat)",
+                           "duration_min": 30.0, "interval_min": None,
+                           "service_fraction": None}], schema=FERRY_SCHEMA)
+    rules = (np.array(["IDN"] * 7), np.array(["I"] * 7), 45.0, lambda a, b: False)
+    cal = ferry.load_ferry_calibration()
+    east = {pos[k] for k in kids if fine[k] == (2,)}
+
+    def run(landings):
+        idx = NodeIndex(kids, [], pos, {}, {}, (), _split=frozenset({A}), severed=severed,
+                        landings=landings)
+        dropped: dict[str, int] = {}
+        r, c, _ = build._ferry_edges(idx, links, cal, dropped_out=dropped, rules=rules)
+        return set(zip(r.tolist(), c.tolist())), dropped
+
+    edges, _ = run(landings)
+    assert any(b in east for a, b in edges if a == pos[west]), "the crossing to the east shore"
+    edges, dropped = run({})
+    assert not any(b in east for _, b in edges), "control: without landings, no crossing"
+    assert dropped == {"duplicates a ground edge": 1}
+
+
 def test_without_child_parts_a_straddler_still_joins_both_shores():
     """The control: the previous behaviour, and the limit this closes."""
     kids = h3.cell_to_children(A, config.FINE_RES)
@@ -619,10 +685,10 @@ def test_a_road_crossing_keeps_a_pair_joined_as_a_bridge_does(monkeypatch):
         return h3.latlng_to_cell(lat, lon, config.SOLVE_RES)
 
     monkeypatch.setattr(road_crossings, "road_crossings", lambda **k: None)
-    severed, _ = nodes._severed(cells, set(), pos, cell_at)
+    severed, _, _ = nodes._severed(cells, set(), pos, cell_at)
     assert (0, 1) in severed, "control: without the road the two parts are cut"
     monkeypatch.setattr(road_crossings, "road_crossings", lambda **k: seawall)
-    severed, _ = nodes._severed(cells, set(), pos, cell_at)
+    severed, _, _ = nodes._severed(cells, set(), pos, cell_at)
     assert not severed
 
 

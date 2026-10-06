@@ -93,6 +93,9 @@ class NodeIndex:
     # cell, joining cells that are NOT grid neighbours (graph/landmass). Both
     # directions present. Empty, like `severed`, without fixed-link data.
     spans: dict = field(default_factory=dict)
+    # Water-only straddler child -> the cells, one per shore, a ferry landing in
+    # it may mean (landmass.shore_landings). Empty without fixed-link data.
+    landings: dict = field(default_factory=dict)
     _station_pos: dict[str, int] = field(default_factory=dict)
     _station_cell: dict[str, int] = field(default_factory=dict)
 
@@ -273,17 +276,20 @@ def build_index(rail_routes=None) -> NodeIndex:
         logger.info("%d rail station(s) indexed, %d dropped for want of a land cell",
                     len(station_keys), dropped_stations)
 
-    severed, spans = _severed(base_cells, split_set, cell_pos, cell_at)
+    severed, spans, landings = _severed(base_cells, split_set, cell_pos, cell_at)
 
     return NodeIndex(cells, codes, cell_pos, airport_pos, airport_cell, tuple(dropped),
                      tuple(station_keys), _station_pos=station_pos, _station_cell=station_cell,
                      base_cells=base_cells, base_index=base_index, fine=fine,
-                     _split=frozenset(split_set), severed=severed, spans=spans)
+                     _split=frozenset(split_set), severed=severed, spans=spans,
+                     landings=landings)
 
 
-def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict]:
-    """The adjacent cell pairs open water separates, and the road links that
-    span a water cell -- or (frozenset(), {}) without fixed-link data.
+def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict, dict]:
+    """The adjacent cell pairs open water separates, the road links that span
+    a water cell, and where a ferry landing in a water-only straddler child
+    may land (`landmass.shore_landings`) -- or (frozenset(), {}, {}) without
+    fixed-link data.
 
     Severing reads the ABSENCE of a bridge as evidence of water, so it is only
     sound with every region's links present; `fixed_links.fixed_links` returns
@@ -301,7 +307,7 @@ def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict]
 
     links = fixed_links.fixed_links()
     if links is None:
-        return frozenset(), {}
+        return frozenset(), {}, {}
     crossings = road_crossings.road_crossings()
     n_roads = 0 if crossings is None else crossings.height
     if crossings is not None:
@@ -312,8 +318,10 @@ def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict]
         landmass.spanning_links(links, at, ground.SPEED_BY_ROAD_CLASS_KMH), linked,
         cells=list(cell_pos))
     base_parts = landmask.land_cell_landmasses(config.SOLVE_RES)
+    water: set[str] = set()
     fine_parts = landmass.fine_cell_parts(base_cells, base_parts, split_set,
-                                          landmask._land_parts())
+                                          landmask._land_parts(), water=water)
+    landings = landmass.shore_landings(fine_parts, water, cell_pos)
     severed = landmass.severed_pairs(base_cells, base_parts, split_set, cell_pos, linked,
                                      fine_parts=fine_parts)
     logger.info("%d fixed link(s) and %d road crossing(s) join %d adjacent cell pair(s); "
@@ -323,4 +331,4 @@ def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict]
                 len(fine_parts),
                 len({h3.cell_to_parent(c, config.SOLVE_RES) for c in fine_parts}),
                 len(spans) // 2)
-    return severed, spans
+    return severed, spans, landings

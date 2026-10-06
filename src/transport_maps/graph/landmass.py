@@ -166,7 +166,8 @@ def severed_pairs(base_cells: list[str], base_parts: list[tuple[int, ...]],
 
 
 def fine_cell_parts(base_cells: list[str], base_parts: list[tuple[int, ...]],
-                    split: set[str], polygons: list) -> dict[str, tuple[int, ...]]:
+                    split: set[str], polygons: list,
+                    water: set[str] | None = None) -> dict[str, tuple[int, ...]]:
     """Land parts of each FINE_RES child of a split base cell that straddles.
 
     A child touching land is assigned the parts its hexagon intersects, among
@@ -177,6 +178,9 @@ def fine_cell_parts(base_cells: list[str], base_parts: list[tuple[int, ...]],
 
     Antarctica is one landmass (`landmask.ANTARCTICA_LANDMASS`) and is never
     refined here; a straddler that includes it keeps its base parts.
+
+    `water`, when given, receives those water-only children: their shore is
+    a guess, which `shore_landings` lets a ferry correct.
     """
     import shapely
 
@@ -193,7 +197,46 @@ def fine_cell_parts(base_cells: list[str], base_parts: list[tuple[int, ...]],
             if not touched:
                 centre = shapely.Point(h3.cell_to_latlng(kid)[::-1])
                 touched = (min(polys, key=lambda pid: polys[pid].distance(centre)),)
+                if water is not None:
+                    water.add(kid)
             out[kid] = touched
+    return out
+
+
+def shore_landings(fine_parts: dict[str, tuple[int, ...]], water: set[str],
+                   cell_pos: dict[str, int]) -> dict[int, tuple[int, ...]]:
+    """Graph cells a ferry landing in a water-only straddler child may mean.
+
+    Such a child is given the nearest shore (`fine_cell_parts`), and that
+    shore is only as right as Natural Earth's 1:10M coast. A pier is where
+    the coast is, so a landing is the one place that coast is wrong by
+    definition: Rupat's at Tanjung Kapal lies 2.9 km off Sumatra's NE coast
+    and 3.5 km off Rupat's, so its cell went to Sumatra, the Dumai ferry
+    joined Sumatra to Sumatra, and the island read "no route" from every
+    origin (2026-10-06). For each such child this gives, per land part its
+    siblings touch, the sibling nearest to it that touches that part; a
+    ferry landing there is offered on every shore of the strait, and the
+    sailing to the shore it starts from is longer than the road, so only the
+    crossing it is for is ever taken.
+    """
+    by_base: dict[str, list[str]] = {}
+    for kid in fine_parts:
+        by_base.setdefault(h3.cell_to_parent(kid, config.SOLVE_RES), []).append(kid)
+    out: dict[int, tuple[int, ...]] = {}
+    for kid in water:
+        here = cell_pos.get(kid)
+        if here is None:
+            continue
+        lat, lon = h3.cell_to_latlng(kid)
+        land = [s for s in by_base.get(h3.cell_to_parent(kid, config.SOLVE_RES), [])
+                if s not in water and s in cell_pos]
+        options = set()
+        for part in {p for s in land for p in fine_parts[s]}:
+            near = min((s for s in land if part in fine_parts[s]),
+                       key=lambda s: _haversine_km(lat, lon, *h3.cell_to_latlng(s)))
+            options.add(cell_pos[near])
+        if options:
+            out[here] = tuple(sorted(options))
     return out
 
 
