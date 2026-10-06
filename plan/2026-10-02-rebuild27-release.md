@@ -38,28 +38,60 @@ merged until `ALL BUILDS DONE`: A15 waits on branch `rebuild28`, G2 likewise.
 The "no cell faster than the full map" check below is the backstop.
 
 ## Release checklist (in this order)
-- [ ] Chain finished: `ALL BUILDS DONE` in the log, no `CHAIN STOPPED`.
-- [ ] Every variant: no cell faster than the full map (all origins).
-- [ ] `hover_cells.bin` and `reading_parents.bin` unchanged against the server
+- [x] Chain finished: `ALL BUILDS DONE` in the log, no `CHAIN STOPPED`.
+- [x] Every variant: no cell faster than the full map (all origins).
+- [x] `hover_cells.bin` and `reading_parents.bin` unchanged against the server
       (the batched deploy requires it; it refuses otherwise).
-- [ ] `uv run transport-maps reindex`; index.json lists the variants and
+- [x] `uv run transport-maps reindex`; index.json lists the variants and
       `solver: {wire: 1}`.
-- [ ] Give the bundle its node counts (rebuild 27's bundle predates them, so
+- [x] Give the bundle its node counts (rebuild 27's bundle predates them, so
       the service would answer without legs):
       `uv run python -m transport_maps.service.bundle add-counts data/build/solver dist`
       -- refuses unless dist/index.json's buildId is the bundle's.
-- [ ] `bash scripts/deploy_solver.sh` (bundle from this build; proves a solve).
-- [ ] `bash scripts/deploy_verify.sh` (batched if space is short) -- ALL CHECKS.
-- [ ] Browser: four viewports; Avoid options; Tinian; a dragged exact point with
+- [x] `bash scripts/deploy_solver.sh` (bundle from this build; proves a solve).
+- [x] `bash scripts/deploy_verify.sh` (batched if space is short) -- ALL CHECKS.
+- [x] Browser: four viewports; Avoid options; Tinian; a dragged exact point with
       a destination shows the on-demand line; console clean.
-- [ ] Map from any point (merged 2026-10-04, 3d7878a): drop the marker away from
+- [x] Map from any point (merged 2026-10-04, 3d7878a): drop the marker away from
       a city -> the loading notice (counter, bar, Cancel) -> the hexagon map
       "measured from the point you chose" -> hover readings -> a destination's
       legs answered from the kept tree -> Back to the city's map; Cancel and a
       failure fall back to the city's map. `curl /api/map` shows mapVersion 1
       and count 90,740 (deploy_solver.sh checks both).
-- [ ] Then, separately: drop `blob:` from `script-src` and `worker-src` in
+- [x] Then, separately: drop `blob:` from `script-src` and `worker-src` in
       `deploy/worldmap-security-headers.conf` (MapLibre 6 no longer needs it;
       measured working without it), install the snippet, and verify in the
       browser. Not before the new page is live: the MapLibre 5 page still
       needs `blob:` and would draw an empty globe without it.
+
+## Shipped as rebuild 28 (2026-10-06)
+
+Rebuild 27 was skipped (owner, 2026-10-05); the checklist above ran against
+rebuild 28, built on h200 (build 54623628-20261005T063921Z, service date
+2026-10-04). Every box was ticked on this build:
+
+- Four builds, each `exit 0`: full map 03:19, no-air 21:32 (10-05), no-ferry
+  03:30, no-rail 04:14. The no-ferry and no-rail builds were split across a
+  second checkout and merged back (`r28-handoff.sh` on h200).
+- No variant cell faster than the full map: 0 cells in r6 and hover arrays,
+  all 1,464 origins, all three variants (and not vacuous: from Seoul, 3.69 M
+  cells slower without flights, 279 k without trains, 36 k without ferries).
+- reindex: 1,464 origins, variants air/ferry/rail. Bundle is FORMAT 2 with
+  nAirports and nStations, so no add-counts.
+- deploy_solver: Seoul -> Gumi 163 min; /api/map mapVersion 1, 90,740 cells.
+- deploy_verify: batched (67 GiB free, 144 GiB to stage), ALL CHECKS PASSED,
+  console clean at 1280x800, 820x1180, 390x844, 844x390.
+- By hand on the live site: Yeongheung-do 2 h 18 by road; Heuksando 9 h 02 and
+  Bigeum 5 h 23 by ferry (no route with ferries avoided, 10 h 09 without
+  trains); the map from a point off Hwaseong-si -- loading notice with Cancel,
+  then the hexagon map "measured from the point you chose" after 11 s; LSIB
+  borders, West Bank, Gaza and Golan dashed.
+- CSP: `blob:` dropped from script-src and worker-src after a report-only run
+  refused nothing; browser_verify passes against it (ac39c9e).
+- Found on the way: the batch free-space check read one xargs run's `du`
+  total (a72b5bf); eight more airports cut off by year-round service, named
+  in validate.KNOWN_ISOLATED_AIRPORTS (4e5cdee).
+- Open, not acted on: GA4 now posts to `analytics.google.com` and
+  `www.google.com/g/collect`, which connect-src does not allow (it has
+  `*.analytics.google.com`, which does not match the bare host), so the
+  enforced CSP blocks collection today. Widening it is the owner's call.
