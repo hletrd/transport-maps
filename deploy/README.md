@@ -146,9 +146,12 @@ Scripts and workers no longer allow `blob:`: MapLibre 5 needed it for its
 workers, MapLibre 6 loads its worker from `vendor/` (dropped 2026-10-06, after
 a report-only run of the stricter policy on the live page). Changing the inline gtag snippet in `web/index.html` changes
 its hash; recompute it (`sha256` of the exact script text, base64) and update
-the snippet, or the tag stops loading silently. Google signals are off; enabling
-them would need the extra hosts `https://*.g.doubleclick.net
-https://*.google.com` in the CSP, which does not list them.
+the snippet, or the tag stops loading silently. GA4 posts its hits to
+`analytics.google.com` and `www.google.com`, so `connect-src` lists
+`https://*.google.com`, as Google's CSP guide does for Analytics without
+advertising features (added 2026-10-06; until then every hit was refused).
+Ads linking would also need `https://*.g.doubleclick.net`, which the CSP does
+not list.
 
 ## The on-demand solver
 
