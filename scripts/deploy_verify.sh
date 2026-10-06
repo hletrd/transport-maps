@@ -132,6 +132,31 @@ transfer_kb() {
   esac
 }
 
+# The build-all processes that make dist/ a mixed generation: working (above
+# 1 % CPU) and, where /proc says, working in THIS checkout. On a shared build
+# host other checkouts build too (h200 holds one per variant), and a profile
+# in one of them refused a deploy from another (2026-10-06). Where /proc cannot
+# say -- macOS -- every build counts, as before. Reads `ps -o pid=,pcpu=,
+# command=` lines; prints the pids. (It used to be a grep pipeline, whose exit
+# 1 on no match aborted the script under pipefail every time NO build was
+# running; a read loop has no such status.)
+proc_cwd() { readlink "/proc/$1/cwd" 2>/dev/null || true; }
+busy_builds() {
+  local here pid pcpu cmd cwd
+  here=$(cd "$ROOT" && pwd -P)
+  while read -r pid pcpu cmd; do
+    case "$cmd" in
+      grep\ *|*/grep\ *) continue ;;   # someone else looking for builds
+      *"transport-maps build-all"*|*"transport_maps.cli build-all"*) ;;
+      *) continue ;;
+    esac
+    awk -v c="$pcpu" 'BEGIN { exit !(c >= 1) }' || continue
+    cwd=$(proc_cwd "$pid")
+    [ -z "$cwd" ] || [ "$cwd" = "$here" ] || continue
+    printf '%s ' "$pid"
+  done
+}
+
 # Gate over the page assets that actually ship. check_dist inspects the binary
 # artifacts and the licence firewall used to run before web/ was merged into
 # dist/, so index.html, app.js, llms.txt and vendor/ were covered by neither --
@@ -298,10 +323,7 @@ if [ "$MODE" = full ]; then
     echo "  dist/.build.lock exists: a build-all is running or died holding it; refusing to deploy a mixed dist/"
     exit 1
   fi
-  # `|| true`: grep exits 1 when nothing matches, and under `set -euo pipefail`
-  # that aborted the whole script -- silently, with status 1 and no message --
-  # every time NO build was running. The healthy path had never once executed.
-  busy=$(/bin/ps -axo pid=,pcpu=,command= | grep -E "transport-maps build-all|transport_maps.cli build-all" | grep -v grep | awk '$2 >= 1 {print $1}' | tr '\n' ' ' || true)
+  busy=$(/bin/ps -axo pid=,pcpu=,command= | busy_builds)
   if [ -n "$busy" ]; then
     echo "  a build-all is running (pids $busy); refusing to deploy a mixed dist/"
     exit 1

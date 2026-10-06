@@ -1212,3 +1212,37 @@ def test_a_batch_is_sized_across_every_du_that_xargs_runs(tmp_path):
                           capture_output=True, text=True, cwd=tmp_path)
     assert done.returncode == 0, done.stderr
     assert int(done.stdout) == expected
+
+
+def test_a_build_in_another_checkout_does_not_block_the_deploy(tmp_path):
+    """h200 builds the full map and each variant in its own checkout; a build
+    working in one of them refused a deploy from another (2026-10-06). Only a
+    working build in THIS checkout counts -- or any, where /proc cannot say.
+
+    Mutation performed and reverted: the `[ "$cwd" = "$here" ] || continue`
+    line deleted -> red.
+    """
+    import subprocess
+
+    here = tmp_path / "repo"
+    other = tmp_path / "repo-air"
+    here.mkdir()
+    other.mkdir()
+    ps = "\n".join([
+        "101 97.0 /x/.venv/bin/python /x/.venv/bin/transport-maps build-all --offline",
+        "102 95.0 python -m transport_maps.cli build-all --only seoul",
+        "103 88.0 /y/.venv/bin/python /y/.venv/bin/transport-maps build-all --exclude air",
+        "104 0.3 /x/.venv/bin/python /x/.venv/bin/transport-maps build-all",
+        "105 99.0 grep transport-maps build-all",
+        "106 50.0 /x/.venv/bin/python something-else",
+    ]) + "\n"
+    cwd = {"101": str(here), "102": "", "103": str(other), "104": str(here), "105": str(here)}
+    stub = "proc_cwd() { case $1 in " + " ".join(
+        f'{pid}) echo "{d}";;' for pid, d in cwd.items()) + " *) ;; esac; }\n"
+    script = (f"ROOT={here}\n" + _bash_fn("busy_builds") + stub
+              + "busy_builds\n")
+    done = subprocess.run(["bash", "-c", script], input=ps, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    # 101: here. 102: /proc silent, so it counts. 103: another checkout.
+    # 104: idle orphan. 105: the grep itself is not a build. 106: not build-all.
+    assert done.stdout.split() == ["101", "102"]
