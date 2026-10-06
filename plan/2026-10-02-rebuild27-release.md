@@ -91,7 +91,8 @@ rebuild 28, built on h200 (build 54623628-20261005T063921Z, service date
 - Found on the way: the batch free-space check read one xargs run's `du`
   total (a72b5bf); eight more airports cut off by year-round service, named
   in validate.KNOWN_ISOLATED_AIRPORTS (4e5cdee).
-- Open, not acted on: GA4 now posts to `analytics.google.com` and
-  `www.google.com/g/collect`, which connect-src does not allow (it has
-  `*.analytics.google.com`, which does not match the bare host), so the
-  enforced CSP blocks collection today. Widening it is the owner's call.
+- GA4 hits were refused by the CSP: they go to `analytics.google.com` and
+  `www.google.com/g/collect`, and `*.analytics.google.com` does not match the
+  bare host. On the owner's go-ahead ("fix analytics"), connect-src gained
+  `https://*.google.com` (Google's CSP guide, Analytics without ads); the live
+  page now sends both hits with no violation (eeadf00).
