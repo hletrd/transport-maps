@@ -80,8 +80,8 @@ ssh -o BatchMode=yes "$BUILD_HOST" "set -euo pipefail
   export PATH='$BUILD_ROOT/tools/bin':\$PATH UV_PYTHON_INSTALL_DIR='$BUILD_ROOT/uv-python' \
          UV_CACHE_DIR='$BUILD_ROOT/uv-cache' NUMPY_MADVISE_HUGEPAGE=0
   cd '$BUILD_REPO'
-  DEPLOY_HOST=worldmap-web DEPLOY_ROOT='$DEPLOY_ROOT' SITE_URL='$SITE_URL' \
-    BROWSER_VERIFY=by-caller bash scripts/deploy_verify.sh"
+  DEPLOY_HOST=worldmap-web DEPLOY_ROOT='$DEPLOY_ROOT' RSYNC_DEST=worldmap-web:./ \
+    SITE_URL='$SITE_URL' BROWSER_VERIFY=by-caller bash scripts/deploy_verify.sh"
 
 echo "=== 4. open it in a browser (from here) ==="
 exec "$ROOT/scripts/browser_verify.sh" "$SITE_URL/"

@@ -27,6 +27,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 [ -f deploy/.env ] && source deploy/.env
 : "${DEPLOY_HOST:=atik.kr}" "${DEPLOY_ROOT:=/var/www/worldmap}" "${SITE_URL:=https://worldmap.atik.kr}"
+# Where rsync writes. The remote checks below need DEPLOY_ROOT as an absolute
+# path, but a key forced through rrsync (scripts/deploy_from_h200.sh) is
+# already rooted there and re-roots an absolute path beneath itself: the first
+# run from h200 aimed at /var/www/worldmap/var/www/worldmap/. That caller sets
+# RSYNC_DEST to the restricted root ("host:./") instead.
+: "${RSYNC_DEST:=$DEPLOY_HOST:$DEPLOY_ROOT/}"
 MODE=full
 [ "${1:-}" = "--page-only" ] && MODE=page
 LOG="$(mktemp -t deploy_verify.XXXXXX)"
@@ -111,7 +117,7 @@ chunked_sync() {
       exit 1
     fi
     if ! rsync "${RSYNC_COMMON[@]}" --delay-updates --files-from="$list" \
-          dist/ "$DEPLOY_HOST:$DEPLOY_ROOT/" >>"$LOG" 2>&1; then
+          dist/ "$RSYNC_DEST" >>"$LOG" 2>&1; then
       echo "  rsync failed in $(basename "$list"); log: $LOG"; tail -20 "$LOG"; exit 1
     fi
     echo "  $(basename "$list"): $(wc -l < "$list" | tr -d ' ') files, $((kb/1024)) MB"
@@ -124,7 +130,7 @@ chunked_sync() {
 transfer_kb() {
   local bytes
   bytes=$(rsync "${RSYNC_COMMON[@]}" --delete --dry-run --stats \
-            dist/ "$DEPLOY_HOST:$DEPLOY_ROOT/" 2>/dev/null \
+            dist/ "$RSYNC_DEST" 2>/dev/null \
           | awk -F': ' '/^Total transferred file size/{gsub(/[^0-9]/, "", $2); print $2}')
   case ${bytes:-} in
     ""|*[!0-9]*) /usr/bin/du -sk dist | awk '{print $1}' ;;
@@ -404,7 +410,7 @@ if [ "$MODE" = full ]; then
   # first and the renames happen at the end, so the window in which a visitor
   # sees a new index.json beside old origin arrays is seconds, not minutes.
   if ! rsync "${RSYNC_COMMON[@]}" --delete --delete-delay --delay-updates \
-        dist/ "$DEPLOY_HOST:$DEPLOY_ROOT/" >"$LOG" 2>&1; then
+        dist/ "$RSYNC_DEST" >"$LOG" 2>&1; then
     echo "  rsync failed; log: $LOG"; tail -20 "$LOG"; exit 1
   fi
   echo "  synced $(grep -c . "$LOG" || true) rsync lines; log: $LOG"
@@ -412,7 +418,7 @@ else
   echo "=== page-only deploy: web/ without the dist gate and without --delete ==="
   uv run python scripts/check_dist.py --web web --copy-only
   page_gate
-  if ! rsync "${RSYNC_COMMON[@]}" web/ "$DEPLOY_HOST:$DEPLOY_ROOT/" >"$LOG" 2>&1; then
+  if ! rsync "${RSYNC_COMMON[@]}" web/ "$RSYNC_DEST" >"$LOG" 2>&1; then
     echo "  rsync failed; log: $LOG"; tail -20 "$LOG"; exit 1
   fi
 fi

@@ -122,3 +122,26 @@ def test_only_the_build_host_wrapper_hands_the_browser_stage_away():
     code = [ln for ln in WRAPPER.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     assert code[-1].strip() == 'exec "$ROOT/scripts/browser_verify.sh" "$SITE_URL/"'
     assert WRAPPER.index("BROWSER_VERIFY=by-caller") < WRAPPER.index('exec "$ROOT/scripts/browser_verify.sh"')
+
+
+def test_an_absolute_rsync_path_is_refused_not_re_rooted(tmp_path):
+    """rrsync re-roots an absolute path under the web root, so the first run
+    from h200 aimed at /var/www/worldmap/var/www/worldmap/. The gate refuses
+    it; a relative path goes on to rrsync.
+
+    Mutation performed and reverted: the absolute-path branch deleted -> red.
+    """
+    absolute = _gate("rsync --server -logDtpre.iLsfxCIvu --delay-updates . /var/www/worldmap/",
+                     tmp_path)
+    assert absolute.returncode != 0 and "relative to /var/www/worldmap" in absolute.stderr
+    relative = _gate("rsync --server -logDtpre.iLsfxCIvu --delay-updates . ./", tmp_path)
+    assert "refused" not in relative.stderr, "a relative path is for rrsync to judge"
+
+
+def test_the_build_host_run_writes_to_the_restricted_root():
+    """Every rsync in deploy_verify.sh writes to $RSYNC_DEST, and the wrapper
+    points it at rrsync's root rather than at the absolute DEPLOY_ROOT."""
+    code = "\n".join(ln for ln in DEPLOY.splitlines() if not ln.lstrip().startswith("#"))
+    assert code.count('"$RSYNC_DEST"') >= 4
+    assert code.count("$DEPLOY_HOST:$DEPLOY_ROOT/") == 1, "only the default may name it"
+    assert "RSYNC_DEST=worldmap-web:./" in WRAPPER

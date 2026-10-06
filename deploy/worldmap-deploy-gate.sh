@@ -17,6 +17,11 @@ ROOT=/var/www/worldmap
 SOLVER_META=/home/ubuntu/worldmap-solver/current/meta.json
 
 case "${SSH_ORIGINAL_COMMAND:-}" in
+  "rsync --server "*" /"*)
+    # rrsync would quietly re-root an absolute path under $ROOT: a deploy
+    # aimed at $ROOT/ landed on $ROOT$ROOT/ (2026-10-06). Say so instead.
+    echo "worldmap-deploy-gate: refused: rsync paths are relative to $ROOT; got: $SSH_ORIGINAL_COMMAND" >&2
+    exit 1 ;;
   "rsync --server "*)
     exec /usr/bin/rrsync "$ROOT" ;;
   "df -Pk '$ROOT' | awk 'NR==2{print \$4}'")
