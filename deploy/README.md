@@ -141,10 +141,10 @@ and verify on a page asset, not on the root alone:
 The CSP names exactly the two third-party runtime calls the page makes:
 Nominatim (address search, only on request) and the Google tag (loader by host,
 inline bootstrap by hash, collection endpoints in `connect-src`/`img-src`). The
-page's third call, `/api/solve`, is same-origin and is covered by `'self'`. The
-CSP also allows `blob:`, which MapLibre 5 needed for its workers. MapLibre 6
-does not, and dropping it is a separate change, to be made and verified on the
-server (`deploy/worldmap-security-headers.conf`). Changing the inline gtag snippet in `web/index.html` changes
+page's third call, `/api/solve`, is same-origin and is covered by `'self'`.
+Scripts and workers no longer allow `blob:`: MapLibre 5 needed it for its
+workers, MapLibre 6 loads its worker from `vendor/` (dropped 2026-10-06, after
+a report-only run of the stricter policy on the live page). Changing the inline gtag snippet in `web/index.html` changes
 its hash; recompute it (`sha256` of the exact script text, base64) and update
 the snippet, or the tag stops loading silently. Google signals are off; enabling
 them would need the extra hosts `https://*.g.doubleclick.net
