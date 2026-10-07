@@ -299,3 +299,38 @@ def test_the_snap_notice_has_somewhere_to_be_written():
     assert reading < where < legend, (
         "#snapped is not inside the reading block, above the legend")
     assert re.search(r"\.reading \.snapped\{", HTML), "#snapped has no style"
+
+
+def _pin_handler(event: str) -> str:
+    block = APP[APP.index(f'pinHandle.on("{event}"'):]
+    return block[:block.index("\n});") + 4]
+
+
+def test_the_drawn_destination_dot_follows_the_drag():
+    """The visible pin is two circle layers fed by the "pin" source; the
+    handle that is dragged is an invisible marker. Moving only the handle left
+    the dot where the drag began until release (owner, 2026-10-07).
+
+    Mutation performed and reverted: the `getSource("pin")` line removed from
+    the drag handler -> red.
+    """
+    drag = _pin_handler("drag")
+    m = re.search(r'map\.getSource\("pin"\)\?\.setData\(pinDotData\(lng, lat\)\)', drag)
+    assert m, "the drag handler no longer moves the drawn dot to the handle"
+    assert drag.index("pinHandle.getLngLat()") < m.start()
+
+
+def test_the_route_line_is_put_away_for_the_drag_and_redrawn_on_release():
+    """The line belongs to the committed destination; mid-drag it would point
+    at the old spot. dragend commits through commitDestination, whose
+    renderLegs draws it again.
+
+    Mutation performed and reverted: the dragstart handler's setData removed
+    -> red.
+    """
+    start = _pin_handler("dragstart")
+    assert 'map.getSource("route")?.setData(pinDotData(null))' in start
+    assert "setRouteFlow(false)" in start
+    commit = _function("commitDestination")
+    assert "renderLegs()" in commit
+    assert "renderRoute();" in APP[APP.index("function renderLegs()"):][:120]

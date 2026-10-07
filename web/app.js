@@ -4166,12 +4166,16 @@ const pinHandle = new maplibregl.Marker({
 });
 let pinHandleOn = false;
 
+// The drawn pin at one point, or none.
+function pinDotData(lon, lat) {
+  return { type: "FeatureCollection", features: lon == null ? []
+    : [{ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] } }] };
+}
+
 function drawPin() {
   const src = map.getSource("pin");
   if (!src) return;
-  src.setData({ type: "FeatureCollection", features: pinB
-    ? [{ type: "Feature", geometry: { type: "Point", coordinates: [pinB.lon, pinB.lat] } }]
-    : [] });
+  src.setData(pinB ? pinDotData(pinB.lon, pinB.lat) : pinDotData(null));
   // The handle follows the pin, and exists only while there is one to drag.
   if (pinB) {
     pinHandle.setLngLat([pinB.lon, pinB.lat]);
@@ -4186,8 +4190,20 @@ function drawPin() {
 // honest "no scheduled route" -- so dragging it just re-reads. The live
 // headline during the drag is the real answer for the point under the handle,
 // not a promise about one.
+//
+// The drawn dot is two circle layers, not the handle, so it has to be moved
+// here: left to drawPin it stayed where the drag began and jumped on release
+// (owner, 2026-10-07: "the dot should follow in the UI; computing on release is
+// fine"). The route line belongs to the committed destination, so it is put
+// away for the drag rather than left pointing at the old spot; dragend commits
+// through commitDestination, which draws it again (renderLegs).
+pinHandle.on("dragstart", () => {
+  setRouteFlow(false);
+  map.getSource("route")?.setData(pinDotData(null));
+});
 pinHandle.on("drag", () => {
   const { lng, lat } = pinHandle.getLngLat();
+  map.getSource("pin")?.setData(pinDotData(lng, lat));
   showReading(lat, lng, onNearSide(lat, lng) ? map.project([lng, lat]) : null);
 });
 pinHandle.on("dragend", () => {
