@@ -211,6 +211,7 @@ const map = {{ getSource: () => ({{ setData: (d) => feats.push(...d.features) }}
 // Seoul, and a pin in Mauritius: the journey the defect was reported on.
 const active = {{ lat: 37.57, lon: 126.98, name: "Seoul" }};
 const pinB = {{ lat: -20.162, lon: 57.499, label: "Port Louis" }};
+const pinDragging = false;
 const airports = [["KUL", "Kuala Lumpur", "MY", 2.746, 101.710],
                   ["MRU", "Sir Seewoosagur Ramgoolam", "MU", -20.430, 57.683]];
 function lookup() {{ return 1121; }}

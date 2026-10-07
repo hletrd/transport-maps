@@ -3397,7 +3397,7 @@ function renderRoute() {
     setRouteFlow(false);
     src.setData({ type: "FeatureCollection", features: [] });
   };
-  if (!pinB || !active) return clear();
+  if (!pinB || !active || pinDragging) return clear();
   const total = lookup(pinB.lat, pinB.lon);
   const chain = legsTo(pinB.lat, pinB.lon);
   if (total == null || total >= MAX_MINUTES || chain == null) return clear();
@@ -4165,6 +4165,9 @@ const pinHandle = new maplibregl.Marker({
   element: pinHandleEl, anchor: "center", draggable: true,
 });
 let pinHandleOn = false;
+// True while the destination is being dragged: renderRoute draws nothing then
+// (a dozen paths call it, and any of them redrew the old line mid-drag).
+let pinDragging = false;
 
 // The drawn pin at one point, or none.
 function pinDotData(lon, lat) {
@@ -4195,9 +4198,11 @@ function drawPin() {
 // here: left to drawPin it stayed where the drag began and jumped on release
 // (owner, 2026-10-07: "the dot should follow in the UI; computing on release is
 // fine"). The route line belongs to the committed destination, so it is put
-// away for the drag rather than left pointing at the old spot; dragend commits
-// through commitDestination, which draws it again (renderLegs).
+// away for the drag (pinDragging, which renderRoute honours) rather than left
+// pointing at the old spot; dragend commits through commitDestination, which
+// draws it again (renderLegs).
 pinHandle.on("dragstart", () => {
+  pinDragging = true;
   setRouteFlow(false);
   map.getSource("route")?.setData(pinDotData(null));
 });
@@ -4207,6 +4212,7 @@ pinHandle.on("drag", () => {
   showReading(lat, lng, onNearSide(lat, lng) ? map.project([lng, lat]) : null);
 });
 pinHandle.on("dragend", () => {
+  pinDragging = false;
   const { lng, lat } = pinHandle.getLngLat();
   // Name the dropped point the same way a map click does, then commit through
   // the one path that keeps the headline, the itinerary and the permalink in

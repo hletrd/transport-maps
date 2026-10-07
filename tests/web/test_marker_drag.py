@@ -325,12 +325,16 @@ def test_the_route_line_is_put_away_for_the_drag_and_redrawn_on_release():
     at the old spot. dragend commits through commitDestination, whose
     renderLegs draws it again.
 
-    Mutation performed and reverted: the dragstart handler's setData removed
-    -> red.
+    Mutation performed and reverted: `|| pinDragging` removed from
+    renderRoute's guard -> red.
     """
-    start = _pin_handler("dragstart")
+    start, end = _pin_handler("dragstart"), _pin_handler("dragend")
+    assert "pinDragging = true" in start
     assert 'map.getSource("route")?.setData(pinDotData(null))' in start
-    assert "setRouteFlow(false)" in start
+    assert end.index("pinDragging = false") < end.index("commitDestination(")
+    route = _function("renderRoute")
+    assert re.search(r"if \(!pinB \|\| !active \|\| pinDragging\) return clear\(\);", route), \
+        "renderRoute no longer stays clear while the destination is dragged"
     commit = _function("commitDestination")
     assert "renderLegs()" in commit
     assert "renderRoute();" in APP[APP.index("function renderLegs()"):][:120]
