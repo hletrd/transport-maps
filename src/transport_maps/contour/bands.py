@@ -35,7 +35,7 @@ import h3
 import numpy as np
 import shapely
 from shapely import affinity
-from shapely.geometry import Polygon, box, shape
+from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
 
 from transport_maps import config
@@ -111,6 +111,26 @@ def _split_at_antimeridian(cell: str) -> list:
     return [part for part in (left, right) if not part.is_empty]
 
 
+def _lnglat_ring(loop):
+    """One h3 loop of (lat, lng) as a shapely ring of (lng, lat), closed."""
+    return shapely.linearrings(np.asarray(loop, dtype=float)[:, ::-1])
+
+
+def _h3shape_parts(h3shape) -> list:
+    """The polygons of an h3 shape, in its order, as shapely objects.
+
+    The same rings `shapely.get_parts(shape(h3.h3shape_to_geo(s)))` gives --
+    lng/lat, closed, outer ring then holes -- built from numpy arrays instead.
+    That route rebuilt every point as a Python tuple twice (h3's
+    `_swap_latlng`, then shapely parsing them back), and for a native-level
+    band of millions of vertices it was ~28% of an origin (py-spy, Seoul,
+    2026-10-07). tests/contour/test_bands.py holds the two byte for byte.
+    """
+    polys = [h3shape] if isinstance(h3shape, h3.LatLngPoly) else list(h3shape)
+    return [shapely.polygons(_lnglat_ring(p.outer), holes=[_lnglat_ring(h) for h in p.holes] or None)
+            for p in polys]
+
+
 def _dissolve(cells: list[str], wraps: np.ndarray | None = None,
               res: np.ndarray | None = None):
     """Dissolve one band's cells, handling the antimeridian.
@@ -143,7 +163,7 @@ def _dissolve(cells: list[str], wraps: np.ndarray | None = None,
     found, first = np.unique(normal_res, return_index=True)
     for r in found[np.argsort(first)]:
         group = normal[normal_res == r].tolist()
-        parts.extend(shapely.get_parts(shape(h3.h3shape_to_geo(h3.cells_to_h3shape(group, tight=True)))))
+        parts.extend(_h3shape_parts(h3.cells_to_h3shape(group, tight=True)))
     for cell in wrapping:
         parts.extend(shapely.get_parts(shapely.make_valid(unary_union(_split_at_antimeridian(cell)))))
     parts = [g for g in parts if g.geom_type == "Polygon" and not g.is_empty]

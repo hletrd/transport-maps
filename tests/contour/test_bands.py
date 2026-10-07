@@ -375,3 +375,28 @@ def test_precomputed_flags_emit_exactly_what_the_per_cell_tests_did(monkeypatch)
     assert len(new["features"]) == len(old["features"]) > len(bands.LODS)
     assert new == old, "the precomputed flags changed the emitted geometry"
     assert unflagged == old
+
+
+def test_h3_shapes_become_the_same_polygons_without_the_geo_round_trip():
+    """`_h3shape_parts` replaced `get_parts(shape(h3shape_to_geo(s)))` for
+    speed; the polygons must be identical to the last coordinate, holes and
+    ring order included, for a multipolygon and for a single polygon.
+
+    Mutation performed and reverted: `[:, ::-1]` dropped (lat/lng left
+    unswapped) -> red.
+    """
+    import shapely
+    from shapely.geometry import shape
+
+    centre = h3.latlng_to_cell(37.5, 127.0, 6)
+    disk = set(h3.grid_disk(centre, 12))
+    disk -= set(h3.grid_disk(h3.grid_disk(centre, 4)[-1], 1))      # a hole
+    disk |= set(h3.grid_disk(h3.latlng_to_cell(36.0, 129.4, 6), 2))  # an island
+    multi = h3.cells_to_h3shape(sorted(disk), tight=True)
+    single = h3.cells_to_h3shape(h3.grid_disk(centre, 3), tight=True)
+    assert isinstance(single, h3.LatLngPoly) and not isinstance(multi, h3.LatLngPoly)
+    assert any(p.holes for p in multi), "fixture: the multipolygon must carry a hole"
+    for s in (multi, single):
+        want = list(shapely.get_parts(shape(h3.h3shape_to_geo(s))))
+        got = bands._h3shape_parts(s)
+        assert [shapely.to_wkb(g) for g in got] == [shapely.to_wkb(g) for g in want]
