@@ -10,6 +10,7 @@ os.environ.setdefault("POLARS_MAX_THREADS", "1")
 
 import argparse
 import dataclasses
+import gc
 import gzip
 import json
 import logging
@@ -617,6 +618,15 @@ def _build_all(limit: int | None = None, only: list[str] | None = None,
     resumed; what it publishes is what a run from scratch would.
     """
     lock = _acquire_lock(config.DIST)
+    # The setup builds tens of millions of long-lived objects (the node index,
+    # the edge lists), and on Python 3.14 every young collection also scans
+    # part of that heap: measured on h200, a 400,000-cell loop beside 15 M live
+    # tuples took 11.4 s with the collector on and 0.3 s with it frozen, and
+    # the 13.8 M-cell centroid pass in hex_edges took 370 s of a 20-minute
+    # setup. So collection is paused for the setup and the heap frozen before
+    # the origins (_settle_heap); the state is restored on the way out.
+    gc_was_on = gc.isenabled()
+    gc.disable()
     try:
         swept = tiles.sweep_scratch()
         if swept:
@@ -631,6 +641,23 @@ def _build_all(limit: int | None = None, only: list[str] | None = None,
         _build_all_locked(limit, only, exclude, skip_existing)
     finally:
         lock.unlink(missing_ok=True)
+        gc.unfreeze()
+        if gc_was_on:
+            gc.enable()
+
+
+def _settle_heap() -> None:
+    """Collect once, freeze what survives, and turn collection back on.
+
+    Called after the setup and before the first origin, serial or forked. The
+    frozen objects -- the index, the graph, everything a worker inherits -- are
+    never scanned again, so a worker's collections cost what its own origin
+    allocates, and do not touch (and so copy-on-write) the pages it shares with
+    the parent: gc.freeze()'s documented use before fork.
+    """
+    gc.collect()
+    gc.freeze()
+    gc.enable()
 
 
 def _build_all_locked(limit: int | None, only: list[str] | None = None,
@@ -778,6 +805,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     workers = (_requested_workers(len(todo))
                or min(_worker_cap(len(idx.cells)), _worker_count(len(todo))))
     shared["workers"] = workers
+    _settle_heap()
     try:
         if workers <= 1:
             for origin in todo:

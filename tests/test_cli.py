@@ -822,3 +822,42 @@ def test_a_build_missing_a_mode_is_refused_unless_asked_for():
     cli._require_modes("ferry", **{**ok, "ferries": None})
     cli._require_modes(None, **{**ok, "rail": None,
                                 "env": {"TRANSPORT_MAPS_ALLOW_DEGRADED": "1"}})
+
+
+def test_collection_is_paused_for_the_setup_and_the_heap_frozen_for_origins(monkeypatch, tmp_path):
+    """On Python 3.14 a young collection also scans part of the old heap, and
+    the setup's heap is tens of millions of objects: the centroid pass in
+    hex_edges took 370 s of a 20-minute setup on h200 for that reason. The
+    setup runs with collection paused; the origins with it on and the setup's
+    heap frozen; and the process gets its own state back afterwards.
+
+    Mutation performed and reverted: the `_settle_heap()` call removed -> red.
+    """
+    import gc
+
+    monkeypatch.setattr(cli.config, "DIST", tmp_path)
+    monkeypatch.setenv("TRANSPORT_MAPS_WORKERS", "1")
+    written: list = []
+    _stub_pipeline(monkeypatch, written, [1.0, 1.0])
+    seen: dict = {}
+    real_build_index = cli.nodes.build_index
+
+    def build_index(**kw):
+        seen["setup_gc_on"] = gc.isenabled()
+        return real_build_index(**kw)
+
+    monkeypatch.setattr(cli.nodes, "build_index", build_index)
+    real_solve = cli.dijkstra.solve_from
+
+    def solve_from(csr, source, with_predecessors=False):
+        seen.setdefault("origin_gc_on", gc.isenabled())
+        seen.setdefault("origin_frozen", gc.get_freeze_count())
+        return real_solve(csr, source, with_predecessors=with_predecessors)
+
+    monkeypatch.setattr(cli.dijkstra, "solve_from", solve_from)
+    assert gc.isenabled()
+    cli._build_all(limit=1)
+    assert seen["setup_gc_on"] is False, "the setup ran with the collector on"
+    assert seen["origin_gc_on"] is True, "the origins ran with the collector off"
+    assert seen["origin_frozen"] > 0, "the setup's heap was not frozen before the origins"
+    assert gc.isenabled() and gc.get_freeze_count() == 0, "the process state was not restored"
