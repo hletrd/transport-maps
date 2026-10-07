@@ -133,3 +133,48 @@ def test_row_and_col_helpers_are_not_transposed():
     """
     assert roads._row_of(60.0) == 360
     assert roads._col_of(-120.0) == 720
+
+
+def _cell_class_by_loop(cells, grid):
+    """cell_class as it was written before it was vectorised (2026-10-07):
+    one footprint box per cell, read through the scalar _row_of/_col_of."""
+    import h3
+
+    out = np.zeros(len(cells), dtype=np.uint8)
+    for i, cell in enumerate(cells):
+        boundary = h3.cell_to_boundary(cell)
+        lats = [p[0] for p in boundary]
+        lons = [p[1] for p in boundary]
+        if max(lons) - min(lons) > 180.0:
+            lat, lon = h3.cell_to_latlng(cell)
+            out[i] = roads.sample_class(np.array([lat]), np.array([lon]))[0]
+            continue
+        window = grid[roads._row_of(max(lats)):roads._row_of(min(lats)) + 1,
+                      roads._col_of(min(lons)):roads._col_of(max(lons)) + 1]
+        present = window[window > 0]
+        out[i] = int(present.min()) if present.size else 0
+    return out
+
+
+def test_the_vectorised_footprint_lookup_matches_the_per_cell_loop(monkeypatch):
+    """Same answer for every cell, roadless and antimeridian cells included,
+    on a synthetic grid (so the test needs no GRIP4 download).
+
+    Mutation performed and reverted: `r0 + dr <= r1` made `<` (the window's
+    last row dropped) -> red.
+    """
+    import h3
+
+    rng = np.random.default_rng(11)
+    grid = rng.choice(np.arange(6, dtype=np.uint8), p=[0.55, 0.05, 0.1, 0.1, 0.1, 0.1],
+                      size=(roads.GRID_ROWS, roads.GRID_COLS)).astype(np.uint8)
+    monkeypatch.setattr(roads, "road_class_grid", lambda: grid)
+    cells = [h3.latlng_to_cell(float(la), float(lo), 6)
+             for la, lo in zip(rng.uniform(-85, 85, 3000), rng.uniform(-180, 180, 3000))]
+    cells += [h3.latlng_to_cell(10.0, 179.99, 6), h3.latlng_to_cell(-16.0, -179.99, 6),
+              h3.latlng_to_cell(65.0, 180.0, 5), h3.latlng_to_cell(89.9, 0.0, 6)]
+    want = _cell_class_by_loop(cells, grid)
+    got = roads.cell_class(cells)
+    assert (want == 0).any() and (want > 0).any()
+    assert np.array_equal(got, want)
+    assert roads.cell_class([]).shape == (0,)

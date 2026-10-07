@@ -143,25 +143,51 @@ def cell_class(cells: list[str]) -> np.ndarray:
     is linear and cheap, not the absolute figure.
     """
     grid = road_class_grid()
-    out = np.zeros(len(cells), dtype=np.uint8)
+    n = len(cells)
+    if n == 0:
+        return np.zeros(0, dtype=np.uint8)
+    # Every cell's footprint box at once; the per-cell loop that read each box
+    # through scalar np.clip calls was ~150 s of the build's setup (py-spy,
+    # 2026-10-07). Same boxes, same windows, same minimum.
+    lat_min = np.empty(n)
+    lat_max = np.empty(n)
+    lon_min = np.empty(n)
+    lon_max = np.empty(n)
     for i, cell in enumerate(cells):
         boundary = h3.cell_to_boundary(cell)
         lats = [p[0] for p in boundary]
         lons = [p[1] for p in boundary]
-        if max(lons) - min(lons) > 180.0:
-            # Antimeridian wrap makes the bounding box meaningless; use the centroid.
-            lat, lon = h3.cell_to_latlng(cell)
-            out[i] = sample_class(np.array([lat]), np.array([lon]))[0]
-            continue
-        r0 = _row_of(max(lats))
-        r1 = _row_of(min(lats))
-        c0 = _col_of(min(lons))
-        c1 = _col_of(max(lons))
-        window = grid[r0 : r1 + 1, c0 : c1 + 1]
-        present = window[window > 0]
-        # Lower class number = better grade; 0 means no road of any type.
-        out[i] = int(present.min()) if present.size else 0
+        lat_min[i], lat_max[i] = min(lats), max(lats)
+        lon_min[i], lon_max[i] = min(lons), max(lons)
+    wraps = lon_max - lon_min > 180.0
+    r0 = _rows_of(lat_max)
+    r1 = _rows_of(lat_min)
+    c0 = _cols_of(lon_min)
+    c1 = _cols_of(lon_max)
+    # Lower class number = better grade; 0 means no road of any type, so it
+    # stands in as the worst value while taking the minimum over the window.
+    none = np.iinfo(np.uint8).max
+    best = np.full(n, none, dtype=np.uint8)
+    for dr in range(int((r1 - r0).max()) + 1):
+        for dc in range(int((c1 - c0).max()) + 1):
+            inside = (r0 + dr <= r1) & (c0 + dc <= c1)
+            v = grid[np.minimum(r0 + dr, r1), np.minimum(c0 + dc, c1)]
+            v = np.where(inside & (v > 0), v, none).astype(np.uint8)
+            np.minimum(best, v, out=best)
+    out = np.where(best == none, 0, best).astype(np.uint8)
+    if wraps.any():
+        # Antimeridian wrap makes the bounding box meaningless; use the centroid.
+        centres = np.array([h3.cell_to_latlng(cells[i]) for i in np.flatnonzero(wraps)])
+        out[wraps] = sample_class(centres[:, 0], centres[:, 1])
     return out
+
+
+def _rows_of(lat: np.ndarray) -> np.ndarray:
+    return np.clip((90.0 - lat) * GRID_ROWS / 180.0, 0, GRID_ROWS - 1).astype(np.int64)
+
+
+def _cols_of(lon: np.ndarray) -> np.ndarray:
+    return np.clip((lon + 180.0) * GRID_COLS / 360.0, 0, GRID_COLS - 1).astype(np.int64)
 
 
 def _row_of(lat: float) -> int:
