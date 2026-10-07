@@ -195,16 +195,45 @@ def check_bands_cover(idx, grid, native, feature_collection: dict,
         # indexed and tested one by one.
         parts = [g for f in bands.lod_features(feature_collection, i)
                  for g in shapely.get_parts(_geometry(f["geometry"]))]
-        covered = np.zeros(len(pts), dtype=bool)
-        if parts:
-            tree = shapely.STRtree(parts)
-            hit_pts, _ = tree.query(shapely.points(pts), predicate="within")
-            covered[np.unique(hit_pts)] = True
+        covered = _covered(parts, pts)
         if not covered.all():
             n = int((~covered).sum())
             raise ValueError(
                 f"level {i} (zoom {lod['minzoom']}+): {n:,} of {len(pts):,} interior hex "
                 "vertices fall between bands")
+
+
+def _covered(parts: list, pts: np.ndarray) -> np.ndarray:
+    """(n,) bool: which of `pts` (n, 2 lon/lat) lie strictly inside any part.
+
+    Each part is prepared once and asked about only the points its box holds,
+    all at once (`shapely.contains_xy`). Asking the tree for `within` instead
+    tested every point against an unprepared polygon, walking all of its
+    vertices each time: a band part runs to hundreds of thousands of them, and
+    that was most of this gate's time per origin. `contains_xy` is the same
+    strict containment, so a point on a boundary is still outside.
+    """
+    import shapely
+
+    covered = np.zeros(len(pts), dtype=bool)
+    if not parts or not len(pts):
+        return covered
+    tree = shapely.STRtree(parts)
+    pt_i, part_i = tree.query(shapely.points(pts))
+    if not len(pt_i):
+        return covered
+    order = np.argsort(part_i, kind="stable")
+    pt_i, part_i = pt_i[order], part_i[order]
+    starts = np.flatnonzero(np.r_[True, part_i[1:] != part_i[:-1]])
+    for a, b in zip(starts, np.r_[starts[1:], len(part_i)]):
+        idx = pt_i[a:b]
+        idx = idx[~covered[idx]]
+        if not len(idx):
+            continue
+        part = parts[part_i[a]]
+        shapely.prepare(part)
+        covered[idx] |= shapely.contains_xy(part, pts[idx, 0], pts[idx, 1])
+    return covered
 
 
 def _geometry(geometry):

@@ -510,3 +510,38 @@ def test_a_sliver_left_open_at_a_split_seam_is_rejected():
     validate.check_bands_cover(idx, universe, native,
                                with_native(without_parent.union(_whole([centre]))),
                                samples=len(cells))    # must not raise
+
+
+def test_the_prepared_cover_test_agrees_with_the_within_query():
+    """`_covered` replaced `STRtree.query(points, predicate="within")` for
+    speed; it must give the same answer, boundaries included: overlapping
+    parts, holes, and points exactly on an edge or a vertex (outside, both).
+
+    Mutation performed and reverted: `contains_xy` swapped for
+    `intersects_xy` (which counts the boundary) -> red.
+    """
+    import shapely
+
+    rng = np.random.default_rng(7)
+    parts = []
+    for _ in range(40):
+        cx, cy = rng.uniform(0, 10, 2)
+        ring = shapely.Point(cx, cy).buffer(rng.uniform(0.3, 1.5), quad_segs=8)
+        if rng.random() < 0.4:
+            ring = ring.difference(shapely.Point(cx, cy).buffer(0.2))
+        parts.append(ring)
+    pts = [rng.uniform(-1, 11, (3000, 2))]
+    for p in parts[:10]:
+        ext = shapely.get_coordinates(shapely.get_exterior_ring(p))
+        pts.append(ext[:20])                                    # vertices
+        pts.append((ext[:-1][:20] + ext[1:][:20]) / 2)          # mid-edge
+    pts = np.vstack(pts)
+
+    tree = shapely.STRtree(parts)
+    hit, _ = tree.query(shapely.points(pts), predicate="within")
+    want = np.zeros(len(pts), dtype=bool)
+    want[np.unique(hit)] = True
+    got = validate._covered(parts, pts)
+    assert want.any() and (~want).any()
+    assert np.array_equal(got, want)
+    assert not validate._covered([], pts).any()
