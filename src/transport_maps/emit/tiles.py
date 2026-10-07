@@ -109,6 +109,34 @@ def _run_tippecanoe(args: list[str], *, cwd, env, sleep=None) -> subprocess.Comp
     raise AssertionError("unreachable")
 
 
+def _mapping(geometry) -> dict:
+    """`shapely.geometry.mapping(geometry)`, as json.dumps writes it.
+
+    For polygons and multipolygons the coordinates come out of numpy as
+    lists rather than through shapely's per-point coordinate iterator, which
+    builds a tuple for every vertex: ~150 s of Seoul's 718 s origin under
+    py-spy (2026-10-07). Lists and tuples encode identically, so the file is
+    the same byte for byte (tests/emit/test_tiles.py). Anything else goes
+    through shapely as before.
+    """
+    import numpy as np
+    import shapely
+
+    kind = geometry.geom_type
+    if kind not in ("Polygon", "MultiPolygon") or geometry.is_empty:
+        return mapping(geometry)
+    parts = shapely.get_parts(geometry)
+    rings, ring_part = shapely.get_rings(parts, return_index=True)
+    xy, ring_of = shapely.get_coordinates(rings, return_index=True)
+    cut = np.flatnonzero(np.diff(ring_of)) + 1
+    polys: list[list] = [[] for _ in range(len(parts))]
+    for part, coords in zip(ring_part.tolist(), np.split(xy, cut)):
+        polys[part].append(coords.tolist())
+    if kind == "Polygon":
+        return {"type": "Polygon", "coordinates": polys[0]}
+    return {"type": "MultiPolygon", "coordinates": polys}
+
+
 def write_geojson(feature_collection: dict, fh) -> None:
     """`json.dump(feature_collection, fh)` with every geometry mapped, byte for
     byte, built one feature at a time.
@@ -129,7 +157,7 @@ def write_geojson(feature_collection: dict, fh) -> None:
     for i, feature in enumerate(feature_collection["features"]):
         geometry = feature["geometry"]
         if not isinstance(geometry, dict):
-            feature = {**feature, "geometry": mapping(geometry)}
+            feature = {**feature, "geometry": _mapping(geometry)}
         fh.write((", " if i else "") + json.dumps(feature))
     fh.write("]}")
 

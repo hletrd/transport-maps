@@ -181,3 +181,25 @@ def test_tippecanoe_reads_the_same_bytes_the_whole_collection_dump_wrote(monkeyp
     plain = io.StringIO()
     tiles.write_geojson(SQUARE, plain)
     assert plain.getvalue() == json.dumps(SQUARE)
+
+
+def test_the_fast_mapping_encodes_exactly_as_shapely_mapping():
+    """`_mapping` replaced `mapping()` for speed; json.dumps of the two must
+    be the same string for every shape the bands make -- polygons with and
+    without holes, multipolygons, the empty polygon -- and for anything else.
+
+    Mutation performed and reverted: the rings of a part appended in reverse
+    (`polys[part].insert(0, ...)`) -> red.
+    """
+    import json
+
+    import shapely
+    from shapely.geometry import MultiPolygon, Point, Polygon, mapping
+
+    holed = (Point(127.0, 37.5).buffer(1.0).difference(Point(127.2, 37.4).buffer(0.2))
+             .difference(Point(126.7, 37.7).buffer(0.1)))
+    assert len(holed.interiors) == 2
+    shapes = [holed, Point(0, 0).buffer(1), MultiPolygon([holed, Point(130, 35).buffer(0.5)]),
+              Polygon(), shapely.box(0.1, 0.2, 0.30000000000000004, 1e-07), Point(1, 2)]
+    for g in shapes:
+        assert json.dumps(tiles._mapping(g)) == json.dumps(mapping(g)), g.geom_type
