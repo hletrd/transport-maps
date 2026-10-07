@@ -615,7 +615,9 @@ body.crowded .depart-card{display:none}
    except for the cursor it carries. Converting the pin itself to a marker
    would have moved it out of the layer order that keeps the route line under
    it (tests/web/test_app_constants.py), for no gain. */
-.pinhandle{width:34px;height:34px;border-radius:50%;cursor:grab;background:none;border:0;padding:0}
+/* Above the city labels: a destination on a city sat under its label, so a
+   press on the pin took the label and panned the map instead of dragging. */
+.pinhandle{width:34px;height:34px;border-radius:50%;cursor:grab;background:none;border:0;padding:0;z-index:2}
 .pinhandle:active{cursor:grabbing}
 .pinhandle:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .lbl.origin[aria-current="true"]:hover{text-decoration:none}

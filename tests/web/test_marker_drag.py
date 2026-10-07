@@ -338,3 +338,17 @@ def test_the_route_line_is_put_away_for_the_drag_and_redrawn_on_release():
     commit = _function("commitDestination")
     assert "renderLegs()" in commit
     assert "renderRoute();" in APP[APP.index("function renderLegs()"):][:120]
+
+
+def test_the_pin_handle_sits_above_the_city_labels():
+    """A destination on a city sat under that city's label, which MapLibre
+    adds later and so stacks higher: a press on the pin took the label and
+    panned the map (seen live at Busan, 2026-10-07).
+
+    Mutation performed and reverted: `z-index:2` removed from .pinhandle -> red.
+    """
+    css = re.search(r"\.pinhandle\{([^}]*)\}", HTML)
+    z = re.search(r"z-index:(\d+)", css.group(1)) if css else None
+    assert z and int(z.group(1)) >= 1, ".pinhandle no longer stacks above the labels"
+    lbl = " ".join(re.findall(r"\.lbl(?:\.[\w-]+)*\{([^}]*)\}", HTML))
+    assert "z-index" not in lbl, "a label now sets its own z-index; re-derive the order"
