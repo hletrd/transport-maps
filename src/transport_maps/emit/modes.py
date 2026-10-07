@@ -16,6 +16,7 @@ import h3
 import numpy as np
 
 from transport_maps import _io, config
+from transport_maps.emit import _tree
 from transport_maps.graph.layout import layout_of
 from transport_maps.graph.refine import ground_joined
 
@@ -31,17 +32,30 @@ MAX_MINUTES = config.UNREACHABLE - 1
 
 
 def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
-                          cell_class: np.ndarray) -> np.ndarray:
+                          cell_class: np.ndarray, ferry_keys: np.ndarray | None = None
+                          ) -> np.ndarray:
     """(n_nodes, len(CHANNELS)) array of minutes spent in each surface mode.
 
-    Accumulated down the shortest-path tree in one pass ordered by distance, so
-    every node's predecessor is already resolved. The mode of an edge is read
-    off the node kinds it joins; the one ambiguous case is cell -> cell, which
-    is road when the ground network joins the cells (refine.ground_joined,
-    the same test graph/build uses to drop a ferry that would duplicate a
-    ground edge) and a ferry when it does not, since only a crossing can join
-    two cells the ground network keeps apart -- including two neighbours that
-    open water severs (graph/landmass).
+    Accumulated down the shortest-path tree, so every node's predecessor is
+    resolved before it. The mode of an edge is read off the node kinds it
+    joins; the one ambiguous case is cell -> cell, which is road when the
+    ground network joins the cells (refine.ground_joined, the same test
+    graph/build uses to drop a ferry that would duplicate a ground edge) and a
+    ferry when it does not, since only a crossing can join two cells the
+    ground network keeps apart -- including two neighbours that open water
+    severs (graph/landmass).
+
+    `ferry_keys`, when given, is the sorted `u * idx.n + v` of every ferry
+    edge (cli, from build_graph). A cell -> cell edge of the graph is a ground
+    edge, a road span or a ferry, and build drops any ferry that duplicates a
+    ground edge, so "not a ferry" IS "ground_joined" for a tree edge -- one
+    vectorised lookup instead of an h3 test per node. Without it each pair
+    asks ground_joined, as before.
+
+    The whole pass is array work a tree level at a time (emit/_tree): the
+    node-by-node loop it replaced was ~45 s of an origin. Each node does the
+    same arithmetic as before -- its predecessor's totals, plus its own edge's
+    cost on its channel -- so the result is the same to the last bit.
 
     `cell_class` is `graph.ground.cell_class(idx)`, computed once in the
     parent. It is required: deriving it here was a rasterio read, and a forked
@@ -56,35 +70,44 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
     # the stations (graph/layout.py), and its nodes are not rail.
     is_station = layout_of(idx).is_station
 
-    acc = np.zeros((len(minutes), len(CHANNELS)), dtype=np.float64)
-    finite = np.isfinite(minutes)
-    order = np.argsort(np.where(finite, minutes, np.inf), kind="stable")
+    n = len(minutes)
+    acc = np.zeros((n, len(CHANNELS)), dtype=np.float64)
+    reached = np.isfinite(minutes)
+    prev_all = predecessors.astype(np.int64, copy=False)
+    nodes = np.flatnonzero(reached & (prev_all >= 0))
+    prev = prev_all[nodes]
+    cost = minutes[nodes] - minutes[prev]
 
-    for node in order:
-        node = int(node)
-        if not finite[node]:
-            break
-        prev = int(predecessors[node])
-        if prev < 0:
-            continue
-        acc[node] = acc[prev]
-        cost = minutes[node] - minutes[prev]
+    # The channel of each node's incoming edge; -1 for air and airport time,
+    # which the routes file already itemises.
+    channel = np.full(len(nodes), -1, dtype=np.int64)
+    cells = (prev < n_cells) & (nodes < n_cells)
+    if cells.any():
+        u, v = prev[cells], nodes[cells]
+        if ferry_keys is not None:
+            ferry = np.isin(u * np.int64(idx.n) + v, ferry_keys, assume_unique=False)
+        else:
+            ferry = np.array([not ground_joined(idx, int(a), int(b)) for a, b in zip(u, v)],
+                             dtype=bool)
+        road = _ROAD_LUT[np.asarray(cell_class)[v].astype(np.int64)]
+        channel[cells] = np.where(ferry, 1, road)   # only a crossing joins distant cells
+    # Boarding, riding and alighting all count as rail.
+    rail = ~cells & (is_station(prev) | is_station(nodes))
+    channel[rail] = 0
 
-        prev_cell, node_cell = prev < n_cells, node < n_cells
-        prev_stn, node_stn = is_station(prev), is_station(node)
-
-        if prev_cell and node_cell:
-            if ground_joined(idx, prev, node):
-                acc[node][ROAD_CHANNEL[int(cell_class[node])]] += cost
-            else:
-                acc[node][1] += cost          # only a crossing joins distant cells
-        elif prev_stn or node_stn:
-            # Boarding, riding and alighting all count as rail.
-            acc[node][0] += cost
-        # Everything else is air or airport time, already itemised from the
-        # routes file, so it is deliberately not counted here.
-
+    edge_cost = np.zeros(n, dtype=np.float64)
+    edge_channel = np.full(n, -1, dtype=np.int64)
+    edge_cost[nodes] = cost
+    edge_channel[nodes] = channel
+    for level in _tree.by_level(predecessors, reached):
+        acc[level] = acc[prev_all[level]]
+        booked = level[edge_channel[level] >= 0]
+        acc[booked, edge_channel[booked]] += edge_cost[booked]
     return acc
+
+
+# ROAD_CHANNEL as a lookup table over GRIP4 classes 0-5.
+_ROAD_LUT = np.array([ROAD_CHANNEL[k] for k in range(6)], dtype=np.int64)
 
 
 def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path,

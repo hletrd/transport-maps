@@ -544,6 +544,7 @@ def build_graph(
     speeds=None,
     country=None,
     zone=None,
+    ferry_keys_out: list | None = None,
 ) -> sp.csr_matrix:
     """Assemble the graph. Pass a list as `rejected_air_pairs` to have it filled
     with the (src, dst, km) triples `is_geographically_plausible` dropped, and
@@ -555,6 +556,10 @@ def build_graph(
     passes the ones it already holds, so each is derived once per build
     rather than once per edge builder (R5). Either way every builder sees the
     same arrays.
+
+    Pass a list as `ferry_keys_out` to have it receive one sorted int64 array,
+    `u * idx.n + v` for every ferry edge: emit/modes books a cell-to-cell tree
+    edge as a ferry exactly when its pair is one of these.
 
     `exclude` ("air", "ferry" or "rail") builds the graph of an exclusion
     variant (transport_maps.variants): that mode's edges are simply absent, so
@@ -583,9 +588,15 @@ def build_graph(
                   _transfer_edges(idx)]
     if idx.has_rail and exclude != "rail":
         parts.append(_rail_edges(idx, rail_routes, rail.load_rail_calibration(), rules))
+    ferry_part = None
     if ferry_links is not None and len(ferry_links) and exclude != "ferry":
-        parts.append(_ferry_edges(idx, ferry_links, ferry.load_ferry_calibration(),
-                                  rules=rules))
+        ferry_part = _ferry_edges(idx, ferry_links, ferry.load_ferry_calibration(), rules=rules)
+        parts.append(ferry_part)
+    if ferry_keys_out is not None:
+        keys = (np.zeros(0, dtype=np.int64) if ferry_part is None
+                else np.unique(ferry_part[0].astype(np.int64) * np.int64(idx.n)
+                               + ferry_part[1].astype(np.int64)))
+        ferry_keys_out.append(keys)
     rows = np.concatenate([p[0] for p in parts])
     cols = np.concatenate([p[1] for p in parts])
     data = np.concatenate([p[2] for p in parts])

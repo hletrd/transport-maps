@@ -404,7 +404,8 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     rep_arr = hover.representative_array(shared["hover_groups"], minutes[: idx.n_cells])
     rep = {p: int(v) for p, v in enumerate(rep_arr) if v >= 0}
     last = itinerary.arrival_airport_per_node(idx, minutes, predecessors)
-    acc = modes.mode_minutes_per_node(idx, minutes, predecessors, cell_class=shared["cell_class"])
+    acc = modes.mode_minutes_per_node(idx, minutes, predecessors, cell_class=shared["cell_class"],
+                                      ferry_keys=shared.get("ferry_keys"))
 
     hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin", parents=parents, rep=rep)
     hover.write_reading(idx, minutes[: idx.n_cells], out / f"{slug}.r6.bin",
@@ -718,8 +719,10 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # speed grid does not change between origins, and re-deriving it per
     # origin cost ~4.8s x every origin for the same value.
     speeds = ground.cell_speed_kmh(idx, classes=cell_class)
+    ferry_keys: list = []
     csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links,
-                            exclude=exclude, speeds=speeds, country=country, zone=zone)
+                            exclude=exclude, speeds=speeds, country=country, zone=zone,
+                            ferry_keys_out=ferry_keys)
     # Graph-level gate: runs once, before any origin is solved, because a
     # disconnected airport is a property of the network rather than of a
     # particular origin -- and per-origin coverage cannot see it. Without
@@ -746,6 +749,9 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # (mixed-resolution) cells for the finest level.
     render_grid = grid.universe(getattr(idx, "base_cells", None) or idx.cells)
     shared = {"country": country, "zone": zone, "cell_class": cell_class,
+              # Every ferry edge as u * idx.n + v: how emit/modes tells a
+              # crossing from a road without an h3 test per tree edge.
+              "ferry_keys": ferry_keys[0] if ferry_keys else None,
               "grid": render_grid,
               "native": grid.native_edges(idx),
               # Which cells wrap the antimeridian, and each cell's resolution:

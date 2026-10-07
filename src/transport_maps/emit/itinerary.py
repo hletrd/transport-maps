@@ -13,6 +13,7 @@ import h3
 import numpy as np
 
 from transport_maps import _io, config
+from transport_maps.emit import _tree
 from transport_maps.graph.layout import layout_of
 
 # No airport was involved -- the journey was entirely overland.
@@ -20,31 +21,17 @@ NO_AIRPORT = 0xFFFF
 
 
 def arrival_airport_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray) -> np.ndarray:
-    """For every node, the arrival-airport node it was last reached through.
-
-    Computed in one pass over nodes sorted by distance. A node's predecessor is
-    always strictly nearer, so it has already been assigned when the node is
-    visited; walking each cell's chain back individually would instead be
-    quadratic on long overland tails.
+    """For every node, the arrival-airport node it was last reached through:
+    the nearest arrival node on its path back to the origin, itself included;
+    -1 for a journey with none and for a node not reached. (Walking each
+    cell's chain back on its own would be quadratic on long overland tails.)
     """
-    n = len(minutes)
-    last = np.full(n, -1, dtype=np.int64)
     # Arrival nodes of BOTH airport layers (graph/layout.py): a journey from
     # abroad lands on the international one, and it is still that airport.
-    is_arrival = layout_of(idx).is_arrival
-
-    finite = np.isfinite(minutes)
-    for node in np.argsort(np.where(finite, minutes, np.inf), kind="stable"):
-        node = int(node)
-        if not finite[node]:
-            break
-        if is_arrival(node):
-            last[node] = node
-            continue
-        prev = int(predecessors[node])
-        if prev >= 0:
-            last[node] = last[prev]
-    return last
+    # Whole-array pointer doubling (emit/_tree) in place of the node-by-node
+    # walk in distance order, which was ~11 s of an origin; same answer.
+    mark = layout_of(idx).is_arrival(np.arange(len(minutes)))
+    return _tree.nearest_marked_ancestor(mark, predecessors, np.isfinite(minutes))
 
 
 def write_itinerary(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path, *,

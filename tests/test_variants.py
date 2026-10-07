@@ -338,3 +338,39 @@ def test_index_json_offers_the_solver_only_for_a_bundle_from_the_same_build(tmp_
     (b / "meta.json").write_text(json.dumps({"identity": {"buildId": ident["buildId"]}}))
     index.write_index(origins, out, modes_detail={}, identity=ident, solver_bundle=b)
     assert read() == {"wire": wire.WIRE_VERSION}
+
+
+@pytest.mark.parametrize("exclude", [None, "ferry"])
+def test_build_graph_hands_out_exactly_the_ferry_pairs(monkeypatch, exclude):
+    """emit/modes books a cell-to-cell tree edge as a ferry when its pair is in
+    `ferry_keys_out`, so the keys must be the ferry part's (u, v) pairs and
+    nothing else -- none at all in the no-ferry variant.
+
+    Mutation performed and reverted: the keys built from the hex part instead
+    of the ferry part -> red.
+    """
+    def edges(pairs):
+        r = np.array([p[0] for p in pairs], dtype=np.int64)
+        c = np.array([p[1] for p in pairs], dtype=np.int64)
+        return r, c, np.ones(len(pairs))
+
+    monkeypatch.setattr(ground, "hex_edges", lambda idx, **kw: edges([(0, 1), (1, 0)]))
+    monkeypatch.setattr(build, "_span_edges", lambda idx, *a: edges([]))
+    monkeypatch.setattr(build, "_border_rules", lambda *a: (None, None, 0.0, None))
+    monkeypatch.setattr(build, "_air_edges", lambda *a, **k: edges([]))
+    monkeypatch.setattr(build, "_access_edges", lambda idx: edges([]))
+    monkeypatch.setattr(build, "_transfer_edges", lambda idx: edges([]))
+    monkeypatch.setattr(build, "_rail_edges", lambda *a, **k: edges([]))
+    monkeypatch.setattr(build, "_ferry_edges", lambda *a, **k: edges([(2, 5), (5, 2), (3, 4)]))
+    monkeypatch.setattr(build.rail, "load_rail_calibration", lambda: None)
+    monkeypatch.setattr(build.ferry, "load_ferry_calibration", lambda: None)
+
+    class Idx:
+        n = 7
+        has_rail = True
+
+    out: list = []
+    build.build_graph(Idx(), rail_routes=object(), ferry_links=[1], exclude=exclude,
+                      ferry_keys_out=out)
+    want = [] if exclude == "ferry" else sorted(u * 7 + v for u, v in [(2, 5), (5, 2), (3, 4)])
+    assert len(out) == 1 and out[0].tolist() == want
