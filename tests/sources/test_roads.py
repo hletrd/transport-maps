@@ -160,8 +160,9 @@ def test_the_vectorised_footprint_lookup_matches_the_per_cell_loop(monkeypatch):
     """Same answer for every cell, roadless and antimeridian cells included,
     on a synthetic grid (so the test needs no GRIP4 download).
 
-    Mutation performed and reverted: `r0 + dr <= r1` made `<` (the window's
-    last row dropped) -> red.
+    Mutations performed and reverted, each red: `sr0 + dr <= sr1` made `<`
+    (the window's last row dropped); the one-by-one loop for wide windows
+    removed (those cells left roadless).
     """
     import h3
 
@@ -173,8 +174,13 @@ def test_the_vectorised_footprint_lookup_matches_the_per_cell_loop(monkeypatch):
              for la, lo in zip(rng.uniform(-85, 85, 3000), rng.uniform(-180, 180, 3000))]
     cells += [h3.latlng_to_cell(10.0, 179.99, 6), h3.latlng_to_cell(-16.0, -179.99, 6),
               h3.latlng_to_cell(65.0, 180.0, 5), h3.latlng_to_cell(89.9, 0.0, 6)]
+    # Wide windows near both poles, read one by one rather than by the passes.
+    cells += [h3.latlng_to_cell(89.5, lon, 6) for lon in (-120.0, 0.0, 60.0)]
+    cells += [h3.latlng_to_cell(-89.5, lon, 6) for lon in (-60.0, 90.0)]
     want = _cell_class_by_loop(cells, grid)
     got = roads.cell_class(cells)
     assert (want == 0).any() and (want > 0).any()
     assert np.array_equal(got, want)
     assert roads.cell_class([]).shape == (0,)
+    wide = [c for c in cells[-5:]]
+    assert np.array_equal(roads.cell_class(wide), _cell_class_by_loop(wide, grid))

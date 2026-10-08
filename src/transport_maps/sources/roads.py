@@ -168,18 +168,38 @@ def cell_class(cells: list[str]) -> np.ndarray:
     # stands in as the worst value while taking the minimum over the window.
     none = np.iinfo(np.uint8).max
     best = np.full(n, none, dtype=np.uint8)
-    for dr in range(int((r1 - r0).max()) + 1):
-        for dc in range(int((c1 - c0).max()) + 1):
-            inside = (r0 + dr <= r1) & (c0 + dc <= c1)
-            v = grid[np.minimum(r0 + dr, r1), np.minimum(c0 + dc, c1)]
+    # Most windows are 1-4 grid cells a side and go through whole-array
+    # passes, one per (row, column) offset. A few are far wider -- a cell near
+    # a pole spans many columns -- and one of those would make every pass run
+    # thousands of times over all 4 M cells (it did: 1,390 s on h200), so they
+    # are read one by one, as before.
+    small = ~wraps & (r1 - r0 < WINDOW_MAX) & (c1 - c0 < WINDOW_MAX)
+    sr0, sr1, sc0, sc1 = r0[small], r1[small], c0[small], c1[small]
+    sbest = np.full(len(sr0), none, dtype=np.uint8)
+    for dr in range(WINDOW_MAX):
+        for dc in range(WINDOW_MAX):
+            inside = (sr0 + dr <= sr1) & (sc0 + dc <= sc1)
+            if not inside.any():
+                continue
+            v = grid[np.minimum(sr0 + dr, sr1), np.minimum(sc0 + dc, sc1)]
             v = np.where(inside & (v > 0), v, none).astype(np.uint8)
-            np.minimum(best, v, out=best)
+            np.minimum(sbest, v, out=sbest)
+    best[small] = sbest
+    for i in np.flatnonzero(~small & ~wraps):
+        window = grid[r0[i]:r1[i] + 1, c0[i]:c1[i] + 1]
+        present = window[window > 0]
+        if present.size:
+            best[i] = present.min()
     out = np.where(best == none, 0, best).astype(np.uint8)
     if wraps.any():
         # Antimeridian wrap makes the bounding box meaningless; use the centroid.
         centres = np.array([h3.cell_to_latlng(cells[i]) for i in np.flatnonzero(wraps)])
         out[wraps] = sample_class(centres[:, 0], centres[:, 1])
     return out
+
+
+# Widest window, in grid cells a side, read by the whole-array passes.
+WINDOW_MAX = 6
 
 
 def _rows_of(lat: np.ndarray) -> np.ndarray:
