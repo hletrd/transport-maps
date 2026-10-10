@@ -99,6 +99,7 @@ start() {
     local tree=${TREES[$i]} ex=${EXCLUDES[$i]} n=${WORKERS[$i]} log=$W/${LOGS[$i]}
     (
       cd "$W/$tree"
+      touch "$W/.started-$tree"           # status counts records newer than this
       echo "restart ($n workers, service date $date) ${ex:+--exclude $ex} $(date '+%m-%d %H:%M')" >> "$log"
       TRANSPORT_MAPS_WORKERS=$n nice -n 10 uv run transport-maps build-all --offline --skip-existing \
         ${ex:+--exclude "$ex"} >> "$log" 2>&1
@@ -121,8 +122,10 @@ status() {
   for i in "${!TREES[@]}"; do
     p=$(records_of "$i"); log=$W/${LOGS[$i]}
     r=$(grep -nE '^restart' "$log" 2>/dev/null | tail -1 | cut -d: -f1)
+    # Only records this run wrote: the previous build's complete ones are
+    # still on disk until each origin is redone, and counted 1464/1464.
     printf '%-9s %5s/%s  last 30 min %4s  errors %s  %s\n' "${EXCLUDES[$i]:-full}" \
-      "$(grep -l '"complete"' "$p"/*.json 2>/dev/null | wc -l)" "$total" \
+      "$(find "$p" -name '*.json' -newer "$W/.started-${TREES[$i]}" -exec grep -l '"complete"' {} + 2>/dev/null | wc -l)" "$total" \
       "$(find "$p" -name '*.json' -mmin -30 -exec grep -l '"complete"' {} + 2>/dev/null | wc -l)" \
       "$(awk -v r="${r:-0}" 'NR>r && /tippecanoe failed|Traceback|refusing|GateFailure/' "$log" 2>/dev/null | wc -l)" \
       "$(awk -v r="${r:-0}" 'NR>r && /^exit/' "$log" 2>/dev/null | tail -1)"
