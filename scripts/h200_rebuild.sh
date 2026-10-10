@@ -31,8 +31,11 @@
 set -euo pipefail
 : "${W:=/default/worldmap}"
 # Split so the four finish together, from rebuild 28's rates per worker: full
-# map 1.5 origins an hour, no-air 10.7, no-ferry and no-rail 3.1 each.
-: "${WORKERS_FULL:=48}" "${WORKERS_AIR:=8}" "${WORKERS_FERRY:=24}" "${WORKERS_RAIL:=24}"
+# map 1.5 origins an hour, no-air 10.7, no-ferry and no-rail 3.1 each. Each
+# build also checks its count against MemAvailable (cli._requested_workers,
+# 12 GB a worker): on 2026-10-10 the other services left 693 GB and 48 full-map
+# workers were refused, 44 fit.
+: "${WORKERS_FULL:=44}" "${WORKERS_AIR:=8}" "${WORKERS_FERRY:=24}" "${WORKERS_RAIL:=24}"
 # Rebuild 28: 124 workers held ~350 pids above the other services' ~7,400 --
 # a worker's two threads plus tippecanoe's while it runs -- so ~3 each.
 : "${PIDS_PER_WORKER:=3}"
@@ -98,6 +101,10 @@ start() {
   for i in "${!TREES[@]}"; do
     local tree=${TREES[$i]} ex=${EXCLUDES[$i]} n=${WORKERS[$i]} log=$W/${LOGS[$i]}
     (
+      # Not under the script's -e: a build that fails must still write its
+      # exit line. Rebuild 29's full map refused at the memory pre-flight and
+      # the subshell died silently before `exit` was logged.
+      set +e
       cd "$W/$tree"
       touch "$W/.started-$tree"           # status counts records newer than this
       echo "restart ($n workers, service date $date) ${ex:+--exclude $ex} $(date '+%m-%d %H:%M')" >> "$log"

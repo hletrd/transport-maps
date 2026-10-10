@@ -48,3 +48,12 @@ def test_a_leftover_edit_in_a_variant_checkout_does_not_stop_the_start():
     co = CODE[CODE.index("checkouts() {"):CODE.index("pids_headroom() {")]
     assert 'checkout -q -f --detach "$head"' in co
     assert co.index("status --short") < co.index("checkout -q -f")
+
+
+def test_a_build_that_fails_still_logs_its_exit():
+    """Rebuild 29's full map was refused by the memory pre-flight, and the
+    launch subshell, under the script's -e, died before writing `exit`."""
+    start = CODE[CODE.index("start() {"):CODE.index("records_of() {")]
+    sub = start[start.index("(\n"):start.index(") &")]
+    assert "set +e" in sub and sub.index("set +e") < sub.index("uv run transport-maps build-all")
+    assert 'echo "exit $? at' in sub
