@@ -40,3 +40,11 @@ def test_inputs_are_checked_once_and_every_checkout_reads_that_snapshot():
     assert "--offline" in start
     co = CODE[CODE.index("checkouts() {"):CODE.index("pids_headroom() {")]
     assert '--link-dest="$W/repo/data/cache/" "$W/repo/data/cache/" "$W/$t/data/cache/"' in co
+
+
+def test_a_leftover_edit_in_a_variant_checkout_does_not_stop_the_start():
+    """Rebuild 29's first start stopped on rebuild 28's hot-patches; the
+    launcher's own checkouts are moved by force, saying what it discards."""
+    co = CODE[CODE.index("checkouts() {"):CODE.index("pids_headroom() {")]
+    assert 'checkout -q -f --detach "$head"' in co
+    assert co.index("status --short") < co.index("checkout -q -f")

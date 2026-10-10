@@ -58,7 +58,12 @@ checkouts() {  # every variant tree at the full tree's commit, with its own venv
       (cd "$W/repo" && for e in $(ls -A | grep -vx -e dist -e .venv); do cp -al "$e" "$W/$t/$e"; done)
     fi
     git -C "$W/$t" -c safe.directory='*' fetch -q "$W/repo" HEAD
-    git -C "$W/$t" -c safe.directory='*' checkout -q --detach "$head"
+    # These checkouts are this script's; an edit made in one during a build (a
+    # hot-patch belongs in the repo, committed) would otherwise stop the move
+    # -- rebuild 29's first start did, on rebuild 28's patches. Say what goes.
+    git -C "$W/$t" -c safe.directory='*' status --short --untracked-files=no \
+      | sed "s|^|  discarding in $t: |"
+    git -C "$W/$t" -c safe.directory='*' checkout -q -f --detach "$head"
     (cd "$W/$t" && uv sync -q)
     # The inputs the full tree just checked, the same files by hard link.
     rsync -a --delete --link-dest="$W/repo/data/cache/" "$W/repo/data/cache/" "$W/$t/data/cache/"
