@@ -30,8 +30,12 @@
 #     started with it would skip every origin and republish the last build.
 set -euo pipefail
 : "${W:=/default/worldmap}"
-: "${WORKERS_FULL:=36}" "${WORKERS_AIR:=16}" "${WORKERS_FERRY:=26}" "${WORKERS_RAIL:=26}"
-: "${PIDS_PER_WORKER:=6}"                  # python + tippecanoe threads, measured ~4-6
+# Split so the four finish together, from rebuild 28's rates per worker: full
+# map 1.5 origins an hour, no-air 10.7, no-ferry and no-rail 3.1 each.
+: "${WORKERS_FULL:=48}" "${WORKERS_AIR:=8}" "${WORKERS_FERRY:=24}" "${WORKERS_RAIL:=24}"
+# Rebuild 28: 124 workers held ~350 pids above the other services' ~7,400 --
+# a worker's two threads plus tippecanoe's while it runs -- so ~3 each.
+: "${PIDS_PER_WORKER:=3}"
 TREES=(repo repo-air repo-ferry repo-rail)
 EXCLUDES=("" air ferry rail)
 WORKERS=("$WORKERS_FULL" "$WORKERS_AIR" "$WORKERS_FERRY" "$WORKERS_RAIL")
