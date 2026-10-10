@@ -17,8 +17,11 @@
 #     start refuses when the headroom is not there (WORKERS_* below).
 #   - No numactl. --preferred=0 put every worker's memory on node 0; measured,
 #     an origin with remote memory took 17.0 min against 14.2 min local.
-#   - --offline: inputs were refreshed and checked before the build (G2), and a
-#     network hiccup must not stop a 10-hour run.
+#   - Inputs are checked against their upstreams ONCE (`transport-maps inputs`,
+#     G2), then every build runs --offline: a network hiccup must not stop a
+#     10-hour run, and all four must read the same snapshot. Each variant
+#     checkout gets the full tree's data/cache mirrored in with hard links --
+#     a cp -al copy made earlier would otherwise keep the old inputs.
 #   - --skip-existing, so a restart resumes instead of starting over: an
 #     origin is skipped only when its record matches THIS run's inputs and
 #     graph (progress.py). NOT TRANSPORT_MAPS_RESUME_TRUST_RECORDS: rebuild 28
@@ -53,6 +56,8 @@ checkouts() {  # every variant tree at the full tree's commit, with its own venv
     git -C "$W/$t" -c safe.directory='*' fetch -q "$W/repo" HEAD
     git -C "$W/$t" -c safe.directory='*' checkout -q --detach "$head"
     (cd "$W/$t" && uv sync -q)
+    # The inputs the full tree just checked, the same files by hard link.
+    rsync -a --delete --link-dest="$W/repo/data/cache/" "$W/repo/data/cache/" "$W/$t/data/cache/"
     rm -f "$W/$t/dist/.build.lock"
   done
   rm -f "$W/repo/dist/.build.lock"
@@ -77,8 +82,10 @@ start() {
   local date=${1:-$(date +%F)} i
   env_for_build
   export TRANSPORT_MAPS_SERVICE_DATE=$date
-  checkouts
   pids_headroom
+  echo "checking inputs against their upstreams $(date '+%m-%d %H:%M')"
+  (cd "$W/repo" && uv run transport-maps inputs) | tee -a "$W/inputs.log"
+  checkouts
   for i in "${!TREES[@]}"; do
     local tree=${TREES[$i]} ex=${EXCLUDES[$i]} n=${WORKERS[$i]} log=$W/${LOGS[$i]}
     (

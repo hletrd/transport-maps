@@ -861,3 +861,19 @@ def test_collection_is_paused_for_the_setup_and_the_heap_frozen_for_origins(monk
     assert seen["origin_gc_on"] is True, "the origins ran with the collector off"
     assert seen["origin_frozen"] > 0, "the setup's heap was not frozen before the origins"
     assert gc.isenabled() and gc.get_freeze_count() == 0, "the process state was not restored"
+
+
+@pytest.mark.parametrize("argv,exclude", [(["inputs"], None), (["inputs", "--exclude", "air"], "air")])
+def test_the_inputs_command_runs_the_build_s_input_check_and_nothing_else(monkeypatch, argv, exclude):
+    """h200_rebuild.sh checks the inputs once, online, then starts four builds
+    --offline on one snapshot; `inputs` is that check and must not build.
+
+    Mutation performed and reverted: the branch calling `_check_inputs(None)`
+    regardless of --exclude -> red.
+    """
+    called = []
+    monkeypatch.setattr(cli, "_check_inputs", lambda ex=None: called.append(ex))
+    monkeypatch.setattr(cli, "_build_all", lambda *a, **k: called.append("BUILT"))
+    monkeypatch.setattr(sys, "argv", ["transport-maps", *argv])
+    cli.main()
+    assert called == [exclude]

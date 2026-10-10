@@ -25,3 +25,18 @@ def test_no_numa_pinning_and_the_thread_caps_stay():
     for cap in ("TIPPECANOE_MAX_THREADS=2", "POLARS_MAX_THREADS=1", "OMP_NUM_THREADS=1"):
         assert cap in CODE
     assert "pids_headroom" in CODE[CODE.index("start() {"):]
+
+
+def test_inputs_are_checked_once_and_every_checkout_reads_that_snapshot():
+    """G2: inputs checked on every build -- once, online, before four builds
+    run --offline; each variant checkout mirrors the full tree's cache, or a
+    cp -al copy made for an earlier build keeps the old inputs.
+
+    Mutation performed and reverted: the cache rsync removed -> red.
+    """
+    start = CODE[CODE.index("start() {"):CODE.index("records_of() {")]
+    assert "transport-maps inputs" in start
+    assert start.index("transport-maps inputs") < start.index("checkouts")
+    assert "--offline" in start
+    co = CODE[CODE.index("checkouts() {"):CODE.index("pids_headroom() {")]
+    assert '--link-dest="$W/repo/data/cache/" "$W/repo/data/cache/" "$W/$t/data/cache/"' in co

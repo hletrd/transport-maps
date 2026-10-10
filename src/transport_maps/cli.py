@@ -1226,6 +1226,14 @@ def main() -> None:
         help="rewrite dist/index.json from the artifacts on disk (no solving, no rebuild)",
     )
 
+    inputs = sub.add_parser(
+        "inputs",
+        help="check every raw input against its upstream and fetch what changed, then "
+             "stop: what build-all does first, on its own, so builds can then run --offline",
+    )
+    inputs.add_argument("--exclude", choices=["air", "ferry", "rail"], default=None,
+                        help="skip the inputs only that mode needs, as build-all --exclude does")
+
     assets = sub.add_parser(
         "assets",
         help="write the static page assets (places.json, airports.json, borders.pmtiles) "
@@ -1245,6 +1253,11 @@ def main() -> None:
     if args.command == "build-all":
         _build_all(limit=args.limit, only=args.only, exclude=args.exclude,
                    skip_existing=args.skip_existing)
+    elif args.command == "inputs":
+        # The check build-all opens with (G2), alone: scripts/h200_rebuild.sh
+        # runs it once and then starts four builds --offline against the same
+        # caches, so they all read one snapshot.
+        _check_inputs(args.exclude)
     elif args.command == "reindex":
         _reindex()
     elif args.command == "assets":
