@@ -96,3 +96,16 @@ def test_a_row_coded_into_another_region_reads_its_own(tmp_path, monkeypatch):
 
     assert build(rows) == "Sichuan"
     assert build([_row(8395541, "Daocheng", 29.038, 100.297, "05", 31113, cc="CN")]) == "Jilin"
+
+
+def test_a_row_standing_for_a_city_under_a_parts_name_reads_the_city(tmp_path, monkeypatch):
+    """GeoNames gives Kaiping's population to its seat subdistrict, Changsha,
+    and has no Kaiping row: the hover over the origin Kaiping read "Changsha".
+
+    Mutation performed and reverted: rename whatever the row is called
+    (`fix[1] if fix`) -> RED on the second assertion.
+    """
+    row = _row(1796989, "Changsha", 22.381, 112.685, "30", 688242, cc="CN")
+    assert _build(tmp_path, monkeypatch, [row]) == ["Kaiping"]
+    other = _row(1796989, "Chikan", 22.381, 112.685, "30", 688242, cc="CN")
+    assert _build(tmp_path, monkeypatch, [other]) == ["Chikan"]

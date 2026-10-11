@@ -43,3 +43,19 @@ def test_a_misplaced_or_inflated_row_is_not_added(tmp_path, monkeypatch):
     expand.main()
     names = [o["name"] for o in tomllib.loads(roster.read_text())["origin"]]
     assert names == ["Seoul", "Yuncheng"]
+
+
+def test_a_renamed_row_is_added_under_the_citys_name_and_slug(tmp_path, monkeypatch):
+    """Mutation performed and reverted: slug from `r["ascii"]` alone -> RED
+    (slug changsha-cn)."""
+    (tmp_path / "data").mkdir()
+    roster = tmp_path / "data" / "origins.toml"
+    roster.write_text('[[origin]]\nslug = "changsha"\nname = "Changsha"\nlat = 28.1987\nlon = 112.9709\n')
+    monkeypatch.setattr(expand.config, "ROOT", tmp_path)
+    monkeypatch.setattr(expand, "_land_cells_if_built", lambda: None)
+    monkeypatch.setattr(expand, "geonames", lambda: [
+        _row(1796989, "Changsha", 22.38117, 112.68488, 688242)])
+    monkeypatch.setattr(sys, "argv", ["expand_origins.py", "--min-pop", "300000"])
+    expand.main()
+    added = tomllib.loads(roster.read_text())["origin"][-1]
+    assert (added["slug"], added["name"]) == ("kaiping", "Kaiping")

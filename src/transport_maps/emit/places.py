@@ -79,6 +79,15 @@ INFLATED = {
     11679708: (300104, "Gundupalaiyam, a village, with Ozhukarai's 300,104"),
 }
 
+#: Rows that stand for a city under the name of one of its parts:
+#: geonameid: (name as found, the city's name, why). Applied only while the
+#: name is the one found. GeoNames has no row for Kaiping (748,777 in 2020)
+#: and gives its population to its seat subdistrict, Changsha, so the hover
+#: over Kaiping -- an origin since 2026-10-12 -- read "Changsha, Guangdong".
+RENAMED = {
+    1796989: ("Changsha", "Kaiping", "Kaiping's seat subdistrict carrying Kaiping's 688,242"),
+}
+
 #: Rows whose admin1 code names another region: geonameid: (code as found,
 #: the right code, why). Applied only while the code is the one found.
 REGION = {
@@ -96,6 +105,12 @@ def ranked_population(gid: int | None, pop: int) -> int:
     """A row's population for ranking: 0 for one INFLATED names, while it
     still carries the figure found."""
     return 0 if gid in INFLATED and pop == INFLATED[gid][0] else pop
+
+
+def place_name(gid: int | None, name: str) -> str:
+    """A row's name, or the city's where RENAMED says the row stands for one."""
+    fix = RENAMED.get(gid)
+    return fix[1] if fix and name == fix[0] else name
 
 
 def _download(url: str) -> pathlib.Path:
@@ -129,7 +144,7 @@ def build(out: pathlib.Path) -> int:
         if gid in REGION and a1 == REGION[gid][0]:
             a1 = REGION[gid][1]
         region = admin1.get(f"{r['cc']}.{a1}", "")
-        rows.append([r["name"], region, countries.get(r["cc"], r["cc"]),
+        rows.append([place_name(gid, r["name"]), region, countries.get(r["cc"], r["cc"]),
                      round(lat, 3), round(lon, 3)])
         pops.append(ranked_population(gid, int(r["pop"] or 0)))
     if not rows:

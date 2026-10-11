@@ -107,7 +107,7 @@ def main() -> None:
     added = []
     rejected: list[tuple[str, str, float, float]] = []
     for r in sorted(rows, key=lambda r: -int(r["pop"] or 0)):
-        name, country = r["name"], r["cc"]
+        country = r["cc"]
         lat, lon = float(r["lat"]), float(r["lon"])
         # The gazetteer's corrections (emit/places.py): a row naming a place
         # it is not, or a quarter with its city's population, is no city to
@@ -116,6 +116,7 @@ def main() -> None:
         gid = int(r["id"]) if r["id"].isdigit() else None
         if places.misplaced(gid, lat, lon):
             continue
+        name = places.place_name(gid, r["name"])
         pop = places.ranked_population(gid, int(r["pop"] or 0))
         capital = r["fcode"] == "PPLC"
         if not (pop >= args.min_pop or (capital and pop >= args.capital_pop)):
@@ -125,7 +126,8 @@ def main() -> None:
         # A name with no ASCII form slugifies to nothing, and the old fallback
         # collapsed it to the bare country code, so the second such city was
         # silently skipped. The GeoNames id is always unique.
-        slug = slugify(r["ascii"] or name) or f"city-{r['id']}"
+        # A renamed row's ASCII name is still the old one.
+        slug = slugify((r["ascii"] if name == r["name"] else name) or name) or f"city-{r['id']}"
         if slug in slugs:
             slug = f"{slug}-{country.lower()}"
         if slug in slugs:
