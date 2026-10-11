@@ -31,6 +31,20 @@ COLS = ("id", "name", "ascii", "alt", "lat", "lon", "fclass", "fcode", "cc", "cc
         "a1", "a2", "a3", "a4", "pop", "elev", "dem", "tz", "mod")
 
 
+#: GeoNames rows that are wrong in a way the page would repeat, by geonameid:
+#: the position the row was found at, and why. A row is left out only while it
+#: is still there (within 0.05 deg), so an upstream fix is picked up rather
+#: than overridden.
+MISPLACED = {
+    # "Masan" (alt. Masan-ni, 마산), a village in Gwangju, carrying 434,371
+    # people -- the population of Masan, the former city on the south coast
+    # merged into Changwon in 2010, 170 km east. With that figure it made the
+    # cities15000 cut and named every hover in south-west Gwangju "Masan"
+    # (owner, 2026-10-12). Changwon's own row covers the real Masan.
+    1841246: ((35.127, 126.831), "a Gwangju village carrying the population of Masan, Changwon"),
+}
+
+
 def _download(url: str) -> pathlib.Path:
     """One GeoNames file, checked against the upstream on every run (G2)."""
     return _fetch.fetch(url, config.CACHE / url.rsplit("/", 1)[-1]).path
@@ -54,6 +68,9 @@ def build(out: pathlib.Path) -> int:
         try:
             lat, lon = float(r["lat"]), float(r["lon"])
         except ValueError:
+            continue
+        bad = MISPLACED.get(int(r["id"])) if r["id"].isdigit() else None
+        if bad and abs(lat - bad[0][0]) < 0.05 and abs(lon - bad[0][1]) < 0.05:
             continue
         region = admin1.get(f"{r['cc']}.{r['a1']}", "")
         rows.append([r["name"], region, countries.get(r["cc"], r["cc"]),
