@@ -112,6 +112,9 @@ population on a Gwangju village (32774ec):
   markers' rosters edited to match, and reindexed: 1,462 origins, buildId
   534dec3b kept for the solver bundle, check_variants 0 faster cells, 10
   duplicate names (was 13).
+- Found on the live check after the origin deploy: the hover over Kaiping
+  read "Changsha" -- GeoNames has no Kaiping row and gives its population to
+  the seat subdistrict. `RENAMED` names that row Kaiping (792c3dd).
 - Airports: clean; two doubled spaces in names collapsed (225a9e7).
 - Left as found: Sahiwal (Sargodha) carries Sahiwal city's population (a real
   town, so only its rank is wrong); disputed-territory polygons put a few
