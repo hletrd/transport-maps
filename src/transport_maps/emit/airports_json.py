@@ -20,7 +20,10 @@ FIELDS = ("iata", "name", "country", "lat", "lon", "size")
 
 def build(out: Path) -> int:
     a = airports.scheduled_airports()
-    rows = [[c, n, k, round(float(la), 3), round(float(lo), 3), s]
+    # " ".join(n.split()): OurAirports carries a doubled space in a few names
+    # ("Amravati  Airport", "Bacău George Enescu International  Airport"),
+    # which the page printed as is.
+    rows = [[c, " ".join(n.split()), k, round(float(la), 3), round(float(lo), 3), s]
             for c, n, k, la, lo, s in zip(a["iata"], a["name"], a["country"],
                                           a["lat"], a["lon"], a["size"])]
     payload = {"fields": list(FIELDS), "airports": rows}

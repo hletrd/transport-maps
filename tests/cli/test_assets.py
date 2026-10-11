@@ -93,3 +93,13 @@ def test_airports_json_is_the_columnar_table_the_page_reads(tmp_path, monkeypatc
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["fields"] == ["iata", "name", "country", "lat", "lon", "size"]
     assert payload["airports"][0] == ["ICN", "Incheon", "KR", 37.46, 126.441, "large"]
+
+
+def test_an_airport_name_with_a_doubled_space_is_printed_with_one(tmp_path, monkeypatch):
+    """Mutation performed and reverted: write `n` as given -> RED."""
+    monkeypatch.setattr(airports_json.airports, "scheduled_airports", lambda: pl.DataFrame({
+        "iata": ["AVR"], "name": ["Amravati  Airport "], "country": ["IN"],
+        "lat": [20.8], "lon": [77.9], "size": ["small"]}))
+    out = tmp_path / "airports.json"
+    airports_json.build(out)
+    assert json.loads(out.read_text(encoding="utf-8"))["airports"][0][1] == "Amravati Airport"
