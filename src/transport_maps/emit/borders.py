@@ -105,9 +105,13 @@ KIND_BY_RANK = {"1": "international", "2": "other", "3": "special"}
 #: since the 2019 U.S. recognition and Natural Earth does not.
 GOLAN_PAIRS = (("ISRAEL", "LEBANON"), ("ISRAEL", "SYRIA"))
 #: LSIB country pairs whose rank-1 line Natural Earth marks disputed, drawn as
-#: `other` (see the module docstring). LSIB 11.4 carries one rank-1 line for
-#: each; Egypt/Sudan's Hala'ib administrative line is rank 2 already.
-DISPUTED_PAIRS = (("CHINA", "INDIA"), ("EGYPT", "SUDAN"), ("GUYANA", "VENEZUELA"))
+#: `other` (see the module docstring). LSIB 11.4 files the 22nd parallel in
+#: three pieces: EGYPT|SUDAN west of 33.17 E, then EGYPT|EGYPT (33.17-34.08 E)
+#: and SUDAN|SUDAN (34.08-36.88 E) where it crosses Hala'ib -- the only
+#: same-country rank-1 lines in the edition -- so all three are listed. Egypt/
+#: Sudan's Hala'ib administrative line is rank 2 already.
+DISPUTED_PAIRS = (("CHINA", "INDIA"), ("EGYPT", "SUDAN"), ("EGYPT", "EGYPT"),
+                  ("SUDAN", "SUDAN"), ("GUYANA", "VENEZUELA"))
 #: Natural Earth lines LSIB does not draw, by ne_id. Each was found by
 #: sampling every Natural Earth line every 0.01 deg and listing those mostly
 #: farther than 0.05 deg (5.5 km, about Natural Earth's own worst error in

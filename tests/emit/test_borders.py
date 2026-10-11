@@ -77,9 +77,12 @@ def test_lines_natural_earth_marks_disputed_are_not_drawn_as_international(tmp_p
         {"RANK": "1", "COUNTRY1": "SUDAN", "COUNTRY2": "EGYPT", "geometry": LINE},
         {"RANK": "1", "COUNTRY1": "GUYANA", "COUNTRY2": "VENEZUELA", "geometry": LINE},
         {"RANK": "1", "COUNTRY1": "CHINA", "COUNTRY2": "NEPAL", "geometry": LINE},
-        {"RANK": "1", "COUNTRY1": "GUYANA", "COUNTRY2": "BRAZIL", "geometry": LINE}])
+        {"RANK": "1", "COUNTRY1": "GUYANA", "COUNTRY2": "BRAZIL", "geometry": LINE},
+        # The 22nd parallel across Hala'ib, which LSIB files as same-country.
+        {"RANK": "1", "COUNTRY1": "EGYPT", "COUNTRY2": "EGYPT", "geometry": LINE},
+        {"RANK": "1", "COUNTRY1": "SUDAN", "COUNTRY2": "SUDAN", "geometry": LINE}])
     assert [f["kind"] for f in borders.lsib_features(path)] == [
-        "other", "other", "other", "international", "international"]
+        "other", "other", "other", "international", "international", "other", "other"]
 
 
 def test_a_new_lsib_edition_is_refused_until_it_is_reviewed(tmp_path):
