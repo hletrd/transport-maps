@@ -52,6 +52,23 @@ year-round pairs; Natural Earth, GRIP4 and the OSM extracts unchanged).
   follows a drag with the route put away and redrawn on release; the map
   from a point off Hwaseong-si shown; console clean.
 
+## Follow-ups after the release (2026-10-11..12)
+
+- Isolated airports re-measured on rebuild 29's inputs: 37 of 3,996, none
+  new, none gone; KNOWN_ISOLATED_AIRPORTS stands.
+- airports.json regenerated from the updated OurAirports table (6 rows moved:
+  SVO's position, HUI/MPN/SUI/YQG size classes, RRG) and deployed.
+- Disputed boundaries dashed (29b325b, 6824083): China/India, Guyana/
+  Venezuela, and the 22nd parallel in all three of LSIB's pieces (EGYPT|SUDAN,
+  EGYPT|EGYPT, SUDAN|SUDAN -- the last two found by querying the live map,
+  which still drew 33.17-36.88 E solid); borders.pmtiles rebuilt and deployed.
+- Worker memory budget measured (5ea57bf): private peak 5.53 GB max, median
+  3.80 GB on the 16 largest origins, parent 13.2 GB; WORKER_PEAK_GB 12 -> 7.
+- `h200_rebuild.sh split MAP TREE` (984e7a2) replaces the hand-run tail
+  scripts of rebuilds 28 and 29.
+- h200 tidied: one-off scripts and logs in archive-r28-r29/, the scratch
+  trees repo-rail2 and repo-ferry2 (~190 GB) and profiling output removed.
+
 ## When to start
 
 When the owner asks, or when the next rebuild-gated fix lands here.
