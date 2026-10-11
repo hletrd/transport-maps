@@ -14,8 +14,8 @@
 #      bundle survives only until the new one has answered a real solve;
 #   4. the systemd unit and the nginx site, each only when it differs, nginx
 #      only after `nginx -t` passes and rolled back if it does not.
-# Then it asks the live service for Seoul -> Gumi through nginx and refuses to
-# finish unless a number comes back.
+# Then it asks the live service for Seoul -> Gumi, a map and a block of the
+# finest grid through nginx, and refuses to finish unless each comes back.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f deploy/.env ] && . deploy/.env
@@ -40,6 +40,11 @@ ssh -o BatchMode=yes "$DEPLOY_HOST" "cd $HOME_DIR && { [ -x .venv/bin/python ] |
 echo "  $PINS"
 
 echo "=== bundle upload"
+# Seeded with hard links to the live bundle, so a redeploy of the same build --
+# a service-code change -- sends nothing but the files that differ, rather
+# than 1.3 GB over the Mac's uplink. rsync replaces a changed file by rename,
+# never in place, so the live bundle's inodes are not touched.
+ssh -o BatchMode=yes "$DEPLOY_HOST" "cd $HOME_DIR && rm -rf bundle.new && { [ ! -d current ] || cp -al current bundle.new; }"
 rsync -a --delete "$BUNDLE/" "$DEPLOY_HOST:$HOME_DIR/bundle.new/"
 # The site's hover_cells.bin beside the bundle: the service compares its own
 # res-4 order with it at start and refuses to serve /api/map in another order
@@ -93,6 +98,13 @@ map=$(curl -s -m 90 "$SITE_URL/api/map?from=37.80000,127.25000" || true)
 case $map in
   *'"status":"ok"'*'"mapVersion":'*) echo "  /api/map: $(printf '%s' "$map" | head -c 160)..." ;;
   *) echo "  /api/map did not answer a map: $(printf '%s' "${map:-nothing}" | head -c 200)"; exit 1 ;;
+esac
+# And one block of the finest grid from Seoul, for the build the bundle is.
+build=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['identity'].get('buildId',''))" "$BUNDLE/meta.json")
+cells=$(curl -s -m 90 "$SITE_URL/api/cells?from=37.56650,126.97800&block=8330e1fffffffff&build=$build" || true)
+case $cells in
+  *'"status":"ok"'*'"cellsVersion":'*) echo "  /api/cells: $(printf '%s' "$cells" | head -c 160)..." ;;
+  *) echo "  /api/cells did not answer a block: $(printf '%s' "${cells:-nothing}" | head -c 200)"; exit 1 ;;
 esac
 ssh -o BatchMode=yes "$DEPLOY_HOST" "rm -rf $HOME_DIR/previous $HOME_DIR/bundle-test"
 echo "SOLVER DEPLOYED"
