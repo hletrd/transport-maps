@@ -3952,14 +3952,21 @@ function renderLegsInto() {
 // res-6/7 index.
 //
 // The edges follow the emitter's own convention: band k is (EDGES[k-1],
-// EDGES[k]], matching np.searchsorted(edges, m, side="left").
+// EDGES[k]], matching np.searchsorted(edges, m, side="left") -- applied by
+// the emitter to the solver's FRACTIONAL minutes. Every array the page reads
+// holds them truncated (emit/hover._encode, service/hovermap.encode), so a
+// reading of 80 is a time in [80, 81), which the tiles painted in the band
+// above the 80 edge: a solve's sum of edge weights is never a whole minute.
+// Reading it into the band below put the mark one band short of the colour
+// under the pointer wherever a reading fell on an edge -- 10 of 156 hovers at
+// zoom 9 around Seoul (2026-10-12). Hence `>=`.
 //: Which of the equal-width legend segments a reading falls in, or -1 for a
 //: cell with no scheduled route. bandRangeOf used to compute this and throw it
 //: away, so the legend could not say where on it you were reading.
 function bandIndexOf(min) {
   if (min == null || min >= MAX_MINUTES) return -1;
   let b = 0;
-  while (b < EDGES.length && min > EDGES[b]) b++;
+  while (b < EDGES.length && min >= EDGES[b]) b++;
   return b;
 }
 // The legend is a scale with no "you are here". Marking the band under the

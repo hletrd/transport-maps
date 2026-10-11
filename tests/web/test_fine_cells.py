@@ -272,3 +272,24 @@ console.log(JSON.stringify(out));
 """)
     assert got == {"first": 1, "held": 1, "landed": [2, 1, 1], "again": 2, "moved": 2}, got
 
+
+def test_a_truncated_minute_on_an_edge_reads_the_band_the_tiles_paint(node, tmp_path):
+    """Every shipped array truncates the solver's fractional minutes, and the
+    tiles were banded from the fractions. So a reading t stands for [t, t+1)
+    and must read the band `band_indices` gives t + 0.5 -- on an edge too.
+
+    Mutation performed and reverted: `min > EDGES[b]` (the old rule) -> RED.
+    """
+    import numpy as np
+
+    from transport_maps.contour import bands
+
+    edges = list(config.BAND_EDGES_MIN)
+    probe = sorted({0, 1, *edges, *(e - 1 for e in edges), *(e + 1 for e in edges), 5000})
+    got = _run(node, tmp_path, f"""
+const EDGES = {json.dumps(edges)}, MAX_MINUTES = 65534;
+{_js.function("bandIndexOf")}
+console.log(JSON.stringify({json.dumps(probe)}.map(bandIndexOf)));
+""")
+    want = bands.band_indices(np.array(probe, dtype=float) + 0.5).tolist()
+    assert got == want
