@@ -44,8 +44,10 @@ from transport_maps import config
 APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
 #: The pairs that country alone cannot separate, and which therefore prove the
-#: escalation ran. Both members are in China in every one.
-SAME_COUNTRY_PAIRS = ("changsha", "fuzhou", "puyang", "suzhou", "taizhou")
+#: escalation ran. Both members are in China in every one. Changsha and Puyang
+#: were pairs until 2026-10-12, when their second members turned out to be
+#: Kaiping and Pujiang under GeoNames rows' wrong names (emit/places.py).
+SAME_COUNTRY_PAIRS = ("fuzhou", "suzhou", "taizhou")
 
 #: Known residue. Empty since 2026-10-12: DEF17-1 (plan/2026-09-17-c17-review-
 #: findings.md) was two settlements both named Changzhi in Shanxi, and the

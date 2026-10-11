@@ -77,8 +77,8 @@ lon = 104.0668
 [[origin]]
 slug = "chongqing"
 name = "Chongqing"
-lat = 29.4316
-lon = 106.9123
+lat = 29.5603
+lon = 106.5577
 
 [[origin]]
 slug = "xian"
@@ -1216,12 +1216,6 @@ slug = "ibadan"
 name = "Ibadan"
 lat = 7.3776
 lon = 3.9059
-
-[[origin]]
-slug = "puyang"
-name = "Puyang"
-lat = 29.4568
-lon = 119.8887
 
 [[origin]]
 slug = "shiyan"
@@ -4522,13 +4516,6 @@ lon = 32.5263
 country = "EG"
 
 [[origin]]
-slug = "changzhi-cn"
-name = "Changzhi"
-lat = 35.2089
-lon = 111.7386
-country = "CN"
-
-[[origin]]
 slug = "ribeirao-preto"
 name = "Ribeirão Preto"
 lat = -21.1775
@@ -4592,8 +4579,8 @@ lon = 40.4158
 country = "SA"
 
 [[origin]]
-slug = "changsha-cn"
-name = "Changsha"
+slug = "kaiping"
+name = "Kaiping"
 lat = 22.3812
 lon = 112.6849
 country = "CN"
@@ -7135,8 +7122,8 @@ country = "CD"
 [[origin]]
 slug = "buenaventura"
 name = "Buenaventura"
-lat = 3.5833
-lon = -77.0
+lat = 3.8801
+lon = -77.0312
 country = "CO"
 
 [[origin]]
