@@ -38,10 +38,51 @@ COLS = ("id", "name", "ascii", "alt", "lat", "lon", "fclass", "fcode", "cc", "cc
 MISPLACED = {
     # "Masan" (alt. Masan-ni, 마산), a village in Gwangju, carrying 434,371
     # people -- the population of Masan, the former city on the south coast
-    # merged into Changwon in 2010, 170 km east. With that figure it made the
+    # merged into Changwon in 2010, 160 km east. With that figure it made the
     # cities15000 cut and named every hover in south-west Gwangju "Masan"
     # (owner, 2026-10-12). Changwon's own row covers the real Masan.
     1841246: ((35.127, 126.831), "a Gwangju village carrying the population of Masan, Changwon"),
+    # The rest found by the audit of 2026-10-12 (plan/2026-10-06-rebuild29-
+    # queue.md, "Data errors"): a name that is not the place's, or a copy of
+    # another place's row. The eight marked "twin" carry EXACTLY the
+    # population of the same-named row given, which is a real town elsewhere.
+    11209896: ((32.779, 130.745), "Tokyo's Koto ward (543,730) on a row in east Kumamoto"),
+    2460584: ((10.383, -7.150), "Bamba, Gao (17.03N 1.40W), placed in southern Mali"),
+    1815463: ((35.209, 111.739), "a Yuncheng village as 'Changzhi' with 699,514; Changzhi is 1808956"),
+    1798425: ((29.457, 119.889), "Pujiang's seat as 'Puyang' with 3,590,000, Puyang, Henan's figure"),
+    3688452: ((3.583, -77.000), "Buenaventura municipality, 33 km south of the city's row (3688451)"),
+    124878: ((35.829, 59.633), "twin of 124877 Maragheh, East Azerbaijan, 1,200 km west"),
+    125206: ((27.849, 52.423), "twin of 125205 Maku, West Azerbaijan, 1,470 km north-west"),
+    48918: ((28.835, 53.173), "twin of 145449 Abadeh, Fars, 260 km north"),
+    193627: ((-0.700, 37.183), "twin of 193624 Karuri, Kiambu, 70 km south-west"),
+    197335: ((-0.212, 36.272), "twin of 197334 Gilgil, 33 km south"),
+    12718630: ((-1.300, 36.990), "twin of 197226 Githunguri, Kiambu, 36 km north-west"),
+    2241372: ((-9.050, 15.317), "twin of 2241371 Dondo, Cuanza Norte, 120 km south-west"),
+    129664: ((35.347, 51.844), "twin of 11980175 Kahrizak, 48 km north-west"),
+    1332083: ((30.551, 73.391), "twin of 1183883 Bahawalnagar, 63 km south"),
+    404592: ((35.714, 51.471), "twin of 8420881 Vahidiyeh, 41 km west, labelling east Tehran"),
+}
+
+#: Rows in the right place under their own name that carry a whole city's
+#: population: a neighbourhood ranked as the city, so it outranks the city row
+#: in the gazetteer's population order and becomes a globe label beside it
+#: (Camayenne, Conakry's 1.87 M, at rank 237). Kept -- the name is right where
+#: it is nearest -- but ranked as having no population, while the figure is
+#: still the one found. geonameid: (population as found, why).
+INFLATED = {
+    2422488: (1871242, "Camayenne, a Conakry quarter, with Conakry's population"),
+    101760: (946697, "Sultanah, a Madinah district, with Madinah's population"),
+    1771023: (833571, "Kampung Baru Subang, a Shah Alam suburb, with a city's population"),
+    1852383: (375339, "Minato, a Wakayama district, with more than Wakayama's 356,729"),
+    1701500: (454150, "Mansilingan, a Bacolod barangay, with Bacolod's population"),
+    1687687: (298976, "Santol, an Angeles barangay, with a city's population"),
+    11679708: (300104, "Gundupalaiyam, a village, with Ozhukarai's 300,104"),
+}
+
+#: Rows whose admin1 code names another region: geonameid: (code as found,
+#: the right code, why). Applied only while the code is the one found.
+REGION = {
+    8395541: ("04", "32", "Daocheng (稻城), Garze, Sichuan (CN.32), coded Jiangsu (CN.04)"),
 }
 
 
@@ -69,13 +110,18 @@ def build(out: pathlib.Path) -> int:
             lat, lon = float(r["lat"]), float(r["lon"])
         except ValueError:
             continue
-        bad = MISPLACED.get(int(r["id"])) if r["id"].isdigit() else None
+        gid = int(r["id"]) if r["id"].isdigit() else None
+        bad = MISPLACED.get(gid)
         if bad and abs(lat - bad[0][0]) < 0.05 and abs(lon - bad[0][1]) < 0.05:
             continue
-        region = admin1.get(f"{r['cc']}.{r['a1']}", "")
+        a1 = r["a1"]
+        if gid in REGION and a1 == REGION[gid][0]:
+            a1 = REGION[gid][1]
+        region = admin1.get(f"{r['cc']}.{a1}", "")
         rows.append([r["name"], region, countries.get(r["cc"], r["cc"]),
                      round(lat, 3), round(lon, 3)])
-        pops.append(int(r["pop"] or 0))
+        pop = int(r["pop"] or 0)
+        pops.append(0 if gid in INFLATED and pop == INFLATED[gid][0] else pop)
     if not rows:
         raise RuntimeError("GeoNames extract yielded no usable rows")
     # Largest first, so a consumer can treat row index as rank.
