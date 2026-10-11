@@ -785,22 +785,28 @@ def test_what_the_grid_alone_decides_is_computed_once_and_handed_to_every_origin
 
 def test_an_operator_worker_count_is_refused_when_it_would_not_fit():
     """On a shared machine the total RAM says nothing about what is free; the
-    request is checked against MemAvailable.
+    request is checked against MemAvailable. With 687 GB available (h200 on
+    2026-10-10) the measured 7 GB a worker lets 75 run where 12 GB let 44.
 
     Mutations performed and reverted, each -> red: compare against MemTotal;
     drop the 0.8 margin; ignore the variable entirely.
     """
     mem = lambda gb: f"MemTotal: {2000 * 2**20} kB\nMemAvailable: {gb * 2**20} kB\n"  # noqa: E731
     assert cli._requested_workers(1464, env={}, meminfo=mem(687)) is None
-    # 40 workers: 40 x 12 + 20 = 500 GB <= 0.8 x 687 = 550 GB.
-    assert cli._requested_workers(1464, env={"TRANSPORT_MAPS_WORKERS": "40"},
-                                  meminfo=mem(687)) == 40
+    # The largest count that fits 80% of 687 GB, and one more.
+    fit = int((0.8 * 687 - cli.PARENT_GB) // cli.WORKER_PEAK_GB)
+    assert cli._requested_workers(1464, env={"TRANSPORT_MAPS_WORKERS": str(fit)},
+                                  meminfo=mem(687)) == fit
+    with pytest.raises(SystemExit, match=f"{fit} would fit"):
+        cli._requested_workers(1464, env={"TRANSPORT_MAPS_WORKERS": str(fit + 1)},
+                               meminfo=mem(687))
+    # A count inside the 687 available but outside the 80% margin.
+    inside = int((687 - cli.PARENT_GB) // cli.WORKER_PEAK_GB)
+    assert inside * cli.WORKER_PEAK_GB + cli.PARENT_GB <= 687 and inside > fit
     with pytest.raises(SystemExit, match="would fit"):
-        cli._requested_workers(1464, env={"TRANSPORT_MAPS_WORKERS": "60"}, meminfo=mem(687))
-    # 50 x 12 + 20 = 620 GB: inside the 687 available, outside the 80% margin.
-    with pytest.raises(SystemExit, match="would fit"):
-        cli._requested_workers(1464, env={"TRANSPORT_MAPS_WORKERS": "50"}, meminfo=mem(687))
-    assert cli._requested_workers(3, env={"TRANSPORT_MAPS_WORKERS": "40"}, meminfo=mem(687)) == 3
+        cli._requested_workers(1464, env={"TRANSPORT_MAPS_WORKERS": str(inside)},
+                               meminfo=mem(687))
+    assert cli._requested_workers(3, env={"TRANSPORT_MAPS_WORKERS": str(fit)}, meminfo=mem(687)) == 3
     with pytest.raises(SystemExit):
         cli._requested_workers(10, env={"TRANSPORT_MAPS_WORKERS": "lots"}, meminfo=mem(687))
 

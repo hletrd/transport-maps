@@ -33,10 +33,10 @@ set -euo pipefail
 : "${W:=/default/worldmap}"
 # Split so the four finish together, from rebuild 28's rates per worker: full
 # map 1.5 origins an hour, no-air 10.7, no-ferry and no-rail 3.1 each. Each
-# build also checks its count against MemAvailable (cli._requested_workers,
-# 12 GB a worker): on 2026-10-10 the other services left 693 GB and 48 full-map
-# workers were refused, 44 fit.
-: "${WORKERS_FULL:=44}" "${WORKERS_AIR:=8}" "${WORKERS_FERRY:=24}" "${WORKERS_RAIL:=24}"
+# build also checks its count against MemAvailable (cli._requested_workers):
+# on 2026-10-10, at the old 12 GB a worker, 48 full-map workers were refused;
+# at the measured 7 GB (2026-10-11) the same 693 GB holds 76.
+: "${WORKERS_FULL:=48}" "${WORKERS_AIR:=8}" "${WORKERS_FERRY:=24}" "${WORKERS_RAIL:=24}"
 # Rebuild 28: 124 workers held ~350 pids above the other services' ~7,400 --
 # a worker's two threads plus tippecanoe's while it runs -- so ~3 each.
 : "${PIDS_PER_WORKER:=3}"
@@ -197,8 +197,11 @@ split() {  # split <full|air|ferry|rail> <free checkout> [workers]
   git -C "$W/$tail" -c safe.directory='*' checkout -q -f --detach \
     "$(git -C "$W/$main" -c safe.directory='*' rev-parse HEAD)"
   rsync -a --delete --link-dest="$W/repo/data/cache/" "$W/repo/data/cache/" "$W/$tail/data/cache/"
-  # Workers the memory pre-flight accepts (cli: 12 GB each, 20 GB parent, 80%).
-  wt=${3:-$(( ($(awk '/MemAvailable/{print int($2/1048576)}' /proc/meminfo) * 8 / 10 - 20) / 12 ))}
+  # Workers the memory pre-flight accepts, by its own figures.
+  wt=${3:-$(cd "$W/$main" && .venv/bin/python -c "
+from transport_maps.cli import PARENT_GB, WORKER_PEAK_GB
+avail = next(int(l.split()[1]) for l in open('/proc/meminfo') if l.startswith('MemAvailable:')) / 2**20
+print(max(0, int((0.8 * avail - PARENT_GB) // WORKER_PEAK_GB)))")}
   [ "$wt" -gt 56 ] && wt=56
   [ "$wt" -ge 8 ] || { echo "!! only $wt workers would fit"; exit 1; }
   todo=$(cd "$W/$main" && .venv/bin/python scripts/h200_split.py todo "$map" "$W/$main" "$ih" "$gh")

@@ -94,12 +94,19 @@ def _worker_count(n_origins: int) -> int:
     return max(1, min(cores - 2, 8, n_origins))
 
 
-# Peak resident memory of one worker on the res-6/7 grid, measured from the
-# per-origin column rebuild 27 logged (2026-10-02..04): median 8.2 GB, max
-# 10.7 GB. Rounded up: an operator asking for more workers is refused by this
-# figure, not by the kernel's OOM killer on a machine that also serves others.
-WORKER_PEAK_GB = 12.0
-# The parent: graph, index and the shared precomputes, before any fork.
+# What one more worker costs: its PRIVATE memory (USS), not its resident size.
+# A worker is forked after the parent's heap is frozen (_settle_heap) and shares
+# those pages; the per-origin "peak MB" column is ru_maxrss and counts them in
+# every worker, which is how this used to be 12 GB (from rebuild 27's median
+# 8.2 / max 10.7 GB RSS) and how 48 full-map workers were refused on 2026-10-10
+# with ~5x the memory they needed. Measured on h200, 2026-10-11, 16 forked
+# workers on the 16 largest origins (Seoul, Tokyo, London, New York, ...):
+# private peak max 5.53 GB, median 3.80 GB (RSS max 9.97). Rounded up with a
+# quarter's margin: a request is refused by this figure, not by the OOM
+# killer of a machine that also serves others.
+WORKER_PEAK_GB = 7.0
+# The parent: graph, index and the shared precomputes, before any fork --
+# measured 13.2 GB in the same run.
 PARENT_GB = 20.0
 
 
