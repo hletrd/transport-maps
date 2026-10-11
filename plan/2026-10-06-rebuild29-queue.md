@@ -69,6 +69,55 @@ year-round pairs; Natural Earth, GRIP4 and the OSM extracts unchanged).
 - h200 tidied: one-off scripts and logs in archive-r28-r29/, the scratch
   trees repo-rail2 and repo-ferry2 (~190 GB) and profiling output removed.
 
+## The hover reads the drawn cell; the data audit (2026-10-12)
+
+**"Why does the hexagon grow and shrink?"** Three causes, measured:
+
+- At zoom 7+ the tiles draw res-7 cells where a base cell was split; the
+  hover read and ringed the res-6 cell (its centre child's time). At zoom
+  3-6 a split cell is drawn in its FASTEST child's band, the hover still read
+  the centre child. Live, zoom 9 around Seoul: the hover's band matched the
+  drawn band at 127 of 156 points.
+- While the res-6 tier loads (every city switch) the ring was the 45 km res-4
+  cell for a second, then shrank.
+- A truncated minute on a band edge (80 = [80, 81)) was put in the band
+  below the one the tiles used.
+
+Owner chose option 2 of the two offered (the solver over a res-7 rebuild):
+`/api/cells` (197372f) answers a res-3 block of the solver's own cells from
+a kept tree (<1 ms; a solve it starts is rationed to one per 20 s), and the
+page (4eababd, ad902dd) reads the drawn cell at the drawn level, withholds
+the stopgap ring, and bands truncated minutes as the tiles did. Measured
+after deploy, zoom 9 Seoul: 154 of 156 match (4eababd's message says 144
+for the intermediate state; it was 137). Gwangju z10 160/160, Tokyo z9
+144/146, Mongolia z8 94/96, Seoul z5.5 60/63; the misses sit on band
+boundaries. Not covered: zoom 0-2, where the tiles draw res-4 cells by their
+fastest child and the ring is the res-6 cell -- a pixel at that scale.
+
+**Data audit** ("다른 데이터에러 또 없는지 검사해"), after GeoNames put Masan's
+population on a Gwangju village (32774ec):
+
+- Gazetteer (7e536d2): 15 rows dropped (a name not the place's, or an exact
+  copy of another town's row), 7 quarters carrying their city's population
+  re-ranked to 0, Daocheng's region code corrected. expand_origins applies
+  the same corrections (119a55f). DEF17-1 closed (the second Changzhi was the
+  phantom).
+- Origins (d6f786e): changzhi-cn (phantom) and puyang (Pujiang under
+  Puyang, Henan's row; Puyang is puyang-cn) dropped, changsha-cn renamed
+  kaiping, Buenaventura and Chongqing moved to their centres (33 and 37 km).
+  The three are re-solved in all four maps on h200 with `--only` on the same
+  graph (service date 2026-10-10, offline inputs: graphHash 17625577a759f327
+  in every new record, as in Seoul's; inputsHash differs because it covers
+  the package and origins.toml, which check_dist only warns on), the variant
+  markers' rosters edited to match, and reindexed: 1,462 origins, buildId
+  534dec3b kept for the solver bundle, check_variants 0 faster cells, 10
+  duplicate names (was 13).
+- Airports: clean; two doubled spaces in names collapsed (225a9e7).
+- Left as found: Sahiwal (Sargodha) carries Sahiwal city's population (a real
+  town, so only its rank is wrong); disputed-territory polygons put a few
+  origins and airports "outside" their country, which is the polygon, not
+  the data.
+
 ## When to start
 
 When the owner asks, or when the next rebuild-gated fix lands here.
