@@ -67,6 +67,21 @@ def test_the_golan_lines_are_not_drawn_as_international_boundaries(tmp_path):
         "other", "other", "international", "other"]
 
 
+def test_lines_natural_earth_marks_disputed_are_not_drawn_as_international(tmp_path):
+    """The McMahon Line, Egypt/Sudan on the 22nd parallel and the Essequibo:
+    LSIB ranks each 1, Natural Earth marks each disputed, and the page draws
+    what Natural Earth's default view shows. Their neighbours stay solid.
+    Mutation performed and reverted: emptying DISPUTED_PAIRS turns this red."""
+    path = _lsib(tmp_path, [
+        {"RANK": "1", "COUNTRY1": "CHINA", "COUNTRY2": "INDIA", "geometry": LINE},
+        {"RANK": "1", "COUNTRY1": "SUDAN", "COUNTRY2": "EGYPT", "geometry": LINE},
+        {"RANK": "1", "COUNTRY1": "GUYANA", "COUNTRY2": "VENEZUELA", "geometry": LINE},
+        {"RANK": "1", "COUNTRY1": "CHINA", "COUNTRY2": "NEPAL", "geometry": LINE},
+        {"RANK": "1", "COUNTRY1": "GUYANA", "COUNTRY2": "BRAZIL", "geometry": LINE}])
+    assert [f["kind"] for f in borders.lsib_features(path)] == [
+        "other", "other", "other", "international", "international"]
+
+
 def test_a_new_lsib_edition_is_refused_until_it_is_reviewed(tmp_path):
     """The corrections were reviewed against one edition, and the URL always
     serves the newest. Mutation performed and reverted: dropping the layer

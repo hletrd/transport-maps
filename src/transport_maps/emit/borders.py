@@ -61,9 +61,13 @@ previous source, already drew:
   silently merged. Selected by Natural Earth's `ne_id`, each with its reason,
   and the build refuses an edition that no longer carries one.
 
-Lines LSIB ranks 1 that Natural Earth marks disputed (the McMahon Line, Hala'ib
-on the 22nd parallel, the Essequibo) stay solid: they were solid before too,
-since the old layer drew every line alike.
+* DISPUTED_PAIRS. Lines LSIB ranks 1 that Natural Earth marks disputed --
+  China/India (the McMahon Line and the middle sector), Egypt/Sudan on the
+  22nd parallel (Hala'ib and Bir Tawil), Guyana/Venezuela (the Essequibo) --
+  are drawn as `other` too. They were first left solid on the ground that the
+  old layer drew every line alike; but the rule above is to show what Natural
+  Earth's default view shows, and it shows these as disputed (owner,
+  2026-10-11).
 """
 
 import json
@@ -100,6 +104,10 @@ KIND_BY_RANK = {"1": "international", "2": "other", "3": "special"}
 #: docstring): the Golan Heights' edges, which LSIB ranks as international
 #: since the 2019 U.S. recognition and Natural Earth does not.
 GOLAN_PAIRS = (("ISRAEL", "LEBANON"), ("ISRAEL", "SYRIA"))
+#: LSIB country pairs whose rank-1 line Natural Earth marks disputed, drawn as
+#: `other` (see the module docstring). LSIB 11.4 carries one rank-1 line for
+#: each; Egypt/Sudan's Hala'ib administrative line is rank 2 already.
+DISPUTED_PAIRS = (("CHINA", "INDIA"), ("EGYPT", "SUDAN"), ("GUYANA", "VENEZUELA"))
 #: Natural Earth lines LSIB does not draw, by ne_id. Each was found by
 #: sampling every Natural Earth line every 0.01 deg and listing those mostly
 #: farther than 0.05 deg (5.5 km, about Natural Earth's own worst error in
@@ -169,7 +177,7 @@ def lsib_features(path: Path) -> list[dict]:
                 "Review its ranks and the corrections in emit/borders.py, then update LSIB_LAYER.")
         _, table = pyogrio.read_arrow(path, layer=LSIB_LAYER)
     cols = table.to_pydict()
-    golan = {frozenset(p) for p in GOLAN_PAIRS}
+    not_international = {frozenset(p) for p in GOLAN_PAIRS + DISPUTED_PAIRS}
     feats = []
     for i, g in enumerate(_geoms(table)):
         if g is None or g.is_empty:
@@ -179,7 +187,7 @@ def lsib_features(path: Path) -> list[dict]:
             raise RuntimeError(f"LSIB feature {cols['ID'][i]} has rank {rank!r}, "
                                f"not one of {sorted(KIND_BY_RANK)}")
         kind = KIND_BY_RANK[rank]
-        if frozenset((cols["COUNTRY1"][i], cols["COUNTRY2"][i])) in golan:
+        if frozenset((cols["COUNTRY1"][i], cols["COUNTRY2"][i])) in not_international:
             kind = "other"
         feats.append({"kind": kind, "geometry": g})
     return feats

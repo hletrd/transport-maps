@@ -918,7 +918,8 @@ paintSea();
 // LSIB, the source, ranks every line and asks that rank 1 be drawn most
 // prominently, rank 2 less, rank 3 least; `kind` carries the rank. Solid for
 // an international boundary; dashed for every other line of separation --
-// armistice lines, lines of control, claims -- because none of them is a
+// armistice lines, lines of control, claims, boundaries in dispute
+// (emit/borders.DISPUTED_PAIRS) -- because none of them is a
 // border the page should present as settled; and fainter for the special
 // lines (DMZ edges, the UNDOF lines, leases). Same white, same width.
 map.addSource(BORDERS_SOURCE, { type: "vector", url: "pmtiles://./borders.pmtiles" });
