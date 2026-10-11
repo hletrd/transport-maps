@@ -301,3 +301,70 @@ def test_a_served_map_is_emits_array_for_the_same_solve(tmp_path):
     want = _emit_bytes(idx, dijkstra(b.csr, directed=True, indices=start), tmp_path)
     assert base64.b64decode(body["times"]) == want
     assert body["count"] == len(hover.hover_cells(idx)) and body["buildId"] == "t"
+
+
+# ---- one block of the finest grid (`/api/cells`) ----------------------------
+
+def _slot(cell: str, block_res: int, res: int) -> int:
+    """The page's readingSlot, carried to `res`."""
+    v, slot = int(cell, 16), 0
+    for r in range(block_res + 1, res + 1):
+        slot = slot * 7 + ((v >> (45 - 3 * r)) & 7)
+    return slot
+
+
+@pytest.mark.parametrize("block", ["8330e1fffffffff",                             # Seoul
+                                   h3.cell_to_center_child("8009fffffffffff", 3)])  # a pentagon's
+def test_block_children_are_h3s_children_at_the_pages_slots(block):
+    """Every child h3 lists sits at its readingSlot; the other slots of a
+    pentagon block are not cells.
+
+    Mutation performed and reverted: take the digits most significant first
+    in block_children -> RED.
+    """
+    ids = hovermap.block_children(int(block, 16), 3, 7)
+    assert len(ids) == 2401
+    kids = h3.cell_to_children(block, 7)
+    for c in kids:
+        assert ids[_slot(c, 3, 7)] == int(c, 16)
+    others = set(range(2401)) - {_slot(c, 3, 7) for c in kids}
+    assert all(not h3.is_valid_cell(format(int(ids[s]), "x")) for s in others)
+    assert bool(others) == h3.is_pentagon(block)
+
+
+def test_block_minutes_reads_the_cell_the_bands_draw():
+    """A split base cell's slots read their own FINE_RES cell; an unsplit
+    one's read the base cell; a slot with neither reads NO_CELL. Checked
+    slot by slot against h3.
+
+    Mutations performed and reverted, each RED: read the base cell even
+    where it was split; mark `split` from the slot's own id instead of its
+    base cell.
+    """
+    block = "8330e1fffffffff"
+    bases = sorted(h3.cell_to_children(block, 6))
+    split_bases = set(bases[::3])
+    nodes = [b for b in bases[1::3] if b not in split_bases]          # unsplit land
+    for b in split_bases:
+        nodes += sorted(h3.cell_to_children(b, 7))[:-1]               # one child is sea
+    ids = np.array([int(c, 16) for c in nodes], dtype=np.uint64)
+    order = np.argsort(ids)
+    dist = np.arange(len(nodes), dtype=float) * 1.5
+    dist[3] = np.inf
+    times, split = hovermap.block_minutes(
+        int(block, 16), dist, ids[order], order.astype(np.int32),
+        np.array(sorted(int(b, 16) for b in split_bases), dtype=np.uint64),
+        block_res=3, solve_res=6, fine_res=7, no_cell=65534)
+    where = {c: i for i, c in enumerate(nodes)}
+    want_t = np.full(2401, 65534, dtype=np.uint16)
+    for c in h3.cell_to_children(block, 7):
+        base = h3.cell_to_parent(c, 6)
+        node = c if base in split_bases else base
+        if node in where:
+            d = dist[where[node]]
+            want_t[_slot(c, 3, 7)] = 65535 if not np.isfinite(d) else int(d)
+    assert np.array_equal(times, want_t)
+    want_s = np.zeros(343, dtype=np.uint8)
+    for b in split_bases:
+        want_s[_slot(b, 3, 6)] = 1
+    assert np.array_equal(split, want_s)

@@ -525,3 +525,99 @@ def test_a_map_from_the_sea_is_not_on_land(built):
     with pytest.raises(wire.WireError) as err:
         bundle.GraphSolver(b).map(wire.MapRequest(0.0, -30.0))
     assert err.value.code == "not_on_land"
+
+
+# ---- /api/cells: a block of the finest grid -------------------------------
+
+def _cells_req(cells, i, block=None, build="t"):
+    lat, lon = h3.cell_to_latlng(cells[i])
+    block = block or h3.cell_to_parent(h3.latlng_to_cell(*CENTRE, 7), 3)
+    return wire.CellsRequest(lat, lon, int(block, 16), build)
+
+
+def _slot7(cell):
+    v, slot = int(cell, 16), 0
+    for r in range(4, 8):
+        slot = slot * 7 + ((v >> (45 - 3 * r)) & 7)
+    return slot
+
+
+def test_a_block_holds_the_minutes_of_the_cell_each_slot_is_drawn_from(built):
+    """Every fine slot under the split centre reads its own res-7 node, every
+    slot under an unsplit base cell reads that base cell, and the rest of the
+    block reads NO_CELL -- each against a fresh solve.
+
+    Mutation performed and reverted: read the base cell for every slot
+    (`np.where(is_split, ids, base)` -> `base`) -> RED.
+    """
+    import base64
+
+    cells, split, csr, _missing, b = built
+    body = bundle.GraphSolver(b).cells(_cells_req(cells, 0))
+    times = np.frombuffer(base64.b64decode(body["times"]), "<u2")
+    flags = np.frombuffer(base64.b64decode(body["split"]), "u1")
+    dist = dijkstra(csr, directed=True, indices=0)
+    want = np.full(2401, wire.NO_CELL, dtype=np.uint16)
+    for i, c in enumerate(cells):
+        kids = [c] if h3.get_resolution(c) == 7 else h3.cell_to_children(c, 7)
+        for k in kids:
+            want[_slot7(k)] = int(dist[i]) if np.isfinite(dist[i]) else 65535
+    assert np.array_equal(times, want)
+    (centre,) = split
+    assert flags.sum() == 1 and flags[_slot7(h3.cell_to_center_child(centre, 7)) // 7] == 1
+    assert body["buildId"] == "t" and (body["solveRes"], body["fineRes"]) == (6, 7)
+
+
+def test_a_block_for_another_build_is_refused_unsolved(built):
+    """Mutation performed and reverted: drop the build test -> RED."""
+    cells, *_rest, b = built
+    solver = bundle.GraphSolver(b)
+    with pytest.raises(wire.WireError) as err:
+        solver.cells(_cells_req(cells, 0, build="another"))
+    assert err.value.code == "unavailable" and solver.solves == 0
+
+
+def test_blocks_ration_the_solves_they_start_but_not_the_trees_they_read(built):
+    """A second departure inside the gap is `busy`, unsolved, and leaves the
+    first departure's tree where it was; blocks from a kept tree are answered
+    inside the gap; past it the second departure is solved.
+
+    Mutations performed and reverted, each RED: drop the gap test; stamp
+    the gap on kept-tree answers too (the third call goes busy).
+    """
+    cells, *_rest, b = built
+    now = [100.0]
+    solver = bundle.GraphSolver(b, cells_gap_s=20.0, clock=lambda: now[0])
+    solver.cells(_cells_req(cells, 0))
+    assert solver.solves == 1
+    now[0] += 5
+    with pytest.raises(wire.WireError) as err:
+        solver.cells(_cells_req(cells, 9))
+    assert err.value.code == "busy" and solver.solves == 1
+    now[0] += 5
+    solver.cells(_cells_req(cells, 0))                 # kept: answered inside the gap
+    solver.map(_from(cells, 9))                        # a map is not rationed by it
+    assert solver.solves == 2
+    now[0] += 20
+    solver.cells(_cells_req(cells, 5))
+    assert solver.solves == 3
+
+
+def test_the_server_answers_a_block(built):
+    cells, *_rest, b = built
+    solver = bundle.GraphSolver(b)
+    httpd = server._Server(("127.0.0.1", 0), server.make_handler(solver))
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        req = _cells_req(cells, 3)
+        q = f"from={req.from_lat},{req.from_lon}&block={req.block:x}&build=t"
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/cells?{q}") as r:
+            body = json.loads(r.read())
+        assert body == bundle.GraphSolver(b).cells(req)
+        with pytest.raises(urllib.error.HTTPError) as err:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/cells?{q[:-1]}x")
+        assert err.value.code == 503 and json.loads(err.value.read())["code"] == "unavailable"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

@@ -369,6 +369,16 @@ def walk_back(predecessors: np.ndarray, start: int, end: int) -> list[int]:
 # who drags back to the previous point should not pay for it twice either.
 TREES = 2
 
+# The least time between two solves `/api/cells` starts. A block from a kept
+# tree is a lookup (milliseconds); a block from any other departure is a full
+# solve, 6-9 s of the web host's three cores, and the page asks for blocks as
+# a pointer crosses them. The finer reading is a refinement the page does
+# without (it reads the res-6 tier it already has), so when a second departure
+# arrives inside this gap it is told `busy` -- at once, and without evicting a
+# tree that a map or a journey is using -- rather than queued behind the
+# first. `/api/map` and `/api/solve` are not gated by it.
+CELLS_SOLVE_GAP_S = 20.0
+
 
 class GraphSolver:
     """`wire.Solver` over a bundle: one exact point to one exact point, or to
@@ -381,9 +391,15 @@ class GraphSolver:
     """
 
     def __init__(self, bundle: Bundle, *, trees: int = TREES,
-                 hover_cells: Path | None = None) -> None:
+                 hover_cells: Path | None = None, cells_gap_s: float = CELLS_SOLVE_GAP_S,
+                 clock=None) -> None:
+        import time
+
         self.bundle = bundle
         self.trees = trees
+        self.cells_gap_s = cells_gap_s
+        self._clock = clock or time.monotonic
+        self._cells_solved_at = -math.inf
         self._kept: OrderedDict[int, tuple[np.ndarray, np.ndarray | None]] = OrderedDict()
         #: Full solves run, for the log and for the test that a kept tree is
         #: not solved again.
@@ -460,6 +476,44 @@ class GraphSolver:
                         hover_res=config.HOVER_RES,
                         build_id=self.bundle.meta.get("identity", {}).get("buildId"),
                         snapped_km=start[1], snapped_lat=lat, snapped_lon=lon)
+
+    def cells(self, req) -> dict[str, Any]:
+        """One block of the finest grid from one point: the minutes the band
+        tiles were drawn from, cell by cell (service/hovermap.block_minutes).
+
+        Refused as `unavailable` for a page of another build -- its block
+        slots and its bands are another graph's -- and as `busy` when it
+        would start a solve within `cells_gap_s` of the last one it started.
+        """
+        from transport_maps.service.wire import (
+            BLOCK_RES,
+            NO_CELL,
+            WireError,
+            cells_body,
+        )
+
+        build_id = self.bundle.meta.get("identity", {}).get("buildId")
+        if not build_id or req.build != build_id:
+            raise WireError("unavailable")
+        start = self.bundle.snap(req.from_lat, req.from_lon)
+        if start is None:
+            raise WireError("not_on_land")
+        if start[0] not in self._kept:
+            now = self._clock()
+            if now - self._cells_solved_at < self.cells_gap_s:
+                raise WireError("busy")
+            self._cells_solved_at = now
+        dist, _pred = self._tree(start[0])
+        meta = self.bundle.meta
+        times, split = hovermap.block_minutes(
+            req.block, dist, self.bundle.cell_pos._ids, self.bundle.cell_pos._pos,
+            self.bundle.split._ids, block_res=BLOCK_RES, solve_res=meta["solveRes"],
+            fine_res=meta["fineRes"], no_cell=NO_CELL)
+        lat, lon = self.bundle.centre(start[0])
+        return cells_body(times=times.astype("<u2").tobytes(), split=split.tobytes(),
+                          block=req.block, solve_res=meta["solveRes"], fine_res=meta["fineRes"],
+                          build_id=build_id, snapped_km=start[1], snapped_lat=lat,
+                          snapped_lon=lon)
 
 
 def main(argv: list[str] | None = None) -> None:

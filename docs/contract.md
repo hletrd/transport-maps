@@ -194,7 +194,7 @@ file when a field marked *frozen* no longer matches today's code
 | `graph` | {`rail`, `ferry`} | whether rail and ferries were in the graph | not read by the page; `reindex` carries it |
 | `inputsHash`, `buildId`, `builtAt`, `gitHead` | string | `build_identity()`, sampled when the build starts. The page prints `builtAt`; `buildId` ties the solver bundle to the build | no build date |
 | `inputs` | {url-or-name: {...}} | every raw input the build read, as `build-all` checked it first (`sources/_fetch.used`, G2): `sha256`, `size`, `fetchedAt` and the server's `etag`/`lastModified` per download; `snapshot`/`upstream` per OSM extract; the fetch window of the Wikipedia crawl and the Wikidata resolution. Not in `inputsHash`. `reindex` carries it | not read by the page |
-| `solver` | {`wire`} | present only when `data/build/solver` is from this same build (`_solver_matches`); arms both `/api/solve` and `/api/map` | exact departure and the map from a point off |
+| `solver` | {`wire`} | present only when `data/build/solver` is from this same build (`_solver_matches`); arms `/api/solve`, `/api/map` and `/api/cells` | exact departure and the map from a point off |
 
 `deploy_verify.sh`'s `solver_gate` refuses a deploy whose `index.json` offers
 `solver` while the web host's bundle has a different `buildId`.
@@ -251,6 +251,50 @@ the one-cell overlap there: the hexagons tile exactly and share every vertex,
 and the source is not simplified (`tolerance: 0`). A cell across the
 antimeridian is split into two polygons as `contour/bands.py
 _split_at_antimeridian` splits it.
+
+## The cells of a block: `/api/cells`
+
+Added 2026-10-12. Writer: `service/bundle.py:GraphSolver.cells` through
+`service/hovermap.block_minutes` and `service/wire.py:cells_body`. Reader:
+`web/app.js`, `fineBlock` and `lookupRaw`.
+
+At zoom 7 and above the band tiles draw the solver's own cells: res 7 where
+the build split a base cell, res 6 elsewhere (`contour/bands.py`, the
+"native" level). The reading tier stops at res 6, so over a split base cell
+the hover read and outlined the res-6 cell around seven differently coloured
+res-7 ones. `GET /api/cells?from=<lat>,<lon>&block=<h3>&build=<buildId>`
+answers one res-3 block (`readingParentRes`) of those cells:
+
+```json
+{"v": 1, "status": "ok", "cellsVersion": 1, "block": "8330e1fffffffff",
+ "solveRes": 6, "fineRes": 7, "buildId": "534dec3b-20261010T113421Z",
+ "snappedKm": 0.0, "snappedLat": 37.56651, "snappedLon": 126.97802,
+ "times": "<base64>", "split": "<base64>"}
+```
+
+- **`times`** is base64 of 7^(fineRes-3) = 2,401 little-endian uint16, one
+  per res-7 cell of the block at the slot whose base-7 digits are its h3
+  digits below res 3 -- `readingSlot` carried down to res 7, so slots
+  7k..7k+6 are the children of `.r6.bin` slot k. A slot carries the minutes
+  of the cell the bands draw there: its own where the base cell was split,
+  the base cell's otherwise. Truncated as every shipped array is; 65,535 is
+  no route and **65,534 (`wire.NO_CELL`) is no cell** -- sea, off the land
+  mask, or a pentagon's missing digit -- where the page reads `.r6.bin`.
+- **`split`** is base64 of 343 bytes, one per res-6 slot, 1 where that base
+  cell was split: the page outlines the res-7 cell there and the res-6 cell
+  elsewhere.
+- **`from`** is a charted city's `lat`, `lon` from `index.json`; the solve
+  from it is the build's own (measured 2026-10-12: Seoul's res-7 centre
+  children equal `seoul.r6.bin` at all 1,376 land slots of five blocks).
+- **Checked by the page:** `cellsVersion` (`wire.CELLS_VERSION`, the page's
+  `FINE_CELLS_VERSION`), `block`, `solveRes`, `fineRes` and `buildId`, and
+  the decoded lengths. The service refuses a `build` that is not its
+  bundle's as `unavailable`.
+- **Cost.** A block from a departure whose tree the service holds is a
+  lookup (under 1 ms measured); any other is a full solve, and the service
+  starts one of those for `/api/cells` at most every `CELLS_SOLVE_GAP_S`
+  (20 s), answering `busy` inside the gap. nginx gives the route its own
+  zone, `worldmap_cells`, 30 a minute per address with a burst of 10.
 
 ## Sentinels, widths and byte order
 

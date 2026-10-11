@@ -42,6 +42,23 @@ WIRE_VERSION = 1
 # the page checks this number too and refuses any other.
 MAP_VERSION = 1
 
+# The layout of `/api/cells`' body, versioned on its own for the same reason:
+# `times` and `split` are arrays read by position, and a change to the order
+# or the width would put a plausible time in the wrong cell.
+CELLS_VERSION = 1
+
+# The block a `/api/cells` request names: an h3 cell at this resolution, the
+# reading tier's block (index.json's `readingParentRes`). Its answer covers
+# every cell below it to the solver's finest grid.
+BLOCK_RES = 3
+
+# A slot of a block's `times` that no solver cell covers -- sea, the cells
+# outside the land mask, a pentagon's missing digit. Never a duration: the
+# uint16 arrays write minutes up to 65,533 and 65,535 for "no route", so this
+# one value between them means "not a cell", and the page then reads the
+# coarser tier it already has rather than printing a time for the sea.
+NO_CELL = 65534
+
 # The whole error taxonomy, in one place, because both ends need to agree on
 # it: the page branches on `code`, and `tests/service/test_wire.py` asserts the
 # two sets are equal. `message` is a fixed sentence per code. A response NEVER
@@ -102,6 +119,17 @@ class MapRequest:
     from_lon: float
 
 
+@dataclass(frozen=True)
+class CellsRequest:
+    """A validated `/api/cells` request: the departure, one block, and the
+    build the asking page was made from."""
+
+    from_lat: float
+    from_lon: float
+    block: int
+    build: str
+
+
 class Solver(Protocol):
     """What the handler needs from the half that does hold the graph.
 
@@ -120,6 +148,10 @@ class Solver(Protocol):
 
     def map(self, req: MapRequest) -> dict[str, Any]:
         """The whole map from one point, as `map_body` shapes it."""
+        ...
+
+    def cells(self, req: CellsRequest) -> dict[str, Any]:
+        """One block's finest cells from one point, as `cells_body` shapes it."""
         ...
 
 
@@ -204,6 +236,49 @@ def parse_map_query(query: str, getter=None) -> MapRequest:
     map costs exactly the full solve a journey does."""
     getter = _getter(query, getter)
     return MapRequest(*_point(getter("from")))
+
+
+def _block(raw: str | None) -> int:
+    """An h3 cell id at BLOCK_RES, as lowercase hex, or `WireError`.
+
+    Checked by its bits rather than by h3, which this module does not import:
+    the mode nibble says "cell", the resolution nibble says BLOCK_RES, the
+    reserved bits and the sign bit are clear, the base cell is one of h3's
+    122, the digits down to BLOCK_RES are 0-6 and every digit below it is the
+    unused 7. A pentagon's deleted digit passes here and finds no cells in
+    the solver, which answers NO_CELL for all of them.
+    """
+    if raw is None or not 1 <= len(raw) <= 16 or raw.strip("0123456789abcdef"):
+        raise WireError("bad_request")
+    v = int(raw, 16)
+    if v >> 63 or (v >> 59) & 0xF != 1 or (v >> 56) & 0x7 or (v >> 52) & 0xF != BLOCK_RES:
+        raise WireError("bad_request")
+    if (v >> 45) & 0x7F > 121:
+        raise WireError("bad_request")
+    digits = [(v >> (45 - 3 * r)) & 7 for r in range(1, 16)]
+    if any(d == 7 for d in digits[:BLOCK_RES]) or any(d != 7 for d in digits[BLOCK_RES:]):
+        raise WireError("bad_request")
+    return v
+
+
+def _build(raw: str | None) -> str:
+    """A build id as index.json writes one (`534dec3b-20261010T113421Z`), or
+    `WireError`. Bounded and to a fixed alphabet, because it is compared, never
+    echoed, and a parameter that is never echoed still has no reason to be a
+    megabyte."""
+    if raw is None or not 1 <= len(raw) <= 64 or raw.strip(
+            "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_."):
+        raise WireError("bad_request")
+    return raw
+
+
+def parse_cells_query(query: str, getter=None) -> CellsRequest:
+    """Validate `/api/cells`' query string into a `CellsRequest`, or raise
+    `WireError`. One point and one block: the answer is a lookup in one
+    shortest-path tree, so a block is one solve at most, never one per cell."""
+    getter = _getter(query, getter)
+    lat, lon = _point(getter("from"))
+    return CellsRequest(lat, lon, _block(getter("block")), _build(getter("build")))
 
 
 # The three kinds of leg and the integer fields each carries, all of them
@@ -319,6 +394,46 @@ def map_body(*, times: bytes, count: int, hover_res: int, build_id: str | None,
     }
 
 
+def cells_body(*, times: bytes, split: bytes, block: int, solve_res: int, fine_res: int,
+               build_id: str | None, snapped_km: float, snapped_lat: float,
+               snapped_lon: float) -> dict[str, Any]:
+    """The success shape of `/api/cells`: one block's minutes on the finest
+    grid the solver has, for a page that draws that grid and must read the
+    cell it draws (docs/contract.md, "The cells of a block").
+
+    `times` is little-endian uint16 minutes, one per FINE_RES cell below the
+    block, at the slot whose base-7 digits are the cell's h3 digits below
+    BLOCK_RES -- the reading tier's slot rule carried down to FINE_RES, so
+    7 ** (fineRes - 3) of them. A cell inside a base cell the build did not
+    split carries that base cell's minutes. `split` is one byte per SOLVE_RES
+    slot, 1 where the build split that base cell: the page outlines a FINE_RES
+    cell there and a SOLVE_RES cell elsewhere, the cell the bands draw.
+    Minutes are truncated as every shipped array truncates them, 65,535 is no
+    route and NO_CELL is no cell.
+
+    `block`, `solveRes`, `fineRes` and `buildId` are there to be checked: the
+    page refuses an answer for another block, grid or build.
+    """
+    n_fine, n_base = 7 ** (fine_res - BLOCK_RES), 7 ** (solve_res - BLOCK_RES)
+    if len(times) != 2 * n_fine or len(split) != n_base:
+        raise ValueError(f"{len(times)} bytes of times and {len(split)} of split are not "
+                         f"{n_fine} and {n_base} slots")
+    return {
+        "v": WIRE_VERSION,
+        "status": "ok",
+        "cellsVersion": CELLS_VERSION,
+        "block": format(block, "x"),
+        "solveRes": int(solve_res),
+        "fineRes": int(fine_res),
+        "buildId": build_id,
+        "snappedKm": round(float(snapped_km), 2),
+        "snappedLat": round(float(snapped_lat), 5),
+        "snappedLon": round(float(snapped_lon), 5),
+        "times": base64.b64encode(bytes(times)).decode("ascii"),
+        "split": base64.b64encode(bytes(split)).decode("ascii"),
+    }
+
+
 def error_body(code: str) -> dict[str, Any]:
     """The failure shape. Same envelope, enumerated code, fixed sentence."""
     status, message = ERRORS[code]
@@ -343,6 +458,11 @@ def handle_map(query: str, solver: Solver) -> tuple[int, dict[str, str], dict[st
     before the solver is reached, the same codes, the same caching, and no
     exception that gets out."""
     return _answer(lambda: solver.map(parse_map_query(query)))
+
+
+def handle_cells(query: str, solver: Solver) -> tuple[int, dict[str, str], dict[str, Any]]:
+    """One `/api/cells` request, under exactly `handle`'s rules."""
+    return _answer(lambda: solver.cells(parse_cells_query(query)))
 
 
 def _answer(call) -> tuple[int, dict[str, str], dict[str, Any]]:

@@ -1,5 +1,5 @@
-"""The resident solver behind nginx: `GET /api/solve?from=lat,lon&to=lat,lon`
-and `GET /api/map?from=lat,lon`.
+"""The resident solver behind nginx: `GET /api/solve?from=lat,lon&to=lat,lon`,
+`GET /api/map?from=lat,lon` and `GET /api/cells?from=lat,lon&block=h3&build=id`.
 
     python -m transport_maps.service.server --bundle /srv/worldmap-solver/current
 
@@ -29,13 +29,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlsplit
 
 from transport_maps.service.bundle import GraphSolver, load_bundle
-from transport_maps.service.wire import error_body, handle, handle_map
+from transport_maps.service.wire import error_body, handle, handle_cells, handle_map
 
 log = logging.getLogger("transport_maps.service")
 PATH = "/api/solve"
 MAP_PATH = "/api/map"
+CELLS_PATH = "/api/cells"
 #: Each path, its handler, and the word its log line uses.
-ROUTES = {PATH: (handle, "solve"), MAP_PATH: (handle_map, "map")}
+ROUTES = {PATH: (handle, "solve"), MAP_PATH: (handle_map, "map"), CELLS_PATH: (handle_cells, "cells")}
 
 
 class _Server(HTTPServer):

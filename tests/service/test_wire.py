@@ -639,3 +639,138 @@ def test_the_map_version_moves_on_its_own_and_the_page_knows_it():
     m = re.search(r"^const SOLVER_MAP_VERSION = (\d+);", app, re.M)
     assert m, "web/app.js has no SOLVER_MAP_VERSION to compare against"
     assert int(m.group(1)) == wire.MAP_VERSION
+
+
+# ---- /api/cells: one block of the finest grid ------------------------------
+
+# Seoul's res-3 block, as h3 writes it.
+BLOCK = "8330e1fffffffff"
+CELLS_OK = f"from=37.5665,126.9780&block={BLOCK}&build=534dec3b-20261010T113421Z"
+
+
+class CellsStub(Stub):
+    """A solver that answers `/api/cells` with a block of 2,401 fine slots."""
+
+    def __init__(self, raises: Exception | None = None) -> None:
+        super().__init__(raises=raises)
+        self.answer = wire.cells_body(times=bytes(2 * 2401), split=bytes(343),
+                                      block=int(BLOCK, 16), solve_res=6, fine_res=7,
+                                      build_id="b", snapped_km=0.0, snapped_lat=1.0,
+                                      snapped_lon=2.0)
+
+    def cells(self, req: wire.CellsRequest):
+        return self.solve(req)
+
+
+def test_a_cells_request_is_one_point_one_block_one_build():
+    stub = CellsStub()
+    status, headers, body = wire.handle_cells(CELLS_OK, stub)
+    assert status == 200 and body["status"] == "ok", body
+    assert stub.calls == [wire.CellsRequest(37.5665, 126.978, int(BLOCK, 16),
+                                            "534dec3b-20261010T113421Z")]
+    assert "max-age" in headers["Cache-Control"]
+
+
+def _with_block(raw):
+    return f"from=37.5,127.0&block={raw}&build=b"
+
+
+@pytest.mark.parametrize("query", [
+    "from=37.5,127.0&build=b",                         # no block
+    f"from=37.5,127.0&block={BLOCK}",                  # no build
+    _with_block(""),
+    _with_block("8330E1FFFFFFFFF"),                    # upper case is not how h3 writes it
+    _with_block("0x8330e1fffffffff"),
+    _with_block("8330e1fffffffff0"),                   # 17 digits
+    _with_block("8430e1fffffffff"),                    # res 4, not the block resolution
+    _with_block("8230e7fffffffff"),                    # res 2
+    _with_block("2330e1fffffffff"),                    # mode 4: not a cell
+    _with_block("8b30e1fffffffff"),                    # a reserved bit set
+    _with_block("83f6e1fffffffff"),                    # base cell 123 of h3's 122
+    _with_block("8330e7fffffffff"),                    # digit 3 is 7: above the block resolution
+    _with_block("8330e11ffffffff"),                    # digit 4 is 0: below it
+    f"from=37.5,127.0&block={BLOCK}&build=" + "x" * 65,
+    f"from=37.5,127.0&block={BLOCK}&build=a/b",
+    f"from=91,127.0&block={BLOCK}&build=b",
+])
+def test_a_bad_cells_request_never_reaches_the_solver(query):
+    """Mutations performed and reverted, each RED: drop the resolution test
+    (the res-4 and res-2 rows); drop the digits test (the two digit rows);
+    accept upper case by lower-casing first."""
+    stub = CellsStub()
+    status, headers, body = wire.handle_cells(query, stub)
+    assert stub.calls == [], f"{query!r} reached the solver"
+    assert body["status"] == "error" and status in (400,)
+    assert headers["Cache-Control"] == "no-store"
+
+
+def test_every_res3_cell_h3_makes_is_a_block():
+    """The bit test against h3 itself: every res-3 cell on Earth passes, the
+    twelve pentagons among them."""
+    import h3
+
+    for base in h3.get_res0_cells():
+        for c in h3.cell_to_children(base, wire.BLOCK_RES):
+            assert wire._block(c) == int(c, 16)
+
+
+def test_the_cells_shape_is_exactly_these_fields():
+    """Mutation performed and reverted: send `split` as a list -> RED."""
+    import base64
+
+    body = CellsStub().answer
+    assert set(body) == {"v", "status", "cellsVersion", "block", "solveRes", "fineRes",
+                         "buildId", "snappedKm", "snappedLat", "snappedLon", "times", "split"}
+    assert body["v"] == wire.WIRE_VERSION and body["cellsVersion"] == wire.CELLS_VERSION
+    assert body["block"] == BLOCK
+    assert len(base64.b64decode(body["times"], validate=True)) == 2 * 2401
+    assert len(base64.b64decode(body["split"], validate=True)) == 343
+    json.dumps(body, allow_nan=False)
+
+
+@pytest.mark.parametrize("times,split", [(bytes(4802), bytes(342)), (bytes(4800), bytes(343))])
+def test_a_block_that_is_not_its_slots_is_refused(times, split):
+    with pytest.raises(ValueError):
+        wire.cells_body(times=times, split=split, block=int(BLOCK, 16), solve_res=6, fine_res=7,
+                        build_id="b", snapped_km=0.0, snapped_lat=0.0, snapped_lon=0.0)
+
+
+def test_no_cell_is_neither_a_minute_nor_no_route():
+    """The page tells the three apart: a duration (up to 65,533 -- the shipped
+    arrays' ceiling), no route (65,535) and no cell (NO_CELL)."""
+    from transport_maps import config
+
+    assert wire.NO_CELL == config.UNREACHABLE - 1
+    assert wire.NO_CELL >= config.UNREACHABLE - 1     # never written as a duration
+
+
+def test_the_cells_handler_never_raises():
+    secret = "/Users/someone/data/build/solver/cells.npy"
+    for boom, code in ((RuntimeError(secret), "unavailable"), (wire.WireError("busy"), "busy")):
+        status, headers, body = wire.handle_cells(CELLS_OK, CellsStub(raises=boom))
+        assert body == wire.error_body(code) and status == wire.ERRORS[code][0]
+        assert secret not in json.dumps(body) and headers["Cache-Control"] == "no-store"
+
+
+def test_the_cells_route_has_its_own_zone_and_the_solver_refusals():
+    """A block is a lookup, so it does not spend the solve zone's six a
+    minute; it must still keep no access log, answer the wire-format
+    refusals, and go to the solver.
+
+    Mutations performed and reverted, each RED: put it in the solver zone;
+    delete its `access_log off;`; delete the zone.
+    """
+    import re
+
+    from transport_maps import config
+
+    conf = (config.ROOT / "deploy" / "worldmap.atik.kr.conf").read_text()
+    assert re.search(r"^limit_req_zone \$binary_remote_addr zone=worldmap_cells:\S+ rate=\d+r/m;",
+                     conf, re.M)
+    block = re.search(r"location = /api/cells \{(.*?)\n    \}", conf, re.S)
+    assert block, "no exact location for /api/cells"
+    for line in ("access_log off;", "limit_req zone=worldmap_cells ",
+                 "error_page 429 = @solver_busy;", "error_page 502 503 504 = @solver_unavailable;",
+                 "proxy_pass http://127.0.0.1:8787;",
+                 "include snippets/worldmap-security-headers.conf;"):
+        assert re.search(r"^\s*" + re.escape(line), block.group(1), re.M), line

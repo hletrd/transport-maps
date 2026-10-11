@@ -180,3 +180,47 @@ def encode(minutes: np.ndarray) -> np.ndarray:
     minute in half its cells."""
     return np.where(np.isfinite(minutes) & (minutes < MAX_MINUTES), minutes,
                     config.UNREACHABLE).astype("<u2")
+
+
+# --- one block of the finest grid (`/api/cells`) ------------------------------
+
+def block_children(block: int, block_res: int, res: int) -> np.ndarray:
+    """Every res-`res` id below `block`, at the slot whose base-7 digits are
+    the id's digits from `block_res + 1` down to `res` -- the page's
+    readingSlot rule, so slot 7k..7k+6 are the children of the res-`res - 1`
+    slot k. A pentagon block's deleted digit makes ids that are not cells;
+    they are never nodes, so they read as no cell."""
+    n = 7 ** (res - block_res)
+    slot = np.arange(n, dtype=np.uint64)
+    out = np.full(n, (np.uint64(block) & ~(_RES_MASK << _RES_SHIFT)) | (np.uint64(res) << _RES_SHIFT),
+                  dtype=np.uint64)
+    seven = np.uint64(7)
+    for r in range(res, block_res, -1):          # the finest digit is the least significant
+        out = (out & ~(seven << _digit_shift(r))) | ((slot % seven) << _digit_shift(r))
+        slot = slot // seven
+    return out
+
+
+def block_minutes(block: int, dist: np.ndarray, sorted_ids: np.ndarray, sorted_pos: np.ndarray,
+                  split_ids: np.ndarray, *, block_res: int, solve_res: int = config.SOLVE_RES,
+                  fine_res: int = config.FINE_RES, no_cell: int) -> tuple[np.ndarray, np.ndarray]:
+    """(times, split) for one block, from one solve's `dist`.
+
+    `times`: uint16 per `fine_res` slot, the minutes of the solver cell that
+    covers it -- the slot's own cell where its base cell was split, else the
+    base cell -- encoded as `encode` does, and `no_cell` where neither is a
+    node. `split`: uint8 per `solve_res` slot, 1 where that base cell was
+    split (its id is in `split_ids`, sorted)."""
+    ids = block_children(block, block_res, fine_res)
+    base = to_res(ids, solve_res)
+    i = np.searchsorted(split_ids, base)
+    inside = i < len(split_ids)
+    is_split = np.zeros(len(ids), dtype=bool)
+    is_split[inside] = split_ids[i[inside]] == base[inside]
+    pos = _positions(sorted_ids, sorted_pos, np.where(is_split, ids, base))
+    minutes = np.full(len(ids), np.inf)
+    minutes[pos >= 0] = np.asarray(dist[pos[pos >= 0]], dtype=float)
+    times = encode(minutes)
+    times[pos < 0] = no_cell
+    per_base = 7 ** (fine_res - solve_res)
+    return times, is_split[::per_base].astype(np.uint8)
