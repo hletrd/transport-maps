@@ -29,6 +29,7 @@ import h3
 import pyarrow.parquet as pq
 
 from transport_maps import config
+from transport_maps.emit import places
 from transport_maps.emit.index import _SLUG_RE
 from transport_maps.sources import _fetch, landmask
 
@@ -107,11 +108,18 @@ def main() -> None:
     rejected: list[tuple[str, str, float, float]] = []
     for r in sorted(rows, key=lambda r: -int(r["pop"] or 0)):
         name, country = r["name"], r["cc"]
-        pop = int(r["pop"] or 0)
+        lat, lon = float(r["lat"]), float(r["lon"])
+        # The gazetteer's corrections (emit/places.py): a row naming a place
+        # it is not, or a quarter with its city's population, is no city to
+        # depart from. Three such rows were origins until 2026-10-12 -- a
+        # phantom Changzhi, Pujiang as "Puyang" and Kaiping as "Changsha".
+        gid = int(r["id"]) if r["id"].isdigit() else None
+        if places.misplaced(gid, lat, lon):
+            continue
+        pop = places.ranked_population(gid, int(r["pop"] or 0))
         capital = r["fcode"] == "PPLC"
         if not (pop >= args.min_pop or (capital and pop >= args.capital_pop)):
             continue
-        lat, lon = float(r["lat"]), float(r["lon"])
         if any(km(lat, lon, o["lat"], o["lon"]) < NEAR_KM for o in existing + added):
             continue
         # A name with no ASCII form slugifies to nothing, and the old fallback

@@ -86,6 +86,18 @@ REGION = {
 }
 
 
+def misplaced(gid: int | None, lat: float, lon: float) -> bool:
+    """Whether a row is one MISPLACED names, still where it was found."""
+    bad = MISPLACED.get(gid)
+    return bool(bad) and abs(lat - bad[0][0]) < 0.05 and abs(lon - bad[0][1]) < 0.05
+
+
+def ranked_population(gid: int | None, pop: int) -> int:
+    """A row's population for ranking: 0 for one INFLATED names, while it
+    still carries the figure found."""
+    return 0 if gid in INFLATED and pop == INFLATED[gid][0] else pop
+
+
 def _download(url: str) -> pathlib.Path:
     """One GeoNames file, checked against the upstream on every run (G2)."""
     return _fetch.fetch(url, config.CACHE / url.rsplit("/", 1)[-1]).path
@@ -111,8 +123,7 @@ def build(out: pathlib.Path) -> int:
         except ValueError:
             continue
         gid = int(r["id"]) if r["id"].isdigit() else None
-        bad = MISPLACED.get(gid)
-        if bad and abs(lat - bad[0][0]) < 0.05 and abs(lon - bad[0][1]) < 0.05:
+        if misplaced(gid, lat, lon):
             continue
         a1 = r["a1"]
         if gid in REGION and a1 == REGION[gid][0]:
@@ -120,8 +131,7 @@ def build(out: pathlib.Path) -> int:
         region = admin1.get(f"{r['cc']}.{a1}", "")
         rows.append([r["name"], region, countries.get(r["cc"], r["cc"]),
                      round(lat, 3), round(lon, 3)])
-        pop = int(r["pop"] or 0)
-        pops.append(0 if gid in INFLATED and pop == INFLATED[gid][0] else pop)
+        pops.append(ranked_population(gid, int(r["pop"] or 0)))
     if not rows:
         raise RuntimeError("GeoNames extract yielded no usable rows")
     # Largest first, so a consumer can treat row index as rank.
