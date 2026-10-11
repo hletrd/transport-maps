@@ -563,7 +563,11 @@ def test_a_committed_reading_owns_the_headline():
     assert "pinB ? lookup(lat, lng) : showReading(lat, lng, e.point)" in move, (
         "the hover handler writes the headline even when a destination is pinned")
     # The tooltip must still be fed, or hovering stops telling you anything.
-    assert "tip.innerHTML" in move and "door to door" in move
+    # It is painted by paintTip (rereadFine repaints it when a block lands).
+    assert "paintTip(fineCells.tipAt, t)" in move
+    tip = APP[APP.index("function paintTip("):]
+    tip = tip[:tip.index("\n}\n")]
+    assert "tip.innerHTML" in tip and "door to door" in tip
 
 
 def test_the_pin_is_what_gets_re_read_when_the_arrays_land():

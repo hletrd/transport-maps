@@ -80,6 +80,8 @@ const origin = {{
 const readingParents = {"[1n]" if has_reading else "null"};
 const cellIndex = () => (LAND ? 0 : -1);
 const readingIndex = () => 0;
+// No solver block here (test_fine_cells.py runs the drawn-cell reading).
+const fineReading = () => null;
 {LOOKUP}
 {GRID}
 const out = lookupRaw(5.9749, 116.0724);

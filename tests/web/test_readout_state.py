@@ -242,10 +242,10 @@ def test_the_page_says_when_the_number_came_from_a_coarser_cell_than_the_ring():
     body = body[:body.index("\n}")]
     assert "const grid = readingGrid();" in body, (
         "showReading no longer captures the grid beside the lookup it describes")
-    assert "grid !== SOLVE_RES" in body, (
+    assert "grid < SOLVE_RES" in body, (
         "the reading line does not compare the grid it read against the grid the ring "
         "is drawn at, so it cannot say when the two differ")
-    assert "READING_RES" not in body.split("grid !== SOLVE_RES")[0][-200:], (
+    assert "READING_RES" not in body.split("grid < SOLVE_RES")[0][-200:], (
         "the comparison is gated on READING_RES, which is null on a build made "
         "before the reading tier existed")
     assert "read from the wider grid" in body

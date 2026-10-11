@@ -116,15 +116,39 @@ const HOVER_RES = meta.hoverRes ?? 4;
 // to the coarse tier comes from a wider cell, which is exactly what that line
 // exists to disclose -- and, since C3, the cell the hover ring outlines.
 let lastReadingRes = HOVER_RES;
+// The cells the bands draw, one res-3 block at a time from `/api/cells`
+// (docs/contract.md, "The cells of a block"), keyed `slug|block` and kept for
+// the session. Declared here for the same reason as lastReadingRes: lookup()
+// reads it. `armed` follows solverEnabled, which is declared below the await;
+// `ctl` is the one request in flight, `timer` the wait for the pointer to
+// settle, `retryAt` when a refused request may be repeated, `tipAt` where the
+// tooltip was last painted and `level` the tile level the readings were last
+// made for.
+const fineCells = { armed: false, blocks: new Map(), ctl: null, timer: 0, retryAt: 0,
+                    tipAt: null, level: null };
+// wire.NO_CELL: a slot no solver cell covers. The reading tier answers there.
+const FINE_NO_CELL = 65534;
+// contour/bands.py LODS: the native level (the solver's cells) from zoom 7,
+// the res-6 base level from zoom 3. Below 3 the tiles draw res-4 cells and
+// nothing here applies. Tile levels change at whole zooms.
+const FINE_NATIVE_ZOOM = 7;
+const FINE_BASE_ZOOM = 3;
+// How long the pointer rests before a block is asked for, and how many are
+// kept: a block is ~6 KB of JSON, and one a pointer merely crossed is not
+// worth a request.
+const FINE_REST_MS = 200;
+const FINE_KEEP = 64;
 // The surface is solved per res-6 cell (~6.5 km across), refined to res 7
 // (2.4 km) in dense regions; the readout array is res 4 (~45 km) and holds
 // each parent's CENTRE child's value, to stay small. The highlight shows the
 // cell the number was READ from (C3): the res-6 cell whenever the reading tier
 // answers, which is the solved base cell, and the res-4 cell only when the
-// number itself came from the res-4 array. (Where the surface was refined to
-// res 7 the outline is still the res-6 cell, and so is the reading: the res-7
-// half of C3 needs the split-cell set from the emitter and a rebuild.)
+// number itself came from the res-4 array. Where the surface was refined to
+// res 7, the res-7 half of C3 comes from the solver, a block at a time
+// (`fineCells` below): the hover then reads and outlines the cell the band
+// tiles draw at the zoom on screen.
 const SOLVE_RES = meta.solveRes ?? 6;
+const FINE_RES = meta.fineRes ?? 7;
 // The reading tier. When index.json advertises it, the number printed under
 // the pointer comes from a res-6 array -- the grid the base band is painted
 // from and the grid the hover ring already outlines -- instead of from the
@@ -348,7 +372,8 @@ let hexRings = null, busyClock = 0;
 // five files, and the pins then printed the new city's name with the old
 // city's number).
 let originGen = 0, originAbort = null;
-const origin = { times: null, failed: null, air: null, modes: null, routes: null, rail: null };
+const origin = { times: null, failed: null, air: null, modes: null, routes: null, rail: null,
+                 reading: null, readingPending: false };
 //: True while #where holds "Loading the times from …" rather than a reading or
 //: the idle prompt. settle() used to detect that by string-matching the
 //: element, which any other writer could defeat.
@@ -1195,6 +1220,20 @@ function highlight(lat, lon, res = SOLVE_RES) {
   map.getSource("hover").setData({ type: "FeatureCollection", features: [
     { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] } }] });
 }
+//: The hover ring, except around the res-4 stopgap while the reading tier is
+//: on its way: a 45 km hexagon that becomes a 6.5 km one a second later is the
+//: hexagon the owner saw grow and shrink on every city switch. For that second
+//: no ring is drawn (the line under the number still says the wider grid
+//: answered), and reoutline() draws the right one when the tier lands.
+function ring(lat, lon, grid) {
+  if (grid === HOVER_RES && origin.readingPending) {
+    hoveredAt = { lat, lon };
+    hoveredCell = "pending";
+    map.getSource("hover").setData({ type: "FeatureCollection", features: [] });
+    return;
+  }
+  highlight(lat, lon, grid);
+}
 function clearHighlight() {
   hoveredCell = hoveredAt = null;
   map.getSource("hover").setData({ type: "FeatureCollection", features: [] });
@@ -1517,6 +1556,68 @@ async function solveMap(from, signal) {
              snappedLat: body.snappedLat, snappedLon: body.snappedLon };
   } catch {
     // As solvePoint: branch on the signal, never on the rejection value.
+    if (ctl.signal.aborted) {
+      return fail(ctl.signal.reason === "cancelled" ? "unavailable" : "timeout");
+    }
+    return fail("unavailable");
+  } finally {
+    clearTimeout(stop);
+    if (signal) signal.removeEventListener("abort", relay);
+  }
+}
+
+// ---- the cells the bands draw: `/api/cells` ----
+//
+// At zoom 7 and above the band tiles draw the solver's own cells -- res 7
+// where the build split a base cell, res 6 elsewhere -- and from zoom 3 to 6
+// they draw res-6 cells, a split one coloured by its FASTEST child
+// (contour/bands.py, LODS). The reading tier holds every res-6 cell's CENTRE
+// child. So over a split base cell the hover printed one cell's time inside a
+// ring around seven others, and the ring was the wrong size at zoom 7: the
+// hexagon the owner saw "grow and shrink". The service answers a res-3 block
+// of the cells themselves from a charted city's own tree, and the hover reads
+// the one under the pointer. Same arming, codes, timeout and never-throw
+// contract as solveMap.
+const SOLVER_CELLS_PATH = "./api/cells";
+// wire.CELLS_VERSION; tests/service/test_wire.py holds the two equal.
+const FINE_CELLS_VERSION = 1;
+fineCells.armed = solverEnabled;
+
+// {ok: true, times: Uint16Array, split: Uint8Array} or {ok: false, code,
+// message}. Never throws. The body's block, grids and build are checked
+// against the request and index.json before a byte of it is believed.
+async function solveCells(from, block, signal) {
+  if (!solverEnabled) return { ok: false, code: "unavailable", message: SOLVER_CODES.unavailable };
+  const ctl = new AbortController();
+  const stop = setTimeout(() => ctl.abort("timeout"), SOLVER_TIMEOUT_MS);
+  const relay = () => ctl.abort("cancelled");
+  if (signal) signal.addEventListener("abort", relay, { once: true });
+  const fail = (code) => ({ ok: false, code, message: SOLVER_CODES[code] });
+  const bytes = (b64) => {
+    const bin = atob(b64), out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  };
+  try {
+    const url = `${SOLVER_CELLS_PATH}?from=${from.lat.toFixed(5)},${from.lon.toFixed(5)}`
+      + `&block=${block}&build=${encodeURIComponent(meta.buildId ?? "")}`;
+    const r = await fetch(url, { signal: ctl.signal, headers: { Accept: "application/json" } });
+    const body = await r.json();
+    if (!body || body.v !== SOLVER_WIRE_VERSION) return fail("unavailable");
+    if (body.status === "error") {
+      return Object.hasOwn(SOLVER_CODES, body.code) ? fail(body.code) : fail("unavailable");
+    }
+    if (!r.ok || body.status !== "ok" || body.cellsVersion !== FINE_CELLS_VERSION) return fail("unavailable");
+    if (body.block !== block || body.solveRes !== SOLVE_RES || body.fineRes !== FINE_RES) return fail("unavailable");
+    if (!meta.buildId || body.buildId !== meta.buildId) return fail("unavailable");
+    if (typeof body.times !== "string" || typeof body.split !== "string") return fail("unavailable");
+    const fineSlots = 7 ** (FINE_RES - READING_PARENT_RES);
+    const t = bytes(body.times), split = bytes(body.split);
+    if (t.length !== 2 * fineSlots || split.length !== 7 ** (SOLVE_RES - READING_PARENT_RES)) {
+      return fail("unavailable");
+    }
+    return { ok: true, times: new Uint16Array(t.buffer), split };
+  } catch {
     if (ctl.signal.aborted) {
       return fail(ctl.signal.reason === "cancelled" ? "unavailable" : "timeout");
     }
@@ -2847,6 +2948,7 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
   // 10 MB per origin. Dropped on the switch rather than kept per city, so the
   // page holds one reading array at a time however many cities are visited.
   origin.reading = null;
+  origin.readingPending = false;
   origin.over = null;
   const current = () => gen === originGen;
   const settle = () => {
@@ -2923,6 +3025,9 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
     // page can already do without. The res-4 reading stands, and the line
     // under the number says so.
     if (navigator.connection && navigator.connection.saveData) return;
+    origin.readingPending = true;
+    // Settled however it ends, or the ring would stay withheld (ring()).
+    const done = () => { if (current()) { origin.readingPending = false; reoutline(); } };
     loadReadingParents().then((cells) => {
       if (!cells || !current()) return null;
       return get(`${originBase()}${o.slug}${meta.readingUrlSuffix}`)
@@ -2968,7 +3073,7 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
         });
     }).catch((err) => {
       if (current() && !sig.aborted) console.warn("finer readings unavailable:", err.message);
-    });
+    }).finally(done);
   };
 
   // Station naming exists only in builds whose index.json says so; asking an
@@ -3202,9 +3307,9 @@ function checkedReading(b, blocks, name) {
 // hexagon parent they agree on all 343, so a test that used only hexagons
 // would not tell them apart. src/transport_maps/emit/hover.py computes the
 // same base-7 number, and tests/web/test_reading_slot.py runs both.
-function readingSlot(id) {
+function readingSlot(id, res = READING_RES) {
   let slot = 0;
-  for (let r = READING_PARENT_RES + 1; r <= READING_RES; r++)
+  for (let r = READING_PARENT_RES + 1; r <= res; r++)
     slot = slot * 7 + Number((id >> BigInt(45 - 3 * r)) & 7n);
   return slot;
 }
@@ -3307,6 +3412,11 @@ function lookupRaw(lat, lon) {
   if (origin.reading && readingParents) {
     const j = readingIndex(lat, lon);
     if (j >= 0) {
+      // The cell the tiles draw here, where the solver's block has it: a res-7
+      // cell, or a split res-6 cell coloured by its fastest child. Elsewhere
+      // the reading tier already holds what is drawn.
+      const drawn = fineReading(lat, lon);
+      if (drawn) { lastReadingRes = drawn.res; return drawn.t; }
       const fine = origin.reading[j];
       // The two tiers can contradict each other, and one of them is a lie.
       // `write_reading` fills every slot of a res-3 block with the sentinel
@@ -3342,6 +3452,83 @@ function lookupRaw(lat, lon) {
 // Which grid the last reading came from, for the line that says so.
 function readingGrid() {
   return lastReadingRes;
+}
+
+//: Which tile level the bands are drawn at, for the block readings: "native"
+//: (the solver's cells), "base" (res-6 cells) or null where a block says
+//: nothing the reading tier does not -- below zoom 3, on the map from a
+//: point (res-4 cells of its own), and under an avoided mode, whose tiles
+//: were solved without that mode and have no native level.
+function fineLevel() {
+  if (!fineCells.armed || avoid || pointShown() || !active || !READING_RES) return null;
+  const z = Math.floor(map.getZoom());
+  return z >= FINE_NATIVE_ZOOM ? "native" : z >= FINE_BASE_ZOOM ? "base" : null;
+}
+
+//: {t, res} for the cell the tiles draw under a point, from a kept block, or
+//: null to read the reading tier: no block yet, a base cell that was not
+//: split (the tier already holds it), or a slot with no cell.
+function fineReading(lat, lon) {
+  const level = fineLevel();
+  if (!level) return null;
+  const cell = h3.latLngToCell(lat, lon, FINE_RES);
+  const b = fineCells.blocks.get(`${active.slug}|${h3.cellToParent(cell, READING_PARENT_RES)}`);
+  if (!b) return null;
+  const slot = readingSlot(BigInt("0x" + cell), FINE_RES);
+  const per = 7 ** (FINE_RES - SOLVE_RES);
+  const base = Math.floor(slot / per);
+  if (!b.split[base]) return null;
+  if (level === "native") {
+    const t = b.times[slot];
+    return t === FINE_NO_CELL ? null : { t, res: FINE_RES };
+  }
+  // The base level colours a split cell by its fastest child.
+  let t = Infinity;
+  for (let k = base * per; k < base * per + per; k++) {
+    if (b.times[k] !== FINE_NO_CELL) t = Math.min(t, b.times[k]);
+  }
+  return t === Infinity ? null : { t, res: SOLVE_RES };
+}
+
+//: Ask for the block under a resting pointer, once. One request at a time,
+//: the newest wins; a refusal holds every request back for the Retry-After
+//: the service names, and the reading tier answers meanwhile.
+function wantFine(lat, lon) {
+  clearTimeout(fineCells.timer);
+  if (!fineLevel() || Date.now() < fineCells.retryAt) return;
+  const block = h3.cellToParent(h3.latLngToCell(lat, lon, FINE_RES), READING_PARENT_RES);
+  const from = active;
+  const key = `${from.slug}|${block}`;
+  if (fineCells.blocks.has(key) || fineCells.ctl?.key === key) return;
+  fineCells.timer = setTimeout(async () => {
+    fineCells.ctl?.abort();
+    const ctl = new AbortController();
+    ctl.key = key;
+    fineCells.ctl = ctl;
+    const res = await solveCells(from, block, ctl.signal);
+    if (fineCells.ctl === ctl) fineCells.ctl = null;
+    if (ctl.signal.aborted) return;
+    if (!res.ok) {
+      // `not_on_land` and `bad_request` will not change: never ask again.
+      if (res.code === "not_on_land" || res.code === "bad_request") fineCells.blocks.set(key, null);
+      else fineCells.retryAt = Date.now() + (res.code === "busy" ? 15000 : 60000);
+      return;
+    }
+    fineCells.blocks.set(key, { times: res.times, split: res.split });
+    while (fineCells.blocks.size > FINE_KEEP) fineCells.blocks.delete(fineCells.blocks.keys().next().value);
+    if (active?.slug === from.slug) rereadFine();
+  }, FINE_REST_MS);
+}
+
+//: Everything read through lookup() that a block or a tile level just
+//: changed, redone in place -- what the reading tier's arrival redoes, and
+//: the tooltip, which only the pointer used to paint.
+function rereadFine() {
+  fineCells.level = fineLevel();
+  if (pinB || lastPointer) rereadPointer();
+  if (pinB) { renderPins(); renderLegs(); }
+  const at = fineCells.tipAt;
+  if (at && !$("tip").hidden) paintTip(at, lookup(at.lat, at.lng));
 }
 
 // Walk the shortest-path tree back from where the journey landed. The chain is
@@ -4055,7 +4242,7 @@ function showReading(lat, lng, point) {
       // READING_RES is null on a build from before the tier existed, and
       // gating on it left the method panel's account of the wider grid a
       // claim nothing on the page qualified.
-      + (grid !== SOLVE_RES ? " · read from the wider grid" : "");
+      + (grid < SOLVE_RES ? " · read from the wider grid" : "");
   return t;
 }
 // One live region for the whole page, written only when a reading is
@@ -4106,7 +4293,7 @@ function reoutline() {
   if (!hoveredCell || !hoveredAt) return;
   const { lat, lon } = hoveredAt;
   if (lookup(lat, lon) == null) { clearHighlight(); return; }
-  highlight(lat, lon, readingGrid());
+  ring(lat, lon, readingGrid());
 }
 
 map.on("mouseout", () => { $("tip").hidden = true; clearHighlight(); });
@@ -4132,26 +4319,37 @@ map.on("mousemove", (e) => {
     const grid = readingGrid();
     const tip = $("tip");
     if (t == null) { tip.hidden = true; clearHighlight(); return; }
-    highlight(lat, lng, grid);
-    // The setting is respected in describe() and announceReading() and was
-    // ignored here -- so unticking a box labelled "Name the place under the
-    // cursor" left the panel reading 37.57N 126.98E while the tip glued to
-    // the cursor went on saying "Seoul, South Korea".
-    const p = namePlaces ? nearestPlace(lat, lng) : null;
-    const lead = p && placeLead(p);
-    const where = lead ? lead + (p.country ? `, ${p.country}` : "") : fmtCoord(lat, lng);
-    const [big, unit] = fmtTime(t);
-    tip.innerHTML = t >= MAX_MINUTES
-      ? `<b>No scheduled route</b> <i>· ${esc(where)}</i>`
-      : `<b>${big}${unit ? " " + unit : ""}</b> <i>door to door · ${esc(where)}</i>`;
-    tip.hidden = false;
-    // Offset so the pointer never covers it; flip when near an edge.
-    const x = e.originalEvent.clientX, y = e.originalEvent.clientY;
-    const w = tip.offsetWidth, h = tip.offsetHeight;
-    tip.style.left = `${x + 16 + w > window.innerWidth ? x - w - 12 : x + 16}px`;
-    tip.style.top = `${y + 14 + h > window.innerHeight ? y - h - 12 : y + 14}px`;
+    ring(lat, lng, grid);
+    fineCells.tipAt = { lat, lng, x: e.originalEvent.clientX, y: e.originalEvent.clientY };
+    paintTip(fineCells.tipAt, t);
+    wantFine(lat, lng);
   });
 });
+// The level the tiles are drawn at changes at whole zooms, and with it the
+// cell a reading names: redo the readings when it does.
+map.on("zoomend", () => { if (fineLevel() !== fineCells.level) rereadFine(); });
+
+//: The tooltip beside the pointer at `at` ({lat, lng, x, y}), reading `t`.
+function paintTip(at, t) {
+  const tip = $("tip");
+  const { lat, lng, x, y } = at;
+  // The setting is respected in describe() and announceReading() and was
+  // ignored here -- so unticking a box labelled "Name the place under the
+  // cursor" left the panel reading 37.57N 126.98E while the tip glued to
+  // the cursor went on saying "Seoul, South Korea".
+  const p = namePlaces ? nearestPlace(lat, lng) : null;
+  const lead = p && placeLead(p);
+  const where = lead ? lead + (p.country ? `, ${p.country}` : "") : fmtCoord(lat, lng);
+  const [big, unit] = fmtTime(t);
+  tip.innerHTML = t >= MAX_MINUTES
+    ? `<b>No scheduled route</b> <i>· ${esc(where)}</i>`
+    : `<b>${big}${unit ? " " + unit : ""}</b> <i>door to door · ${esc(where)}</i>`;
+  tip.hidden = false;
+  // Offset so the pointer never covers it; flip when near an edge.
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = `${x + 16 + w > window.innerWidth ? x - w - 12 : x + 16}px`;
+  tip.style.top = `${y + 14 + h > window.innerHeight ? y - h - 12 : y + 14}px`;
+}
 
 // ---- point to point ----
 // A transparent 34 px handle riding on the pin, so the destination can be

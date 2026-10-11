@@ -10,10 +10,12 @@ for the lookup just made, and `reoutline` redraws a ring under a still pointer
 when the data that lands moves the reading to another grid.
 
 The res-7 half of C3 -- outlining the refined cell where the surface was
-solved finer -- is NOT here: the reading tier holds one value per res-6 cell
-(the centre res-7 child's, emit/hover.py), so a res-7 ring would outline a
-cell the number does not come from. It needs the split-cell set from the
-emitter and a rebuild.
+solved finer -- comes from the solver's blocks (test_fine_cells.py): the grid
+readingGrid() reports is then 7, and the ring follows it like any other.
+
+While the reading tier is on its way the number is the res-4 stopgap, and
+`ring` draws nothing rather than a 45 km hexagon that shrinks a second later;
+reoutline() draws the ring when the tier lands.
 
 The handler, `highlight` and `reoutline` are lifted from app.js and run in
 node with the page stubbed around them.
@@ -51,7 +53,10 @@ def node() -> str:
 
 def _run(node: str, script: str) -> dict:
     src = f"""
-const SOLVE_RES = 6, MAX_MINUTES = 65534;
+const SOLVE_RES = 6, HOVER_RES = 4, MAX_MINUTES = 65534;
+const origin = {{ readingPending: false }};
+const fineCells = {{ tipAt: null }};
+const wantFine = () => {{}};
 const drawn = [];
 let GRID = 6, VALUE = 300, pinB = null, namePlaces = false, raf = 0;
 let hoveredCell = null, hoveredAt = null;
@@ -83,6 +88,8 @@ let lastPointer = null;
 const onNearSide = () => true;
 map.project = () => ({{ x: 1, y: 1 }});
 {_js.function("highlight")}
+{_js.function("ring")}
+{_js.function("paintTip")}
 {_js.function("clearHighlight")}
 {_js.function("reoutline")}
 {_js.function("rereadPointer")}
@@ -151,3 +158,23 @@ def test_reoutline_drops_a_ring_whose_reading_went_away(node) -> None:
     got = _run(node, "move(37.5, 127.0); VALUE = undefined; reoutline();")
     assert got["cell"] is None, got
 
+
+
+def test_no_ring_around_the_stopgap_while_the_reading_tier_is_on_its_way(node) -> None:
+    """The 45 km ring that became a 6.5 km one a second later, on every city
+    switch: withheld while the tier loads, drawn on the right grid when it
+    lands, and still drawn where res 4 is the final answer (Save-Data).
+
+    Mutation performed and reverted: `ring` calls highlight() unconditionally
+    -> RED (a res-4 ring while pending).
+    """
+    got = _run(node, """
+origin.readingPending = true; GRID = 4; move(37.5, 127.0);
+out.pending = drawn[drawn.length - 1].features.length;
+origin.readingPending = false; GRID = 6; reoutline();
+out.landed = hoveredCell;
+GRID = 4; move(30.0, 120.0); out.final = hoveredCell;
+""")
+    assert got["pending"] == 0, "a res-4 ring was drawn while the reading tier was loading"
+    assert got["landed"].startswith("r6:"), got
+    assert got["final"].startswith("r4:"), "a res-4 reading with no tier coming lost its ring"
