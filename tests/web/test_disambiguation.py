@@ -47,12 +47,12 @@ APP = (config.ROOT / "web" / "app.js").read_text(encoding="utf-8")
 #: escalation ran. Both members are in China in every one.
 SAME_COUNTRY_PAIRS = ("changsha", "fuzhou", "puyang", "suzhou", "taizhou")
 
-#: Known residue, tracked as DEF17-1 in plan/2026-09-17-c17-review-findings.md:
-#: the gazetteer holds two settlements both named Changzhi in Shanxi, 145 km
-#: apart, so no admin-1 region separates them and the next distinct place is
-#: 55-81 km away. Naming that would be a false label, so the row stays
-#: ambiguous until `origins.toml` carries a discriminator.
-UNRESOLVED = ("changzhi",)
+#: Known residue. Empty since 2026-10-12: DEF17-1 (plan/2026-09-17-c17-review-
+#: findings.md) was two settlements both named Changzhi in Shanxi, and the
+#: second was GeoNames 1815463, a Yuncheng village carrying a phantom city's
+#: population (emit/places.py MISPLACED). With the row gone the pair reads
+#: two regions, and `changzhi-cn` leaves the roster.
+UNRESOLVED: tuple[str, ...] = ()
 
 
 def _function(name: str) -> str:
