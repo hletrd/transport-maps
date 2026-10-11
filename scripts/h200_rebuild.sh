@@ -5,6 +5,7 @@
 #   bash scripts/h200_rebuild.sh start [SERVICE_DATE]   # on h200, from $W/repo
 #   bash scripts/h200_rebuild.sh status                 # done/total, rate, problems
 #   bash scripts/h200_rebuild.sh finish                 # variants in, reindex, check
+#   bash scripts/h200_rebuild.sh split MAP TREE [N]     # MAP's last part in a free TREE
 #
 # Then, from the operator's machine: scripts/deploy_solver.sh (the bundle is
 # in $W/repo/data/build/solver) and scripts/deploy_from_h200.sh.
@@ -160,9 +161,86 @@ finish() {
   echo "ready: deploy_solver.sh, then deploy_from_h200.sh, from the operator's machine"
 }
 
+exited() {  # exited <log>: the exit line after the latest restart, if any
+  local r; r=$(grep -nE '^restart' "$1" | tail -1 | cut -d: -f1)
+  awk -v r="${r:-0}" 'NR>r && /^exit/' "$1" | tail -1
+}
+
+stop_build() {  # stop_build <tree>: end that checkout's build-all, wait for its workers
+  local u c
+  for u in $(ps -eo pid,cmd | awk '/uv run transport-maps build-all/{print $1}'); do
+    [ "$(readlink "/proc/$u/cwd")" = "$W/$1" ] || continue
+    for c in $(pgrep -P "$u"); do pkill -TERM -P "$c"; kill -TERM "$c"; done; kill -TERM "$u"
+  done
+  while ps -eo cmd | grep -q "[/]default/worldmap/$1/.venv/bin/transport-maps"; do sleep 5; done
+  rm -f "$W/$1/dist/.build.lock"
+}
+
+split() {  # split <full|air|ferry|rail> <free checkout> [workers]
+  local map=$1 tail=$2 i main log ex tlog ih gh wt wm todo r k n only
+  for i in "${!TREES[@]}"; do [ "${EXCLUDES[$i]:-full}" = "$map" ] && break; done
+  [ "${EXCLUDES[$i]:-full}" = "$map" ] || { echo "!! map is full, air, ferry or rail"; exit 2; }
+  main=${TREES[$i]} log=$W/${LOGS[$i]} ex=${EXCLUDES[$i]} wm=${WORKERS[$i]} tlog=$W/split-$map.log
+  [ "$tail" != "$main" ] && [ -d "$W/$tail/.git" ] || { echo "!! $tail is not another checkout"; exit 2; }
+  if ps -eo pid,cmd | awk '/uv run transport-maps build-all/{print $1}' \
+       | while read -r u; do [ "$(readlink "/proc/$u/cwd")" = "$W/$tail" ] && echo busy; done | grep -q busy; then
+    echo "!! $tail is still building"; exit 1
+  fi
+  env_for_build
+  export TRANSPORT_MAPS_SERVICE_DATE
+  TRANSPORT_MAPS_SERVICE_DATE=$(grep -oE 'service date [0-9-]+' "$log" | tail -1 | cut -d' ' -f3)
+  read -r ih gh < <(grep -h 'skip-existing:' "$log" | tail -1 \
+                    | sed -E 's/.*inputs ([0-9a-f]+) \/ graph ([0-9a-f]+).*/\1 \2/')
+  [ -n "${gh:-}" ] || { echo "!! no inputs/graph hashes in $log yet"; exit 1; }
+  # The tail checkout must be this build's code and inputs, or its graph hash
+  # differs and none of its records would be accepted.
+  git -C "$W/$tail" -c safe.directory='*' checkout -q -f --detach \
+    "$(git -C "$W/$main" -c safe.directory='*' rev-parse HEAD)"
+  rsync -a --delete --link-dest="$W/repo/data/cache/" "$W/repo/data/cache/" "$W/$tail/data/cache/"
+  # Workers the memory pre-flight accepts (cli: 12 GB each, 20 GB parent, 80%).
+  wt=${3:-$(( ($(awk '/MemAvailable/{print int($2/1048576)}' /proc/meminfo) * 8 / 10 - 20) / 12 ))}
+  [ "$wt" -gt 56 ] && wt=56
+  [ "$wt" -ge 8 ] || { echo "!! only $wt workers would fit"; exit 1; }
+  todo=$(cd "$W/$main" && .venv/bin/python scripts/h200_split.py todo "$map" "$W/$main" "$ih" "$gh")
+  r=$(echo "$todo" | tr ',' '\n' | grep -c .)
+  # The tail's share, less what main does during the tail's ~10-minute setup.
+  k=$(( r * wt / (wm + wt) - wm * 10 / 17 ))
+  [ "$k" -ge 10 ] || { echo "only $r left; not worth a tail"; exit 0; }
+  only=$(echo "$todo" | tr ',' '\n' | tail -n "$k" | paste -sd, -)
+  n=$(cd "$W/$main" && .venv/bin/python -c "
+from transport_maps.emit import index
+s = [o['slug'] for o in index.load_origins()]
+print(len(s) - s.index('${only%%,*}'))")
+  echo "split $map: $r left; the last $k (roster tail of $n) to $tail, $wt workers $(date '+%m-%d %H:%M')" | tee -a "$log"
+  (
+    set +e
+    cd "$W/$tail" && rm -f dist/.build.lock
+    echo "restart (split $map tail, $wt workers) $(date '+%m-%d %H:%M')" >> "$tlog"
+    TRANSPORT_MAPS_WORKERS=$wt nice -n 10 uv run transport-maps build-all --offline --skip-existing \
+      ${ex:+--exclude "$ex"} --only "$only" >> "$tlog" 2>&1
+    echo "exit $? at $(date '+%m-%d %H:%M')" >> "$tlog"
+  ) &
+  # Main fixed its list at start and would rebuild the tail's origins in the
+  # same order: stop it once it holds everything before the tail range.
+  until [ "$(cd "$W/$main" && .venv/bin/python scripts/h200_split.py lack "$map" "$W/$main" "$W/$tail" "$n" "$ih" "$gh")" = 0 ] \
+        || [ -n "$(exited "$log")" ]; do sleep 60; done
+  [ -n "$(exited "$log")" ] || { echo "split $map: main holds everything before the tail; stopping it $(date '+%m-%d %H:%M')" | tee -a "$log"; stop_build "$main"; }
+  until [ -n "$(exited "$tlog")" ]; do sleep 60; done
+  (cd "$W/$main" && .venv/bin/python scripts/h200_split.py merge "$map" "$W/$main" "$W/$tail" "$ih" "$gh") | tee -a "$log"
+  (
+    set +e
+    cd "$W/$main"
+    echo "restart (split $map: final pass over every origin, service date $TRANSPORT_MAPS_SERVICE_DATE) $(date '+%m-%d %H:%M')" >> "$log"
+    TRANSPORT_MAPS_WORKERS=$wm nice -n 10 uv run transport-maps build-all --offline --skip-existing \
+      ${ex:+--exclude "$ex"} >> "$log" 2>&1
+    echo "exit $? at $(date '+%m-%d %H:%M')" >> "$log"
+  )
+}
+
 case "${1:-}" in
   start) shift; start "$@" ;;
+  split) shift; split "$@" ;;
   status) status ;;
   finish) finish ;;
-  *) sed -n '2,10p' "$0"; exit 2 ;;
+  *) sed -n '2,11p' "$0"; exit 2 ;;
 esac

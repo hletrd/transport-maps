@@ -57,3 +57,16 @@ def test_a_build_that_fails_still_logs_its_exit():
     sub = start[start.index("(\n"):start.index(") &")]
     assert "set +e" in sub and sub.index("set +e") < sub.index("uv run transport-maps build-all")
     assert 'echo "exit $? at' in sub
+
+
+def test_split_stops_main_before_merging_and_ends_with_a_final_pass():
+    """Rebuilds 28 and 29 split a slow map by hand; `split` is that sequence:
+    the tail build, main stopped once it holds everything before the tail
+    (it would rebuild the tail's origins in the same order), the merge, and a
+    final pass over every origin that writes the marker or index."""
+    body = CODE[CODE.index("split() {"):CODE.index('case "${1:-}" in')]
+    order = ["--only", "stop_build", "h200_split.py merge", "final pass over every origin"]
+    at = [body.index(x) for x in order]
+    assert at == sorted(at), order
+    assert "set +e" in body[body.index("final pass"):] or "set +e" in body
+    assert "TRANSPORT_MAPS_RESUME_TRUST_RECORDS" not in body
