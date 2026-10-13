@@ -5907,11 +5907,26 @@ $("where").textContent = IDLE_PROMPT;
 // silently swallowing it and then rewriting the address made a mistyped link
 // indistinguishable from a working one.
 const FALLBACK = bySlug.get("seoul") ?? cities[0];
+// Slugs the roster published before the audit of 2026-10-12 corrected it, so
+// a link made with one still departs from the city it named. changsha-cn was
+// Kaiping under a GeoNames row's wrong name and IS kaiping now, the same map.
+// puyang (Pujiang's seat under Puyang's row) and changzhi-cn (a phantom) were
+// dropped; their links said "Puyang" and "Changzhi", so they go to those
+// cities. tests/web/test_former_slugs.py holds every entry to origins.toml.
+const FORMER_SLUGS = new Map([
+  ["changsha-cn", "kaiping"],
+  ["puyang", "puyang-cn"],
+  ["changzhi-cn", "changzhi"],
+]);
+//: The departure city a slug names, under its current slug or a former one.
+function departureFor(slug) {
+  return bySlug.get(slug) ?? bySlug.get(FORMER_SLUGS.get(slug)) ?? null;
+}
 let requested = null, requestedPin = null, badSlug = "", requestedCamera = null, requestedDep = null;
 try {
   const q = URL_PARAMS;
   const want = q.get("from") ?? "";
-  requested = bySlug.get(want) ?? null;
+  requested = departureFor(want);
   if (want && !requested) badSlug = want;
   // ?to=lat,lon -- validated to the same standard as the slug: two finite
   // numbers in range, or nothing at all. Anything else is dropped, never
