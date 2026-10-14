@@ -19,7 +19,7 @@ def _line_pbf(path, *, relation=None, maxspeed="300", loops=True):
     """Main line w1 from 120.0 to 121.0 E with a loop near each end, stations
     A and B beside it. `relation` is a tags dict for a train relation over the
     line calling at A and B, or None for no relation."""
-    n = int(round(1.0 / STEP)) + 1
+    n = round(1.0 / STEP) + 1
     main = [(1000 + i, LAT, 120.0 + i * STEP) for i in range(n)]
     nodes = list(main)
     nodes += [(1, LAT + 0.002, 120.003, {"railway": "station", "name": "A"}),
