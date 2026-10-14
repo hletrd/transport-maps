@@ -30,7 +30,7 @@ from transport_maps.sources import (
 
 def _file_urls() -> set[str]:
     return ({airports.AIRPORTS_URL, landmask.LAND_URL, landmask.ICE_URL, landmask.LAKES_URL,
-             countries.COUNTRIES_URL, urban.PLACES_URL}
+             countries.COUNTRIES_URL, urban.PLACES_URL, roads.CITIES_URL}
             | {roads.GRIP4_URL.format(n=n) for n in range(1, roads.N_TYPES + 1)})
 
 

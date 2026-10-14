@@ -276,6 +276,12 @@ def cell_class(cells: list[str]) -> np.ndarray:
     return out
 
 
+def _settlements_source() -> _fetch.Fingerprint:
+    """GeoNames cities15000, checked against the upstream once per build (G2):
+    the same archive, at the same cache path, as the page's gazetteer."""
+    return _fetch.fetch(CITIES_URL, config.CACHE / "cities15000.zip")
+
+
 def _settlements() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(lat, lon, population) of GeoNames cities15000, with the gazetteer's
     own corrections (emit/places.py): a row it drops is not a town, and a
@@ -286,7 +292,7 @@ def _settlements() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
     from transport_maps.emit import places
 
-    path = _fetch.fetch(CITIES_URL, config.CACHE / "cities15000.zip").path
+    path = _settlements_source().path
     with zipfile.ZipFile(path) as z:
         text = z.read("cities15000.txt").decode("utf-8")
     lat, lon, pop = [], [], []

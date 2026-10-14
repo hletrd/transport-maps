@@ -605,6 +605,7 @@ def _check_inputs(exclude: str | None = None) -> None:
     countries._source()           # Natural Earth countries
     urban._source()               # Natural Earth populated places
     roads._sources()              # the five GRIP4 archives
+    roads._settlements_source()   # GeoNames cities15000, for GRIP4's holes in towns
     geofabrik.refresh()           # the OSM extracts, against Geofabrik's state.txt
     if exclude != "air":
         # The Wikipedia crawl and the Wikidata resolution: articles and titles
