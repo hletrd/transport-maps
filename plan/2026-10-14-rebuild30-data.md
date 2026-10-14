@@ -142,3 +142,36 @@ airport access 50% fast), which every flown journey pays. Rebuild 31 started
 2026-10-15 from b3f62d2 with the stratified, traffic-aware road refit; the
 OSM motorway class (Cairo->Alexandria, Delhi->Agra, US interstates) follows
 in the next build.
+## Rebuild 32: an OSM motorway class (2026-10-15)
+
+The open item above: GRIP4 grades an expressway like any national highway.
+A cell an OSM motorway crosses is now class 6 (graph/ground.MOTORWAY_CLASS)
+with its own fitted speed, income-scaled like the rest; GRIP4's class 1
+keeps the highways OSM does not call motorways.
+
+- Input: scripts/osm_roads.sh filters the full continental extracts to
+  highway=motorway,trunk ({region}-roads.osm.pbf): 573 s wall on h200 for
+  all seven in parallel, 8.3 GB summed RSS, 424 MB out. sources/motorways.py
+  parses that in 117 s at 10.2 GB peak (3.39 M ways; cached on the
+  extracts' snapshot) and marks the cells a rule's ways cross, at the index's
+  own resolution, in 36-48 s (cached per index). The build now refuses to
+  start without the -roads extracts; run the script before the next build.
+- Rule, out of fold (mean of strata's median |log|): motorway only 0.138,
+  plus trunk tagged motorway/expressway/motorroad=yes 0.133, plus trunk
+  signed 100 km/h+ ("fast_trunk") 0.127. Each re-planned under its own fit
+  (three rounds for fast_trunk; the last moved no constant more than 3%).
+  Income-scaled motorway 0.127 vs one speed everywhere 0.142; class 6 merged
+  back into class 1 on the same paths 0.142 -- the gain is the class.
+- Fit (1,396 journeys, typical traffic): motorway 87.8 km/h (102 high
+  income, 71 low), highway 42.9, primary 49.7, secondary 55.6, tertiary
+  36.3; income x1.167/0.824/0.812; built-up x1.36; 11.4 end minutes.
+  Out of fold vs rebuild 31: metro 0.147 -> 0.131, intercity 0.135 ->
+  0.089, rural 0.149 -> 0.135, airport 0.177 -> 0.153.
+- Motorway bridges and tunnels now cost class 6 too (graph/landmass), with
+  the dead-end rules ranking it above highway rather than below local.
+- Check pairs (ground minutes, rebuild 31 -> 32, Google typical): Cairo->
+  Alexandria 252 -> 214 (151), Delhi->Agra 283 -> 221 (204), LA->San Diego
+  165 -> 157 (123), Chicago->Milwaukee 120 -> 108 (93), Mumbai->Pune 176 ->
+  171 (161), Lagos->Ibadan 154 -> 137 (129), Mexico City->Puebla 129 -> 117
+  (142, now fast). Airport runs faster: LHR 34 -> 31 (51), CDG 36 -> 35
+  (48), JFK 36 -> 33 (48), NRT 78 -> 73 (84).
