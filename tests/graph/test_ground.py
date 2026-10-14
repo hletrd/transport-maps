@@ -19,9 +19,12 @@ def test_every_cell_has_a_positive_speed(idx):
 
 
 def test_speeds_span_the_full_range(idx):
+    """From walking pace up to a high-income country's open highway: the
+    fastest class times the largest income multiplier (graph/ground.py)."""
     speeds = ground.cell_speed_kmh(idx)
-    assert speeds.min() == ground.SPEED_BY_ROAD_CLASS_KMH.min()
-    assert speeds.max() == ground.SPEED_BY_ROAD_CLASS_KMH.max()
+    k, m = ground.SPEED_BY_ROAD_CLASS_KMH, ground.INCOME_SPEED_MULTIPLIER
+    assert speeds.min() == k.min()
+    assert np.isclose(speeds.max(), k[list(ground.INCOME_SCALED_CLASSES)].max() * m.max())
 
 
 def test_roadless_terrain_is_slower_than_motorway_terrain(idx):
@@ -62,7 +65,7 @@ def test_hex_edge_cost_uses_destination_speed_not_source(idx, monkeypatch):
     fake_speeds = np.full(idx.n_cells, 45.0, dtype=np.float64)
     fake_speeds[u] = fast
     fake_speeds[v] = slow
-    monkeypatch.setattr(ground, "cell_speed_kmh", lambda _idx: fake_speeds)
+    monkeypatch.setattr(ground, "cell_speed_kmh", lambda _idx, **_kw: fake_speeds)
 
     r, c, minutes = ground.hex_edges(idx)
     uv = minutes[(r == u) & (c == v)]
