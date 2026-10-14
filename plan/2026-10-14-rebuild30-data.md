@@ -80,4 +80,13 @@ right; the pairs above are the check, not the fit.
   `interval` first. Edge cost HK-Macau 223 -> 105 min, Helsinki-Tallinn
   349-404 -> 192-246. Open: Dalian-Yantai (sources disagree), Dar-Zanzibar
   sailing 165 min without a duration tag (~2 h real).
-- [ ] merge, full tests on h200, rebuild 30, re-measure every pair above, deploy
+- [x] merged (ee2d9e3), 1,591 tests passed; rebuild 30 started 2026-10-14 ~19:00.
+- [ ] Early re-measure (origins done first): Shanghai->Hangzhou 3h04 -> 1h22
+  (~1h45), Tokyo->Osaka 3h27 -> 3h01 (~2h55), HK->Macau 1h52 (1h57),
+  Beijing->Shanghai no-air 15h52 -> 5h13 (~5h), Helsinki->Tallinn no-air
+  5h53 -> 3h14 (3h06), Tokyo->Paris 15h24 -> 17h16 (~17h30). BUT the road
+  refit drives big-city corridors faster than free-flow Google DRIVE:
+  Mumbai->Pune 118 (159), Mexico->Puebla 100 (134), Lagos->Ibadan 100 (124),
+  Copenhagen->Malmo 31 (47); LA->San Diego 171 (118) still slow. Road
+  calibration redone for rebuild 31 (metro bias); rebuild 30 runs on to
+  validate rail, air and ferry end to end.
