@@ -48,7 +48,13 @@ right; the pairs above are the check, not the fit.
 
 - [x] E3 (6a97681): measured on 534dec3b's graph, Maputo->Beira 283 -> 251 min,
   Dar es Salaam->Zanzibar 230 -> 199, Manila->Iloilo 218 -> 212.
-- [ ] E1 E2 M2 air (worktree)
+- [x] E1 E2 M2 air: E1 drops a listing whose title OurAirports links to another
+  airport >300 km away (5 dropped: Lasondre->LSE x2, Seko->SKO, John
+  Becker->KSX, Bolognesi->BLP); E2 drops pairs >15,400 km (9 routes; SYD-LHR
+  20.9 h nonstop -> 22.8 h with a connection); M2 routes 1,352 directed
+  flights round closed airspace on a taut res-3 corridor (HND-CDG 12 h 11 ->
+  14 h 10 vs 14 h 30-14 h 40 westbound). Open: map lines stay great circles;
+  one-stops under 15,400 km stay.
 - [ ] E4 + M4 roads (worktree)
 - [ ] E5 M3 rail (worktree)
 - [x] M1 ferries (9d55601): published headways for six corridors (TurboJET,
