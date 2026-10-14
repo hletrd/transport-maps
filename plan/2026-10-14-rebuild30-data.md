@@ -46,9 +46,11 @@ right; the pairs above are the check, not the fit.
 
 ## Progress
 
-- [ ] E1 E2 E3 E4 (main session)
+- [x] E3 (6a97681): measured on 534dec3b's graph, Maputo->Beira 283 -> 251 min,
+  Dar es Salaam->Zanzibar 230 -> 199, Manila->Iloilo 218 -> 212.
+- [ ] E1 E2 M2 air (worktree)
+- [ ] E4 + M4 roads (worktree)
 - [ ] E5 M3 rail (worktree)
 - [ ] M1 ferries (worktree)
-- [ ] M2 airspace (worktree)
-- [ ] M4 calibration (worktree)
+- [ ] M4 rail tiers with E5 M3 (worktree)
 - [ ] merge, full tests on h200, rebuild 30, re-measure every pair above, deploy
