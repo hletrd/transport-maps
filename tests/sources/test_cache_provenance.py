@@ -278,7 +278,6 @@ STAMPED = [
     (landmask, "WEDGE_COUNT", 6, lambda: landmask._cells_cache_path(6, SRCS[:3])),
     (landmask, "POLYFILL_METHOD", "centre-containment", lambda: landmask._cells_cache_path(6, SRCS[:3])),
     (urban, "URBAN_POP_MIN", 100_000.0, lambda: urban._mask_cache_path(["a", "b"], SRC)),
-    (urban, "URBAN_RADIUS_KM", 20.0, lambda: urban._mask_cache_path(["a", "b"], SRC)),
     (urban, "PLACES_URL", "https://example.invalid/places.zip", lambda: urban._mask_cache_path(["a", "b"], SRC)),
     (osm, "ANTIMERIDIAN_EPS_DEG", 1e-3, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
     # MIN_FERRY_KM / MAX_FERRY_KM used to be stamped here. They never governed
@@ -580,6 +579,20 @@ def test_a_rail_schema_DTYPE_change_moves_the_key(monkeypatch):
     assert sorted(widened) == sorted(osm.SCHEMA), "the fixture must change only a dtype"
     monkeypatch.setattr(osm, "SCHEMA", widened)
     assert osm._rail_cache_path(fp) != before
+
+
+def test_the_urban_mask_key_moves_with_its_radius():
+    """The refinement mask and the congestion mask are one function at two
+    radii (sources/urban.urban_mask); each must have its own cache entry, and
+    the default must be the refinement radius.
+
+    Mutation performed and reverted: hash URBAN_RADIUS_KM instead of the
+    `radius_km` argument -> RED.
+    """
+    cells = ["a", "b"]
+    assert urban._mask_cache_path(cells, SRC, 20.0) != urban._mask_cache_path(cells, SRC, 40.0)
+    assert urban._mask_cache_path(cells, SRC) == urban._mask_cache_path(
+        cells, SRC, urban.URBAN_RADIUS_KM)
 
 
 def test_the_urban_mask_key_covers_the_whole_cell_list():

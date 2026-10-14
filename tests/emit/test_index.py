@@ -222,7 +222,13 @@ def test_the_road_prose_says_halved_only_when_the_factor_is_two(monkeypatch):
     from transport_maps.sources import urban
 
     roads = ("highway", "major road", "minor road")
-    assert urban.URBAN_CONGESTION_FACTOR == 2.0, "re-derive: the shipped factor moved"
+    shipped = index.urban_slowdown(urban.URBAN_CONGESTION_FACTOR)
+    prose = index.mode_detail()
+    for key in roads:
+        assert f"{shipped} inside cities" in prose[key], (key, prose[key])
+        assert f"within {urban.URBAN_CONGESTION_RADIUS_KM:.0f} km of a city" in prose[key]
+
+    monkeypatch.setattr(urban, "URBAN_CONGESTION_FACTOR", 2.0)
     prose = index.mode_detail()
     for key in roads:
         assert "halved inside cities" in prose[key], (key, prose[key])

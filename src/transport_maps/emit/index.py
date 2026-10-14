@@ -218,7 +218,7 @@ def mode_detail() -> dict[str, str]:
     # to be 2.0: refit it and every road tooltip would still say "halved"
     # (CR3-7). The word is now derived from the number.
     in_cities = (f"{urban_slowdown(urban.URBAN_CONGESTION_FACTOR)} inside cities "
-              f"(within {urban.URBAN_RADIUS_KM:.0f} km of a city "
+              f"(within {urban.URBAN_CONGESTION_RADIUS_KM:.0f} km of a city "
               f"over {urban.URBAN_POP_MIN:,.0f} people)")
     return {
         # Three corrections live in this one string. It named two speeds when

@@ -73,10 +73,13 @@ def cell_class(idx: NodeIndex) -> np.ndarray:
     return roads.cell_class(idx.cells)
 
 
-def urban_mask(idx: NodeIndex) -> np.ndarray:
+def congestion_mask(idx: NodeIndex) -> np.ndarray:
+    """The cells whose roads [urban] congestion_factor slows: within
+    congestion_radius_km of a city, on the base grid and carried down."""
+    r = urban.URBAN_CONGESTION_RADIUS_KM
     if len(getattr(idx, "base_cells", [])):
-        return refine.expand(urban.urban_mask(idx.base_cells), idx)
-    return urban.urban_mask(idx.cells)
+        return refine.expand(urban.urban_mask(idx.base_cells, r), idx)
+    return urban.urban_mask(idx.cells, r)
 
 
 def cell_speed_kmh(idx: NodeIndex, classes: np.ndarray | None = None) -> np.ndarray:
@@ -101,7 +104,7 @@ def cell_speed_kmh(idx: NodeIndex, classes: np.ndarray | None = None) -> np.ndar
     # Only where there are roads to be congested. A roadless cell is already at
     # walking pace, and traffic does not make walking slower -- halving it to
     # 2.5 km/h would put the slowest terrain on Earth below its own floor.
-    congested = urban_mask(idx) & (classes > 0)
+    congested = congestion_mask(idx) & (classes > 0)
     speeds = np.where(congested, speeds / urban.URBAN_CONGESTION_FACTOR, speeds)
     return speeds
 

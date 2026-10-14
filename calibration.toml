@@ -652,53 +652,63 @@ interval_decay = 1.5137
 # rather than an array: tests/test_licence_firewall.py refuses any list in
 # this file, because a list is what a dump of records would look like.
 #
-# Classes 1-4 (104, 57, 50, 18) are FITTED against 2,998 real driving journeys
-# sampled from Google Routes between populated places
-# (scripts/calibrate_ground.py). Built-up cells are weighted by the [urban]
-# factor below, so these are FREE-FLOW speeds and the two regimes do not
-# blend. Held-out median observed/predicted is 0.977.
+# Classes 1-4 (87.3, 51.9, 51.7, 27.9) are FITTED, jointly with [urban]
+# congestion_factor and congestion_radius_km, against 750 real driving
+# journeys from Google Routes (scripts/calibrate_ground.py, 2026-10-14;
+# data/build/ground_samples3.json): 697 between populated places 8-600 km
+# apart and 53 from a place to its nearest medium or large airport, from 58
+# source towns. The fit minimises squared LOG error (a reader sees ratios),
+# and the urban structure was chosen by five-fold cross-validation by source
+# over radii 0/5/10/20/40 km and one or two factors (highway apart), on the
+# mean of the two journey kinds' median |log(observed/predicted)|. Built-up
+# cells are weighted by the factor, so these are FREE-FLOW speeds.
 #
-# Classes 0 and 5 (5 and 25) are published-figure defaults, not fitted.
-# Roadless passed the support guard (2,272 km across 55 journeys), but the fit
-# returned a NEGATIVE reciprocal, -0.00978 h/km (about -102 km/h), which the
-# `recip > 0` sign filter in calibrate/ground.py refuses. Local drew 116 km
-# across 4 journeys, which the support guard refuses. An earlier unguarded fit
-# returned 58 km/h for ROADLESS terrain, which is not merely wrong but
-# impossible.
+# Out of fold: between towns median observed/predicted 0.96 (|log| 0.18);
+# airport access 1.23 (|log| 0.24) -- access is still about a fifth too fast
+# at the median, the residue of GRIP4 grading a city cell by the best road in
+# it. The values replaced (104, 57, 50, 18 with x2.0 within 40 km) scored
+# 0.93 (|log| 0.19) and 1.10 (|log| 0.34) on the same journeys: they were an
+# OLS on squared MINUTES (2,998 journeys, ground_samples2.json), which the
+# longest trips decide. It put tertiary at 18 km/h, below the local-road
+# default, and left journeys more than 30% tertiary 26% too slow.
 #
-# Read by graph/ground.py (SPEED_BY_ROAD_CLASS_KMH), where it lived until task
-# B2 (2026-10-02), with the same values. The sampled journeys stay in
-# data/build/ and nothing from them reaches dist/.
+# Classes 0 and 5 (5 and 25) are published-figure defaults, not fitted:
+# roadless drew 0 km across these journeys and local 0.3%, too little to
+# support a fit (calibrate/ground.FIXED_CLASSES).
+#
+# Read by graph/ground.py (SPEED_BY_ROAD_CLASS_KMH). The sampled journeys stay
+# in data/build/ and nothing from them reaches dist/.
 [ground]
 roadless_kmh = 5.0       # class 0, published-figure default
-highway_kmh = 104.0      # class 1, FITTED
-primary_kmh = 57.0       # class 2, FITTED
-secondary_kmh = 50.0     # class 3, FITTED
-tertiary_kmh = 18.0      # class 4, FITTED
+highway_kmh = 87.3       # class 1, FITTED
+primary_kmh = 51.9       # class 2, FITTED
+secondary_kmh = 51.7     # class 3, FITTED
+tertiary_kmh = 27.9      # class 4, FITTED
 local_kmh = 25.0         # class 5, published-figure default
 
-# The urban mask and the congestion it charges. FITTED, all three, jointly
-# against both journey sets of scripts/calibrate_ground.py. GRIP4 gives a cell
-# the grade of the best road inside it, so a dense city cell with a motorway
-# through it was charged at motorway speed. Over 112 real city-to-airport
-# journeys that made urban access 2.03x too fast, against only 1.12x over
-# 1,383 inter-town journeys. This setting brings urban access to 1.02x and
-# inter-town to 1.06x, and marks 5.7% of land as built up.
+# The built-up areas, by distance from a city of `pop_min` or more (Natural
+# Earth populated places, `pop_max`; sources/urban.py). Two radii:
 #
-# City POPULATION barely predicts the error (correlation +0.15 with log10
-# population), so the factor is flat over a radius rather than scaled by size.
-# `pop_min` was measured against the `pop_max` column of Natural Earth's
-# populated places (sources/urban.py PLACES_URL), so it is tied to that
-# dataset. The factor divides the speed of a built-up cell that has roads; a
-# roadless cell is already at walking pace and is left alone.
+# `radius_km` = 40 decides which base cells are split to the finer grid
+# (graph/refine.dense_mask). FITTED in 2026-09 jointly with the old penalty
+# (112 city-to-airport and 1,383 inter-town journeys, which put 5.7% of land
+# in it); it now only governs resolution, and is kept so the refined set does
+# not shrink with the penalty's radius.
 #
-# Read by sources/urban.py (URBAN_POP_MIN, URBAN_RADIUS_KM,
-# URBAN_CONGESTION_FACTOR), where they lived until task B2 (2026-10-02), with
-# the same values. The urban-mask cache keys on pop_min and radius_km.
+# `congestion_radius_km` = 20 and `congestion_factor` = 1.6 are the penalty:
+# a built-up cell with roads is slowed by the factor (graph/ground.py). FITTED
+# with the [ground] speeds above, structure and values both. GRIP4 grades a
+# cell by the best road inside it, so a dense city cell with a motorway
+# through it is charged near motorway speed; the factor stands for the
+# streets a journey actually takes there. A second factor for highways alone
+# fitted no better out of fold (0.209 against 0.209), so there is one.
+#
+# The mask caches key on pop_min and their radius.
 [urban]
 pop_min = 200000.0
 radius_km = 40.0
-congestion_factor = 2.0
+congestion_factor = 1.6
+congestion_radius_km = 20.0
 
 # Crossing a land border. Charged on the ground edge between two cells whose
 # countries sit in different immigration zones, the same test the air model
