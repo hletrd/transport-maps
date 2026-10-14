@@ -175,3 +175,12 @@ keeps the highways OSM does not call motorways.
   171 (161), Lagos->Ibadan 154 -> 137 (129), Mexico City->Puebla 129 -> 117
   (142, now fast). Airport runs faster: LHR 34 -> 31 (51), CDG 36 -> 35
   (48), JFK 36 -> 33 (48), NRT 78 -> 73 (84).
+
+## Rebuild 31 stopped, rebuild 32 started (2026-10-15)
+
+The motorway class (ec53ce0, b7b00d5) beat the rebuild-31 road fit in every
+stratum out of fold (metro 0.147 -> 0.131, intercity 0.135 -> 0.089, rural
+0.149 -> 0.135, airport 0.177 -> 0.153), so rebuild 31 was stopped at about
+half (full map 672/1462) rather than finished and deployed, and rebuild 32
+started from fffd1c1 after scripts/osm_roads.sh filtered the seven extracts
+on h200 (513 s for Europe, the slowest).
