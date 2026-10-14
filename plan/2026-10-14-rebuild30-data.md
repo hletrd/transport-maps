@@ -51,6 +51,10 @@ right; the pairs above are the check, not the fit.
 - [ ] E1 E2 M2 air (worktree)
 - [ ] E4 + M4 roads (worktree)
 - [ ] E5 M3 rail (worktree)
-- [ ] M1 ferries (worktree)
+- [x] M1 ferries (9d55601): published headways for six corridors (TurboJET,
+  Helsinki-Tallinn, Dover-Calais, Dar-Zanzibar, Wellington-Picton), OSM
+  `interval` first. Edge cost HK-Macau 223 -> 105 min, Helsinki-Tallinn
+  349-404 -> 192-246. Open: Dalian-Yantai (sources disagree), Dar-Zanzibar
+  sailing 165 min without a duration tag (~2 h real).
 - [ ] M4 rail tiers with E5 M3 (worktree)
 - [ ] merge, full tests on h200, rebuild 30, re-measure every pair above, deploy
