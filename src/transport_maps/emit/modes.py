@@ -24,9 +24,10 @@ from transport_maps.graph.refine import ground_joined
 # because "road" covers both a motorway and a dirt track, which is exactly the
 # distinction a traveller cares about.
 CHANNELS = ("rail", "ferry", "highway", "major road", "minor road", "track")
-# GRIP4 class -> channel. 0 roadless, 1 highway, 2 primary, 3 secondary,
-# 4 tertiary, 5 local.
-ROAD_CHANNEL = {0: 5, 1: 2, 2: 3, 3: 3, 4: 4, 5: 4}
+# Road class -> channel. GRIP4's 0 roadless, 1 highway, 2 primary,
+# 3 secondary, 4 tertiary, 5 local, and 6 an OSM motorway
+# (graph/ground.MOTORWAY_CLASS), which reads as highway.
+ROAD_CHANNEL = {0: 5, 1: 2, 2: 3, 3: 3, 4: 4, 5: 4, 6: 2}
 # The same ceiling the hover array uses: one constant, not two copies.
 MAX_MINUTES = config.UNREACHABLE - 1
 
@@ -106,8 +107,8 @@ def mode_minutes_per_node(idx, minutes: np.ndarray, predecessors: np.ndarray,
     return acc
 
 
-# ROAD_CHANNEL as a lookup table over GRIP4 classes 0-5.
-_ROAD_LUT = np.array([ROAD_CHANNEL[k] for k in range(6)], dtype=np.int64)
+# ROAD_CHANNEL as a lookup table over road classes 0-6.
+_ROAD_LUT = np.array([ROAD_CHANNEL[k] for k in range(len(ROAD_CHANNEL))], dtype=np.int64)
 
 
 def write_modes(idx, minutes: np.ndarray, predecessors: np.ndarray, out: Path,

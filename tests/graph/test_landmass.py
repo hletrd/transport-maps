@@ -381,7 +381,8 @@ def test_a_road_bridge_over_a_water_cell_becomes_an_edge_costed_at_its_class():
     km = landmass._haversine_km(*h3.cell_to_latlng(A), *h3.cell_to_latlng(FAR))
     # Charged from where the link leaves A to where it enters FAR, so at most
     # the whole centre-to-centre length and at least most of it.
-    assert 60 * 0.5 * km / speeds[1] < got[(0, 1)] <= 60 * km / speeds[1] + 1e-9
+    mw = speeds[ground.MOTORWAY_CLASS]           # a motorway bridge: the OSM motorway class
+    assert 60 * 0.5 * km / mw < got[(0, 1)] <= 60 * km / mw + 1e-9
 
 
 @pytest.mark.parametrize("highway,kind", [("footway", "highway"), ("cycleway", "highway"),
@@ -504,7 +505,18 @@ def test_a_crossing_split_into_ways_that_meet_over_water_is_one_span():
     assert set(got) == {(0, 1), (1, 0)}
     # Each half costed at its own class: slower than all-motorway, faster than all-primary.
     km = landmass._haversine_km(*a, *far)
-    assert 60 * km / speeds[1] * 0.5 < got[(0, 1)] < 60 * km / speeds[2]
+    mw = speeds[ground.MOTORWAY_CLASS]
+    assert 60 * km / mw * 0.5 < got[(0, 1)] < 60 * km / speeds[2]
+
+
+def test_a_motorway_span_is_the_motorway_class():
+    """landmass cannot import graph/ground (a cycle through graph/nodes), so
+    the class is a literal there; it must be ground's.
+
+    Mutation performed and reverted: SPAN_ROAD_CLASS["motorway"] back to 1 ->
+    RED."""
+    assert landmass.SPAN_ROAD_CLASS["motorway"] == ground.MOTORWAY_CLASS
+    assert landmass.SPAN_ROAD_CLASS["motorway_link"] == ground.MOTORWAY_CLASS
 
 
 def test_two_ways_meeting_on_land_are_not_a_span():
@@ -560,7 +572,10 @@ FAR3 = next(c for c in h3.grid_ring(A, 3))
 def test_two_major_road_dead_ends_near_each_other_are_one_crossing_over_an_islet():
     """Sprogo, the Great Belt's midpoint island, is not on the land mask and its
     road is not a bridge: the East and West Bridges each dead-end over "water",
-    3.2 km apart, and the crossing did not exist."""
+    3.2 km apart, and the crossing did not exist.
+
+    Mutation performed and reverted: landmass._rank ordering the motorway
+    class (6) by its number, below local roads -> RED."""
     a, far = h3.cell_to_latlng(A), h3.cell_to_latlng(FAR3)
     e1, e2 = _between(a, far, 0.45), _between(a, far, 0.55)      # the islet
     links = pl.DataFrame([_way(1, "motorway", [a, e1]), _way(2, "motorway", [e2, far])],

@@ -230,7 +230,9 @@ def mode_detail() -> dict[str, str]:
 
     def span(*classes: int) -> str:
         v = [kmh[c] for c in classes]
-        return f"{min(v) * lo:.0f}-{max(v) * hi:.0f} km/h"
+        if all(c in ground.INCOME_SCALED_CLASSES for c in classes):
+            return f"{min(v) * lo:.0f}-{max(v) * hi:.0f} km/h by country income"
+        return f"{min(v):.0f}-{max(v):.0f} km/h" if len(set(v)) > 1 else f"{v[0]:.0f} km/h"
     ends = (f" Every road journey also pays {ground.END_MINUTES:.0f} min at its two ends, "
             "fitted with the speeds.")
     return {
@@ -277,20 +279,24 @@ def mode_detail() -> dict[str, str]:
                  "published-figure default, and the expected wait for the next sailing "
                  "-- from the timetabled interval where OSM gives one, otherwise from a "
                  "headway fitted to eight published crossings.",
-        "highway": f"Motorways and expressways, fitted at {span(1)} by country income, "
+        # Two classes on one channel (emit/modes.ROAD_CHANNEL): a cell an
+        # OpenStreetMap motorway crosses, and GRIP4's other highways, which
+        # cannot tell an expressway from an old national road.
+        "highway": f"Motorways and expressways mapped in OpenStreetMap, fitted at "
+                   f"{span(ground.MOTORWAY_CLASS)}; other highways at {span(1)}. Both "
                    f"{in_cities}.{ends}",
         # sorted(): the table is ordered by road class, not by speed, so
         # classes 2 and 3 (57 and 50 km/h) printed "fitted at 57-50 km/h" --
         # a backwards range, shipped in index.json and read out in the page's
         # route tooltip beside an ascending "18-25".
-        "major road": f"Primary and secondary roads, fitted at {span(2, 3)} by country "
-                      f"income, {in_cities}.{ends}",
+        "major road": f"Primary and secondary roads, fitted at {span(2, 3)}, "
+                      f"{in_cities}.{ends}",
         # NOT "fitted at 18-25": class 4 (tertiary) is fitted, class 5 (local)
         # keeps a published-figure default because the fit drew 116 km across
         # four journeys -- graph/ground.py says so in as many words, and
         # CLAUDE.md requires each constant to say which it is. This sentence
         # ships into index.json and is read out in the page's route tooltip.
-        "minor road": f"Tertiary roads, fitted at {span(4)} by country income; local roads "
+        "minor road": f"Tertiary roads, fitted at {span(4)}; local roads "
                       f"at {kmh[5]:.0f} km/h, a published-figure default. Both {in_cities}.{ends}",
         # Class 0 was the last speed in this table with no provenance on it.
         # graph/ground.py keeps it as a published-figure default because the

@@ -8,21 +8,27 @@ import numpy as np
 from transport_maps import config
 from transport_maps.graph import refine, transfers
 from transport_maps.graph.nodes import NodeIndex
-from transport_maps.sources import countries, roads, urban
+from transport_maps.sources import countries, motorways, roads, urban
 
 logger = logging.getLogger(__name__)
 
 
-#: calibration.toml [ground] keys in GRIP4 class order, 0 roadless .. 5 local.
+#: calibration.toml [ground] keys in class order: GRIP4's 0 roadless .. 5
+#: local, then 6, a cell an OSM motorway crosses (MOTORWAY_CLASS).
 GROUND_KEYS = ("roadless_kmh", "highway_kmh", "primary_kmh", "secondary_kmh",
-               "tertiary_kmh", "local_kmh")
+               "tertiary_kmh", "local_kmh", "motorway_kmh")
+#: The class of a cell an OSM motorway or expressway crosses
+#: (sources/motorways.py), whatever GRIP4 graded it. GRIP4's own "highways"
+#: grade (class 1) cannot tell an expressway from an old national highway.
+MOTORWAY_CLASS = 6
 
 
 def load_ground_calibration(path=None) -> tuple[np.ndarray, float]:
-    """calibration.toml [ground] and [land_border]: the speed per GRIP4 road
-    class and the land-border crossing time, read once.
+    """calibration.toml [ground] and [land_border]: the speed per road class
+    (GRIP4's six, then MOTORWAY_CLASS) and the land-border crossing time,
+    read once.
 
-    The speed table is a mixture -- classes 1-4 FITTED against 2,998 Google
+    The speed table is a mixture -- classes 1-4 and 6 FITTED against Google
     Routes journeys, roadless (0) and local (5) published-figure defaults --
     and calibration.toml says which is which and why. It lived here as a
     literal until task B2 (2026-10-02), with the same values;
@@ -43,7 +49,8 @@ def load_ground_calibration(path=None) -> tuple[np.ndarray, float]:
     return speeds, float(raw["land_border"]["crossing_min"])
 
 
-# Index by GRIP road class: 0 = roadless, 1 = highway .. 5 = local road.
+# Index by road class: 0 = roadless, 1 = highway .. 5 = local road (GRIP4),
+# 6 = OSM motorway.
 # Provenance per class is in calibration.toml [ground]. Read ONCE, at import:
 # the land-border time used to be re-parsed from the file by every caller,
 # including the per-origin monotonicity gate, so an edit to calibration.toml
@@ -51,9 +58,11 @@ def load_ground_calibration(path=None) -> tuple[np.ndarray, float]:
 # weighted with (ARCH-8).
 SPEED_BY_ROAD_CLASS_KMH, LAND_BORDER_MIN = load_ground_calibration()
 
-#: Road classes an income multiplier scales (highway .. tertiary): the FITTED
-#: ones. Roadless is walking pace and local a published default.
-INCOME_SCALED_CLASSES = (1, 2, 3, 4)
+#: Road classes an income multiplier scales (highway .. tertiary, motorway):
+#: the FITTED ones. Roadless is walking pace and local a published default.
+#: The motorway class is scaled because that fitted better out of fold than
+#: one motorway speed everywhere (calibration.toml [ground]).
+INCOME_SCALED_CLASSES = (1, 2, 3, 4, 6)
 
 
 def load_road_model(path=None) -> tuple[np.ndarray, float]:
@@ -94,7 +103,7 @@ def _land_border_min() -> float:
     return LAND_BORDER_MIN
 
 
-def cell_class(idx: NodeIndex) -> np.ndarray:
+def grip_class(idx: NodeIndex) -> np.ndarray:
     """GRIP4 road class per cell. Computed on the base grid and carried down to
     the fine children: the rasters are 5 arc-minutes, coarser than either grid,
     so a child's class is its parent's, and the per-cell footprint pass over
@@ -102,6 +111,16 @@ def cell_class(idx: NodeIndex) -> np.ndarray:
     if len(getattr(idx, "base_cells", [])):
         return refine.expand(roads.cell_class(idx.base_cells), idx)
     return roads.cell_class(idx.cells)
+
+
+def cell_class(idx: NodeIndex) -> np.ndarray:
+    """Road class per cell: GRIP4's (`grip_class`), raised to MOTORWAY_CLASS
+    where an OSM motorway crosses the cell. Per index cell, fine children
+    included -- a motorway crosses a few of a split cell's children, not all
+    of them. The refinement itself (graph/nodes, refine.dense_mask) still
+    reads GRIP4 alone, so the cell universe does not move with it."""
+    cls = grip_class(idx)
+    return np.where(motorways.motorway_mask(idx), MOTORWAY_CLASS, cls)
 
 
 def built_up_mask(idx: NodeIndex) -> np.ndarray:

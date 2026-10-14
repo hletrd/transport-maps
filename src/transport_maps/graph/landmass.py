@@ -245,8 +245,14 @@ def shore_landings(fine_parts: dict[str, tuple[int, ...]], water: set[str],
 # water is charged what the model charges the same class of road on land.
 # Footways, cycleways, paths and the like are absent on purpose -- a walkway
 # across a strait is not a road, and charging it at road speed would be false.
+#
+# A motorway is the OSM motorway class, 6 (graph/ground.MOTORWAY_CLASS; a
+# literal here because graph/ground imports this module through graph/nodes,
+# and tests/graph/test_landmass.py holds the two equal). A trunk span stays
+# GRIP4's highway: the fixed-link parse keeps no maxspeed, so the motorway
+# rule (sources/motorways.RULE) cannot be asked of it.
 SPAN_ROAD_CLASS = {
-    "motorway": 1, "motorway_link": 1, "trunk": 1, "trunk_link": 1,
+    "motorway": 6, "motorway_link": 6, "trunk": 1, "trunk_link": 1,
     "primary": 2, "primary_link": 2,
     "secondary": 3, "secondary_link": 3,
     "tertiary": 4, "tertiary_link": 4,
@@ -267,6 +273,17 @@ MAX_SPAN_KM = 60.0
 # (Confederation Bridge). Only major roads (GRIP classes 1-3) are continued this
 # way, so a pier or a ferry ramp -- service roads -- never is.
 ISLET_MAX_CLASS = 3
+
+
+def _rank(cls: int) -> float:
+    """How minor a span class is: GRIP4's own order, 1 highway .. 5 local,
+    with the motorway class (6) above highway rather than below local."""
+    return 0.5 if cls == SPAN_ROAD_CLASS["motorway"] else float(cls)
+
+
+def _minor(a: int | None, b: int) -> int:
+    """The more minor of two span classes (`a` None for none yet)."""
+    return b if a is None or _rank(b) >= _rank(a) else a
 # Two such dead ends this close are the two halves of one crossing, joined by
 # the at-grade road across the islet: Sprogo's gap is 3.2 km, Peberholm's ~3.5.
 MAX_ISLET_KM = 5.0
@@ -365,14 +382,14 @@ def spanning_links(links: pl.DataFrame,
             prev = vertex(("n", round(la1, 7), round(lo1, 7)), la1, lo1)
             if s == 0 and ends:
                 end_at[prev] = (la1, lo1)
-                end_class[prev] = max(end_class.get(prev, 0), cls)
+                end_class[prev] = _minor(end_class.get(prev), cls)
             for k in range(1, n + 1):
                 t = k / n
                 if k == n:
                     here = vertex(("n", round(la2, 7), round(lo2, 7)), la2, lo2)
                     if s == len(lats) - 2 and ends:
                         end_at[here] = (la2, lo2)
-                        end_class[here] = max(end_class.get(here, 0), cls)
+                        end_class[here] = _minor(end_class.get(here), cls)
                 else:
                     # Keyed by row, not way id: one road way can give several
                     # stretches (sources/road_crossings), and their samples
@@ -437,7 +454,7 @@ def _continue_dead_ends(cell_of, bridge_degree, end_at, end_class, cell_index_at
     # kept for what it says rather than for anything a test can see.
     dead = [v for v, (la, lo) in end_at.items()
             if cell_of[v] is None and bridge_degree.get(v, 0) == 1
-            and end_class.get(v, 99) <= ISLET_MAX_CLASS]
+            and v in end_class and _rank(end_class[v]) <= ISLET_MAX_CLASS]
     for v in dead:
         la, lo = end_at[v]
         best = None
@@ -462,5 +479,5 @@ def _continue_dead_ends(cell_of, bridge_degree, end_at, end_class, cell_index_at
     for i, j in cKDTree(xyz).query_pairs(chord):
         a, b = dead[i], dead[j]
         km = _haversine_km(*end_at[a], *end_at[b])
-        speed = float(speed_kmh_by_class[max(end_class[a], end_class[b])])
+        speed = float(speed_kmh_by_class[_minor(end_class[a], end_class[b])])
         join(a, b, km, 60.0 * km / speed)

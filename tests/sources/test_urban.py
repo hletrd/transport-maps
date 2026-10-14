@@ -36,7 +36,7 @@ def test_an_urban_cell_is_slower_than_the_same_class_in_open_country():
     mask = ground.built_up_mask(idx)
     assert mask[0] and not mask[1]
     # London's cell holds a motorway, so without the factor it would be fastest.
-    fastest = ground.SPEED_BY_ROAD_CLASS_KMH[1] * ground.INCOME_SPEED_MULTIPLIER.max()
+    fastest = ground.SPEED_BY_ROAD_CLASS_KMH.max() * ground.INCOME_SPEED_MULTIPLIER.max()
     assert speeds[0] <= fastest / urban.URBAN_BUILT_UP_FACTOR + 1e-9
 
 
@@ -44,9 +44,9 @@ def test_an_urban_cell_is_slower_than_the_same_class_in_open_country():
 def test_the_factor_actually_divides():
     """London: a high-income cell inside the city's built-up radius."""
     idx = _idx([(51.5074, -0.1278)])
-    from transport_maps.sources import countries, roads
+    from transport_maps.sources import countries
 
-    cls = roads.cell_class(idx.cells)
+    cls = ground.cell_class(idx)          # GRIP4's, or the OSM motorway class
     raw = ground.SPEED_BY_ROAD_CLASS_KMH[cls][0]
     if cls[0] in ground.INCOME_SCALED_CLASSES:
         raw *= ground.INCOME_SPEED_MULTIPLIER[countries.INCOME_GROUPS.index("high")]
@@ -70,12 +70,10 @@ def test_roadless_terrain_is_never_slowed_by_traffic():
     Applying congestion to it produced 2.5 km/h -- below the table's own floor
     for the slowest terrain on Earth, which is how the range test caught it.
     """
-    from transport_maps.sources import roads
-
     # A roadless cell that nonetheless falls inside a city radius.
     idx = _idx([(51.5074, -0.1278), (-25.0, 132.0), (68.0, 100.0)])
     speeds = ground.cell_speed_kmh(idx)
-    cls = roads.cell_class(idx.cells)
+    cls = ground.cell_class(idx)
     for i, c in enumerate(cls):
         if c == 0:
             assert speeds[i] == ground.SPEED_BY_ROAD_CLASS_KMH[0], \

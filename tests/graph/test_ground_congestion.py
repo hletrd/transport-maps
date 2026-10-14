@@ -60,3 +60,27 @@ def test_roadless_terrain_is_never_slowed_by_traffic(monkeypatch):
     k = ground.SPEED_BY_ROAD_CLASS_KMH
     v = _speeds(monkeypatch, [0], [0.1], [1])
     assert v.tolist() == [k[0]]
+
+
+def test_an_osm_motorway_raises_a_cell_to_the_motorway_class(monkeypatch):
+    """GRIP4 grades an expressway like any national highway; a cell an OSM
+    motorway crosses is MOTORWAY_CLASS whatever GRIP4 said, even roadless,
+    and every other cell keeps its GRIP4 class.
+
+    Mutation performed and reverted: cell_class returning grip_class
+    alone -> RED."""
+    monkeypatch.setattr(ground, "grip_class", lambda idx: np.array([1, 0, 3, 5]))
+    monkeypatch.setattr(ground.motorways, "motorway_mask",
+                        lambda idx: np.array([True, True, False, False]))
+    cls = ground.cell_class(SimpleNamespace(cells=list("abcd"), base_cells=[]))
+    assert cls.tolist() == [ground.MOTORWAY_CLASS, ground.MOTORWAY_CLASS, 3, 5]
+
+
+def test_a_motorway_cell_runs_at_the_motorway_speed(monkeypatch):
+    """Its own fitted speed, income-scaled exactly when the fit chose that
+    (INCOME_SCALED_CLASSES), and slowed in a city like any road."""
+    k, m = ground.SPEED_BY_ROAD_CLASS_KMH, ground.INCOME_SPEED_MULTIPLIER
+    mw = ground.MOTORWAY_CLASS
+    scale = m[3] if mw in ground.INCOME_SCALED_CLASSES else 1.0
+    v = _speeds(monkeypatch, [mw, mw], [9.0, 0.1], [3, 3])
+    assert np.allclose(v, [k[mw] * scale, k[mw] * scale / urban.URBAN_BUILT_UP_FACTOR])
