@@ -55,7 +55,17 @@ right; the pairs above are the check, not the fit.
   flights round closed airspace on a taut res-3 corridor (HND-CDG 12 h 11 ->
   14 h 10 vs 14 h 30-14 h 40 westbound). Open: map lines stay great circles;
   one-stops under 15,400 km stay.
-- [ ] E4 + M4 roads (worktree)
+- [x] E4 + M4 roads: GRIP4 NoData kept apart from zero density; an all-NoData
+  cell takes the best class one grid cell out, else local inside the urban
+  mask; a cell touching a GeoNames town's built-up disc (4,200/km2,
+  Demographia 2023) gets at least local. 1,543 base cells move up; the six
+  origin cells go 0 -> 5. Refit on 750 resampled journeys (762 Google calls),
+  log error, 5-fold CV by town: highway/primary/secondary/tertiary
+  87.3/51.9/51.7/27.9 km/h, urban x1.6 within 20 km (was x2.0 within 40).
+  Minna->ABV 366 -> 201 min, Damietta->PSD 310 -> 120, LA->San Diego 232 ->
+  172 (Google 118), Sochi->AER 356 -> 70. Open: airport access now ~23% fast
+  at the median (spread better, bias worse); Tawau->TWU 256 min for 27 km.
+  cities15000 is now a build input (inputs check online before the build).
 - [x] E5 M3 rail (d879205, 3069650): relations with no `service` tag promoted to
   high_speed on >=50% high-speed track averaging >=200 km/h (every
   Shinkansen, THSR); high-speed track no relation runs over built as links
