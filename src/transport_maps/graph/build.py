@@ -16,17 +16,25 @@ logger = logging.getLogger(__name__)
 # Border time scales with the larger terminal of the pair.
 _SIZE_RANK = {"small": 0, "medium": 1, "large": 2}
 
-# The longest real nonstop flight is about 15,300 km (e.g. Singapore-New York
-# JFK), and no scheduled route beyond this distance is flown without a large
-# hub at one end -- small/medium equipment can't cover it. This catches
-# Wikidata P238 resolution errors that fabricate a route to the wrong tiny
-# airfield (e.g. Lasondre_Airport, which has no IATA code of its own,
-# resolving to LSE -- La Crosse Regional Airport, Wisconsin -- inventing an
-# Indonesia-to-Wisconsin route). It does NOT touch legitimate long-haul pairs
-# that Wikipedia lists as a single "route" even though they're flown with a
-# stop, e.g. SYD->LHR, PEK->GRU, NOU->CDG: those always have a large airport
-# at one or both ends.
+# No scheduled route beyond this distance is flown without a large hub at one
+# end -- small/medium equipment can't cover it. A backstop for resolution
+# errors that fabricate a route to the wrong tiny airfield; the cause is
+# handled where it arises (sources/routes.py, MISRESOLVED_KM), and on the
+# 2026-10-04 crawl this rejects nothing.
 IMPLAUSIBLE_LONGHAUL_KM = 8000.0
+
+# PUBLISHED FIGURE: the longest scheduled nonstop, Singapore-New York JFK, is
+# 15,349 km on the great circle (Singapore Airlines flights 23/24, Wikipedia,
+# checked 2026-10-14). A route listed farther than that is a one-stop that
+# keeps its flight number -- QF1 and BA15 list Sydney at Heathrow, both via
+# Singapore -- and flown as a nonstop it reached Sydney 2.5-3 h too fast
+# (audit, 2026-10-14). Left out, the city pair connects through a real stop.
+# The margin is for airport coordinates: JFK-SIN reads 15,341 km here, and
+# the nearest listed pair above the cap, SYD-YYZ, 15,555 km. Nine routes are
+# over it: EZE-PVG, GRU-PEK, LHR-SYD, CDG-SYD, CDG-NOU, JFK-SYD, ORY-PPT,
+# CDG-PPT, SYD-YYZ. One-stops shorter than any nonstop (IST-SYD, 14,973 km,
+# via Kuala Lumpur) cannot be told from a nonstop by distance and stay.
+MAX_NONSTOP_KM = 15_400.0
 
 # A route pair naming an airport that never made it into the node index (see
 # nodes.MAX_DROPPED_AIRPORT_FRACTION) cannot become an edge. 124 of 68,152
@@ -40,7 +48,10 @@ MAX_UNKNOWN_PAIR_FRACTION = 0.02
 
 
 def is_geographically_plausible(distance_km: float, size1: str, size2: str) -> bool:
-    """Reject ultra-long-haul pairs where neither endpoint is a large airport."""
+    """Reject pairs longer than any nonstop (MAX_NONSTOP_KM), and ultra-long-
+    haul pairs where neither endpoint is a large airport."""
+    if distance_km > MAX_NONSTOP_KM:
+        return False
     if distance_km <= IMPLAUSIBLE_LONGHAUL_KM:
         return True
     return size1 == "large" or size2 == "large"
@@ -153,8 +164,9 @@ def _air_edges(
     if rejected:
         detail = ", ".join(f"{s}->{d} ({km:.0f} km)" for s, d, km in rejected)
         logger.warning(
-            "rejected %d geographically implausible route(s) (>%.0f km, neither endpoint large): %s",
-            len(rejected), IMPLAUSIBLE_LONGHAUL_KM, detail,
+            "rejected %d geographically implausible route(s) (>%.0f km, longer than any "
+            "nonstop; or >%.0f km with neither endpoint large): %s",
+            len(rejected), MAX_NONSTOP_KM, IMPLAUSIBLE_LONGHAUL_KM, detail,
         )
     if rejected_out is not None:
         rejected_out.extend(rejected)

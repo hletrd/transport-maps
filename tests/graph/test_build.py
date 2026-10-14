@@ -95,21 +95,32 @@ def test_implausible_longhaul_pair_between_small_airports_is_rejected():
 
 
 def test_implausible_longhaul_pair_with_a_large_airport_is_kept():
-    # Same distance, but a large airport at one end: real long-haul routes
-    # like SYD->LHR look exactly like this and must not be rejected.
+    # Same distance, but a large airport at one end: real long-haul nonstops
+    # like Perth-London (14,508 km) look exactly like this.
     assert build.is_geographically_plausible(14000.0, "large", "medium")
 
 
+def test_a_route_longer_than_any_nonstop_is_a_one_stop_and_is_left_out():
+    """QF1 and BA15 list Sydney at Heathrow and fly via Singapore; flown as a
+    17,021 km nonstop, Sydney-London was 2.5-3 h too fast (audit, 2026-10-14).
+    The longest real nonstop, JFK-SIN, reads 15,341 km and must stay.
+
+    Mutation performed and reverted: drop the MAX_NONSTOP_KM test -> RED."""
+    assert not build.is_geographically_plausible(17021.0, "large", "large")
+    assert not build.is_geographically_plausible(15555.0, "large", "large")   # SYD-YYZ
+    assert build.is_geographically_plausible(15341.0, "large", "large")       # JFK-SIN
+
+
 def test_geographic_plausibility_guard_rejects_a_small_but_nonzero_count(rejected_air_pairs):
-    # Pinned against the live route network: exactly 6 directed pairs today
-    # (all via a Wikidata P238 resolution error routing through LSE, IWA, or
-    # AZA -- see build.is_geographically_plausible). This count is expected to
-    # drift when the route network is refreshed, so the bound below is loose
-    # on purpose rather than pinned to 6. Investigate before assuming a new
-    # count is fine: 0 means the guard silently stopped rejecting anything
-    # (e.g. a broken size lookup), and a jump into the hundreds means it
-    # started over-rejecting real long-haul routes.
-    assert 1 <= len(rejected_air_pairs) <= 20
+    # Pinned against the live route network. On the 2026-10-04 crawl: 18
+    # directed pairs, the nine routes listed beyond the longest nonstop
+    # (build.MAX_NONSTOP_KM), and none of the resolution errors this guard was
+    # first written for (LSE, IWA, AZA), which sources/routes.py now leaves
+    # out. Loose on purpose; investigate before assuming a new count is fine:
+    # 0 means the guard silently stopped rejecting anything (e.g. a broken
+    # size lookup), and a jump into the hundreds means it started
+    # over-rejecting real long-haul routes.
+    assert 1 <= len(rejected_air_pairs) <= 40
 
 
 @pytest.fixture(scope="module")
