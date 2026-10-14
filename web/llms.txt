@@ -80,9 +80,9 @@ whose index.json carries no `readingRes` has no such files, and the page falls
 back to the resolution-4 array and says so under the number. In refined areas
 the paint is still finer than the reading: where the solver split a cell the
 map draws its seven resolution-7 children, and the reading is the value of the
-CENTRE child -- not an average over the seven. That is the same "what a pointer
-at this spot means" rule the resolution-4 tier uses, so the two tiers cannot
-disagree about which child speaks for a cell.
+FASTEST child -- not an average over the seven -- which is the colour the map
+paints the cell in at medium zoom. Zoomed in further, where the children are
+drawn one by one, the page asks the solver for the child under the pointer.
 
 ## Known limits
 

@@ -1571,10 +1571,10 @@ async function solveMap(from, signal) {
 // At zoom 7 and above the band tiles draw the solver's own cells -- res 7
 // where the build split a base cell, res 6 elsewhere -- and from zoom 3 to 6
 // they draw res-6 cells, a split one coloured by its FASTEST child
-// (contour/bands.py, LODS). The reading tier holds every res-6 cell's CENTRE
-// child. So over a split base cell the hover printed one cell's time inside a
-// ring around seven others, and the ring was the wrong size at zoom 7: the
-// hexagon the owner saw "grow and shrink". The service answers a res-3 block
+// (contour/bands.py, LODS). The reading tier held every res-6 cell's CENTRE
+// child (its fastest since rebuild 30). So over a split base cell the hover
+// printed one cell's time inside a ring around seven others, and the ring was
+// the wrong size at zoom 7: the hexagon the owner saw "grow and shrink". The service answers a res-3 block
 // of the cells themselves from a charted city's own tree, and the hover reads
 // the one under the pointer. Same arming, codes, timeout and never-throw
 // contract as solveMap.

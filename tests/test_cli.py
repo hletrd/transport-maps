@@ -238,7 +238,7 @@ def _stub_pipeline(monkeypatch, written, coverages):
     monkeypatch.setattr(cli.hover, "representative_array", lambda groups, minutes: np.zeros(1, np.int64))
     monkeypatch.setattr(cli.itinerary, "arrival_airport_per_node", lambda idx, m, p: np.full(1, -1))
     monkeypatch.setattr(cli.modes, "mode_minutes_per_node", lambda idx, m, p, **kw: np.zeros((1, 6)))
-    monkeypatch.setattr(cli.override, "write_override", lambda *a: _fake_write(a[-1]))
+    monkeypatch.setattr(cli.override, "write_override", lambda *a, **k: _fake_write(a[-1]))
     monkeypatch.setattr(
         cli.routes_json, "write_routes", lambda idx, minutes, pred, out: _fake_write(out)
     )

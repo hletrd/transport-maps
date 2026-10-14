@@ -415,15 +415,18 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
                                       ferry_keys=shared.get("ferry_keys"))
 
     hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin", parents=parents, rep=rep)
+    # The node each reading slot shows -- a split cell's fastest child, as the
+    # tiles paint it -- shared by the reading tier and the route behind it.
+    reading_src = hover.reading_source(idx, shared["reading"], minutes[: idx.n_cells])
     hover.write_reading(idx, minutes[: idx.n_cells], out / f"{slug}.r6.bin",
-                        layout=shared["reading"])
+                        layout=shared["reading"], source=reading_src)
     # The route behind the fine reading wherever it differs from the coarse
     # cell's. A variant needs both as much as the full set: without them it
     # read the ~20 km area's representative, and with ferries avoided printed
     # Tinian at Saipan's 7 h 38 -- faster than the full map's 9 h 32, which no
     # map with fewer modes can be.
     override.write_override(idx, last, acc, rep_arr, shared["base_hover"],
-                            shared["reading"], out / f"{slug}.over.bin")
+                            shared["reading"], out / f"{slug}.over.bin", source=reading_src)
     routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
     itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin",
                               parents=parents, rep=rep, last=last)

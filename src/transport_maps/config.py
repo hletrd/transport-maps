@@ -30,12 +30,12 @@ HOVER_RES = 4
 # (measured, plan/deferred.md AA6).
 #
 # Where graph/refine.py split a cell the band is painted at FINE_RES, which is
-# still finer than this: the reading is then the value of the cell's CENTRE
-# sub-cell, which is what emit/hover.py::reading_layout computes
-# (h3.cell_to_center_child). It is NOT an average over the seven -- three
-# places used to say it was. The centre child is the same rule tier A uses, so
-# the two tiers cannot disagree about which child speaks for a cell. The page
-# says so rather than claiming an agreement that does not hold.
+# still finer than this: the reading is then the value of the cell's FASTEST
+# sub-cell (emit/hover.py::reading_source), the one the tiles paint the cell
+# in at zoom 3-6. It is NOT an average over the seven -- three places used to
+# say it was -- and since rebuild 30 not the centre child either: that printed
+# a time the colour under it did not show, and a city behind a ferry wait
+# where its centre child was water (Iloilo, 59 min against 0-11).
 READING_RES = SOLVE_RES
 # The readings ship as fixed-width blocks keyed by their res-3 parent, so the
 # slot within a block is arithmetic and NO per-origin cell-id list is needed:

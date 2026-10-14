@@ -283,7 +283,11 @@ def test_the_refusal_would_have_caught_the_collision_it_exists_for():
 
 
 def test_nothing_the_site_ships_claims_the_reading_averages_its_sub_cells():
-    """`reading_layout` takes the CENTRE child, and three documents said average.
+    """No document may say the reading averages the seven children.
+
+    Since rebuild 30 a split cell's slot takes its FASTEST child per origin
+    (`reading_source`); `reading_layout` still names the centre child as the
+    origin-independent default, which is what this guard reads.
 
     `emit/hover.py` resolves a split base cell to
     `h3.cell_to_center_child(...)` -- one value, not a mean of seven. The page,
@@ -323,5 +327,47 @@ def test_nothing_the_site_ships_claims_the_reading_averages_its_sub_cells():
             if "reading" in low or "sub-cell" in low or "children" in low:
                 bad.append(f"{rel}:{n}: {line.strip()}")
     assert not bad, (
-        "the reading is the centre child's value, and these lines say it is an "
+        "the reading is one child's value, and these lines say it is an "
         "average over the seven:\n  " + "\n  ".join(bad))
+
+
+_CENTRE = h3.cell_to_center_child(SEOUL, config.FINE_RES)
+_LAND_KIDS = [k for k in sorted(h3.cell_to_children(SEOUL, config.FINE_RES)) if k != _CENTRE]
+
+
+class SplitIndex:
+    """Seoul's res-6 cell split into its seven res-7 children, the centre one
+    missing (water), beside Tokyo's unsplit cell."""
+
+    base_cells: ClassVar[list[str]] = sorted([SEOUL, TOKYO])
+    cells: ClassVar[list[str]] = [TOKYO, *_LAND_KIDS]
+    base_index: ClassVar[np.ndarray] = np.array(
+        [base_cells.index(TOKYO)] + [base_cells.index(SEOUL)] * 6, dtype=np.int64)
+    fine: ClassVar[np.ndarray] = np.array([False] + [True] * 6)
+    n_cells = 7
+
+    def try_cell_index(self, cell):
+        return self.cells.index(cell) if cell in self.cells else None
+
+
+def test_a_split_cell_reads_its_fastest_child_even_with_its_centre_at_sea(tmp_path):
+    """Iloilo read 59 min at its own cell: the centre child was a water cell
+    behind a ferry-landing edge, its land children 0-11 min. The slot takes
+    the fastest child -- the band the tiles paint the cell in -- and reads it
+    where the centre child is no node at all (it used to be padding, "no
+    route", with its siblings reached).
+
+    Mutation performed and reverted: `write_reading` ignores `reading_source`
+    (reads `layout.source`) -> RED (65535, the padding).
+    """
+    idx = SplitIndex()
+    layout = hover.reading_layout(idx)
+    minutes = np.array([300.0, 40.0, 25.0, 61.0, 7.5, np.inf, 90.0])
+    out = tmp_path / "x.r6.bin"
+    hover.write_reading(idx, minutes, out, layout=layout)
+    arr = np.fromfile(out, dtype="<u2")
+    seoul_slot = layout.dest[idx.base_cells.index(SEOUL)]
+    tokyo_slot = layout.dest[idx.base_cells.index(TOKYO)]
+    assert arr[seoul_slot] == 7 and arr[tokyo_slot] == 300
+    src = hover.reading_source(idx, layout, minutes)
+    assert idx.cells[src[idx.base_cells.index(SEOUL)]] == idx.cells[4]

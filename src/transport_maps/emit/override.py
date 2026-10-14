@@ -33,16 +33,18 @@ ENTRY_BYTES = 4 + 2 + 2 * len(CHANNELS)
 
 
 def override_entries(idx, last: np.ndarray, acc: np.ndarray, rep: np.ndarray,
-                     base_hover: np.ndarray, layout) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                     base_hover: np.ndarray, layout,
+                     source: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(slots, airport ordinals, mode minutes) for the cells to override.
 
     `last` is itinerary.arrival_airport_per_node, `acc` modes.mode_minutes_per_node,
     `rep` hover.representative_array (a node per hover parent), `base_hover` the
-    hover parent of each base cell, `layout` hover.reading_layout -- whose
-    `source` is the node each reading slot shows, so the override describes
-    the journey behind the very number printed there.
+    hover parent of each base cell, `layout` hover.reading_layout, `source`
+    hover.reading_source for this origin -- the node each reading slot
+    shows, so the override describes the journey behind the very number
+    printed there. Without it, `layout.source`.
     """
-    src = layout.source
+    src = layout.source if source is None else source
     rep_node = rep[base_hover]
     ok = (src >= 0) & (rep_node >= 0)
     own = np.where(ok, last[np.where(ok, src, 0)], -1)
@@ -58,8 +60,9 @@ def override_entries(idx, last: np.ndarray, acc: np.ndarray, rep: np.ndarray,
     return slots, airport, minutes
 
 
-def write_override(idx, last, acc, rep, base_hover, layout, out: Path) -> int:
-    slots, airport, minutes = override_entries(idx, last, acc, rep, base_hover, layout)
+def write_override(idx, last, acc, rep, base_hover, layout, out: Path,
+                   source: np.ndarray | None = None) -> int:
+    slots, airport, minutes = override_entries(idx, last, acc, rep, base_hover, layout, source)
     _io.write_bytes(out, slots.astype("<u4").tobytes() + airport.astype("<u2").tobytes()
                     + minutes.astype("<u2").tobytes())
     return len(slots)

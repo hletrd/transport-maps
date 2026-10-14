@@ -232,7 +232,9 @@ class ReadingLayout:
     #: array -- block * READING_SLOTS + slot.
     dest: np.ndarray
     #: For every position in `idx.base_cells`, the position in `idx.cells`
-    #: whose minutes it takes, or -1 where the grid has none.
+    #: whose minutes it takes, or -1 where the grid has none: the cell itself,
+    #: or a split cell's centre child. Per origin, `reading_source` replaces
+    #: each split cell's entry with its fastest child.
     source: np.ndarray
 
     @property
@@ -306,13 +308,46 @@ def reading_layout(idx) -> ReadingLayout:
         parents=[h3.int_to_str(int(v)) for v in parent_ids], dest=dest, source=source)
 
 
+def reading_source(idx, layout: ReadingLayout, cell_minutes: np.ndarray) -> np.ndarray:
+    """`layout.source` for one origin: where graph/refine.py split a base cell,
+    the slot takes its FASTEST child (ties to the lowest node position), not
+    its centre child.
+
+    The tiles paint a split cell at zoom 3-6 in its fastest child's band
+    (contour/bands.py, `base_minutes` by np.minimum.at), so the centre child
+    printed a number the colour under it did not show -- and where the centre
+    child was a water cell joined by a single ferry-landing edge it made a
+    city wait for the ferry: Iloilo's own cell read 59 min against 0-11 for
+    its land children, and 9,900 split cells' centre child ran over 30 min
+    behind their fastest (audit of 2026-10-14). Where the centre child is no
+    node at all, the slot used to be padding -- "no route" -- while its
+    siblings were reached; it now reads them.
+    """
+    fine = np.asarray(getattr(idx, "fine", np.zeros(0, dtype=bool)), dtype=bool)
+    if not fine.any():
+        return layout.source
+    pos = np.flatnonzero(fine)
+    base = np.asarray(idx.base_index)[pos]
+    m = np.asarray(cell_minutes[pos], dtype=np.float64)
+    order = np.lexsort((pos, m, base))
+    head = np.r_[True, base[order][1:] != base[order][:-1]]
+    first = order[head]
+    source = layout.source.copy()
+    source[base[first]] = pos[first]
+    return source
+
+
 def write_reading(idx, cell_minutes: np.ndarray, out: Path,
-                  layout: ReadingLayout | None = None) -> None:
-    """The res-`READING_RES` block array for one origin."""
+                  layout: ReadingLayout | None = None,
+                  source: np.ndarray | None = None) -> None:
+    """The res-`READING_RES` block array for one origin. `source` is
+    `reading_source` for these minutes, computed here when not given."""
     layout = layout or reading_layout(idx)
-    values = np.full(len(layout.source), np.inf, dtype=np.float64)
-    has = layout.source >= 0
-    values[has] = cell_minutes[layout.source[has]]
+    if source is None:
+        source = reading_source(idx, layout, cell_minutes)
+    values = np.full(len(source), np.inf, dtype=np.float64)
+    has = source >= 0
+    values[has] = cell_minutes[source[has]]
 
     # Padding -- pentagon holes, and the res-6 cells inside a land-touching
     # res-3 parent that are not land -- keeps the fill rather than a time.
