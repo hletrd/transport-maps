@@ -64,6 +64,7 @@ import collections
 import hashlib
 import itertools
 import json
+import math
 import os
 import re
 import time
@@ -179,6 +180,78 @@ _TOKEN_RE = re.compile("|".join(f"(?P<{name}>{rx.pattern})" for name, rx in (
 # this pipeline have twice produced a network that "built successfully"
 # while missing it.
 _SANITY_PAIRS: tuple[tuple[str, str], ...] = (("ICN", "NRT"),)
+
+# A destination link names an article; Wikidata's IATA property turns the
+# article into a code, and nothing checked that the code's airport is the one
+# the article is about. Two small Indonesian strips with no IATA code of their
+# own resolved to codes OurAirports gives to La Crosse, Wisconsin (Lasondre
+# -> LSE) and Sokoto, Nigeria (Seko -> SKO): Susi Air's island hops became
+# PDG-LSE (15,089 km) and TRT-SKO (12,764 km), and 159 origins reached cells
+# through them (audit, 2026-10-14). OurAirports links airports to their
+# articles too, so where it names ANOTHER airport for the linked title, a
+# listing is taken to mean that airport -- and left out, because its code is
+# not the one resolved -- when the two are this far apart and the named one is
+# the nearer to the listing airport. Both conditions: OurAirports' link can be
+# the wrong one of two same-named airports (Gladstone_Airport is a Manitoba
+# strip there, while Brisbane's listing means Gladstone, Queensland), and a
+# renamed or replaced airport sits close to its successor (Mbeya, 21 km from
+# Songwe). Measured on the 2026-10-04 crawl: five listings left out, all wrong
+# -- the two above, Ambon's John Becker (Kisar) read as KSX in Papua New
+# Guinea, and Pucallpa's Bolognesi read as Bellavista's BLP.
+MISRESOLVED_KM = 300.0
+
+
+def _km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Great-circle distance, haversine on a 6,371 km sphere."""
+    la1, lo1, la2, lo2 = map(math.radians, (*a, *b))
+    h = (math.sin((la2 - la1) / 2) ** 2
+         + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2)
+    return 2 * 6371.0 * math.asin(math.sqrt(h))
+
+
+def _article_title(link: str | None) -> str | None:
+    """The article a Wikipedia URL names, as listings link it, or None."""
+    if not link or "/wiki/" not in link:
+        return None
+    return urllib.parse.unquote(link.split("/wiki/")[-1].split("#")[0]).replace(" ", "_")
+
+
+class TitleCheck(NamedTuple):
+    """What MISRESOLVED_KM is judged on: every OurAirports row's position by
+    the article it links (case-folded), and each network airport's position."""
+
+    named: dict[str, list[tuple[float, float]]]
+    position: dict[str, tuple[float, float]]
+
+    def names_another_airport(self, src: str, title: str, dest: str) -> bool:
+        rows = self.named.get(title.casefold())
+        if not rows or src not in self.position or dest not in self.position:
+            return False
+        s, x = self.position[src], self.position[dest]
+        r = min(rows, key=lambda p: _km(p, x))
+        return _km(r, x) > MISRESOLVED_KM and _km(s, r) < _km(s, x)
+
+    def digest(self) -> str:
+        return hashlib.sha256(json.dumps(
+            [MISRESOLVED_KM, sorted(self.named.items()), sorted(self.position.items())]
+        ).encode()).hexdigest()
+
+
+def _title_check(raw: pl.DataFrame, apts: pl.DataFrame) -> TitleCheck:
+    """The check from the OurAirports CSV and the airport table. A table
+    without positions (a test's stub) makes a check that leaves nothing out;
+    the real table always has them (airports.REQUIRED_SOURCE_COLUMNS)."""
+    named: dict[str, list[tuple[float, float]]] = collections.defaultdict(list)
+    if {"wikipedia_link", "latitude_deg", "longitude_deg"} <= set(raw.columns):
+        for link, lat, lon in zip(raw["wikipedia_link"], raw["latitude_deg"],
+                                  raw["longitude_deg"]):
+            title = _article_title(link)
+            if title and lat is not None and lon is not None:
+                named[title.casefold()].append((float(lat), float(lon)))
+    position = ({i: (float(la), float(lo))
+                 for i, la, lo in zip(apts["iata"], apts["lat"], apts["lon"])}
+                if {"lat", "lon"} <= set(apts.columns) else {})
+    return TitleCheck(dict(named), position)
 
 
 class Listing(NamedTuple):
@@ -655,7 +728,7 @@ def _crawl_digest(destinations: dict[str, list[Listing] | None],
 
 
 def _network_cache_path(iatas: list[str], titles_by_iata: dict[str, str], crawl: str,
-                        day: date):
+                        day: date, checks: str = ""):
     """Stamped with everything that shapes the pair set: the parser and the
     resolver, the sanity pairs, and the inputs -- the airports a pair may
     join, the article crawled for each, what those articles said (`crawl`,
@@ -666,14 +739,16 @@ def _network_cache_path(iatas: list[str], titles_by_iata: dict[str, str], crawl:
     The inputs are hashed whole. The airport table's stamped name, which this
     used to carry instead, records the rules the table was built under but not
     the OurAirports download it was built from, and says nothing about the
-    article links. The bare routes.parquet before that was keyed on
+    article links. `checks` is the TitleCheck's digest: the airports
+    OurAirports names for each title decide which listings are left out. The
+    bare routes.parquet before that was keyed on
     `.exists()` and is no longer read at all (CR13-3). The crawl's content
     joined the key with G2: once articles are refetched, the same airports and
     links can carry different destinations, and a key without them would read
     back the network the old articles made."""
     stamp = _params_hash(_parser_key(), wikidata.RESOLVER_VERSION, _SANITY_PAIRS,
                          sorted(iatas), sorted(titles_by_iata.items()), crawl,
-                         day.isoformat())
+                         day.isoformat(), checks)
     return config.BUILD / f"routes_{stamp}.parquet"
 
 
@@ -689,6 +764,7 @@ def route_network() -> pl.DataFrame:
     apts = airports.scheduled_airports()
     valid = set(apts["iata"].to_list())
     titles_by_iata = _wikipedia_titles(apts)
+    check = _title_check(pl.read_csv(airports._download(), infer_schema_length=10_000), apts)
 
     destinations, unresolved = _crawl_destinations(titles_by_iata)
     _refuse_partial(
@@ -706,7 +782,7 @@ def route_network() -> pl.DataFrame:
 
     day = service_date()
     out = _network_cache_path(sorted(valid), titles_by_iata,
-                              _crawl_digest(destinations, resolved), day)
+                              _crawl_digest(destinations, resolved), day, check.digest())
     if out.exists():
         return pl.read_parquet(out)
     legacy = config.BUILD / "routes.parquet"
@@ -718,7 +794,7 @@ def route_network() -> pl.DataFrame:
         print(f"routes: ignoring legacy {legacy.name}, whose inputs are unknown; "
               f"building {out.name}", flush=True)
 
-    pairs, left_out, disputed = _year_round_pairs(destinations, resolved, valid, day)
+    pairs, left_out, disputed = _year_round_pairs(destinations, resolved, valid, day, check)
     print(f"routes: {len(pairs)} directed pairs of year-round scheduled service on {day}; "
           "listings left out: "
           + (", ".join(f"{n} {why}" for why, n in left_out.most_common()) or "none")
@@ -743,6 +819,7 @@ def route_network() -> pl.DataFrame:
 
 def _year_round_pairs(destinations: dict[str, list[Listing] | None],
                       resolved: dict[str, str], valid: set[str], day: date,
+                      check: TitleCheck | None = None,
                       ) -> tuple[set[tuple[str, str]], collections.Counter[str], int]:
     """Directed pairs with year-round scheduled service on `day`, the count of
     listings left out by reason (`_left_out`), and how many pairs some listing
@@ -755,6 +832,10 @@ def _year_round_pairs(destinations: dict[str, list[Listing] | None],
     either article, says so; the pair is kept if any airline's does. A pair
     one article omits is decided by the other alone. Service is bidirectional,
     so a kept pair is kept both ways.
+
+    A listing whose title OurAirports gives to another airport (`check`,
+    MISRESOLVED_KM) is left out before any of that, counted as "names another
+    airport".
     """
     by_pair: dict[tuple[str, str], dict[str, bool]] = {}
     listed_year_round: set[tuple[str, str]] = set()
@@ -763,6 +844,9 @@ def _year_round_pairs(destinations: dict[str, list[Listing] | None],
         for listing in listings or ():
             dest_iata = resolved.get(listing.title)
             if not (dest_iata and dest_iata in valid and dest_iata != iata):
+                continue
+            if check is not None and check.names_another_airport(iata, listing.title, dest_iata):
+                left_out["names another airport"] += 1
                 continue
             pair = (min(iata, dest_iata), max(iata, dest_iata))
             reason = _left_out(listing, day)

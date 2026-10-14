@@ -911,3 +911,33 @@ def test_the_service_date_is_recorded_for_the_build_identity(tmp_path, monkeypat
                         lambda client, titles: _fresh_wikitext(titles))
     routes._crawl_destinations({"AAA": "A"})
     assert _fetch.used()["wikipedia:airline-destinations"]["serviceDate"] == "2026-10-04"
+
+
+# Positions from OurAirports (rounded): the network airports, and the rows
+# OurAirports links to each title.
+_POS = {"FLZ": (1.556, 98.889), "LSE": (43.879, -91.257), "BNE": (-27.384, 153.117),
+        "GLT": (-23.870, 151.225), "DAR": (-6.878, 39.203), "MBI": (-8.920, 33.274)}
+_NAMED = {"lasondre_airport": [(-0.019, 98.301)],          # Nias, no IATA code of its own
+          "gladstone_airport": [(50.164, -98.942)],         # a Manitoba strip, CJR5
+          "mbeya_airport": [(-8.919, 33.464)]}              # replaced by Songwe (MBI), 21 km
+
+
+def test_a_title_naming_another_airport_is_not_read_as_the_code_it_resolved_to():
+    """Lasondre (Nias) resolved to LSE, La Crosse, and Susi Air's hop from
+    Sibolga became a 14,863 km flight (audit, 2026-10-14). A title OurAirports
+    gives to another airport is left out -- but not when that airport is the
+    FARTHER one from the listing (Gladstone: OurAirports links the bare title
+    to Manitoba; Brisbane means Queensland) nor when it is near the code's
+    (Mbeya and its successor Songwe).
+
+    Mutations performed and reverted, each RED: drop the MISRESOLVED_KM test
+    (Mbeya left out); drop the nearer-to-the-listing test (Gladstone left out).
+    """
+    check = routes.TitleCheck(_NAMED, _POS)
+    destinations = {"FLZ": [L("Lasondre_Airport", airline="Susi_Air")],
+                    "BNE": [L("Gladstone_Airport", airline="QantasLink")],
+                    "DAR": [L("Mbeya_Airport", airline="Air_Tanzania")]}
+    resolved = {"Lasondre_Airport": "LSE", "Gladstone_Airport": "GLT", "Mbeya_Airport": "MBI"}
+    pairs, left_out, _ = routes._year_round_pairs(destinations, resolved, set(_POS), DAY, check)
+    assert {tuple(sorted(p)) for p in pairs} == {("BNE", "GLT"), ("DAR", "MBI")}
+    assert left_out["names another airport"] == 1
