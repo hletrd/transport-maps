@@ -130,3 +130,15 @@ Alexandria 171 -> 252 (151), Delhi->Agra 262 -> 283 (204) -- expressways
 GRIP4 grades like any national highway, in lower-middle-income countries;
 a highway-only income multiplier fitted no better. Open: that, US
 interstates still ~30% slow, metro airport runs still ~25% fast.
+
+## Rebuild 30 result and rebuild 31 start (2026-10-15)
+
+Rebuild 30 finished 2026-10-14 23:54, all four maps exit 0, check_variants 0
+faster cells. Own-cell minutes: Beira 63 -> 10, Zanzibar 62 -> 9, Iloilo
+out of the top; median 0 (Kota Kinabalu's coordinate sits on a non-land
+res-6 slot, as before, and the page reads its res-4 cell). NOT deployed: its
+road constants run metro driving and airport access too fast (out of fold
+airport access 50% fast), which every flown journey pays. Rebuild 31 started
+2026-10-15 from b3f62d2 with the stratified, traffic-aware road refit; the
+OSM motorway class (Cairo->Alexandria, Delhi->Agra, US interstates) follows
+in the next build.
