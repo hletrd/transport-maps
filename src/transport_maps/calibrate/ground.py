@@ -84,6 +84,45 @@ def drive_minutes(client: httpx.Client, budget: RequestBudget,
     return float(routes[0]["duration"].rstrip("s")) / 60.0
 
 
+def weekday_morning_utc(lon: float, today=None) -> str:
+    """RFC 3339 UTC for 10:00 local SOLAR time (longitude / 15 h) on the next
+    Tuesday at least two days out. Routes prices a future departure on typical
+    traffic for that hour; solar time is within an hour of civil time almost
+    everywhere, and 10:00 sits in the daytime plateau either side of it."""
+    from datetime import UTC, datetime, timedelta
+
+    today = today or datetime.now(UTC).date()
+    day = today + timedelta(days=2)
+    day += timedelta(days=(1 - day.weekday()) % 7)            # Tuesday
+    local = datetime(day.year, day.month, day.day, 10, 0, tzinfo=UTC)
+    return (local - timedelta(hours=lon / 15.0)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def drive_times(client: httpx.Client, budget: RequestBudget, a: tuple[float, float],
+                b: tuple[float, float], depart_utc: str) -> tuple[float, float] | None:
+    """(typical-traffic minutes, free-flow minutes) between two points for a
+    departure at `depart_utc`, from ONE call: TRAFFIC_AWARE returns both
+    `duration` and `staticDuration`. None where Google has no route."""
+    budget.take()
+    body = {
+        "origin": {"location": {"latLng": {"latitude": a[0], "longitude": a[1]}}},
+        "destination": {"location": {"latLng": {"latitude": b[0], "longitude": b[1]}}},
+        "travelMode": "DRIVE",
+        "routingPreference": "TRAFFIC_AWARE",
+        "departureTime": depart_utc,
+    }
+    r = client.post(ENDPOINT, json=body, headers={
+        "X-Goog-Api-Key": api_key(),
+        "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters",
+    }, timeout=TIMEOUT_S)
+    r.raise_for_status()
+    routes = r.json().get("routes")
+    if not routes:
+        return None
+    sec = lambda v: float(str(v).rstrip("s")) / 60.0          # noqa: E731
+    return sec(routes[0]["duration"]), sec(routes[0].get("staticDuration", routes[0]["duration"]))
+
+
 # A class needs this much sampled distance and this many journeys before its
 # fitted speed means anything. Without the guard the first real run returned
 # 58 km/h for ROADLESS terrain, from 103 km across 6 journeys -- a number that
@@ -231,3 +270,163 @@ def predict(km: np.ndarray, speeds: np.ndarray, radius_km: float, groups: np.nda
             factors: np.ndarray) -> np.ndarray:
     """Predicted minutes per journey."""
     return (design(km, radius_km, groups, factors) / speeds[None, :]).sum(axis=1) * 60.0
+
+
+# --- the structured model (rebuild 31) -----------------------------------------
+#
+# Two things one set of class speeds and one flat penalty could not say, both
+# measured on ground_samples3.json and on the 2026-10-14 audit's pairs:
+#
+# * Free-flow speed depends on the country. Out of fold the rebuild-30 fit was
+#   23% too slow on North American town journeys (median observed/predicted
+#   0.81) and 6% too fast in Asia (1.06); by income group 0.85 (high) against
+#   1.24 (low). A multiplier per World Bank income group (sources/countries
+#   INCOME_GROUPS) carries it.
+# * A built-up area's extent scales with its city. Twenty kilometres from any
+#   city of 200,000 covered all of a town and none of the outer half of
+#   London: the London -> LHR path ran 22 km of highway-graded cells at
+#   54.6 km/h (23 min against Google's 45 free-flow). The penalty here is by
+#   distance in the city's own built-up radius (sources/urban.
+#   scaled_city_distance).
+#
+# A journey is kilometres per road class (6) per income group (4) per band,
+# in two band sets: absolute km to the nearest city (DIST_BANDS_KM), for the
+# old structure, and that distance in city radii (SCALED_BANDS).
+
+N_INCOME = 4
+#: Upper edges of the scaled-distance bands, in city built-up radii.
+SCALED_BANDS = (0.5, 1.0, 1.5, 2.0, 3.0)
+#: Classes whose speed an income multiplier scales. Roadless is walking pace
+#: and local a published default; neither is fitted, so neither is scaled.
+SCALED_CLASSES = (1, 2, 3, 4)
+#: The income group the multipliers are relative to (upper middle).
+REFERENCE_INCOME = 1
+
+
+def scaled_band_of(s: np.ndarray) -> np.ndarray:
+    return np.searchsorted(np.asarray(SCALED_BANDS), s, side="right")
+
+
+def class_income_speeds(speeds: np.ndarray, mult: np.ndarray) -> np.ndarray:
+    """(6, N_INCOME) km/h: class speed times the income multiplier, for the
+    classes in SCALED_CLASSES; the others as given. `mult` is one row for
+    every scaled class, or two: highways, then the other three."""
+    v = np.repeat(np.asarray(speeds, dtype=float)[:, None], N_INCOME, axis=1)
+    mult = np.atleast_2d(np.asarray(mult, dtype=float))
+    for c in SCALED_CLASSES:
+        v[c] *= mult[0] if (c == 1 or len(mult) == 1) else mult[1]
+    return v
+
+
+#: Upper edges of the size classes of the city a cell's scaled distance is
+#: measured to, by Natural Earth pop_max: under 1 M, 1-5 M, 5 M and over.
+SIZE_BANDS = (1e6, 5e6)
+N_SIZES = len(SIZE_BANDS) + 1
+
+
+def size_band_of(pop: np.ndarray) -> np.ndarray:
+    return np.searchsorted(np.asarray(SIZE_BANDS), pop, side="right")
+
+
+def predict_structured(km: np.ndarray, speeds: np.ndarray, mult: np.ndarray,
+                       factor: np.ndarray) -> np.ndarray:
+    """Minutes per journey. `km` is (n, 6, N_INCOME, B), or (n, 6, N_INCOME,
+    B, N_SIZES) with the city size class; `factor` (6, B) or (6, B, N_SIZES),
+    the time multiplier per class and band (1 where uncongested)."""
+    v = class_income_speeds(speeds, mult)
+    if km.ndim == 5:
+        f = factor if factor.ndim == 3 else np.repeat(factor[:, :, None], km.shape[4], axis=2)
+        return 60.0 * (km * f[None, :, None, :, :] / v[None, :, :, None, None]).sum(axis=(1, 2, 3, 4))
+    return 60.0 * (km * factor[None, :, None, :] / v[None, :, :, None]).sum(axis=(1, 2, 3))
+
+
+class Structure:
+    """A congestion structure over one band set: which bands are penalised,
+    by how many factors, whether highways get their own, whether each city
+    size class gets its own, and whether income multipliers are fitted.
+    `unpack` turns a parameter vector -- log speeds of the fitted classes, log
+    multipliers, log factors -- into model arrays."""
+
+    def __init__(self, name: str, bands: str, groups: list[tuple[int, ...]],
+                 income: bool, highway_apart: bool = False, sizes: bool = False,
+                 ends: bool = False, income_split: bool = False) -> None:
+        self.name, self.bands, self.groups = name, bands, groups
+        self.income, self.highway_apart, self.sizes = income, highway_apart, sizes
+        self.ends, self.income_split = ends, income_split
+        self.n_bands = (len(DIST_BANDS_KM) if bands == "abs" else len(SCALED_BANDS)) + 1
+
+    @property
+    def n_factors(self) -> int:
+        return len(self.groups) * (2 if self.highway_apart else 1) * (N_SIZES if self.sizes else 1)
+
+    @property
+    def n_income(self) -> int:
+        return (N_INCOME - 1) * (2 if self.income_split else 1) if self.income else 0
+
+    def n_params(self) -> int:
+        return 4 + self.n_income + self.n_factors + (1 if self.ends else 0)
+
+    def end_minutes(self, theta: np.ndarray) -> float:
+        """The fitted minutes every journey pays once, at its two ends -- 0
+        unless the structure has them. Stored last in `theta`, log-free and
+        bounded at 0 by fit_structured."""
+        return float(theta[-1]) if self.ends else 0.0
+
+    def unpack(self, theta: np.ndarray, fixed_kmh: np.ndarray):
+        speeds = np.array(fixed_kmh, dtype=float)
+        free = [c for c in range(6) if c not in FIXED_CLASSES]
+        speeds[free] = np.exp(theta[:4])
+        k = 4
+        mult = np.ones((2 if self.income_split else 1, N_INCOME))
+        if self.income:
+            others = [g for g in range(N_INCOME) if g != REFERENCE_INCOME]
+            for row in range(len(mult)):
+                mult[row, others] = np.exp(theta[k:k + N_INCOME - 1])
+                k += N_INCOME - 1
+        mult = mult if self.income_split else mult[0]
+        f = np.exp(theta[k:k + self.n_factors])
+        z = N_SIZES if self.sizes else 1
+        factor = np.ones((6, self.n_bands, z))
+        per = len(self.groups) * z           # factors per class group (all, or highway)
+        for i, bands in enumerate(self.groups):
+            for j in range(z):
+                for b in bands:
+                    factor[1:, b, j] = f[i * z + j]
+                    if self.highway_apart:
+                        factor[1, b, j] = f[per + i * z + j]
+        return speeds, mult, (factor if self.sizes else factor[:, :, 0])
+
+    def describe(self, theta: np.ndarray, fixed_kmh: np.ndarray) -> str:
+        speeds, mult, _factor = self.unpack(theta, fixed_kmh)
+        k = 4 + self.n_income
+        f = np.exp(theta[k:k + self.n_factors])
+        return (f"speeds {np.round(speeds, 1).tolist()} income x{np.round(mult, 3).tolist()} "
+                f"factors {np.round(f, 2).tolist()} ends {self.end_minutes(theta):.1f} min")
+
+
+def fit_structured(km: np.ndarray, observed_min: np.ndarray, st: Structure,
+                   fixed_kmh: np.ndarray, weights: np.ndarray,
+                   start: np.ndarray | None = None) -> np.ndarray:
+    """Parameters minimising the weighted sum of squared log errors. Factors
+    are bounded below at 1 (traffic does not make a road faster), speeds and
+    multipliers are free."""
+    from scipy.optimize import least_squares
+
+    root_w = np.sqrt(weights)
+
+    def residual(theta):
+        speeds, mult, factor = st.unpack(theta, fixed_kmh)
+        pred = predict_structured(km, speeds, mult, factor) + st.end_minutes(theta)
+        return root_w * np.log(np.maximum(pred, 1e-6) / observed_min)
+
+    n = st.n_params()
+    e = 1 if st.ends else 0
+    x0 = np.r_[np.log([80.0, 50.0, 50.0, 30.0]), np.zeros(n - 4)] if start is None else start
+    x0 = x0.copy()
+    first = n - e - st.n_factors                   # factors, then the end minutes
+    x0[first:n - e] = np.maximum(x0[first:n - e], 0.05)
+    if e:
+        x0[-1] = max(x0[-1], 5.0)
+    lo = np.r_[np.full(first, -np.inf), np.zeros(st.n_factors + e)]
+    sol = least_squares(residual, x0, bounds=(lo, np.full(n, np.inf)), method="trf")
+    return sol.x

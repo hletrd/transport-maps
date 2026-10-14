@@ -94,3 +94,33 @@ def test_the_urban_penalty_covers_exactly_the_bands_inside_its_radius():
     assert x[1] == (n - 2) + 2 * 1.5              # highway: two urban bands at 1.5
     assert (x[2:] == (n - 2) + 2 * 3.0).all()     # the rest at 3.0
     assert gfit.band_of(np.array([0.0, 4.9, 5.0, 39.9, 40.0, 900.0])).tolist() == [0, 0, 1, 3, 4, 4]
+
+
+def test_the_structured_fit_recovers_known_speeds_income_factor_and_ends():
+    """Synthetic journeys priced by a known model come back as that model:
+    class speeds, the income multipliers, the built-up factor and the end
+    minutes -- the four things scripts/calibrate_ground.py fits at once.
+
+    Mutations performed and reverted, each RED: drop the end minutes from
+    fit_structured's residual; apply the income multiplier to roadless too.
+    """
+    rng = np.random.default_rng(0)
+    n, bands = 400, len(ground.SCALED_BANDS) + 1
+    km = np.zeros((n, 6, ground.N_INCOME, bands))
+    for j in range(n):
+        g = rng.integers(0, ground.N_INCOME)
+        for c in (1, 2, 3, 4):
+            km[j, c, g, rng.integers(0, bands)] = rng.uniform(0, 60)
+        km[j, 0, g, bands - 1] = rng.uniform(0, 2)
+    st = ground.Structure("t", "scaled", [(0, 1)], income=True, ends=True)
+    fixed = np.array([5.0, np.nan, np.nan, np.nan, np.nan, 25.0])
+    truth = np.r_[np.log([75.0, 60.0, 55.0, 35.0]), np.log([1.25, 0.8, 0.7]), np.log(1.4), 12.0]
+    sp, mu, fa = st.unpack(truth, fixed)
+    # Independent of the fit: the multiplier scales the fitted classes only;
+    # roadless and local keep their published defaults in every group.
+    v = ground.class_income_speeds(sp, mu)
+    assert (v[0] == 5.0).all() and (v[5] == 25.0).all()
+    assert np.allclose(v[1], 75.0 * mu)
+    y = ground.predict_structured(km, sp, mu, fa) + st.end_minutes(truth)
+    got = ground.fit_structured(km, y, st, fixed, np.full(n, 1.0 / n))
+    assert np.allclose(got, truth, atol=1e-3), (got, truth)

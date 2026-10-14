@@ -1,41 +1,50 @@
 #!/usr/bin/env python3
-"""Sample real driving journeys and fit the ground model's road speeds and
-urban penalty.
+"""Sample real driving journeys and fit the ground model's road speeds,
+income multipliers and urban penalty.
 
-    uv run python scripts/calibrate_ground.py plan    --out data/build/ground_plan3.json
-    source ~/.config/transport-maps/env
-    uv run python scripts/calibrate_ground.py observe --plan data/build/ground_plan3.json \\
-                                                      --out data/build/ground_samples3.json
-    uv run python scripts/calibrate_ground.py fit     --samples data/build/ground_samples3.json
+    uv run python scripts/calibrate_ground.py plan    --out data/build/ground_plan4.json
+    uv run python scripts/calibrate_ground.py observe --plan data/build/ground_plan4.json \\
+                                                      --out data/build/ground_samples4.json
+    uv run python scripts/calibrate_ground.py fit     --samples data/build/ground_samples4.json
 
 Three steps because they want different machines: `plan` builds the ground
 graph (about 10 M cells, ~13 GB) and walks every sampled journey's path, with
 no network; `observe` asks Google Routes for each journey's driving time and
-needs the API key and nothing else; `fit` is arithmetic.
+needs the API key (GOOGLE_ROUTES_API_KEY) and nothing else; `fit` is
+arithmetic.
 
-One Dijkstra per SOURCE town, not per journey: solving once and taking many
-destinations off the same tree turns a prohibitive 1,000 solves into 50.
+One Dijkstra per SOURCE, not per journey: solving once and taking many
+destinations off the same tree turns a prohibitive 1,400 solves into ~180.
 
-Each journey is recorded as kilometres per GRIP4 road class per distance band
-from the nearest city of [urban] pop_min or more (calibrate/ground.py
-DIST_BANDS_KM), unweighted -- so the fit can try the urban penalty at every
-radius on a band edge and per class group, rather than inheriting the one the
-graph was weighted with. Two kinds of journey: between populated places
-(8-600 km), and from a populated place to its nearest medium or large airport,
-the access leg every flown journey on the map starts and ends with.
+Two designs, so every stratum the map is read in is in the fit:
 
-Earlier runs, both fitted with the OLS in calibrate/ground.fit_speeds and
-kept in data/build/ (gitignored): 1,383 journeys (ground_samples.json) fitted
-the urban factor, 2,998 (ground_samples2.json) the per-class speeds. They
-recorded class kilometres already multiplied by the urban factor, so they
-cannot fit a different penalty; this format replaces them. Nothing from any
-of them reaches dist/.
+* towns: the endpoints of ground_samples3.json (rebuild 30) -- random
+  populated places to random places 8-600 km away and to their nearest
+  medium or large airport. Re-planned here so each carries the features
+  below, and re-observed so all journeys share one target.
+* metro: from the centre of a city of 1 M or more (Natural Earth pop_max), to
+  its nearest medium or large airport, to towns 15-150 km out and to one 5-15
+  km out. rebuild 30's sample had almost none of these (a random town is
+  rarely a city centre), and the 2026-10-14 audit's errors are all there:
+  London -> LHR 23 min against Google's 45.
+
+Each journey is recorded as kilometres per road class x World Bank income
+group x distance band, in two band sets: km to the nearest city of [urban]
+pop_min (calibrate/ground.DIST_BANDS_KM) and that distance in the city's own
+built-up radius (SCALED_BANDS). The path is the one the SHIPPED model finds;
+a structure that would route differently is scored on the shipped routes.
+
+The target is Google's TYPICAL-TRAFFIC duration for a Tuesday 10:00 (local
+solar time) departure: the map's time is door to door, and a traveller meets
+daytime traffic, not the empty network `staticDuration` describes (both are
+recorded; one TRAFFIC_AWARE call returns both).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -45,8 +54,8 @@ from transport_maps.calibrate import ground as gfit
 
 N_CLASSES = 6
 FOLDS = 5
-N_BANDS = len(gfit.DIST_BANDS_KM) + 1
 NAMES = ["roadless", "highway", "primary", "secondary", "tertiary", "local"]
+STRATA = ("metro", "intercity", "rural", "airport")
 
 
 def _towns(path) -> np.ndarray:
@@ -60,6 +69,53 @@ def _airports(path) -> np.ndarray:
                     dtype=float)
 
 
+def _crow_km(a, b) -> np.ndarray:
+    a, b = np.atleast_2d(a), np.atleast_2d(b)
+    la1, lo1, la2, lo2 = map(np.radians, (a[:, 0], a[:, 1], b[:, 0], b[:, 1]))
+    h = np.sin((la2 - la1) / 2) ** 2 + np.cos(la1) * np.cos(la2) * np.sin((lo2 - lo1) / 2) ** 2
+    return 2 * 6371.0 * np.arcsin(np.sqrt(h))
+
+
+def _designs(args) -> list[tuple[str, tuple[float, float], list[tuple[str, tuple[float, float]]]]]:
+    """(design, source point, [(kind, destination point)]) per source."""
+    import pyogrio
+
+    from transport_maps.sources import urban
+
+    rng = np.random.default_rng(args.seed)
+    towns, airports = _towns(args.places), _airports(args.airports)
+    out = []
+    old = json.loads(args.previous.read_text(encoding="utf-8"))["journeys"]
+    by_src = defaultdict(list)
+    for r in old:
+        by_src[(r["source"], tuple(r["from"]))].append((r["kind"], tuple(r["to"])))
+    for (_s, here), dests in sorted(by_src.items()):
+        out.append(("towns", here, dests))
+
+    _m, t = pyogrio.read_arrow(f"/vsizip/{urban._download().resolve()}")
+    lat = np.array(t.column("latitude").to_pylist(), float)
+    lon = np.array(t.column("longitude").to_pylist(), float)
+    pop = np.array(t.column("pop_max").to_pylist(), float)
+    big = np.flatnonzero(pop >= args.metro_pop)
+    for k in rng.choice(big, size=min(args.metros, len(big)), replace=False):
+        here = (float(lat[k]), float(lon[k]))
+        dests = []
+        da = _crow_km(np.array([here] * len(airports)), airports)
+        j = int(np.argmin(da))
+        if 5.0 <= da[j] <= 100.0:
+            dests.append(("airport", tuple(airports[j])))
+        dt = _crow_km(np.array([here] * len(towns)), towns)
+        far = np.flatnonzero((dt >= 15.0) & (dt <= 150.0))
+        near = np.flatnonzero((dt >= 5.0) & (dt < 15.0))
+        for j in rng.choice(far, size=min(3, len(far)), replace=False):
+            dests.append(("towns", tuple(towns[j])))
+        for j in rng.choice(near, size=min(1, len(near)), replace=False):
+            dests.append(("towns", tuple(towns[j])))
+        if dests:
+            out.append(("metro", here, dests))
+    return out
+
+
 def plan(args) -> None:
     import gc
 
@@ -71,86 +127,91 @@ def plan(args) -> None:
     from transport_maps.sources import countries, urban
 
     # As build-all does (cli._build_all): with the collector on, Python 3.14's
-    # young collections scan the whole old heap, and a 10 M-cell index made a
-    # 40-minute setup of a 15-minute one.
+    # young collections scan the whole old heap.
     gc.disable()
-    rng = np.random.default_rng(args.seed)
-    towns = _towns(args.places)
-    airports = _airports(args.airports)
-    print(f"  {len(towns):,} populated places, {len(airports):,} medium/large airports")
+    designs = _designs(args)
+    print(f"  {len(designs)} sources: "
+          f"{sum(d == 'towns' for d, _, _ in designs)} towns, {sum(d == 'metro' for d, _, _ in designs)} metro")
 
     idx = nodes.build_index()
     classes = gmodel.cell_class(idx).astype(np.int64)
     speeds = gmodel.cell_speed_kmh(idx, classes)
     country = countries.cell_country(idx.cells)
+    income = countries.cell_income_group(country)
     zone = gmodel.cell_zones(country)
     r, c, d = gmodel.hex_edges(idx, speeds=speeds, country=country, zone=zone)
     csr = sp.coo_matrix((d, (r, c)), shape=(idx.n, idx.n)).tocsr()
-    centroids = np.array([h3.cell_to_latlng(x) for x in idx.cells[: idx.n_cells]])
-
-    # Distance from each cell to the nearest city of [urban] pop_min or more,
-    # by the same equirectangular measure sources/urban.urban_mask uses.
     plat, plon = urban._places()
-    near = np.full(len(centroids), np.inf)
-    coslat = np.cos(np.radians(centroids[:, 0]))
-    for la, lo in zip(plat, plon):
-        dd = np.hypot((centroids[:, 0] - la) * 111.0, (centroids[:, 1] - lo) * 111.0 * coslat)
-        np.minimum(near, dd, out=near)
-    band = gfit.band_of(near)
 
-    def walk(pred, src, dst):
-        km = np.zeros((N_CLASSES, N_BANDS))
-        n, guard = int(dst), 0
-        while n != src and pred[n] >= 0 and guard < 6000:
-            p = int(pred[n])
-            if zone[p] != zone[n]:
-                return None              # a border: Google does not wait at one
-            seg = gmodel.haversine_km(centroids[p][None, :], centroids[n][None, :])[0]
-            km[classes[n], band[n]] += seg
-            n, guard = p, guard + 1
-        return km if n == src else None
-
-    rows = []
-    for s in range(args.sources):
-        town = towns[rng.integers(0, len(towns))]
-        src = idx.try_cell_index(idx.cell_at(town[0], town[1]))
+    walks = []                     # (design, kind, source point, dest point, path cells)
+    for n, (design, here, dests) in enumerate(designs):
+        src = idx.try_cell_index(idx.cell_at(*here))
         if src is None:
             continue
         minutes, pred = sp.csgraph.dijkstra(csr, indices=[src], return_predecessors=True)
         minutes, pred = minutes[0], pred[0]
-        here = centroids[src]
-        picks = []
-        box = (np.abs(towns[:, 0] - town[0]) < 6.0) & (np.abs(towns[:, 1] - town[1]) < 6.0)
-        cand = sorted({j for t in towns[box]
-                       if (j := idx.try_cell_index(idx.cell_at(t[0], t[1]))) is not None
-                       and j != src and np.isfinite(minutes[j])})
-        if cand:
-            cand = np.array(cand)
-            km = gmodel.haversine_km(np.repeat(here[None, :], len(cand), axis=0), centroids[cand])
-            cand = cand[(km >= 8.0) & (km <= 600.0)]
-            if len(cand):
-                picks += [("towns", int(j)) for j in
-                          rng.choice(cand, size=min(args.per_source, len(cand)), replace=False)]
-        da = gmodel.haversine_km(np.repeat(here[None, :], len(airports), axis=0), airports)
-        k = int(np.argmin(da))
-        if 3.0 <= da[k] <= 150.0:
-            j = idx.try_cell_index(idx.cell_at(*airports[k]))
-            if j is not None and np.isfinite(minutes[j]):
-                picks.append(("airport", int(j)))
-        for kind, dst in picks:
-            km = walk(pred, src, dst)
-            if km is None or km.sum() < 3.0:
+        for kind, to in dests:
+            dst = idx.try_cell_index(idx.cell_at(*to))
+            if dst is None or not np.isfinite(minutes[dst]) or dst == src:
                 continue
-            rows.append({"source": s, "kind": kind,
-                         "from": [round(float(v), 5) for v in here],
-                         "to": [round(float(v), 5) for v in centroids[dst]],
-                         "km": np.round(km, 3).tolist(),
-                         "model_min": round(float(minutes[dst]), 2)})
-        print(f"  source {s + 1}/{args.sources}: {len(rows)} journeys", flush=True)
+            path, k, ok = [dst], dst, True
+            while k != src and pred[k] >= 0 and len(path) < 6000:
+                p = int(pred[k])
+                if zone[p] != zone[k]:
+                    ok = False             # a border: Google does not wait at one
+                    break
+                path.append(p)
+                k = p
+            if ok and k == src:
+                walks.append((design, kind, here, to, np.array(path[::-1]), float(minutes[dst])))
+        print(f"  source {n + 1}/{len(designs)}: {len(walks)} journeys", flush=True)
+
+    # Features for the cells the paths use only: a few hundred thousand, not
+    # ten million.
+    cells = np.unique(np.concatenate([w[4] for w in walks]))
+    ids = [idx.cells[i] for i in cells]
+    cent = np.array([h3.cell_to_latlng(x) for x in ids])
+    near = np.full(len(cells), np.inf)
+    coslat = np.cos(np.radians(cent[:, 0]))
+    for la, lo in zip(plat, plon):
+        np.minimum(near, np.hypot((cent[:, 0] - la) * 111.0, (cent[:, 1] - lo) * 111.0 * coslat),
+                   out=near)
+    scaled, city_pop = urban.scaled_city_distance(ids)
+    pos = {int(v): i for i, v in enumerate(cells)}
+    b_abs = gfit.band_of(near)
+    b_s = gfit.scaled_band_of(scaled)
+    b_z = gfit.size_band_of(city_pop)
+
+    rows = []
+    for design, kind, here, to, path, model_min in walks:
+        at = np.array([pos[int(v)] for v in path])
+        seg = np.r_[0.0, gmodel.haversine_km(cent[at[:-1]], cent[at[1:]])]
+        km_abs = np.zeros((N_CLASSES, gfit.N_INCOME, len(gfit.DIST_BANDS_KM) + 1))
+        km_s = np.zeros((N_CLASSES, gfit.N_INCOME, len(gfit.SCALED_BANDS) + 1, gfit.N_SIZES))
+        cl, inc = classes[path], income[path]
+        np.add.at(km_abs, (cl[1:], inc[1:], b_abs[at[1:]]), seg[1:])
+        np.add.at(km_s, (cl[1:], inc[1:], b_s[at[1:]], b_z[at[1:]]), seg[1:])
+        if seg.sum() < 3.0:
+            continue
+        if kind == "airport":
+            stratum = "airport"
+        elif design == "metro":
+            stratum = "metro"
+        else:
+            stratum = "rural" if min(near[at[0]], near[at[-1]]) > 20.0 else "intercity"
+        rows.append({"design": design, "kind": kind, "stratum": stratum,
+                     "source": [round(v, 5) for v in here],
+                     "from": [round(float(v), 5) for v in cent[at[0]]],
+                     "to": [round(float(v), 5) for v in cent[at[-1]]],
+                     "dest": [round(v, 5) for v in to],
+                     "km_abs": np.round(km_abs, 3).tolist(), "km_s": np.round(km_s, 3).tolist(),
+                     "model_min": round(model_min, 2)})
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps({"bands_km": list(gfit.DIST_BANDS_KM), "journeys": rows}),
+    args.out.write_text(json.dumps({"bands_km": list(gfit.DIST_BANDS_KM),
+                                    "scaled_bands": list(gfit.SCALED_BANDS), "journeys": rows}),
                         encoding="utf-8")
-    print(f"  wrote {len(rows)} journeys to {args.out}")
+    print(f"  wrote {len(rows)} journeys to {args.out}: "
+          + ", ".join(f"{s} {sum(r['stratum'] == s for r in rows)}" for s in STRATA))
 
 
 def observe(args) -> None:
@@ -162,7 +223,8 @@ def observe(args) -> None:
     with httpx.Client() as client:
         for row in planned["journeys"]:
             try:
-                got = gfit.drive_minutes(client, budget, tuple(row["from"]), tuple(row["to"]))
+                got = gfit.drive_times(client, budget, tuple(row["from"]), tuple(row["to"]),
+                                       gfit.weekday_morning_utc(row["from"][1]))
             except RuntimeError:
                 break
             except httpx.HTTPError as exc:
@@ -172,8 +234,8 @@ def observe(args) -> None:
             if got is None:
                 unrouted += 1
                 continue
-            done.append({**row, "observed_min": round(got, 2)})
-            if len(done) % 50 == 0:
+            done.append({**row, "observed_min": round(got[0], 2), "static_min": round(got[1], 2)})
+            if len(done) % 100 == 0:
                 print(f"  {len(done)} observed, {budget.used} requests", flush=True)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps({**planned, "journeys": done, "requests": budget.used,
@@ -182,98 +244,136 @@ def observe(args) -> None:
           f" wrote {args.out}")
 
 
-def _stats(obs, pred):
-    r = obs / pred
-    return (f"median {np.median(r):.3f}  p10 {np.percentile(r, 10):.2f}  p90 "
-            f"{np.percentile(r, 90):.2f}  |log| {np.median(np.abs(np.log(r))):.3f}")
+def join(args) -> None:
+    """Observed minutes from earlier samples onto a re-planned file, matched
+    on the journey's two end cells: a re-plan that records more per journey
+    need not pay for the same calls again."""
+    planned = json.loads(args.plan.read_text(encoding="utf-8"))
+    seen = {(tuple(r["from"]), tuple(r["to"])): r
+            for r in json.loads(args.samples.read_text(encoding="utf-8"))["journeys"]}
+    done = []
+    for row in planned["journeys"]:
+        hit = seen.get((tuple(row["from"]), tuple(row["to"])))
+        if hit is not None:
+            done.append({**row, "observed_min": hit["observed_min"], "static_min": hit["static_min"]})
+    args.out.write_text(json.dumps({**planned, "journeys": done}), encoding="utf-8")
+    print(f"  {len(done)} of {len(planned['journeys'])} planned journeys matched; wrote {args.out}")
+
+
+def structures() -> list[gfit.Structure]:
+    """The candidates. 'r30' is rebuild 30's: one factor within 20 km of any
+    city. The rest add income multipliers and/or scale the penalty by each
+    city's built-up radius (band indices into SCALED_BANDS: 0 <0.5, 1 0.5-1,
+    2 1-1.5, 3 1.5-2, 4 2-3, 5 beyond)."""
+    s = []
+    s.append(gfit.Structure("r30", "abs", [(0, 1, 2)], income=False))
+    s.append(gfit.Structure("r30+income", "abs", [(0, 1, 2)], income=True))
+    for core, ring in (((0, 1), ()), ((0, 1), (2,)), ((0, 1), (2, 3)), ((0, 1), (2, 3, 4)),
+                       ((0,), (1, 2)), ((0,), (1, 2, 3))):
+        groups = [core] + ([ring] if ring else [])
+        label = f"scaled core{core} ring{ring}"
+        for inc in (False, True):
+            s.append(gfit.Structure(label + (" +income" if inc else ""), "scaled", groups, income=inc))
+        s.append(gfit.Structure(label + " +income hw-apart", "scaled", groups, income=True,
+                                highway_apart=True))
+        s.append(gfit.Structure(label + " +income sizes", "scaled", groups, income=True,
+                                sizes=True))
+        s.append(gfit.Structure(label + " +income hw-apart sizes", "scaled", groups, income=True,
+                                highway_apart=True, sizes=True))
+        s.append(gfit.Structure(label + " +income ends", "scaled", groups, income=True,
+                                ends=True))
+        s.append(gfit.Structure(label + " +income hw-apart ends", "scaled", groups, income=True,
+                                highway_apart=True, ends=True))
+    for core, ring in (((0, 1), ()), ((0,), (1, 2))):
+        groups = [core] + ([ring] if ring else [])
+        s.append(gfit.Structure(f"scaled core{core} ring{ring} +income-split ends", "scaled", groups,
+                                income=True, ends=True, income_split=True))
+    s.append(gfit.Structure("r30 ends", "abs", [(0, 1, 2)], income=False, ends=True))
+    s.append(gfit.Structure("r30+income ends", "abs", [(0, 1, 2)], income=True, ends=True))
+    return s
+
+
+def _err(y, p):
+    return np.median(np.abs(np.log(y / p)))
 
 
 def fit(args) -> None:
     data = json.loads(args.samples.read_text(encoding="utf-8"))
-    rows = data["journeys"]
-    if tuple(data["bands_km"]) != gfit.DIST_BANDS_KM:
-        raise SystemExit(f"{args.samples} has bands {data['bands_km']}, this code {gfit.DIST_BANDS_KM}")
-    km = np.array([r["km"] for r in rows])
-    y = np.array([r["observed_min"] for r in rows])
-    kind = np.array([r["kind"] for r in rows])
-    src = np.array([r["source"] for r in rows])
-    # Five folds by SOURCE: journeys from one town share most of their roads,
-    # so holding out single journeys would score a structure on roads it was
-    # fitted on.
+    rows = [r for r in data["journeys"] if r.get(args.target)]
+    km_by = {"abs": np.array([r["km_abs"] for r in rows]), "scaled": np.array([r["km_s"] for r in rows])}
+    y = np.array([r[args.target] for r in rows])
+    stratum = np.array([r["stratum"] for r in rows])
+    src = np.array([f"{r['source'][0]},{r['source'][1]}" for r in rows])
+    # Five folds by SOURCE: journeys from one place share most of their roads.
     rng = np.random.default_rng(0)
     sources = np.unique(src)
     fold_of = dict(zip(sources.tolist(), rng.permutation(len(sources)) % FOLDS))
     fold = np.array([fold_of[s] for s in src])
-    towns, access = kind == "towns", kind == "airport"
-    # Each kind carries half the weight, in the speed fit and in the score:
-    # 53 access journeys against 700 between towns would otherwise leave the
-    # access leg -- in every flown journey twice -- to whatever suits the rest.
-    w = np.where(access, 0.5 / access.sum(), 0.5 / towns.sum())
-    print(f"  {len(y)} journeys ({int(access.sum())} airport access), {len(sources)} sources, "
-          f"{FOLDS} folds by source")
-
+    # Each stratum carries a quarter of the weight, in the fit and the score.
+    w = np.zeros(len(y))
+    for s_ in STRATA:
+        m = stratum == s_
+        if m.any():
+            w[m] = 1.0 / (len(STRATA) * m.sum())
     fixed = np.array([5.0, np.nan, np.nan, np.nan, np.nan, 25.0])
-    current = np.array([5.0, 104.0, 57.0, 50.0, 18.0, 25.0])
-    one = np.zeros(N_CLASSES, dtype=int)
-    two = np.array([0, 0, 1, 1, 1, 1])          # highway apart from the rest
+    print(f"  {len(y)} journeys, target {args.target}; "
+          + ", ".join(f"{s} {int((stratum == s).sum())}" for s in STRATA)
+          + f"; {len(sources)} sources, {FOLDS} folds by source")
 
-    def report(label, p):
-        print(f"    {label:9} towns {_stats(y[towns], p[towns])}")
-        print(f"    {'':9} access {_stats(y[access], p[access])}")
+    def by_stratum(p):
+        return {s_: _err(y[stratum == s_], p[stratum == s_]) for s_ in STRATA if (stratum == s_).any()}
 
-    print("\n  shipped: speeds 104/57/50/18, radius 40, x2.0 every class")
-    report("", gfit.predict(km, current, 40.0, one, np.array([2.0])))
-
-    def score(radius, groups, factors):
-        """Out-of-fold predictions; the mean of the two journey kinds' median
-        |log| error, so 53 airport-access journeys weigh as much as 700
-        between towns -- the access leg is in every flown journey twice."""
+    def oof(st):
+        km = km_by[st.bands]
         p = np.empty_like(y)
         for k in range(FOLDS):
             test = fold == k
-            sp_ = gfit.fit_log(km[~test], y[~test], radius, groups, factors, fixed, w[~test])
-            p[test] = gfit.predict(km[test], sp_, radius, groups, factors)
-        e = np.abs(np.log(y / p))
-        return 0.5 * (np.median(e[towns]) + np.median(e[access])), p
+            th = gfit.fit_structured(km[~test], y[~test], st, fixed, w[~test])
+            sp_, mu, fa = st.unpack(th, fixed)
+            p[test] = gfit.predict_structured(km[test], sp_, mu, fa) + st.end_minutes(th)
+        return p
 
-    results = []
-    for radius in (0.0, *gfit.DIST_BANDS_KM):
-        grids = [(one, [(f,) for f in np.arange(1.0, 3.01, 0.1)])]
-        if radius > 0:
-            grids.append((two, [(a, b) for a in np.arange(1.0, 2.51, 0.1)
-                                for b in np.arange(1.0, 3.01, 0.1)]))
-        for groups, grid in grids:
-            for f in grid:
-                factors = np.round(np.array(f), 2)
-                err, _ = score(radius, groups, factors)
-                results.append((err, radius, tuple(factors.tolist()), groups))
-                if radius == 0:
-                    break                       # no urban band: the factor is moot
-    results.sort(key=lambda t: t[0])
-    print("\n  best out-of-fold structures (mean of towns' and access' median |log|):")
-    for err, radius, f, groups in results[:10]:
-        print(f"    {err:.3f}  radius {radius:>4.0f}  factors {f}")
-    for want in ((40.0, (2.0,)),):
-        hit = [r for r in results if r[1] == want[0] and r[2] == want[1]]
-        if hit:
-            print(f"    {hit[0][0]:.3f}  radius {want[0]:>4.0f}  factors {want[1]}  (the shipped structure)")
-
-    err, radius, f, groups = results[0]
-    factors = np.array(f)
-    speeds = gfit.fit_log(km, y, radius, groups, factors, fixed, w)
-    _, oof = score(radius, groups, factors)
-    print(f"\n  chosen: radius {radius:.0f} km, factors {f}; speeds refitted on all {len(y)}:")
-    for i, n in enumerate(NAMES):
-        print(f"    {n:10}{speeds[i]:>8.1f} km/h{'   (fixed)' if i in gfit.FIXED_CLASSES else ''}")
-    report("in-sample", gfit.predict(km, speeds, radius, groups, factors))
-    report("out-fold", oof)
-    p = gfit.predict(km, speeds, radius, groups, factors)
-    tert = km[:, 4].sum(axis=1) / km.sum(axis=(1, 2))
-    for lo, hi in ((0, 0.05), (0.05, 0.3), (0.3, 1.01)):
-        m = (tert >= lo) & (tert < hi)
+    # The shipped constants, scored as they are (no refit).
+    ship = gfit.Structure("shipped", "abs", [(0, 1, 2)], income=False)
+    th = np.r_[np.log([87.3, 51.9, 51.7, 27.9]), np.log(1.6)]
+    sp_, mu, fa = ship.unpack(th, fixed)
+    p_ship = gfit.predict_structured(km_by["abs"], sp_, mu, fa)
+    results = [("shipped (rebuild 30, not refitted)", by_stratum(p_ship), None)]
+    for st in structures():
+        p = oof(st)
+        results.append((st.name, by_stratum(p), st))
+        e = results[-1][1]
+        print(f"    {np.mean(list(e.values())):.3f}  {st.name:44} "
+              + "  ".join(f"{k} {v:.3f}" for k, v in e.items()), flush=True)
+    results.sort(key=lambda t: np.mean(list(t[1].values())))
+    print("\n  out of fold, median |log(observed/predicted)| by stratum (mean first):")
+    for name, e, _st in results[:8] + [r for r in results if r[2] is None or r[0] == "r30"]:
+        print(f"    {np.mean(list(e.values())):.3f}  {name:44} "
+              + "  ".join(f"{k} {v:.3f}" for k, v in e.items()))
+    # The best out of fold, unless --structure names one: a structure within
+    # a few thousandths of the best and with fewer constants is the one to
+    # ship, and that is a judgement the score alone does not make.
+    best = next(r for r in results if r[2] is not None
+                and (args.structure is None or r[0] == args.structure))
+    st = best[2]
+    th = gfit.fit_structured(km_by[st.bands], y, st, fixed, w)
+    sp_, mu, fa = st.unpack(th, fixed)
+    p = gfit.predict_structured(km_by[st.bands], sp_, mu, fa) + st.end_minutes(th)
+    p_oof = oof(st)
+    print(f"\n  chosen: {st.name}; refitted on all {len(y)}:\n    {st.describe(th, fixed)}")
+    for s_ in STRATA:
+        m = stratum == s_
         if m.any():
-            print(f"    tertiary share {lo}-{hi}: n={int(m.sum())} {_stats(y[m], p[m])}")
-    print(f"  km share per class {np.round(km.sum(axis=(0, 2)) / km.sum(), 3).tolist()}")
+            print(f"    {s_:9} n={int(m.sum()):4}  in-sample median obs/pred {np.median(y[m] / p[m]):.3f}"
+                  f"  out-of-fold {np.median(y[m] / p_oof[m]):.3f} |log| {_err(y[m], p_oof[m]):.3f}"
+                  f"   shipped {np.median(y[m] / p_ship[m]):.3f} |log| {_err(y[m], p_ship[m]):.3f}")
+    if args.out:
+        args.out.write_text(json.dumps({"structure": st.name, "theta": th.tolist(),
+                                        "speeds": sp_.tolist(), "income": mu.tolist(),
+                                        "factor": fa.tolist(), "end_min": st.end_minutes(th),
+                                        "groups": [list(g) for g in st.groups],
+                                        "highway_apart": st.highway_apart, "sizes": st.sizes},
+                                       indent=1))
 
 
 def _path(s: str) -> Path:
@@ -285,20 +385,28 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("plan")
-    a.add_argument("--sources", type=int, default=60)
-    a.add_argument("--per-source", type=int, default=16)
-    a.add_argument("--seed", type=int, default=3)
+    a.add_argument("--previous", type=_path, default=config.BUILD / "ground_samples3.json")
+    a.add_argument("--metros", type=int, default=150)
+    a.add_argument("--metro-pop", type=float, default=1_000_000.0)
+    a.add_argument("--seed", type=int, default=4)
     a.add_argument("--places", type=_path, default=config.DIST / "places.json")
     a.add_argument("--airports", type=_path, default=config.DIST / "airports.json")
-    a.add_argument("--out", type=_path, default=config.BUILD / "ground_plan3.json")
+    a.add_argument("--out", type=_path, default=config.BUILD / "ground_plan4.json")
     o = sub.add_parser("observe")
-    o.add_argument("--plan", type=_path, default=config.BUILD / "ground_plan3.json")
-    o.add_argument("--out", type=_path, default=config.BUILD / "ground_samples3.json")
-    o.add_argument("--max-requests", type=int, default=1200)
+    o.add_argument("--plan", type=_path, default=config.BUILD / "ground_plan4.json")
+    o.add_argument("--out", type=_path, default=config.BUILD / "ground_samples4.json")
+    o.add_argument("--max-requests", type=int, default=2200)
     f = sub.add_parser("fit")
-    f.add_argument("--samples", type=_path, default=config.BUILD / "ground_samples3.json")
+    f.add_argument("--samples", type=_path, default=config.BUILD / "ground_samples4.json")
+    f.add_argument("--target", choices=("observed_min", "static_min"), default="observed_min")
+    f.add_argument("--out", type=_path, default=None)
+    f.add_argument("--structure", default=None, help="fit this named structure, not the best")
+    j = sub.add_parser("join")
+    j.add_argument("--plan", type=_path, required=True)
+    j.add_argument("--samples", type=_path, required=True)
+    j.add_argument("--out", type=_path, required=True)
     args = ap.parse_args()
-    {"plan": plan, "observe": observe, "fit": fit}[args.cmd](args)
+    {"plan": plan, "observe": observe, "fit": fit, "join": join}[args.cmd](args)
 
 
 if __name__ == "__main__":
