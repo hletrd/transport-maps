@@ -47,6 +47,28 @@ MAX_NONSTOP_KM = 15_400.0
 MAX_UNKNOWN_PAIR_FRACTION = 0.02
 
 
+def _flown_km(net: pl.DataFrame, meta: dict) -> dict[tuple[str, str], float]:
+    """The distance flown for every pair whose great circle crosses airspace
+    closed to it (graph/airspace.py); pairs absent fly the great circle. A
+    network without the `overfly` column (a test's stub) crosses nothing."""
+    if "overfly" not in net.columns:
+        return {}
+    from transport_maps.graph import airspace
+    from transport_maps.sources import countries
+
+    grid = airspace.Grid(*countries._polygons())
+    pairs = [(s, d, meta[s][:2], meta[d][:2], bool(o))
+             for s, d, o in zip(net["src"], net["dst"], net["overfly"])
+             if s in meta and d in meta]
+    flown = airspace.detoured_km(grid, pairs)
+    if flown:
+        extra = sorted(((km - h3.great_circle_distance(meta[s][:2], meta[d][:2], unit="km"), s, d)
+                        for (s, d), km in flown.items()), reverse=True)
+        logger.info("%d directed flight(s) routed round closed airspace; largest detours: %s",
+                    len(flown), ", ".join(f"{s}->{d} +{x:.0f} km" for x, s, d in extra[:8]))
+    return flown
+
+
 def is_geographically_plausible(distance_km: float, size1: str, size2: str) -> bool:
     """Reject pairs longer than any nonstop (MAX_NONSTOP_KM), and ultra-long-
     haul pairs where neither endpoint is a large airport."""
@@ -126,6 +148,7 @@ def _air_edges(
     rejected: list[tuple[str, str, float]] = []
     unknown: list[tuple[str, str]] = []
     net = routes.route_network()
+    flown = _flown_km(net, meta)
     for src, dst in zip(net["src"], net["dst"]):
         if src not in known or dst not in known:
             unknown.append((src, dst))
@@ -136,7 +159,9 @@ def _air_edges(
         if not is_geographically_plausible(d, size1, size2):
             rejected.append((src, dst, d))
             continue
-        block = float(air.block_time_min(d, size1, size2, cal))
+        # Plausibility and frequency are judged on the great circle; the
+        # block time on the distance flown round closed airspace.
+        block = float(air.block_time_min(flown.get((src, dst), d), size1, size2, cal))
         # The flight edge carries block time ONLY, plus the border on a first
         # crossing. Waiting is charged on the connection edge instead (see
         # _transfer_edges), because a traveller plans their first departure

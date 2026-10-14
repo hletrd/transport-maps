@@ -1138,8 +1138,9 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
         <p class="hint">There is no ETOPS setting, because there is nothing
           for it to change. Every flight here is a scheduled service already
           operating under its airline&rsquo;s extended-range approval, and a
-          flight&rsquo;s time is computed from the great-circle distance
-          between its two airports — which carries no aircraft type and no
+          flight&rsquo;s time is computed from the distance between its two
+          airports — the great circle, or the shortest way round airspace
+          closed to its airlines — which carries no aircraft type and no
           diversion radius to apply a rule to.
           <a href="#limits" class="inline-link">What this does not know</a>
           sets out why the difference could not be shown even if there were
@@ -1255,8 +1256,12 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          page.
          The more useful admission is the second one: this model could not
          represent the difference if there were one. A flight&rsquo;s time here
-         is a function of the great-circle distance between its two airports
-         and nothing else. The data carries no aircraft type and no engine
+         is a function of the distance between its two airports and nothing
+         else: the great circle, or, where it crosses airspace closed to every
+         airline on the route, the shortest way round. Ukraine is closed to
+         all; Russia and Belarus to the European, North American, Japanese,
+         Korean and Taiwanese airlines that keep out of them, but not to an
+         airline that still flies there. The data carries no aircraft type and no engine
          count, so there is nothing to apply a rule to; and the page draws the
          great circle, which is precisely the track an ETOPS-limited flight
          does not fly. The real cost of staying inside a diversion radius is a

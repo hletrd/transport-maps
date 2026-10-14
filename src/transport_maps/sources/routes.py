@@ -200,6 +200,19 @@ _SANITY_PAIRS: tuple[tuple[str, str], ...] = (("ICN", "NRT"),)
 # Guinea, and Pucallpa's Bolognesi read as Bellavista's BLP.
 MISRESOLVED_KM = 300.0
 
+# Who may fly over Russia (graph/airspace.py). Russia closed its airspace in
+# February-March 2022 to the airlines of the EU, the UK, the US, Canada and
+# others it named, and Japanese, Korean and Taiwanese airlines keep out of it
+# by choice; Ukraine is closed to everyone. The route data says the rest: an
+# airline that serves an airport in one of these countries in the same crawl
+# is not under the ban (Air China, Turkish, Emirates, Uzbekistan Airways ...).
+OVERFLY_COUNTRIES = ("RU", "BY")
+# Documented overfliers that serve neither country, as Wikipedia titles the
+# airline: Air India uses Russian airspace on its flights to the US and
+# Canada, and Cathay Pacific on some US routes (alternativeairlines.com,
+# "Which airlines are still flying over Russia?", checked 2026-10-14).
+OVERFLY_ALSO = ("Air_India", "Cathay_Pacific")
+
 
 def _km(a: tuple[float, float], b: tuple[float, float]) -> float:
     """Great-circle distance, haversine on a 6,371 km sphere."""
@@ -232,8 +245,11 @@ class TitleCheck(NamedTuple):
         return _km(r, x) > MISRESOLVED_KM and _km(s, r) < _km(s, x)
 
     def digest(self) -> str:
+        """Everything the network's pair set and `overfly` column depend on
+        beyond the crawl and the resolver."""
         return hashlib.sha256(json.dumps(
-            [MISRESOLVED_KM, sorted(self.named.items()), sorted(self.position.items())]
+            [MISRESOLVED_KM, sorted(self.named.items()), sorted(self.position.items()),
+             OVERFLY_COUNTRIES, OVERFLY_ALSO]
         ).encode()).hexdigest()
 
 
@@ -794,7 +810,9 @@ def route_network() -> pl.DataFrame:
         print(f"routes: ignoring legacy {legacy.name}, whose inputs are unknown; "
               f"building {out.name}", flush=True)
 
-    pairs, left_out, disputed = _year_round_pairs(destinations, resolved, valid, day, check)
+    airlines: dict[tuple[str, str], set[str]] = {}
+    pairs, left_out, disputed = _year_round_pairs(destinations, resolved, valid, day, check,
+                                                  airlines)
     print(f"routes: {len(pairs)} directed pairs of year-round scheduled service on {day}; "
           "listings left out: "
           + (", ".join(f"{n} {why}" for why, n in left_out.most_common()) or "none")
@@ -812,7 +830,11 @@ def route_network() -> pl.DataFrame:
             "not that the route doesn't exist"
         )
 
-    df = pl.DataFrame(sorted(pairs), schema=["src", "dst"], orient="row")
+    # A table without countries (a test's stub) gives no airline the evidence.
+    country = dict(zip(apts["iata"], apts["country"])) if "country" in apts.columns else {}
+    over = overfly(pairs, airlines, country)
+    df = pl.DataFrame([(a, b, over[(a, b)]) for a, b in sorted(pairs)],
+                      schema=["src", "dst", "overfly"], orient="row")
     _atomic_write(out, lambda tmp: df.write_parquet(tmp))
     return df
 
@@ -820,6 +842,7 @@ def route_network() -> pl.DataFrame:
 def _year_round_pairs(destinations: dict[str, list[Listing] | None],
                       resolved: dict[str, str], valid: set[str], day: date,
                       check: TitleCheck | None = None,
+                      airlines_out: dict[tuple[str, str], set[str]] | None = None,
                       ) -> tuple[set[tuple[str, str]], collections.Counter[str], int]:
     """Directed pairs with year-round scheduled service on `day`, the count of
     listings left out by reason (`_left_out`), and how many pairs some listing
@@ -836,6 +859,9 @@ def _year_round_pairs(destinations: dict[str, list[Listing] | None],
     A listing whose title OurAirports gives to another airport (`check`,
     MISRESOLVED_KM) is left out before any of that, counted as "names another
     airport".
+
+    `airlines_out`, when given, receives each kept pair's year-round airlines
+    (case-folded), both ways round.
     """
     by_pair: dict[tuple[str, str], dict[str, bool]] = {}
     listed_year_round: set[tuple[str, str]] = set()
@@ -859,7 +885,23 @@ def _year_round_pairs(destinations: dict[str, list[Listing] | None],
             by_airline = by_pair.setdefault(pair, {})
             by_airline[airline] = by_airline.get(airline, True) and reason is None
     kept = {pair for pair, by_airline in by_pair.items() if any(by_airline.values())}
+    if airlines_out is not None:
+        for a, b in kept:
+            flying = {name for name, year_round in by_pair[(a, b)].items() if year_round}
+            airlines_out[(a, b)] = airlines_out[(b, a)] = flying
     return kept | {(b, a) for a, b in kept}, left_out, len(listed_year_round - kept)
+
+
+def overfly(pairs: set[tuple[str, str]], airlines: dict[tuple[str, str], set[str]],
+            country: dict[str, str]) -> dict[tuple[str, str], bool]:
+    """Whether some airline flying each pair may cross Russia: one that serves
+    an airport in OVERFLY_COUNTRIES anywhere in the network, or one of
+    OVERFLY_ALSO. An unnamed airline ("") is no evidence either way."""
+    serving = {name for (a, b), names in airlines.items()
+               if country.get(a) in OVERFLY_COUNTRIES or country.get(b) in OVERFLY_COUNTRIES
+               for name in names}
+    allowed = (serving | {n.casefold() for n in OVERFLY_ALSO}) - {""}
+    return {p: bool(airlines.get(p, set()) & allowed) for p in pairs}
 
 
 def _wikipedia_titles(apts: pl.DataFrame) -> dict[str, str]:

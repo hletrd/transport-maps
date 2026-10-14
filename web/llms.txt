@@ -58,7 +58,9 @@ between adjacent cells is charged at a per-cell speed derived from GRIP4
 road-density rasters, slowed inside cities by a fitted congestion factor. Flights connect airport pairs taken
 from Wikipedia's "Airlines and destinations" tables, resolved to IATA codes
 through Wikidata property P238, with block time modelled from great-circle
-distance. Rail runs stop to stop along OpenStreetMap route relations; ferries
+distance, or from the shortest way round airspace closed to the route's
+airlines (Ukraine for all; Russia and Belarus for airlines that do not fly
+there). Rail runs stop to stop along OpenStreetMap route relations; ferries
 along OpenStreetMap ferry ways, charging the sailing, the terminal time and
 the expected wait for the next departure. The per-cell result is dissolved into bands
 and shipped as PMTiles at four levels of detail, plus per-origin binary arrays
