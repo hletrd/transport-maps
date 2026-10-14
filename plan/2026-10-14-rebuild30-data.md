@@ -56,11 +56,18 @@ right; the pairs above are the check, not the fit.
   14 h 10 vs 14 h 30-14 h 40 westbound). Open: map lines stay great circles;
   one-stops under 15,400 km stay.
 - [ ] E4 + M4 roads (worktree)
-- [ ] E5 M3 rail (worktree)
+- [x] E5 M3 rail (d879205, 3069650): relations with no `service` tag promoted to
+  high_speed on >=50% high-speed track averaging >=200 km/h (every
+  Shinkansen, THSR); high-speed track no relation runs over built as links
+  (98,309 km, 1,313 stations; China 92,012 km); tiers refitted on 2,360
+  timetabled trains, non-HSR tiers at 0.69-0.79 of mapped line speed.
+  Ride minutes: Tokyo->Shin-Osaka 370 -> 153 (147), Shanghai->Hangzhou
+  none -> 38 (45), Beijing->Shanghai none -> 270 (258). Still off: Tokyo->
+  Sendai 112 (90), Shin-Osaka->Hiroshima 111 (81), Seoul->Busan 121 (150),
+  Euston->Manchester 176 (128, no relation).
 - [x] M1 ferries (9d55601): published headways for six corridors (TurboJET,
   Helsinki-Tallinn, Dover-Calais, Dar-Zanzibar, Wellington-Picton), OSM
   `interval` first. Edge cost HK-Macau 223 -> 105 min, Helsinki-Tallinn
   349-404 -> 192-246. Open: Dalian-Yantai (sources disagree), Dar-Zanzibar
   sailing 165 min without a duration tag (~2 h real).
-- [ ] M4 rail tiers with E5 M3 (worktree)
 - [ ] merge, full tests on h200, rebuild 30, re-measure every pair above, deploy
