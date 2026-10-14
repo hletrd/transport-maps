@@ -63,6 +63,13 @@ arrays; a static page renders them on a globe.
 - Derived caches key on `_params_hash` of the constants **and inputs** that
   govern them, never on a bare `.exists()`.
 
+## Build host
+
+- **At most ~64 threads on h200** (owner, 2026-10-15). Size worker counts so
+  everything this project runs there at once adds up to about 64
+  (`scripts/h200_rebuild.sh`'s `CPU_LIMIT` and `WORKERS_*`). Do not pin CPUs
+  (no `taskset`/`numactl`): placement is the scheduler's.
+
 ## Deploy rules
 
 - **No deploy is done until it has been opened in a browser.** Twice in this

@@ -36,7 +36,13 @@ set -euo pipefail
 # build also checks its count against MemAvailable (cli._requested_workers):
 # on 2026-10-10, at the old 12 GB a worker, 48 full-map workers were refused;
 # at the measured 7 GB (2026-10-11) the same 693 GB holds 76.
-: "${WORKERS_FULL:=48}" "${WORKERS_AIR:=8}" "${WORKERS_FERRY:=24}" "${WORKERS_RAIL:=24}"
+: "${WORKERS_FULL:=30}" "${WORKERS_AIR:=4}" "${WORKERS_FERRY:=15}" "${WORKERS_RAIL:=15}"
+# The owner's limit (2026-10-15): this project runs about 64 threads on h200
+# at a time. Each worker is one busy thread (a tile write adds tippecanoe's two
+# for a moment), so the four maps' workers add up to CPU_LIMIT -- rebuild 28's
+# split scaled to 64 -- and a start that asks for more is refused. Where the
+# threads run is left to the scheduler: no CPU pinning.
+: "${CPU_LIMIT:=64}"
 # Rebuild 28: 124 workers held ~350 pids above the other services' ~7,400 --
 # a worker's two threads plus tippecanoe's while it runs -- so ~3 each.
 : "${PIDS_PER_WORKER:=3}"
@@ -92,7 +98,11 @@ pids_headroom() {  # refuse a start the container cannot hold
 }
 
 start() {
-  local date=${1:-$(date +%F)} i
+  local date=${1:-$(date +%F)} i sum=0
+  for i in "${WORKERS[@]}"; do sum=$((sum + i)); done
+  if [ "$sum" -gt "$CPU_LIMIT" ]; then
+    echo "!! ${sum} workers over the ${CPU_LIMIT}-thread limit; lower WORKERS_*"; exit 1
+  fi
   env_for_build
   export TRANSPORT_MAPS_SERVICE_DATE=$date
   pids_headroom
@@ -202,7 +212,9 @@ split() {  # split <full|air|ferry|rail> <free checkout> [workers]
 from transport_maps.cli import PARENT_GB, WORKER_PEAK_GB
 avail = next(int(l.split()[1]) for l in open('/proc/meminfo') if l.startswith('MemAvailable:')) / 2**20
 print(max(0, int((0.8 * avail - PARENT_GB) // WORKER_PEAK_GB)))")}
-  [ "$wt" -gt 56 ] && wt=56
+  # The tail runs beside main's own workers; together they stay inside the
+  # thread limit.
+  [ "$wt" -gt $((CPU_LIMIT - wm)) ] && wt=$((CPU_LIMIT - wm))
   [ "$wt" -ge 8 ] || { echo "!! only $wt workers would fit"; exit 1; }
   todo=$(cd "$W/$main" && .venv/bin/python scripts/h200_split.py todo "$map" "$W/$main" "$ih" "$gh")
   r=$(echo "$todo" | tr ',' '\n' | grep -c .)

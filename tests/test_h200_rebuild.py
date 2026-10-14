@@ -70,3 +70,23 @@ def test_split_stops_main_before_merging_and_ends_with_a_final_pass():
     assert at == sorted(at), order
     assert "set +e" in body[body.index("final pass"):] or "set +e" in body
     assert "TRANSPORT_MAPS_RESUME_TRUST_RECORDS" not in body
+
+
+def test_the_builds_add_up_to_the_owners_64_threads():
+    """The owner limited this project to about 64 threads on h200
+    (2026-10-15), placement left to the scheduler. The default workers of the
+    four maps add up to no more than CPU_LIMIT, a start that would exceed it
+    is refused, and a split tail is capped by it too.
+
+    Mutations performed and reverted, each RED: WORKERS_FULL default back to
+    48; drop the refusal from start().
+    """
+    import re
+
+    assert re.search(r':\s*"\$\{CPU_LIMIT:=64\}"', CODE)
+    defaults = dict(re.findall(r'"\$\{(WORKERS_\w+):=(\d+)\}"', CODE))
+    assert len(defaults) == 4 and sum(int(v) for v in defaults.values()) <= 64, defaults
+    start = CODE[CODE.index("start() {"):CODE.index("records_of() {")]
+    assert '"$sum" -gt "$CPU_LIMIT"' in start and "exit 1" in start
+    assert '[ "$wt" -gt $((CPU_LIMIT - wm)) ] && wt=$((CPU_LIMIT - wm))' in CODE
+    assert "taskset" not in CODE
