@@ -188,6 +188,37 @@ def _fill_blanks(cells: list[str], out: np.ndarray, passes: int = 3) -> np.ndarr
     return out
 
 
+#: World Bank income groups as Natural Earth carries them (INCOME_GRP), merged
+#: to four: the two high-income groups are one group, because how fast a road
+#: is driven does not depend on OECD membership. Index into calibration.toml
+#: [ground_income]. A country Natural Earth leaves unclassified ("-99", the
+#: unknown cells) reads as upper middle, the multiplier the others are
+#: relative to.
+INCOME_GROUPS = ("high", "upper_middle", "lower_middle", "low")
+DEFAULT_INCOME_GROUP = 1
+_INCOME_OF_GRP = {"1": 0, "2": 0, "3": 1, "4": 2, "5": 3}
+_INCOME_BY_A3: dict[str, int] = {}
+
+
+def income_group(a3: str) -> int:
+    """Index into INCOME_GROUPS for an ADM0_A3, from Natural Earth's World
+    Bank classification."""
+    if not _INCOME_BY_A3:
+        path = _download().resolve()
+        _meta, table = pyogrio.read_arrow(f"/vsizip/{path}", columns=["ADM0_A3", "INCOME_GRP"])
+        for c3, grp in zip(table.column("ADM0_A3").to_pylist(),
+                           table.column("INCOME_GRP").to_pylist()):
+            if c3:
+                _INCOME_BY_A3[c3] = _INCOME_OF_GRP.get((grp or "")[:1], DEFAULT_INCOME_GROUP)
+    return _INCOME_BY_A3.get(a3, DEFAULT_INCOME_GROUP)
+
+
+def cell_income_group(country: np.ndarray) -> np.ndarray:
+    """INCOME_GROUPS index per cell from its ADM0_A3 (cell_country)."""
+    codes, inverse = np.unique(np.asarray(country, dtype=str), return_inverse=True)
+    return np.array([income_group(c) for c in codes], dtype=np.int64)[inverse.reshape(-1)]
+
+
 def iso2(a3: str) -> str:
     """ISO-2 for an ADM0_A3, loading the table on first use."""
     if not A3_TO_A2:

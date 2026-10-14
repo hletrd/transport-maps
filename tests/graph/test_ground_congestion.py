@@ -1,10 +1,12 @@
-"""The road speed penalty uses the congestion radius, not the refinement one.
+"""The road speed a cell is charged: class speed x income multiplier, slowed
+inside a city's own built-up radius.
 
-Since 2026-10-14 calibration.toml [urban] has two radii: `radius_km` (40)
-decides which cells are split finer, `congestion_radius_km` (20) which cells'
-roads are slowed. Reading the wrong one would put the old 40 km penalty back
-under the refitted speeds -- every city's surroundings 1.6x too slow, with no
-error anywhere.
+Since rebuild 31 (calibration.toml [ground], [ground_income], [urban]) the
+penalty is drawn per city at `built_up_extent` of its built-up radius
+(sources/urban.scaled_city_distance), not at one radius around every city of
+200,000 -- which left London's outer half at highway speed -- and the fitted
+class speeds are an upper-middle-income country's, scaled by the cell's
+World Bank income group.
 """
 
 from __future__ import annotations
@@ -14,22 +16,47 @@ from types import SimpleNamespace
 import numpy as np
 
 from transport_maps.graph import ground
-from transport_maps.sources import urban
+from transport_maps.sources import countries, urban
 
 
-def test_the_penalty_is_drawn_at_the_congestion_radius(monkeypatch):
-    """Mutation performed and reverted: congestion_mask passing
-    URBAN_RADIUS_KM -> RED."""
-    asked = []
+def _speeds(monkeypatch, classes, scaled, groups):
+    monkeypatch.setattr(urban, "scaled_city_distance",
+                        lambda cells: (np.asarray(scaled, dtype=float), np.zeros(len(cells))))
+    monkeypatch.setattr(countries, "cell_income_group", lambda country: np.asarray(groups))
+    idx = SimpleNamespace(cells=[f"c{i}" for i in range(len(classes))], base_cells=[])
+    return ground.cell_speed_kmh(idx, np.asarray(classes), country=np.array([""] * len(classes)))
 
-    def mask(cells, radius_km=urban.URBAN_RADIUS_KM):
-        asked.append(radius_km)
-        return np.array([True, True, False])
 
-    monkeypatch.setattr(urban, "urban_mask", mask)
-    idx = SimpleNamespace(cells=["a", "b", "c"], base_cells=[])
-    classes = np.array([1, 0, 1])
-    v = ground.cell_speed_kmh(idx, classes)
-    assert asked == [urban.URBAN_CONGESTION_RADIUS_KM] != [urban.URBAN_RADIUS_KM]
+def test_the_penalty_is_drawn_at_each_citys_own_extent(monkeypatch):
+    """A cell under `built_up_extent` city radii is slowed, one at it is not.
+
+    Mutation performed and reverted: built_up_mask comparing with
+    URBAN_RADIUS_KM (the 40 km refinement radius) instead of the extent ->
+    RED (both cells slowed)."""
+    e = urban.URBAN_BUILT_UP_EXTENT
+    k, f = ground.SPEED_BY_ROAD_CLASS_KMH, urban.URBAN_BUILT_UP_FACTOR
+    v = _speeds(monkeypatch, [1, 1], [0.99 * e, e], [1, 1])
+    assert np.allclose(v, [k[1] / f, k[1]])
+
+
+def test_the_income_multiplier_scales_the_fitted_classes_only(monkeypatch):
+    """Highway in a high-income country runs at the class speed times its
+    multiplier; roadless and local keep their published defaults wherever
+    they are.
+
+    Mutations performed and reverted, each RED: drop the multiplier; apply
+    it to every class."""
+    k, m = ground.SPEED_BY_ROAD_CLASS_KMH, ground.INCOME_SPEED_MULTIPLIER
+    far = [9.0, 9.0, 9.0, 9.0]
+    v = _speeds(monkeypatch, [1, 4, 0, 5], far, [0, 3, 0, 3])
+    assert np.allclose(v, [k[1] * m[0], k[4] * m[3], k[0], k[5]])
+    assert m[0] > m[1] == 1.0 > m[2] > m[3]
+
+
+def test_roadless_terrain_is_never_slowed_by_traffic(monkeypatch):
+    """Walking pace is not slowed by traffic.
+
+    Mutation performed and reverted: drop `& (classes > 0)` -> RED."""
     k = ground.SPEED_BY_ROAD_CLASS_KMH
-    assert v.tolist() == [k[1] / urban.URBAN_CONGESTION_FACTOR, k[0], k[1]]
+    v = _speeds(monkeypatch, [0], [0.1], [1])
+    assert v.tolist() == [k[0]]

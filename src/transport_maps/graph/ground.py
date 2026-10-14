@@ -51,6 +51,37 @@ def load_ground_calibration(path=None) -> tuple[np.ndarray, float]:
 # weighted with (ARCH-8).
 SPEED_BY_ROAD_CLASS_KMH, LAND_BORDER_MIN = load_ground_calibration()
 
+#: Road classes an income multiplier scales (highway .. tertiary): the FITTED
+#: ones. Roadless is walking pace and local a published default.
+INCOME_SCALED_CLASSES = (1, 2, 3, 4)
+
+
+def load_road_model(path=None) -> tuple[np.ndarray, float]:
+    """calibration.toml [ground_income] and [ground] end_min: the speed
+    multiplier per World Bank income group (sources/countries.INCOME_GROUPS
+    order) and the minutes every road journey pays at its two ends. Both
+    FITTED with the class speeds (scripts/calibrate_ground.py); provenance in
+    calibration.toml."""
+    import tomllib
+
+    path = path or (config.ROOT / "calibration.toml")
+    with open(path, "rb") as fh:
+        raw = tomllib.load(fh)
+    table = raw["ground_income"]
+    missing = [k for k in countries.INCOME_GROUPS if k not in table]
+    if missing:
+        raise ValueError(f"{path} [ground_income] is missing {', '.join(missing)}")
+    mult = np.array([float(table[k]) for k in countries.INCOME_GROUPS], dtype=np.float64)
+    end = float(raw["ground"]["end_min"])
+    if not (mult > 0).all() or end < 0:
+        raise ValueError(f"{path}: income multipliers must be positive and end_min >= 0; "
+                         f"got {mult.tolist()}, {end}")
+    return mult, end
+
+
+# Read once, at import, like the speeds above.
+INCOME_SPEED_MULTIPLIER, END_MINUTES = load_road_model()
+
 # Directed edge slots preallocated per cell: six ring neighbours plus the
 # cross-resolution pairs along split seams. Measured at 8.0 per cell over the
 # res-6/7 universe (82 M edges over 10.2 M cells); the guard below turns an
@@ -73,16 +104,26 @@ def cell_class(idx: NodeIndex) -> np.ndarray:
     return roads.cell_class(idx.cells)
 
 
-def congestion_mask(idx: NodeIndex) -> np.ndarray:
-    """The cells whose roads [urban] congestion_factor slows: within
-    congestion_radius_km of a city, on the base grid and carried down."""
-    r = urban.URBAN_CONGESTION_RADIUS_KM
+def built_up_mask(idx: NodeIndex) -> np.ndarray:
+    """The cells whose roads [urban] built_up_factor slows: inside a city's
+    own built-up radius times built_up_extent (sources/urban.
+    scaled_city_distance), on the base grid and carried down."""
     if len(getattr(idx, "base_cells", [])):
-        return refine.expand(urban.urban_mask(idx.base_cells, r), idx)
-    return urban.urban_mask(idx.cells, r)
+        s, _pop = urban.scaled_city_distance(list(idx.base_cells))
+        return refine.expand(s < urban.URBAN_BUILT_UP_EXTENT, idx)
+    s, _pop = urban.scaled_city_distance(list(idx.cells))
+    return s < urban.URBAN_BUILT_UP_EXTENT
 
 
-def cell_speed_kmh(idx: NodeIndex, classes: np.ndarray | None = None) -> np.ndarray:
+def cell_income(idx: NodeIndex, country: np.ndarray | None = None) -> np.ndarray:
+    """sources/countries.INCOME_GROUPS index per cell, from its country."""
+    if country is None:
+        country = countries.cell_country(idx.cells)
+    return countries.cell_income_group(country)
+
+
+def cell_speed_kmh(idx: NodeIndex, classes: np.ndarray | None = None,
+                   country: np.ndarray | None = None) -> np.ndarray:
     """Effective ground speed per cell, indexed by cell position.
 
     `classes` is `cell_class(idx)` when the caller already has it: the build
@@ -94,18 +135,23 @@ def cell_speed_kmh(idx: NodeIndex, classes: np.ndarray | None = None) -> np.ndar
     # against a true 29.3%, depressing mean ground speed from 36.8 to 23.9 km/h.
     if classes is None:
         classes = cell_class(idx)
-    speeds = SPEED_BY_ROAD_CLASS_KMH[classes]
+    speeds = SPEED_BY_ROAD_CLASS_KMH[classes].astype(np.float64)
+    # The same grade of road is driven faster in a rich country than a poor
+    # one: one speed per class was 23% too slow on North American town
+    # journeys and 24% too fast in low-income countries (2026-10-15 audit of
+    # rebuild 30's fit). A fitted multiplier per World Bank income group.
+    scaled = np.isin(classes, INCOME_SCALED_CLASSES)
+    speeds[scaled] *= INCOME_SPEED_MULTIPLIER[cell_income(idx, country)[scaled]]
     # GRIP4 gives a cell the grade of its BEST road, so a dense city cell with a
-    # motorway through it is charged at motorway speed. Measured over 112 real
-    # city-to-airport journeys that made urban access 2.03x too fast, against
-    # only 1.12x between towns: the error is in built-up areas, not on the open
-    # road. Dividing marked cells by the fitted factor brings urban access to
-    # 1.02x and inter-town to 1.06x.
+    # motorway through it is charged at motorway speed, and the hex path runs
+    # straight across a city on those cells: London -> LHR went 22 km of
+    # highway cells in 23 min against Google's 45. Inside a city's own
+    # built-up radius, which scales with its population, the fitted factor
+    # stands for the streets a journey actually takes.
     # Only where there are roads to be congested. A roadless cell is already at
-    # walking pace, and traffic does not make walking slower -- halving it to
-    # 2.5 km/h would put the slowest terrain on Earth below its own floor.
-    congested = congestion_mask(idx) & (classes > 0)
-    speeds = np.where(congested, speeds / urban.URBAN_CONGESTION_FACTOR, speeds)
+    # walking pace, and traffic does not make walking slower.
+    congested = built_up_mask(idx) & (classes > 0)
+    speeds = np.where(congested, speeds / urban.URBAN_BUILT_UP_FACTOR, speeds)
     return speeds
 
 
@@ -129,7 +175,7 @@ def hex_edges(idx: NodeIndex, speeds: np.ndarray | None = None,
     the first origin was solved (PR-5).
     """
     if speeds is None:
-        speeds = cell_speed_kmh(idx)
+        speeds = cell_speed_kmh(idx, country=country)
     centroids = np.array([h3.cell_to_latlng(c) for c in idx.cells], dtype=np.float64)
 
     # Adjacency alone asserts that every border on Earth can be walked across.

@@ -211,35 +211,42 @@ def test_mode_detail_reads_the_calibration_it_describes(monkeypatch):
 
 def test_the_road_prose_says_halved_only_when_the_factor_is_two(monkeypatch):
     """CR3-7. "halved inside cities" was a literal rendering of the fitted
-    calibration.toml [urban] congestion_factor, true only while it is 2.0.
-    The word is now derived from the number.
+    calibration.toml [urban] factor, true only while it is 2.0. The word is
+    derived from the number -- and since rebuild 31 the sentence also quotes
+    the income span and the end minutes from the module that applies them.
 
     Mutations performed (2026-10-02), each RED, each restored:
       - the literal "halved inside cities" back in mode_detail()        -> RED
       - urban_slowdown() returning "halved" whatever the factor         -> RED
       - mode_detail() reading a frozen 2.0 instead of the urban module  -> RED
+    Mutation performed (2026-10-15) and restored: `span` quoting the class
+    speed without the income multipliers -> RED.
     """
+    from transport_maps.graph import ground
     from transport_maps.sources import urban
 
     roads = ("highway", "major road", "minor road")
-    shipped = index.urban_slowdown(urban.URBAN_CONGESTION_FACTOR)
+    shipped = index.urban_slowdown(urban.URBAN_BUILT_UP_FACTOR)
     prose = index.mode_detail()
     for key in roads:
-        assert f"{shipped} inside cities" in prose[key], (key, prose[key])
-        assert f"within {urban.URBAN_CONGESTION_RADIUS_KM:.0f} km of a city" in prose[key]
+        assert f"{shipped} inside a city's built-up area" in prose[key], (key, prose[key])
+        assert f"pays {ground.END_MINUTES:.0f} min at its two ends" in prose[key]
+    hw = ground.SPEED_BY_ROAD_CLASS_KMH[1]
+    mult = ground.INCOME_SPEED_MULTIPLIER
+    assert f"{hw * mult.min():.0f}-{hw * mult.max():.0f} km/h" in prose["highway"]
 
-    monkeypatch.setattr(urban, "URBAN_CONGESTION_FACTOR", 2.0)
+    monkeypatch.setattr(urban, "URBAN_BUILT_UP_FACTOR", 2.0)
     prose = index.mode_detail()
     for key in roads:
-        assert "halved inside cities" in prose[key], (key, prose[key])
+        assert "halved inside a city's built-up area" in prose[key], (key, prose[key])
 
-    monkeypatch.setattr(urban, "URBAN_CONGESTION_FACTOR", 2.5)
+    monkeypatch.setattr(urban, "URBAN_BUILT_UP_FACTOR", 2.5)
     prose = index.mode_detail()
     for key in roads:
         assert "halved" not in prose[key], (key, prose[key])
-        assert "divided by 2.5 inside cities" in prose[key], (key, prose[key])
+        assert "divided by 2.5 inside a city's built-up area" in prose[key], (key, prose[key])
     # The roadless track is not in the urban regime and says nothing about it.
-    assert "inside cities" not in prose["track"]
+    assert "built-up" not in prose["track"]
     assert index.urban_slowdown(1.75) == "divided by 1.75"
     assert index.urban_slowdown(2.0) == "halved"
 

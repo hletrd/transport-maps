@@ -23,7 +23,7 @@ import polars as pl
 import pytest
 
 from transport_maps import config
-from transport_maps.graph import air, build
+from transport_maps.graph import air, build, ground
 from transport_maps.graph.nodes import NodeIndex
 
 # iata, lat, lon, size, country
@@ -141,9 +141,10 @@ def test_access_enters_on_the_departure_side_and_leaves_from_the_arrival_side(id
         cell = idx.airport_cell_index(iata)
         dep, arr = idx.airport_index(iata), idx.airport_arr_index(iata)
         xdep, xarr = idx.airport_intl_index(iata), idx.airport_intl_arr_index(iata)
-        assert edges[(cell, dep)] == CAL.processing_min[size], iata
-        assert edges[(arr, cell)] == CAL.disembark_min[size], iata
-        assert edges[(xarr, cell)] == CAL.disembark_min[size], iata
+        kerb = ground.END_MINUTES / 2.0              # the airport end of the drive
+        assert edges[(cell, dep)] == CAL.processing_min[size] + kerb, iata
+        assert edges[(arr, cell)] == CAL.disembark_min[size] + kerb, iata
+        assert edges[(xarr, cell)] == CAL.disembark_min[size] + kerb, iata
         assert (dep, cell) not in edges and (cell, arr) not in edges, iata
         assert (cell, xdep) not in edges and (cell, xarr) not in edges, iata
 

@@ -89,9 +89,28 @@ def _format(meta: dict[str, Any]) -> int:
     return f
 
 
+def with_end_minutes(dist: np.ndarray, source: int, n_cells: int,
+                     end_min: float) -> np.ndarray:
+    """A solve's minutes with the two door ends of every journey added: half
+    of `end_min` to every node but the source (leaving the door), the other
+    half to every cell but the source (arriving at one). The airport kerb's
+    halves are on the access and egress edges (graph/build._access_edges).
+
+    One implementation for the build and the service, because a map and the
+    service's answer for the same point must be the same numbers. A uniform
+    shift, so the predecessors of the solve still describe its paths.
+    [ground] end_min, FITTED (scripts/calibrate_ground.py)."""
+    if not end_min:
+        return dist
+    out = np.asarray(dist, dtype=np.float64) + end_min / 2.0
+    out[:n_cells] += end_min / 2.0
+    out[source] = dist[source]
+    return out
+
+
 def write_bundle(out: Path, cells: list[str], split, n_nodes: int, csr,
                  identity: dict[str, Any] | None = None, *,
-                 n_airports: int, n_stations: int) -> Path:
+                 n_airports: int, n_stations: int, end_min: float = 0.0) -> Path:
     """Write the bundle to `out`, replacing any previous one in one rename."""
     out = Path(out)
     _check_layout(len(cells), int(n_nodes), n_airports, n_stations, AIRPORT_LAYERS[FORMAT])
@@ -117,6 +136,10 @@ def write_bundle(out: Path, cells: list[str], split, n_nodes: int, csr,
     meta = {"format": FORMAT, "nCells": len(cells), "nNodes": int(n_nodes),
             "nAirports": n_airports, "nStations": n_stations,
             "nnz": int(csr.nnz), "solveRes": config.SOLVE_RES, "fineRes": config.FINE_RES,
+            # The door ends every solve adds (with_end_minutes): the graph's
+            # constant, carried with it, because the service ships without
+            # calibration.toml.
+            "endMinutes": float(end_min),
             "identity": identity or {}}
     (tmp / "meta.json").write_text(json.dumps(meta, indent=1))
     if out.exists():
@@ -437,6 +460,8 @@ class GraphSolver:
         else:
             tree = dijkstra(self.bundle.csr, directed=True, indices=node,
                             return_predecessors=True)
+        tree = (with_end_minutes(tree[0], node, self.bundle.meta["nCells"],
+                                 float(self.bundle.meta.get("endMinutes", 0.0))), tree[1])
         self.solves += 1
         if self.trees > 0:
             self._kept[node] = tree

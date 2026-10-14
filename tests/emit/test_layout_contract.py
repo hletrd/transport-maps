@@ -132,6 +132,9 @@ def _run_build_path(monkeypatch, tmp_path, idx, minutes, pred):
     monkeypatch.setattr(dijkstra, "origin_node", lambda idx, lat, lon: 6)
     monkeypatch.setattr(dijkstra, "solve_from",
                         lambda csr, source, with_predecessors=False: (minutes, pred))
+    # The layout is under test, not the door ends every solve adds
+    # (service/bundle.with_end_minutes; tests/service/test_end_minutes.py).
+    monkeypatch.setattr(cli.ground, "END_MINUTES", 0.0)
     monkeypatch.setattr(cli.validate, "check_coverage", lambda m, i, r: 1.0)
     monkeypatch.setattr(cli.validate, "check_monotonic_ground", lambda *a, **k: None)
     monkeypatch.setattr(cli.validate, "check_bands_cover", lambda *a, **k: None)

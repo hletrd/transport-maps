@@ -652,63 +652,108 @@ interval_decay = 1.5137
 # rather than an array: tests/test_licence_firewall.py refuses any list in
 # this file, because a list is what a dump of records would look like.
 #
-# Classes 1-4 (87.3, 51.9, 51.7, 27.9) are FITTED, jointly with [urban]
-# congestion_factor and congestion_radius_km, against 750 real driving
-# journeys from Google Routes (scripts/calibrate_ground.py, 2026-10-14;
-# data/build/ground_samples3.json): 697 between populated places 8-600 km
-# apart and 53 from a place to its nearest medium or large airport, from 58
-# source towns. The fit minimises squared LOG error (a reader sees ratios),
-# and the urban structure was chosen by five-fold cross-validation by source
-# over radii 0/5/10/20/40 km and one or two factors (highway apart), on the
-# mean of the two journey kinds' median |log(observed/predicted)|. Built-up
-# cells are weighted by the factor, so these are FREE-FLOW speeds.
+# Classes 1-4 (73.1, 59.6, 57.0, 35.5) are FITTED -- jointly with
+# [ground_income], `end_min` below and [urban] built_up_factor -- against
+# 1,396 real driving journeys from Google Routes (scripts/calibrate_ground.py,
+# 2026-10-15; data/build/ground_samples5.json): the 750 town journeys of the
+# rebuild-30 fit re-observed, plus 646 from the centres of 150 cities of 1 M
+# or more (to their airport, to towns 15-150 km out and one 5-15 km out),
+# which that sample all but lacked. The target is Google's TYPICAL-TRAFFIC
+# time for a Tuesday 10:00 (local solar time) departure, `duration` of a
+# TRAFFIC_AWARE request: the map's time is door to door, and a traveller
+# meets daytime traffic. The fit minimises squared LOG error with the four
+# strata (metro, intercity, rural, airport access) weighted equally, and the
+# structure was chosen by five-fold cross-validation by source over 48
+# candidates (flat or city-scaled penalty radii, highways apart, a factor per
+# city size, income multipliers, end minutes). These are the speeds of an
+# upper-middle-income country; [ground_income] scales them.
 #
-# Out of fold: between towns median observed/predicted 0.96 (|log| 0.18);
-# airport access 1.23 (|log| 0.24) -- access is still about a fifth too fast
-# at the median, the residue of GRIP4 grading a city cell by the best road in
-# it. The values replaced (104, 57, 50, 18 with x2.0 within 40 km) scored
-# 0.93 (|log| 0.19) and 1.10 (|log| 0.34) on the same journeys: they were an
-# OLS on squared MINUTES (2,998 journeys, ground_samples2.json), which the
-# longest trips decide. It put tertiary at 18 km/h, below the local-road
-# default, and left journeys more than 30% tertiary 26% too slow.
+# Out of fold, median |log(observed/predicted)| (and median ratio):
+#   stratum    rebuild 30 constants    this fit
+#   metro      0.238 (1.22, fast)      0.147 (0.98)
+#   intercity  0.139 (0.99)            0.135 (0.95)
+#   rural      0.175 (1.07)            0.149 (1.01)
+#   airport    0.421 (1.50, fast)      0.177 (0.99)
+# The rebuild-30 column is those constants scored as they were, so its
+# intercity and rural figures are close to in-sample: they were fitted on
+# those journeys (against free-flow times). What the old structure scores
+# out of fold when refitted on these journeys is 0.203 / 0.190 / 0.190 /
+# 0.234; adding the end minutes alone takes that to 0.160 / 0.145 / 0.174 /
+# 0.202, the income multipliers to 0.156 / 0.147 / 0.150 / 0.175, and the
+# city-scaled radius to the figures above.
 #
 # Classes 0 and 5 (5 and 25) are published-figure defaults, not fitted:
-# roadless drew 0 km across these journeys and local 0.3%, too little to
-# support a fit (calibrate/ground.FIXED_CLASSES).
+# roadless drew almost no distance across these journeys and local 0.3%,
+# too little to support a fit (calibrate/ground.FIXED_CLASSES).
 #
-# Read by graph/ground.py (SPEED_BY_ROAD_CLASS_KMH). The sampled journeys stay
-# in data/build/ and nothing from them reaches dist/.
+# `end_min` = 13.8 is FITTED with the speeds: the minutes every road journey
+# pays at its two ends -- out of a street onto the network and back, and the
+# kilometres the hex path cuts across where a real road winds. Without it the
+# residual followed length in every stratum (out of fold, rural journeys of
+# 30-80 km 1.28, over 200 km 0.97), which is a constant per journey and no
+# per-kilometre speed. Half is added at the departure door and half at the
+# arrival cell of every solve (service/bundle.with_end_minutes), and half to
+# each airport kerb on the access and egress edges (graph/build.
+# _access_edges), so a drive to an airport pays it like any other.
+#
+# Read by graph/ground.py (SPEED_BY_ROAD_CLASS_KMH, END_MINUTES). The sampled
+# journeys stay in data/build/ and nothing from them reaches dist/.
 [ground]
 roadless_kmh = 5.0       # class 0, published-figure default
-highway_kmh = 87.3       # class 1, FITTED
-primary_kmh = 51.9       # class 2, FITTED
-secondary_kmh = 51.7     # class 3, FITTED
-tertiary_kmh = 27.9      # class 4, FITTED
+highway_kmh = 73.1       # class 1, FITTED
+primary_kmh = 59.6       # class 2, FITTED
+secondary_kmh = 57.0     # class 3, FITTED
+tertiary_kmh = 35.5      # class 4, FITTED
 local_kmh = 25.0         # class 5, published-figure default
+end_min = 13.8           # per journey, both ends together, FITTED
 
-# The built-up areas, by distance from a city of `pop_min` or more (Natural
-# Earth populated places, `pop_max`; sources/urban.py). Two radii:
+# Free-flow speed multiplier per World Bank income group, applied to classes
+# 1-4 (graph/ground.cell_speed_kmh); the group comes from each cell's country
+# (Natural Earth admin-0 INCOME_GRP, its two high-income groups merged:
+# sources/countries.INCOME_GROUPS). FITTED with [ground] above. The same
+# grade of road is driven at different speeds: with one speed per class the
+# rebuild-30 fit was 23% too slow on North American town journeys and 24%
+# too fast in low-income countries. upper_middle is the reference, 1 by
+# definition; a highway is 92 km/h in a high-income country and 52 in a
+# low-income one. A second set for highways alone fitted no better out of
+# fold (lower-middle 0.824 for highways against 0.804 for the rest), so one
+# set scales all four classes. Known cost: GRIP4 grades a modern expressway
+# and an ordinary national highway alike, so expressway corridors in
+# lower-middle-income countries read slow (Cairo -> Alexandria 252 min of
+# ground against Google's 151, Delhi -> Agra 283 against 204; ground_pairs).
+[ground_income]
+high = 1.261             # FITTED
+upper_middle = 1.0       # the reference
+lower_middle = 0.813     # FITTED
+low = 0.712              # FITTED
+
+# The built-up areas, from Natural Earth populated places of `pop_min` or more
+# (`pop_max`; sources/urban.py).
 #
 # `radius_km` = 40 decides which base cells are split to the finer grid
-# (graph/refine.dense_mask). FITTED in 2026-09 jointly with the old penalty
+# (graph/refine.dense_mask). FITTED in 2026-09 jointly with the then penalty
 # (112 city-to-airport and 1,383 inter-town journeys, which put 5.7% of land
-# in it); it now only governs resolution, and is kept so the refined set does
-# not shrink with the penalty's radius.
+# in it); it governs resolution only.
 #
-# `congestion_radius_km` = 20 and `congestion_factor` = 1.6 are the penalty:
-# a built-up cell with roads is slowed by the factor (graph/ground.py). FITTED
-# with the [ground] speeds above, structure and values both. GRIP4 grades a
-# cell by the best road inside it, so a dense city cell with a motorway
-# through it is charged near motorway speed; the factor stands for the
-# streets a journey actually takes there. A second factor for highways alone
-# fitted no better out of fold (0.209 against 0.209), so there is one.
+# `built_up_factor` = 1.39 is the penalty: a cell with roads closer to a city
+# than `built_up_extent` = 1.0 of that city's built-up radii is slowed by the
+# factor (graph/ground.py). The radius is the disc the city's population fills
+# at sources/roads.SETTLED_DENSITY_PER_KM2 (4,200 per km2, Demographia World
+# Urban Areas 2023, a published figure): 3.9 km at 200,000, 8.7 km at 1 M,
+# 27 km at 10 M. FITTED with [ground] above, structure and value: the extent
+# was chosen out of fold from 0.5-3 radii and against rebuild 30's flat 20 km
+# (which left London's outer half at highway speed), and a separate
+# highway factor (1.40 against 1.39) or one per city size bought nothing.
+# GRIP4 grades a cell by the best road inside it, so a dense city cell with a
+# motorway through it is charged near motorway speed; the factor stands for
+# the streets a journey actually takes there.
 #
-# The mask caches key on pop_min and their radius.
+# The masks' caches key on pop_min, the density and their geometry.
 [urban]
 pop_min = 200000.0
 radius_km = 40.0
-congestion_factor = 1.6
-congestion_radius_km = 20.0
+built_up_factor = 1.39   # FITTED
+built_up_extent = 1.0    # city built-up radii, FITTED (structure)
 
 # Crossing a land border. Charged on the ground edge between two cells whose
 # countries sit in different immigration zones, the same test the air model

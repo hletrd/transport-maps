@@ -235,8 +235,13 @@ def _access_edges(idx: NodeIndex) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         # Only trip-independent time belongs here. Border control depends on
         # where the flight goes, which this edge cannot know, so it is charged
         # on the flight edge instead -- see _air_edges.
-        access = transfers.processing_min(size, cal)
-        egress = transfers.disembark_min(size, cal)
+        # Plus the airport's END of the drive there and back: every road
+        # journey pays [ground] end_min at its two ends, and the leg to an
+        # airport is a road journey whose far end is the terminal kerb. The
+        # door end is charged once per solve (service/bundle.with_end_minutes).
+        kerb = ground.END_MINUTES / 2.0
+        access = transfers.processing_min(size, cal) + kerb
+        egress = transfers.disembark_min(size, cal) + kerb
         # Enter on the departure side, leave from the arrival side -- of
         # either layer: a traveller from abroad paid the border on the flight
         # that crossed, so walking out costs what it costs anyone. Nobody

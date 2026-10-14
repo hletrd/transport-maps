@@ -33,20 +33,34 @@ def test_an_urban_cell_is_slower_than_the_same_class_in_open_country():
     """The whole point: GRIP4 gives both the grade of their best road."""
     idx = _idx([(51.5074, -0.1278), (-25.0, 132.0)])
     speeds = ground.cell_speed_kmh(idx)
-    mask = urban.urban_mask(idx.cells)
+    mask = ground.built_up_mask(idx)
     assert mask[0] and not mask[1]
     # London's cell holds a motorway, so without the factor it would be fastest.
-    assert speeds[0] <= ground.SPEED_BY_ROAD_CLASS_KMH[1] / urban.URBAN_CONGESTION_FACTOR + 1e-9
+    fastest = ground.SPEED_BY_ROAD_CLASS_KMH[1] * ground.INCOME_SPEED_MULTIPLIER.max()
+    assert speeds[0] <= fastest / urban.URBAN_BUILT_UP_FACTOR + 1e-9
 
 
 @pytest.mark.needs_inputs
 def test_the_factor_actually_divides():
+    """London: a high-income cell inside the city's built-up radius."""
     idx = _idx([(51.5074, -0.1278)])
-    from transport_maps.sources import roads
+    from transport_maps.sources import countries, roads
 
-    raw = ground.SPEED_BY_ROAD_CLASS_KMH[roads.cell_class(idx.cells)][0]
+    cls = roads.cell_class(idx.cells)
+    raw = ground.SPEED_BY_ROAD_CLASS_KMH[cls][0]
+    if cls[0] in ground.INCOME_SCALED_CLASSES:
+        raw *= ground.INCOME_SPEED_MULTIPLIER[countries.INCOME_GROUPS.index("high")]
     got = ground.cell_speed_kmh(idx)[0]
-    assert np.isclose(got, raw / urban.URBAN_CONGESTION_FACTOR)
+    assert np.isclose(got, raw / urban.URBAN_BUILT_UP_FACTOR)
+
+
+@pytest.mark.needs_inputs
+def test_a_megacitys_built_up_radius_reaches_its_airport_and_a_towns_does_not():
+    """The extent scales with the city: LHR, 23 km out, is inside London's
+    disc; a cell 23 km from a city of 300,000 is not inside that one's."""
+    s, pop = urban.scaled_city_distance([h3.latlng_to_cell(51.4700, -0.4543, config.SOLVE_RES)])
+    assert s[0] < urban.URBAN_BUILT_UP_EXTENT and pop[0] > 5e6
+    assert urban.city_radius_km(np.array([3e5]))[0] < 23.0 < urban.city_radius_km(np.array([9e6]))[0]
 
 
 @pytest.mark.needs_inputs

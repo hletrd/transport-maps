@@ -279,6 +279,9 @@ STAMPED = [
     (landmask, "POLYFILL_METHOD", "centre-containment", lambda: landmask._cells_cache_path(6, SRCS[:3])),
     (urban, "URBAN_POP_MIN", 100_000.0, lambda: urban._mask_cache_path(["a", "b"], SRC)),
     (urban, "PLACES_URL", "https://example.invalid/places.zip", lambda: urban._mask_cache_path(["a", "b"], SRC)),
+    (urban, "URBAN_POP_MIN", 100_000.0, lambda: urban._scaled_cache_path(["a", "b"], SRC)),
+    (urban, "PLACES_URL", "https://example.invalid/places.zip", lambda: urban._scaled_cache_path(["a", "b"], SRC)),
+    (roads, "SETTLED_DENSITY_PER_KM2", 3000.0, lambda: urban._scaled_cache_path(["a", "b"], SRC)),
     (osm, "ANTIMERIDIAN_EPS_DEG", 1e-3, lambda: osm._ferry_cache_path([("d", "x.pbf", 1, 2)])),
     # MIN_FERRY_KM / MAX_FERRY_KM used to be stamped here. They never governed
     # the parquet's content -- nothing in sources/osm.py filters by length; the
@@ -372,6 +375,7 @@ INPUT_KEYED = [
     ("landmask.cells", lambda s: landmask._cells_cache_path(6, [SRC, SRC, s])),
     ("landmask.landmasses", lambda s: landmask._landmasses_cache_path(6, [s, SRC, SRC])),
     ("urban.mask", lambda s: urban._mask_cache_path(["a", "b"], s)),
+    ("urban.scaled", lambda s: urban._scaled_cache_path(["a", "b"], s)),
     ("countries.cell_country", lambda s: countries._cache_path(["a", "b"], s)),
     ("routes.network", lambda s: routes._network_cache_path(["AAA"], {"AAA": "A"}, s, DAY)),
     ("road_crossings.landmasses", lambda s: _road_crossings_path([s, SRC, SRC])),
@@ -415,6 +419,7 @@ _COVERED_BY_TABLE = {
     "airports._table_cache_path",
     "landmask._cells_cache_path",
     "urban._mask_cache_path",
+    "urban._scaled_cache_path",
     "osm._ferry_cache_path",
     "osm._rail_cache_path",
     "routes._network_cache_path",

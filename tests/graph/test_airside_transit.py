@@ -28,7 +28,7 @@ import pytest
 from scipy.sparse.csgraph import dijkstra
 
 from transport_maps import config
-from transport_maps.graph import air, build, transfers
+from transport_maps.graph import air, build, ground, transfers
 from transport_maps.graph.nodes import NodeIndex
 
 # iata, lat, lon, size, country (OurAirports), Natural Earth A3 of its cell
@@ -100,7 +100,10 @@ def _conn(at):
     return max(CAL.connection_min[META[at][2]], float(np.median(waits)))
 
 
-PROC, OUT, BORDER = (CAL.processing_min["large"], CAL.disembark_min["large"],
+# Each access and egress edge also carries half of [ground] end_min, the
+# airport kerb's end of the drive there (graph/build._access_edges).
+KERB = ground.END_MINUTES / 2.0
+PROC, OUT, BORDER = (CAL.processing_min["large"] + KERB, CAL.disembark_min["large"] + KERB,
                      CAL.border_min["large"])
 
 

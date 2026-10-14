@@ -381,6 +381,13 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     validate.check_monotonic_ground(idx, minutes, speeds,
                                     country=shared["country"], zone=shared["zone"],
                                     crossing_min=shared["border_min"])
+    # The two door ends of every journey ([ground] end_min), after the gates
+    # above, which check the solve against its own edges. The service adds
+    # the same through the same function, so a map and an on-demand answer
+    # for one point agree.
+    from transport_maps.service.bundle import with_end_minutes
+
+    minutes = with_end_minutes(minutes, source, idx.n_cells, ground.END_MINUTES)
 
     # The variants are built without the zoom-7+ level: three quarters of
     # every origin's band tiles, and three full sets would not fit on the web
@@ -729,7 +736,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # Reused by check_monotonic_ground in every origin as well: the ground
     # speed grid does not change between origins, and re-deriving it per
     # origin cost ~4.8s x every origin for the same value.
-    speeds = ground.cell_speed_kmh(idx, classes=cell_class)
+    speeds = ground.cell_speed_kmh(idx, classes=cell_class, country=country)
     ferry_keys: list = []
     csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links,
                             exclude=exclude, speeds=speeds, country=country, zone=zone,
@@ -751,7 +758,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
 
         bundle.write_bundle(config.BUILD / "solver", idx.cells, idx._split, csr.shape[0],
                             csr, identity, n_airports=len(idx.airports),
-                            n_stations=len(idx.stations))
+                            n_stations=len(idx.stations), end_min=ground.END_MINUTES)
         logging.getLogger(__name__).info("solver bundle written to %s", config.BUILD / "solver")
     # The render grid (land + sea fringe, neighbour table) is the same for
     # every origin; computed once here, inherited copy-on-write.

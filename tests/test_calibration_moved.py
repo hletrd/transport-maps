@@ -29,12 +29,13 @@ from transport_maps import config
 from transport_maps.graph import air, ground
 from transport_maps.sources import urban
 
-# The ground and urban values were refitted on 2026-10-14 (calibration.toml
-# [ground], [urban]; scripts/calibrate_ground.py); these are the values that
-# refit wrote, and what the move checks below still pin is the plumbing: one
-# loader, floats, a key that does not move with the TOML's number formatting.
-OLD_SPEEDS = [5.0, 87.3, 51.9, 51.7, 27.9, 25.0]
-OLD_URBAN = (200_000.0, 40.0, 1.6, 20.0)
+# The ground and urban values were refitted on 2026-10-15 (calibration.toml
+# [ground], [ground_income], [urban]; scripts/calibrate_ground.py); these are
+# the values that refit wrote, and what the move checks below still pin is the
+# plumbing: one loader, floats, a key that does not move with the TOML's
+# number formatting.
+OLD_SPEEDS = [5.0, 73.1, 59.6, 57.0, 35.5, 25.0]
+OLD_URBAN = (200_000.0, 40.0, 1.39, 1.0)
 OLD_AIR_BOUNDS = (400.0, 0.5)
 OLD_LAND_BORDER_MIN = 45.0
 #: urban._mask_cache_path(CELLS).name before the move.
@@ -49,8 +50,8 @@ def test_the_ground_speeds_are_the_old_literals():
 
 
 def test_the_urban_constants_are_the_old_literals():
-    got = (urban.URBAN_POP_MIN, urban.URBAN_RADIUS_KM, urban.URBAN_CONGESTION_FACTOR,
-           urban.URBAN_CONGESTION_RADIUS_KM)
+    got = (urban.URBAN_POP_MIN, urban.URBAN_RADIUS_KM, urban.URBAN_BUILT_UP_FACTOR,
+           urban.URBAN_BUILT_UP_EXTENT)
     assert got == OLD_URBAN
     assert all(type(v) is float for v in got), [type(v).__name__ for v in got]
 
@@ -89,12 +90,16 @@ def _edited(tmp_path, old: str, new: str):
 def test_each_loader_reads_the_file_not_a_literal(tmp_path):
     """Equal to the old literals is also what an unmoved literal would give.
     Each loader must follow an edit to the file it is pointed at."""
-    p = _edited(tmp_path, "highway_kmh = 87.3", "highway_kmh = 111.0")
+    p = _edited(tmp_path, "highway_kmh = 73.1", "highway_kmh = 111.0")
     assert ground.load_ground_calibration(p)[0][1] == 111.0
-    p = _edited(tmp_path, "congestion_factor = 1.6", "congestion_factor = 3.0")
+    p = _edited(tmp_path, "built_up_factor = 1.39", "built_up_factor = 3.0")
     assert urban.load_urban_calibration(p)[2] == 3.0
-    p = _edited(tmp_path, "congestion_radius_km = 20.0", "congestion_radius_km = 15.0")
-    assert urban.load_urban_calibration(p)[3] == 15.0
+    p = _edited(tmp_path, "built_up_extent = 1.0", "built_up_extent = 1.5")
+    assert urban.load_urban_calibration(p)[3] == 1.5
+    p = _edited(tmp_path, "end_min = 13.8", "end_min = 9.0")
+    assert ground.load_road_model(p)[1] == 9.0
+    p = _edited(tmp_path, "lower_middle = 0.813", "lower_middle = 0.5")
+    assert ground.load_road_model(p)[0][2] == 0.5
     p = _edited(tmp_path, "knee_km = 400.0", "knee_km = 300.0")
     assert air.load_frequency_bounds(p)[0] == 300.0
     p = _edited(tmp_path, "pop_min = 200000.0", "pop_min = 200000")
@@ -103,9 +108,10 @@ def test_each_loader_reads_the_file_not_a_literal(tmp_path):
 
 @pytest.mark.parametrize(("module", "names", "loader"), [
     (ground, ("SPEED_BY_ROAD_CLASS_KMH", "LAND_BORDER_MIN"), "load_ground_calibration"),
-    (urban, ("URBAN_POP_MIN", "URBAN_RADIUS_KM", "URBAN_CONGESTION_FACTOR",
-             "URBAN_CONGESTION_RADIUS_KM"),
+    (urban, ("URBAN_POP_MIN", "URBAN_RADIUS_KM", "URBAN_BUILT_UP_FACTOR",
+             "URBAN_BUILT_UP_EXTENT"),
      "load_urban_calibration"),
+    (ground, ("INCOME_SPEED_MULTIPLIER", "END_MINUTES"), "load_road_model"),
     (air, ("KNEE_KM", "MIN_FLIGHTS_PER_WEEK"), "load_frequency_bounds"),
 ])
 def test_the_module_constants_come_from_the_loader(module, names, loader):

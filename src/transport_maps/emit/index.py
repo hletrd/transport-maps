@@ -217,9 +217,22 @@ def mode_detail() -> dict[str, str]:
     # was true only because calibration.toml [urban] congestion_factor happens
     # to be 2.0: refit it and every road tooltip would still say "halved"
     # (CR3-7). The word is now derived from the number.
-    in_cities = (f"{urban_slowdown(urban.URBAN_CONGESTION_FACTOR)} inside cities "
-              f"(within {urban.URBAN_CONGESTION_RADIUS_KM:.0f} km of a city "
-              f"over {urban.URBAN_POP_MIN:,.0f} people)")
+    from transport_maps.sources.roads import SETTLED_DENSITY_PER_KM2
+
+    in_cities = (f"{urban_slowdown(urban.URBAN_BUILT_UP_FACTOR)} inside a city's built-up area "
+                 f"(the disc its population fills at {SETTLED_DENSITY_PER_KM2:,.0f} people "
+                 f"per km2, for cities over {urban.URBAN_POP_MIN:,.0f} people)")
+    # Free-flow speed by World Bank income group (graph/ground.py): quoted as
+    # the range from the low-income to the high-income figure, so the
+    # sentence states what the model charges rather than one country's case.
+    mult = ground.INCOME_SPEED_MULTIPLIER
+    lo, hi = float(mult.min()), float(mult.max())
+
+    def span(*classes: int) -> str:
+        v = [kmh[c] for c in classes]
+        return f"{min(v) * lo:.0f}-{max(v) * hi:.0f} km/h"
+    ends = (f" Every road journey also pays {ground.END_MINUTES:.0f} min at its two ends, "
+            "fitted with the speeds.")
     return {
         # Three corrections live in this one string. It named two speeds when
         # the model now prices six service tiers; it said "along the track"
@@ -264,20 +277,21 @@ def mode_detail() -> dict[str, str]:
                  "published-figure default, and the expected wait for the next sailing "
                  "-- from the timetabled interval where OSM gives one, otherwise from a "
                  "headway fitted to eight published crossings.",
-        "highway": f"Motorways and expressways, fitted at {kmh[1]:.0f} km/h free-flow, {in_cities}.",
+        "highway": f"Motorways and expressways, fitted at {span(1)} by country income, "
+                   f"{in_cities}.{ends}",
         # sorted(): the table is ordered by road class, not by speed, so
         # classes 2 and 3 (57 and 50 km/h) printed "fitted at 57-50 km/h" --
         # a backwards range, shipped in index.json and read out in the page's
         # route tooltip beside an ascending "18-25".
-        "major road": f"Primary and secondary roads, fitted at "
-                      f"{min(kmh[2], kmh[3]):.0f}-{max(kmh[2], kmh[3]):.0f} km/h, {in_cities}.",
+        "major road": f"Primary and secondary roads, fitted at {span(2, 3)} by country "
+                      f"income, {in_cities}.{ends}",
         # NOT "fitted at 18-25": class 4 (tertiary) is fitted, class 5 (local)
         # keeps a published-figure default because the fit drew 116 km across
         # four journeys -- graph/ground.py says so in as many words, and
         # CLAUDE.md requires each constant to say which it is. This sentence
         # ships into index.json and is read out in the page's route tooltip.
-        "minor road": f"Tertiary roads, fitted at {kmh[4]:.0f} km/h; local roads at "
-                      f"{kmh[5]:.0f} km/h, a published-figure default. Both {in_cities}.",
+        "minor road": f"Tertiary roads, fitted at {span(4)} by country income; local roads "
+                      f"at {kmh[5]:.0f} km/h, a published-figure default. Both {in_cities}.{ends}",
         # Class 0 was the last speed in this table with no provenance on it.
         # graph/ground.py keeps it as a published-figure default because the
         # fit returned a negative time per kilometre for roadless terrain

@@ -147,7 +147,7 @@ def test_ground_joined_is_adjacency_less_the_severed_pairs():
 @pytest.mark.needs_inputs
 def test_hex_edges_builds_no_road_across_a_severed_pair(monkeypatch):
     idx = _index([A, B, C], {(0, 1), (1, 0)})
-    monkeypatch.setattr(ground, "cell_speed_kmh", lambda _idx: np.full(3, 50.0))
+    monkeypatch.setattr(ground, "cell_speed_kmh", lambda _idx, **_kw: np.full(3, 50.0))
     r, c, _ = ground.hex_edges(idx)
     edges = set(zip(r.tolist(), c.tolist()))
     assert (0, 1) not in edges and (1, 0) not in edges

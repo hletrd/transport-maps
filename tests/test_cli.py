@@ -205,6 +205,9 @@ def _stub_pipeline(monkeypatch, written, coverages):
         cli.dijkstra, "solve_from",
         lambda csr, source, with_predecessors=False: (np.array([float(source)]), np.array([-9999])),
     )
+    # A one-node solve: the door ends every real solve adds have no cells to
+    # add to here (service/bundle.with_end_minutes is tested on its own).
+    monkeypatch.setattr(cli.ground, "END_MINUTES", 0.0)
     monkeypatch.setattr(cli.validate, "check_coverage",
                         lambda minutes, idx, reachable=None: coverages[int(minutes[0])])
     # Computed once in the parent from each cell's latitude; "dummy" has none.
@@ -506,9 +509,11 @@ def test_a_full_build_stamps_identity_count_and_graph_flags_into_index_json(monk
     assert kw["graph"] == {"rail": False, "ferry": False}
     assert set(kw["identity"]) == {"inputsHash", "buildId", "builtAt", "gitHead", "inputs"}
     # The solver bundle is told the node layout, so the service can read an
-    # itinerary off it (service/bundle.py, journey_legs). Mutation performed
-    # and reverted: drop the two keywords from cli's write_bundle call -> red.
-    assert [k for _out, k in BUNDLES] == [{"n_airports": 0, "n_stations": 0}]
+    # itinerary off it (service/bundle.py, journey_legs), and the door ends
+    # every solve adds, so its answers match the map's (with_end_minutes;
+    # the stub pipeline pins them at 0). Mutation performed and reverted:
+    # drop the two layout keywords from cli's write_bundle call -> red.
+    assert [k for _out, k in BUNDLES] == [{"n_airports": 0, "n_stations": 0, "end_min": 0.0}]
 
 
 def test_each_origin_row_logs_its_process_and_peak_memory(monkeypatch, tmp_path, capsys):
