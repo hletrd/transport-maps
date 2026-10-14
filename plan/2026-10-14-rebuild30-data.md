@@ -90,3 +90,43 @@ right; the pairs above are the check, not the fit.
   Copenhagen->Malmo 31 (47); LA->San Diego 171 (118) still slow. Road
   calibration redone for rebuild 31 (metro bias); rebuild 30 runs on to
   validate rail, air and ferry end to end.
+
+## Rebuild 31: roads, re-measured (2026-10-15)
+
+Rebuild 30's door-to-door minutes came out FASTER than free-flow driving
+between big cities (Mumbai->Pune 118 vs Google 159, Mexico City->Puebla 100
+vs 134) while US freeways stayed slow (LA->San Diego 171 vs 118). Cause,
+from walking the ground paths (scratchpad decompose.py):
+
+- In a city every cell holds some GRIP4 highway, so the hex path runs a
+  straight line across the city at highway speed: London -> LHR was 22 km of
+  class-1 cells (22 path km for 23 crow km) in 23 min against Google's 45.
+  The flat 20 km penalty radius covered a town whole and London's outer half
+  not at all.
+- One speed per class for the world: out of fold the rebuild-30 fit was 23%
+  too slow on North American town journeys, 24% too fast in low-income ones.
+- The fit set had almost no city-centre journeys (random towns), and its
+  target was free-flow time.
+- Residuals followed journey length in every stratum (rural 30-80 km 1.28,
+  over 200 km 0.97): a per-journey cost the model lacked.
+
+Refit (scripts/calibrate_ground.py, calibration.toml [ground],
+[ground_income], [urban]): 1,396 journeys -- rebuild 30's 750 re-observed
+plus 646 from 150 city centres of 1 M+ -- against Google's typical-traffic
+time for a Tuesday 10:00 departure; structure chosen out of fold over 48
+candidates. Speeds by World Bank income group (highway 92 km/h high income,
+52 low), x1.39 inside each city's own built-up radius (population at
+4,200/km2), and 13.8 min per journey at its two ends (half per door in every
+solve, half per airport kerb on the access edges). Out of fold, median
+|log| metro 0.238 -> 0.147, intercity 0.139 -> 0.135, rural 0.175 -> 0.149,
+airport 0.421 -> 0.177.
+
+Check pairs, ground minutes (rebuild 30 -> 31 vs Google typical): London->
+LHR 23 -> 34 (51), Paris->CDG 25 -> 36 (48), NYC->JFK 27 -> 36 (48),
+Tokyo->NRT 62 -> 78 (84), Mumbai->Pune 120 -> 176 (161), Mexico City->
+Puebla 104 -> 129 (142), Lagos->Ibadan 100 -> 153 (129), LA->San Diego
+176 -> 165 (123), Chicago->Milwaukee 140 -> 120 (93). Worse: Cairo->
+Alexandria 171 -> 252 (151), Delhi->Agra 262 -> 283 (204) -- expressways
+GRIP4 grades like any national highway, in lower-middle-income countries;
+a highway-only income multiplier fitted no better. Open: that, US
+interstates still ~30% slow, metro airport runs still ~25% fast.
