@@ -266,6 +266,7 @@ STAMPED = [
     (roads, "GRID_ROWS", 2159, lambda: roads._grid_cache_path(SRCS)),
     (roads, "GRID_COLS", 4319, lambda: roads._grid_cache_path(SRCS)),
     (roads, "N_TYPES", 4, lambda: roads._grid_cache_path(SRCS)),
+    (roads, "NO_DATA", 8, lambda: roads._grid_cache_path(SRCS)),
     (airports, "AIRPORTS_URL", "https://example.invalid/airports.csv", lambda: airports._table_cache_path(SRC)),
     (airports, "SIZE_BY_TYPE", {"large_airport": "large"}, lambda: airports._table_cache_path(SRC)),
     (airports, "REQUIRED_SOURCE_COLUMNS", frozenset({"iata_code"}), lambda: airports._table_cache_path(SRC)),

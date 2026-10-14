@@ -178,9 +178,56 @@ def test_the_vectorised_footprint_lookup_matches_the_per_cell_loop(monkeypatch):
     cells += [h3.latlng_to_cell(89.5, lon, 6) for lon in (-120.0, 0.0, 60.0)]
     cells += [h3.latlng_to_cell(-89.5, lon, 6) for lon in (-60.0, 90.0)]
     want = _cell_class_by_loop(cells, grid)
-    got = roads.cell_class(cells)
+    got, _known = roads.footprint_class(cells)
     assert (want == 0).any() and (want > 0).any()
     assert np.array_equal(got, want)
-    assert roads.cell_class([]).shape == (0,)
+    assert roads.footprint_class([])[0].shape == (0,)
     wide = [c for c in cells[-5:]]
-    assert np.array_equal(roads.cell_class(wide), _cell_class_by_loop(wide, grid))
+    assert np.array_equal(roads.footprint_class(wide)[0], _cell_class_by_loop(wide, grid))
+
+
+def test_a_cell_grip4_cannot_speak_for_is_not_roadless(monkeypatch):
+    """GRIP4's NoData is its sea, and it drowned city cores (Sochi, Male,
+    half of Beira and Zanzibar); its zero density has holes in others
+    (Chita). On a synthetic grid: a NoData cell beside data takes that data's
+    grade, a NoData cell in a city takes local roads, a valid zero cell under
+    a town takes local roads, and a valid zero cell elsewhere, or a NoData
+    cell far from anything, stays roadless.
+
+    Mutations performed and reverted, each RED: read NoData as 0 again
+    (`no_data` ignored in footprint_class's `known`); drop the pad=1 retry;
+    drop the urban fallback; drop the settled rule.
+    """
+    import h3
+
+    grid = np.full((roads.GRID_ROWS, roads.GRID_COLS), roads.NO_DATA, dtype=np.uint8)
+    monkeypatch.setattr(roads, "road_class_grid", lambda: grid)
+
+    def at(lat, lon):
+        return roads._row_of(lat), roads._col_of(lon)
+
+    beside = h3.latlng_to_cell(10.0, 20.0, 6)          # NoData, a primary road one cell east
+    edge = max(lo for _, lo in h3.cell_to_boundary(beside))
+    r, c = at(10.0, edge)
+    grid[r - 3:r + 4, c + 1] = 2                        # just past the footprint
+    in_city = h3.latlng_to_cell(30.0, 40.0, 6)          # NoData, nothing near, in the urban mask
+    town = h3.latlng_to_cell(-20.0, 60.0, 6)            # valid zero density, a town on it
+    r, c = at(-20.0, 60.0)
+    grid[r - 3:r + 4, c - 3:c + 4] = 0
+    empty = h3.latlng_to_cell(-40.0, 80.0, 6)           # valid zero density, nobody
+    r, c = at(-40.0, 80.0)
+    grid[r - 3:r + 4, c - 3:c + 4] = 0
+    sea = h3.latlng_to_cell(0.0, -150.0, 6)             # NoData, nothing near, not a city
+    roaded = h3.latlng_to_cell(50.0, 10.0, 6)           # GRIP4 says highway
+    r, c = at(50.0, 10.0)
+    grid[r - 3:r + 4, c - 3:c + 4] = 1
+
+    from transport_maps.sources import urban
+    monkeypatch.setattr(urban, "urban_mask", lambda cells: np.array([x == in_city for x in cells]))
+    monkeypatch.setattr(roads, "_settlements", lambda: (
+        np.array([-20.0, 50.0]), np.array([60.0, 10.0]), np.array([20_000.0, 1e6])))
+    cells = [beside, in_city, town, empty, sea, roaded]
+    got = dict(zip(["beside", "in_city", "town", "empty", "sea", "roaded"],
+                   roads.cell_class(cells).tolist()))
+    assert got == {"beside": 2, "in_city": roads.LOCAL_CLASS, "town": roads.LOCAL_CLASS,
+                   "empty": 0, "sea": 0, "roaded": 1}, got
