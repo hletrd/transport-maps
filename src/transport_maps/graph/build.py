@@ -476,6 +476,12 @@ def _ferry_edges(idx: NodeIndex, links, cal,
         # road, so only the crossing is ever taken. The child stays an option
         # so that this only ever adds a way across: measured from Seoul,
         # replacing it lost 22 cells that only its own landing reached.
+        # The way's own `interval` tag, else its corridor's published
+        # timetable (ferry.PUBLISHED_HEADWAYS), else the prior in crossing_min.
+        interval = row.get("interval_min")
+        if interval is None:
+            interval = ferry.published_headway_min((row["from_lat"], row["from_lon"]),
+                                                   (row["to_lat"], row["to_lon"]))
         kept_any, first_reason = False, None
         for uu in dict.fromkeys((u, *idx.landings.get(u, ()))):
             for vv in dict.fromkeys((v, *idx.landings.get(v, ()))):
@@ -490,7 +496,7 @@ def _ferry_edges(idx: NodeIndex, links, cal,
                 minutes.append(ferry.crossing_min(
                     km, cal,
                     duration_min=row.get("duration_min"),
-                    interval_min=row.get("interval_min"),
+                    interval_min=interval,
                     service_fraction=row.get("service_fraction") if row.get("service_fraction") is not None else 1.0,
                     extra=extra))
         if not kept_any:

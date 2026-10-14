@@ -522,8 +522,13 @@ stop_overhead_min = 0.90
 # long-range regime the map was most wrong about would be fitted on a single
 # point. The anchors cover that regime; the holdout does not.
 #
-# Two things bound the damage. Where a way carries an `interval`, that value is
-# used and the prior is not consulted at all. And the error's magnitude follows
+# Three things bound the damage. Where a way carries an `interval`, that value is
+# used and the prior is not consulted at all. Where it does not but the
+# crossing is one of the busy corridors the 2026-10-14 audit found charged
+# hours of phantom waiting (Hong Kong-Macau, Helsinki-Tallinn, Dover-Calais,
+# Dar es Salaam-Zanzibar, Wellington-Picton), the operators' published
+# timetable is used instead: graph/ferry.py PUBLISHED_HEADWAYS, each row a
+# cited, dated published figure and not a constant tuned to a route. And the error's magnitude follows
 # the wait: at short range a factor of five is minutes, which no band boundary
 # notices, while the hours-scale errors sit at 150 km and beyond where the
 # previous model was wrong by days.

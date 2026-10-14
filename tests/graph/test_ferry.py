@@ -62,9 +62,12 @@ def test_a_crossing_becomes_a_two_way_edge_with_a_plausible_time():
     # from 27 to 69 km/h with anywhere between zero and double the terminal
     # time -- wide enough that deleting the terminal term entirely left it
     # green (proven by mutation in the cycle-8 review).
+    # Helsinki-Tallinn is one of the corridors with a published timetable
+    # (ferry.PUBLISHED_HEADWAYS), so its untagged way waits on that headway.
     km = _KM_HEL_TLL
     sail = CAL.berth_min + 60.0 * km / CAL.speed_kmh
-    wait = ferry.expected_wait_min(ferry.sailings_per_week(km, CAL))
+    wait = ferry.expected_wait_min(ferry.sailings_per_week(
+        km, CAL, ferry.published_headway_min(HEL, TLL)))
     assert d[0] == pytest.approx(sail + wait + CAL.terminal_min, rel=0.02)
     # ...and each of the three components is actually in there. A crossing this
     # long cannot cost less than the time afloat plus the boarding.
@@ -353,3 +356,49 @@ def test_the_edge_capacity_guard_names_the_problem_instead_of_an_index_error(mon
     monkeypatch.setattr(grid_mod, "EDGE_SLOTS_PER_CELL", 1)
     with pytest.raises(RuntimeError, match="edge capacity exceeded"):
         grid_mod.native_edges(idx)
+
+
+# Two Hong Kong ferries out of the same Sheung Wan pier, as OSM maps them: the
+# TurboJET to Macau's Outer Harbour, on a published corridor, and the one to
+# Zhuhai's Jiuzhou pier, 5.9 km from it, which is not.
+SHEUNG_WAN = (22.2888, 114.1528)
+OUTER_HARBOUR = (22.1968, 113.5605)
+JIUZHOU = (22.2406, 113.5862)
+
+
+@pytest.mark.needs_inputs
+def test_a_busy_corridor_waits_on_its_timetable_and_a_tag_still_wins():
+    """Hong Kong -> Macau read 2 h 47 overland: the prior charged the TurboJET,
+    which sails every 39 min, 138 min of waiting (2026-10-14 audit). The way's
+    own `interval` tag wins over the table, a neighbouring pier's way is not
+    on the corridor, and either direction of the way matches.
+
+    Mutations performed and reverted, each RED: drop the table lookup in
+    build._ferry_edges (the first assertion); let the table override a tag
+    (the second); match one end only in published_headway_min (the third);
+    drop the reversed orientation (the fourth).
+    """
+    idx = _index([SHEUNG_WAN, OUTER_HARBOUR, JIUZHOU])
+
+    def cost(link):
+        return build._ferry_edges(idx, _links([link]), CAL)[2][0]
+
+    def expect(a, b, interval):
+        km = float(ground.haversine_km(np.array([list(a)]), np.array([list(b)]))[0])
+        return ferry.crossing_min(km, CAL, interval_min=interval)
+
+    assert cost(_link(1, SHEUNG_WAN, OUTER_HARBOUR)) == pytest.approx(
+        expect(SHEUNG_WAN, OUTER_HARBOUR, 39.0))
+    assert cost(_link(2, SHEUNG_WAN, OUTER_HARBOUR, interval_min=600.0)) == pytest.approx(
+        expect(SHEUNG_WAN, OUTER_HARBOUR, 600.0))
+    assert cost(_link(3, SHEUNG_WAN, JIUZHOU)) == pytest.approx(
+        expect(SHEUNG_WAN, JIUZHOU, None))
+    assert cost(_link(4, OUTER_HARBOUR, SHEUNG_WAN)) == pytest.approx(
+        expect(SHEUNG_WAN, OUTER_HARBOUR, 39.0))
+
+
+def test_every_published_headway_says_where_it_came_from():
+    """A row with no source or date is a tuned constant under another name."""
+    for row in ferry.PUBLISHED_HEADWAYS:
+        assert row.source.startswith("https://") and row.checked[:4].isdigit() and row.basis, row
+        assert ferry.MIN_INTERVAL_MIN <= row.headway_min <= ferry.MAX_INTERVAL_MIN, row

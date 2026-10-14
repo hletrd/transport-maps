@@ -25,7 +25,10 @@ to be trusted:
 2. **The OSM `interval` tag** for the headway, where it parses. Only 1.8% of
    ways carry one (max 6.5% in any distance bucket), so it cannot be the
    primary source -- but where it exists it beats any model.
-3. **A distance-based prior** for the headway otherwise, fitted to eight
+3. **A published headway** for a handful of busy corridors whose ways carry
+   no `interval` (`PUBLISHED_HEADWAYS`): each row is an operator timetable,
+   cited and dated, not a fitted number.
+4. **A distance-based prior** for the headway otherwise, fitted to eight
    published anchors. Crossing length predicts headway across four orders of
    magnitude, which is why this is the honest fallback rather than a constant.
    Its spread is wide and `calibration.toml` says so.
@@ -33,6 +36,7 @@ to be trusted:
 
 from __future__ import annotations
 
+import math
 import tomllib
 from dataclasses import dataclass
 
@@ -112,6 +116,104 @@ MIN_SAILING_KMH, MAX_SAILING_KMH = 5.0, 120.0
 # runs more often than every five minutes, and none less often than yearly.
 # Tristan, the sparsest published anchor, is 1,251 h.
 MIN_INTERVAL_MIN, MAX_INTERVAL_MIN = 5.0, 366 * 24 * 60.0
+
+
+@dataclass(frozen=True)
+class PublishedHeadway:
+    """One busy corridor's headway, read off its operators' timetables.
+
+    `a` and `b` are the two terminals as the OSM ways map them; a way whose two
+    ends lie within `radius_km` of them, either way round, is on the corridor.
+    `headway_min` is the mean gap between departures over the hours the
+    corridor is served -- the same quantity as OSM's `interval` tag and as the
+    published anchors the prior was fitted to, so a night with no sailing is not
+    charged, here or anywhere else in the ferry model. `basis` says how the
+    figure came out of the timetable, `source` where the timetable is, and
+    `checked` when it was read.
+    """
+
+    name: str
+    a: tuple[float, float]
+    b: tuple[float, float]
+    radius_km: float
+    headway_min: float
+    basis: str
+    source: str
+    checked: str
+
+
+# Published-figure inputs, not fitted constants: the corridors where the prior
+# was wrong by HOURS of waiting, which `calibration.toml` documents as its
+# real limitation ("distance alone cannot tell a remote lifeline route from a
+# busy short-sea one") and which the audit of 2026-10-14 found on the map:
+# Hong Kong -> Macau read 2 h 47 overland because the prior charged the
+# TurboJET 131-138 min of waiting, and Helsinki -> Tallinn without flights
+# read 5 h 53 against 3 h 06 for a 200 min wait on a crossing that sails every
+# 85 min. A crossing whose wait the prior already gets within about a factor
+# of 1.5 is left to it (Naples-Capri, Piraeus-Aegina, Tarifa-Tangier,
+# Algeciras-Ceuta, Singapore-Batam: 41-49 min against 20-40 published), as is
+# every short crossing at the 8 km knee (Bosphorus, Staten Island, Messina,
+# Helsingor: 6-8 min), and Busan-Fukuoka, where the prior's 28 h headway is
+# the real one now that the Queen Beetle has stopped. An OSM `interval` tag on
+# a way still wins over a row here: it is that way's own figure.
+PUBLISHED_HEADWAYS = (
+    PublishedHeadway(
+        "Hong Kong (Sheung Wan) - Macau (Outer Harbour)",
+        (22.2888, 114.1528), (22.1968, 113.5605), 1.5, 39.0,
+        "TurboJET, 25 sailings each way 07:30-23:00: 930 min / 24 gaps",
+        "https://www.turbojet.com.hk/en/routing-sailing-schedule/hong-kong-macau/sailing-schedule-fares",
+        "2026-10-14 (timetable effective 2026-02-11)"),
+    PublishedHeadway(
+        "Hong Kong (Sheung Wan) - Macau (Taipa)",
+        (22.2885, 114.1528), (22.1666, 113.5762), 1.5, 200.0,
+        "TurboJET, 11:00, 14:30, 18:00, 21:00: 600 min / 3 gaps",
+        "https://www.turbojet.com.hk/en/routing-sailing-schedule/hong-kong-macau/sailing-schedule-fares",
+        "2026-10-14 (timetable effective 2026-02-11)"),
+    PublishedHeadway(
+        "Helsinki - Tallinn",
+        (60.155, 24.935), (59.444, 24.766), 3.0, 85.0,
+        "Tallink, Viking Line and Eckero Line, 11 departures 07:30-21:40 "
+        "on 2026-10-15: 850 min / 10 gaps",
+        "https://laivaliput.fi/timetables/eng/helsinki-tallinn.html",
+        "2026-10-14"),
+    PublishedHeadway(
+        "Dover - Calais",
+        (51.125, 1.335), (50.972, 1.862), 2.0, 48.0,
+        "P&O, DFDS and Irish Ferries, 211 sailings a week round the clock: "
+        "10,080 min / 211",
+        "https://www.directferries.com/dover_calais_ferry.htm",
+        "2026-10-14"),
+    PublishedHeadway(
+        "Dar es Salaam - Zanzibar",
+        (-6.8208, 39.2889), (-6.1572, 39.1916), 1.5, 95.0,
+        "Azam Marine 07:00, 09:30, 12:30, 16:00 and Zan Fast Ferries 07:00, "
+        "12:00, 14:15, 16:30: 7 departures, 570 min / 6 gaps",
+        "https://wildtosea.com/en/plan/dar-zanzibar-ferry/",
+        "2026-10-14 (page updated 2026-09-25)"),
+    PublishedHeadway(
+        "Wellington - Picton",
+        (-41.272, 174.785), (-41.284, 174.005), 2.0, 229.0,
+        "Interislander 19 and Bluebridge 25 sailings a week, 02:00-20:30, "
+        "week of 2026-10-05: 10,080 min / 44",
+        "https://www.directferries.com/wellington_picton_ferry.htm",
+        "2026-10-14"),
+)
+
+
+def _km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    r = math.pi / 180.0
+    h = (math.sin((b[0] - a[0]) * r / 2) ** 2
+         + math.cos(a[0] * r) * math.cos(b[0] * r) * math.sin((b[1] - a[1]) * r / 2) ** 2)
+    return 2 * 6371.0088 * math.asin(math.sqrt(h))
+
+
+def published_headway_min(from_ll: tuple[float, float], to_ll: tuple[float, float]) -> float | None:
+    """The PUBLISHED_HEADWAYS figure for a way with these two ends, or None."""
+    for row in PUBLISHED_HEADWAYS:
+        for p, q in ((from_ll, to_ll), (to_ll, from_ll)):
+            if _km(p, row.a) <= row.radius_km and _km(q, row.b) <= row.radius_km:
+                return row.headway_min
+    return None
 
 
 @dataclass(frozen=True)
