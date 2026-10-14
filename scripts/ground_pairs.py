@@ -60,12 +60,18 @@ PAIRS = [
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--fit", action="append", default=[])
+    ap.add_argument("--rule", default=None,
+                    help="motorway rule for the class map (sources/motorways.RULES); RULE if omitted")
     args = ap.parse_args()
     import gc
 
     gc.disable()                     # as build-all does; see calibrate_ground.plan
     idx = nodes.build_index()
-    classes = gmodel.cell_class(idx).astype(np.int64)
+    from transport_maps.sources import motorways
+
+    grip = gmodel.grip_class(idx).astype(np.int64)
+    classes = np.where(motorways.motorway_mask(idx, args.rule or motorways.RULE),
+                       gmodel.MOTORWAY_CLASS, grip)
     country = countries.cell_country(idx.cells)
     income = countries.cell_income_group(country)
     zone = gmodel.cell_zones(country)
@@ -80,8 +86,10 @@ def main() -> None:
                 gmodel.END_MINUTES)]
     for path in args.fit:
         f = json.loads(open(path).read())
-        v = gfit.class_income_speeds(np.array(f["speeds"]), np.array(f["income"]))[classes, income]
-        v = v / np.array(f["factor"])[classes, band]
+        # A fit from before the motorway class is priced on GRIP4's classes
+        # alone, exactly as its model was.
+        own = classes if len(f["speeds"]) > gmodel.MOTORWAY_CLASS else grip
+        v = gfit.cell_speeds_from_fit(f, own, income, band)
         configs.append((path.rsplit("/", 1)[-1].removesuffix(".json"), v, float(f.get("end_min", 0))))
 
     ends = [(label, idx.try_cell_index(idx.cell_at(a, b)), idx.try_cell_index(idx.cell_at(c, d)),

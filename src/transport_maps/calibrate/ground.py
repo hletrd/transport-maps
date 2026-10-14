@@ -298,7 +298,12 @@ N_INCOME = 4
 SCALED_BANDS = (0.5, 1.0, 1.5, 2.0, 3.0)
 #: Classes whose speed an income multiplier scales. Roadless is walking pace
 #: and local a published default; neither is fitted, so neither is scaled.
+#: The motorway class (6, graph/ground.MOTORWAY_CLASS) is scaled or not as a
+#: Structure says.
 SCALED_CLASSES = (1, 2, 3, 4)
+MOTORWAY = 6
+#: Classes that count as highway for `highway_apart` and `income_split`.
+HIGHWAY_CLASSES = (1, MOTORWAY)
 #: The income group the multipliers are relative to (upper middle).
 REFERENCE_INCOME = 1
 
@@ -307,14 +312,17 @@ def scaled_band_of(s: np.ndarray) -> np.ndarray:
     return np.searchsorted(np.asarray(SCALED_BANDS), s, side="right")
 
 
-def class_income_speeds(speeds: np.ndarray, mult: np.ndarray) -> np.ndarray:
-    """(6, N_INCOME) km/h: class speed times the income multiplier, for the
-    classes in SCALED_CLASSES; the others as given. `mult` is one row for
-    every scaled class, or two: highways, then the other three."""
-    v = np.repeat(np.asarray(speeds, dtype=float)[:, None], N_INCOME, axis=1)
+def class_income_speeds(speeds: np.ndarray, mult: np.ndarray,
+                        scaled: tuple[int, ...] = SCALED_CLASSES) -> np.ndarray:
+    """(classes, N_INCOME) km/h: class speed times the income multiplier, for
+    the classes in `scaled`; the others as given. `mult` is one row for every
+    scaled class, or two: highways (HIGHWAY_CLASSES), then the rest."""
+    speeds = np.asarray(speeds, dtype=float)
+    v = np.repeat(speeds[:, None], N_INCOME, axis=1)
     mult = np.atleast_2d(np.asarray(mult, dtype=float))
-    for c in SCALED_CLASSES:
-        v[c] *= mult[0] if (c == 1 or len(mult) == 1) else mult[1]
+    for c in scaled:
+        if c < len(speeds):
+            v[c] *= mult[0] if (c in HIGHWAY_CLASSES or len(mult) == 1) else mult[1]
     return v
 
 
@@ -329,11 +337,12 @@ def size_band_of(pop: np.ndarray) -> np.ndarray:
 
 
 def predict_structured(km: np.ndarray, speeds: np.ndarray, mult: np.ndarray,
-                       factor: np.ndarray) -> np.ndarray:
-    """Minutes per journey. `km` is (n, 6, N_INCOME, B), or (n, 6, N_INCOME,
-    B, N_SIZES) with the city size class; `factor` (6, B) or (6, B, N_SIZES),
-    the time multiplier per class and band (1 where uncongested)."""
-    v = class_income_speeds(speeds, mult)
+                       factor: np.ndarray, scaled: tuple[int, ...] = SCALED_CLASSES) -> np.ndarray:
+    """Minutes per journey. `km` is (n, classes, N_INCOME, B), or (n,
+    classes, N_INCOME, B, N_SIZES) with the city size class; `factor`
+    (classes, B) or (classes, B, N_SIZES), the time multiplier per class and
+    band (1 where uncongested)."""
+    v = class_income_speeds(speeds, mult, scaled)
     if km.ndim == 5:
         f = factor if factor.ndim == 3 else np.repeat(factor[:, :, None], km.shape[4], axis=2)
         return 60.0 * (km * f[None, :, None, :, :] / v[None, :, :, None, None]).sum(axis=(1, 2, 3, 4))
@@ -343,17 +352,38 @@ def predict_structured(km: np.ndarray, speeds: np.ndarray, mult: np.ndarray,
 class Structure:
     """A congestion structure over one band set: which bands are penalised,
     by how many factors, whether highways get their own, whether each city
-    size class gets its own, and whether income multipliers are fitted.
-    `unpack` turns a parameter vector -- log speeds of the fitted classes, log
-    multipliers, log factors -- into model arrays."""
+    size class gets its own, whether income multipliers are fitted, and how
+    the motorway class (6) is priced. `unpack` turns a parameter vector --
+    log speeds of the fitted classes, log multipliers, log factors, then the
+    end minutes -- into model arrays.
+
+    Motorway options, for a 7-class sample: `motorway_income` scales class 6
+    by the income multipliers like the others; `motorway_merged` gives it
+    class 1's speed, which is the old model on the same paths. Class 6 is
+    always penalised inside a city like the rest; `highway_apart` gives
+    classes 1 and 6 their own factor."""
 
     def __init__(self, name: str, bands: str, groups: list[tuple[int, ...]],
                  income: bool, highway_apart: bool = False, sizes: bool = False,
-                 ends: bool = False, income_split: bool = False) -> None:
+                 ends: bool = False, income_split: bool = False, n_classes: int = 6,
+                 motorway_income: bool = True, motorway_merged: bool = False) -> None:
         self.name, self.bands, self.groups = name, bands, groups
         self.income, self.highway_apart, self.sizes = income, highway_apart, sizes
         self.ends, self.income_split = ends, income_split
+        self.n_classes = n_classes
+        self.motorway_income, self.motorway_merged = motorway_income, motorway_merged
         self.n_bands = (len(DIST_BANDS_KM) if bands == "abs" else len(SCALED_BANDS)) + 1
+
+    @property
+    def free(self) -> list[int]:
+        """The classes with a fitted speed of their own."""
+        return [c for c in range(self.n_classes) if c not in FIXED_CLASSES
+                and not (c == MOTORWAY and self.motorway_merged)]
+
+    @property
+    def scaled(self) -> tuple[int, ...]:
+        mw = self.n_classes > MOTORWAY and (self.motorway_income or self.motorway_merged)
+        return SCALED_CLASSES + ((MOTORWAY,) if mw else ())
 
     @property
     def n_factors(self) -> int:
@@ -364,7 +394,7 @@ class Structure:
         return (N_INCOME - 1) * (2 if self.income_split else 1) if self.income else 0
 
     def n_params(self) -> int:
-        return 4 + self.n_income + self.n_factors + (1 if self.ends else 0)
+        return len(self.free) + self.n_income + self.n_factors + (1 if self.ends else 0)
 
     def end_minutes(self, theta: np.ndarray) -> float:
         """The fitted minutes every journey pays once, at its two ends -- 0
@@ -373,10 +403,12 @@ class Structure:
         return float(theta[-1]) if self.ends else 0.0
 
     def unpack(self, theta: np.ndarray, fixed_kmh: np.ndarray):
-        speeds = np.array(fixed_kmh, dtype=float)
-        free = [c for c in range(6) if c not in FIXED_CLASSES]
-        speeds[free] = np.exp(theta[:4])
-        k = 4
+        speeds = np.array(fixed_kmh, dtype=float)[: self.n_classes]
+        free = self.free
+        speeds[free] = np.exp(theta[: len(free)])
+        if self.motorway_merged and self.n_classes > MOTORWAY:
+            speeds[MOTORWAY] = speeds[1]
+        k = len(free)
         mult = np.ones((2 if self.income_split else 1, N_INCOME))
         if self.income:
             others = [g for g in range(N_INCOME) if g != REFERENCE_INCOME]
@@ -386,19 +418,25 @@ class Structure:
         mult = mult if self.income_split else mult[0]
         f = np.exp(theta[k:k + self.n_factors])
         z = N_SIZES if self.sizes else 1
-        factor = np.ones((6, self.n_bands, z))
+        factor = np.ones((self.n_classes, self.n_bands, z))
         per = len(self.groups) * z           # factors per class group (all, or highway)
+        hw = [c for c in HIGHWAY_CLASSES if c < self.n_classes]
         for i, bands in enumerate(self.groups):
             for j in range(z):
                 for b in bands:
                     factor[1:, b, j] = f[i * z + j]
                     if self.highway_apart:
-                        factor[1, b, j] = f[per + i * z + j]
+                        factor[hw, b, j] = f[per + i * z + j]
         return speeds, mult, (factor if self.sizes else factor[:, :, 0])
+
+    def predict(self, km: np.ndarray, theta: np.ndarray, fixed_kmh: np.ndarray) -> np.ndarray:
+        """Minutes per journey under `theta`, end minutes included."""
+        sp, mu, fa = self.unpack(theta, fixed_kmh)
+        return predict_structured(km, sp, mu, fa, self.scaled) + self.end_minutes(theta)
 
     def describe(self, theta: np.ndarray, fixed_kmh: np.ndarray) -> str:
         speeds, mult, _factor = self.unpack(theta, fixed_kmh)
-        k = 4 + self.n_income
+        k = len(self.free) + self.n_income
         f = np.exp(theta[k:k + self.n_factors])
         return (f"speeds {np.round(speeds, 1).tolist()} income x{np.round(mult, 3).tolist()} "
                 f"factors {np.round(f, 2).tolist()} ends {self.end_minutes(theta):.1f} min")
@@ -415,13 +453,14 @@ def fit_structured(km: np.ndarray, observed_min: np.ndarray, st: Structure,
     root_w = np.sqrt(weights)
 
     def residual(theta):
-        speeds, mult, factor = st.unpack(theta, fixed_kmh)
-        pred = predict_structured(km, speeds, mult, factor) + st.end_minutes(theta)
+        pred = st.predict(km, theta, fixed_kmh)
         return root_w * np.log(np.maximum(pred, 1e-6) / observed_min)
 
     n = st.n_params()
     e = 1 if st.ends else 0
-    x0 = np.r_[np.log([80.0, 50.0, 50.0, 30.0]), np.zeros(n - 4)] if start is None else start
+    guess = {1: 80.0, 2: 50.0, 3: 50.0, 4: 30.0, MOTORWAY: 95.0}
+    x0 = (np.r_[np.log([guess[c] for c in st.free]), np.zeros(n - len(st.free))]
+          if start is None else start)
     x0 = x0.copy()
     first = n - e - st.n_factors                   # factors, then the end minutes
     x0[first:n - e] = np.maximum(x0[first:n - e], 0.05)
@@ -430,3 +469,17 @@ def fit_structured(km: np.ndarray, observed_min: np.ndarray, st: Structure,
     lo = np.r_[np.full(first, -np.inf), np.zeros(st.n_factors + e)]
     sol = least_squares(residual, x0, bounds=(lo, np.full(n, np.inf)), method="trf")
     return sol.x
+
+
+def cell_speeds_from_fit(fit: dict, classes: np.ndarray, income: np.ndarray,
+                         band: np.ndarray, motorway_class: int = MOTORWAY) -> np.ndarray:
+    """Per-cell km/h under a fit `calibrate_ground.py fit --out` wrote: class
+    speed x income multiplier / the factor of the cell's class and scaled
+    band. A fit from before the motorway class prices a motorway cell as the
+    GRIP4 highway it was. For scripts/ground_pairs.py and for planning a
+    sample on the paths a candidate would give."""
+    speeds = np.array(fit["speeds"], dtype=float)
+    cls = classes if len(speeds) > motorway_class else np.where(classes == motorway_class, 1, classes)
+    scaled = tuple(fit.get("scaled_classes", SCALED_CLASSES))
+    v = class_income_speeds(speeds, np.array(fit["income"]), scaled)
+    return v[cls, income] / np.array(fit["factor"])[cls, band]

@@ -52,7 +52,7 @@ import numpy as np
 from transport_maps import config
 from transport_maps.calibrate import ground as gfit
 
-N_CLASSES = 6
+N_CLASSES = 7                  # GRIP4's 0-5, then the OSM motorway class
 FOLDS = 5
 NAMES = ["roadless", "highway", "primary", "secondary", "tertiary", "local"]
 STRATA = ("metro", "intercity", "rural", "airport")
@@ -134,10 +134,28 @@ def plan(args) -> None:
           f"{sum(d == 'towns' for d, _, _ in designs)} towns, {sum(d == 'metro' for d, _, _ in designs)} metro")
 
     idx = nodes.build_index()
-    classes = gmodel.cell_class(idx).astype(np.int64)
-    speeds = gmodel.cell_speed_kmh(idx, classes)
+    # The motorway class under --rule (sources/motorways.RULES), so each rule
+    # is planned on the paths it would give.
+    from transport_maps.sources import motorways
+
+    classes = np.where(motorways.motorway_mask(idx, args.rule or motorways.RULE),
+                       gmodel.MOTORWAY_CLASS, gmodel.grip_class(idx)).astype(np.int64)
     country = countries.cell_country(idx.cells)
     income = countries.cell_income_group(country)
+    if args.fit:
+        # Route under a fitted candidate rather than calibration.toml, so a
+        # refit can be re-planned on its own paths (and observed minutes
+        # rejoined with `join`, at no new requests).
+        base = idx.base_cells if len(getattr(idx, "base_cells", [])) else idx.cells
+        s_, _pop = urban.scaled_city_distance(list(base))
+        if len(getattr(idx, "base_cells", [])):
+            from transport_maps.graph import refine
+
+            s_ = refine.expand(s_, idx)
+        speeds = gfit.cell_speeds_from_fit(json.loads(args.fit.read_text(encoding="utf-8")),
+                                           classes, income, gfit.scaled_band_of(s_))
+    else:
+        speeds = gmodel.cell_speed_kmh(idx, classes, country=country)
     zone = gmodel.cell_zones(country)
     r, c, d = gmodel.hex_edges(idx, speeds=speeds, country=country, zone=zone)
     csr = sp.coo_matrix((d, (r, c)), shape=(idx.n, idx.n)).tocsr()
@@ -260,12 +278,27 @@ def join(args) -> None:
     print(f"  {len(done)} of {len(planned['journeys'])} planned journeys matched; wrote {args.out}")
 
 
-def structures() -> list[gfit.Structure]:
-    """The candidates. 'r30' is rebuild 30's: one factor within 20 km of any
-    city. The rest add income multipliers and/or scale the penalty by each
-    city's built-up radius (band indices into SCALED_BANDS: 0 <0.5, 1 0.5-1,
-    2 1-1.5, 3 1.5-2, 4 2-3, 5 beyond)."""
+def structures(n_classes: int = 6) -> list[gfit.Structure]:
+    """The candidates. For a 6-class sample (no motorway class, rebuild 31):
+    'r30' is rebuild 30's one factor within 20 km of any city; the rest add
+    income multipliers and/or scale the penalty by each city's built-up
+    radius (band indices into SCALED_BANDS: 0 <0.5, 1 0.5-1, 2 1-1.5,
+    3 1.5-2, 4 2-3, 5 beyond), end minutes and so on. For a 7-class sample
+    (an OSM motorway class): rebuild 31's structure and its two nearest
+    rivals, each with the motorway class merged into GRIP4's highways (the
+    rebuild-31 model on the same paths), at its own income-scaled speed, or
+    at its own speed with no income multiplier."""
     s = []
+    if n_classes == 7:
+        for core, ring, hw in (((0, 1), (), False), ((0, 1), (), True), ((0,), (1, 2), False)):
+            groups = [core] + ([ring] if ring else [])
+            label = f"scaled core{core} ring{ring} +income{' hw-apart' if hw else ''} ends"
+            for mw, kw in (("merged", {"motorway_merged": True}),
+                           ("motorway", {"motorway_income": True}),
+                           ("motorway flat", {"motorway_income": False})):
+                s.append(gfit.Structure(f"{label} | {mw}", "scaled", groups, income=True,
+                                        highway_apart=hw, ends=True, n_classes=7, **kw))
+        return s
     s.append(gfit.Structure("r30", "abs", [(0, 1, 2)], income=False))
     s.append(gfit.Structure("r30+income", "abs", [(0, 1, 2)], income=True))
     for core, ring in (((0, 1), ()), ((0, 1), (2,)), ((0, 1), (2, 3)), ((0, 1), (2, 3, 4)),
@@ -293,6 +326,19 @@ def structures() -> list[gfit.Structure]:
     return s
 
 
+#: Rebuild 31's shipped road model (calibration.toml before the motorway
+#: class) as a Structure and its parameters, so a sample can score it as it
+#: is: speeds 73.1/59.6/57.0/35.5, income x1.261/0.813/0.712 (high, lower
+#: middle, low), x1.39 inside one built-up radius, 13.8 end minutes. A
+#: motorway cell is priced as the GRIP4 highway it was.
+R31_THETA = np.r_[np.log([73.1, 59.6, 57.0, 35.5]), np.log([1.261, 0.813, 0.712]), np.log(1.39), 13.8]
+
+
+def r31(n_classes: int) -> gfit.Structure:
+    return gfit.Structure("rebuild 31", "scaled", [(0, 1)], income=True, ends=True,
+                          n_classes=n_classes, motorway_merged=True)
+
+
 def _err(y, p):
     return np.median(np.abs(np.log(y / p)))
 
@@ -315,7 +361,8 @@ def fit(args) -> None:
         m = stratum == s_
         if m.any():
             w[m] = 1.0 / (len(STRATA) * m.sum())
-    fixed = np.array([5.0, np.nan, np.nan, np.nan, np.nan, 25.0])
+    n_classes = km_by["scaled"].shape[1]
+    fixed = np.array([5.0, np.nan, np.nan, np.nan, np.nan, 25.0, np.nan])[:n_classes]
     print(f"  {len(y)} journeys, target {args.target}; "
           + ", ".join(f"{s} {int((stratum == s).sum())}" for s in STRATA)
           + f"; {len(sources)} sources, {FOLDS} folds by source")
@@ -329,17 +376,13 @@ def fit(args) -> None:
         for k in range(FOLDS):
             test = fold == k
             th = gfit.fit_structured(km[~test], y[~test], st, fixed, w[~test])
-            sp_, mu, fa = st.unpack(th, fixed)
-            p[test] = gfit.predict_structured(km[test], sp_, mu, fa) + st.end_minutes(th)
+            p[test] = st.predict(km[test], th, fixed)
         return p
 
-    # The shipped constants, scored as they are (no refit).
-    ship = gfit.Structure("shipped", "abs", [(0, 1, 2)], income=False)
-    th = np.r_[np.log([87.3, 51.9, 51.7, 27.9]), np.log(1.6)]
-    sp_, mu, fa = ship.unpack(th, fixed)
-    p_ship = gfit.predict_structured(km_by["abs"], sp_, mu, fa)
-    results = [("shipped (rebuild 30, not refitted)", by_stratum(p_ship), None)]
-    for st in structures():
+    # Rebuild 31's constants, scored as they are (no refit).
+    p_ship = r31(n_classes).predict(km_by["scaled"], R31_THETA, fixed)
+    results = [("rebuild 31 constants (not refitted)", by_stratum(p_ship), None)]
+    for st in structures(n_classes):
         p = oof(st)
         results.append((st.name, by_stratum(p), st))
         e = results[-1][1]
@@ -347,7 +390,7 @@ def fit(args) -> None:
               + "  ".join(f"{k} {v:.3f}" for k, v in e.items()), flush=True)
     results.sort(key=lambda t: np.mean(list(t[1].values())))
     print("\n  out of fold, median |log(observed/predicted)| by stratum (mean first):")
-    for name, e, _st in results[:8] + [r for r in results if r[2] is None or r[0] == "r30"]:
+    for name, e, _st in results[:8] + [r for r in results if r[2] is None]:
         print(f"    {np.mean(list(e.values())):.3f}  {name:44} "
               + "  ".join(f"{k} {v:.3f}" for k, v in e.items()))
     # The best out of fold, unless --structure names one: a structure within
@@ -358,7 +401,7 @@ def fit(args) -> None:
     st = best[2]
     th = gfit.fit_structured(km_by[st.bands], y, st, fixed, w)
     sp_, mu, fa = st.unpack(th, fixed)
-    p = gfit.predict_structured(km_by[st.bands], sp_, mu, fa) + st.end_minutes(th)
+    p = st.predict(km_by[st.bands], th, fixed)
     p_oof = oof(st)
     print(f"\n  chosen: {st.name}; refitted on all {len(y)}:\n    {st.describe(th, fixed)}")
     for s_ in STRATA:
@@ -372,7 +415,11 @@ def fit(args) -> None:
                                         "speeds": sp_.tolist(), "income": mu.tolist(),
                                         "factor": fa.tolist(), "end_min": st.end_minutes(th),
                                         "groups": [list(g) for g in st.groups],
-                                        "highway_apart": st.highway_apart, "sizes": st.sizes},
+                                        "highway_apart": st.highway_apart, "sizes": st.sizes,
+                                        "scaled_classes": list(st.scaled),
+                                        "oof": {s_: float(v) for s_, v in by_stratum(p_oof).items()},
+                                        "oof_ratio": {s_: float(np.median(y[stratum == s_] / p_oof[stratum == s_]))
+                                                      for s_ in STRATA if (stratum == s_).any()}},
                                        indent=1))
 
 
@@ -392,6 +439,9 @@ def main() -> None:
     a.add_argument("--places", type=_path, default=config.DIST / "places.json")
     a.add_argument("--airports", type=_path, default=config.DIST / "airports.json")
     a.add_argument("--out", type=_path, default=config.BUILD / "ground_plan4.json")
+    a.add_argument("--rule", default=None, help="sources/motorways.RULES; its RULE if omitted")
+    a.add_argument("--fit", type=_path, default=None,
+                   help="route under this fit's speeds (fit --out), not calibration.toml's")
     o = sub.add_parser("observe")
     o.add_argument("--plan", type=_path, default=config.BUILD / "ground_plan4.json")
     o.add_argument("--out", type=_path, default=config.BUILD / "ground_samples4.json")

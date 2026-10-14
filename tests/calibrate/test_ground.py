@@ -124,3 +124,48 @@ def test_the_structured_fit_recovers_known_speeds_income_factor_and_ends():
     y = ground.predict_structured(km, sp, mu, fa) + st.end_minutes(truth)
     got = ground.fit_structured(km, y, st, fixed, np.full(n, 1.0 / n))
     assert np.allclose(got, truth, atol=1e-3), (got, truth)
+
+
+def test_the_motorway_class_is_recovered_with_its_own_speed():
+    """A seventh class, income-scaled: its speed comes back beside the
+    others, and merging it into class 1 cannot fit what it priced.
+
+    Mutation performed and reverted: Structure.free leaving class 6 out
+    when not merged -> RED."""
+    rng = np.random.default_rng(1)
+    n, bands = 400, len(ground.SCALED_BANDS) + 1
+    km = np.zeros((n, 7, ground.N_INCOME, bands))
+    for j in range(n):
+        g = rng.integers(0, ground.N_INCOME)
+        for c in (1, 2, 3, 4, 6):
+            km[j, c, g, rng.integers(0, bands)] = rng.uniform(0, 60)
+    fixed = np.array([5.0, np.nan, np.nan, np.nan, np.nan, 25.0, np.nan])
+    st = ground.Structure("t", "scaled", [(0, 1)], income=True, ends=True, n_classes=7)
+    truth = np.r_[np.log([50.0, 55.0, 52.0, 35.0, 90.0]), np.log([1.2, 0.8, 0.75]),
+                  np.log(1.4), 11.0]
+    y = st.predict(km, truth, fixed)
+    assert np.allclose(ground.fit_structured(km, y, st, fixed, np.full(n, 1.0 / n)), truth, atol=1e-3)
+    merged = ground.Structure("m", "scaled", [(0, 1)], income=True, ends=True, n_classes=7,
+                              motorway_merged=True)
+    th = ground.fit_structured(km, y, merged, fixed, np.full(n, 1.0 / n))
+    assert np.abs(np.log(merged.predict(km, th, fixed) / y)).max() > 0.05
+
+
+def test_a_fit_from_before_the_motorway_class_prices_a_motorway_cell_as_highway():
+    """cell_speeds_from_fit with a 6-speed fit: class 6 reads class 1's
+    speed and factor, not a neighbour's index. With a 7-speed fit it reads
+    its own, income-scaled exactly when the fit says so.
+
+    Mutation performed and reverted: map class 6 to the last speed (local
+    road) instead of highway -> RED."""
+    bands = len(ground.SCALED_BANDS) + 1
+    six = {"speeds": [5, 80, 60, 50, 30, 25], "income": [1.2, 1.0, 0.8, 0.7],
+           "factor": np.ones((6, bands)).tolist()}
+    classes, income, band = np.array([6, 1, 5]), np.array([0, 0, 0]), np.array([5, 5, 5])
+    v = ground.cell_speeds_from_fit(six, classes, income, band)
+    assert np.allclose(v, [96.0, 96.0, 25.0])
+    seven = {**six, "speeds": [5, 80, 60, 50, 30, 25, 100], "factor": np.ones((7, bands)).tolist(),
+             "scaled_classes": [1, 2, 3, 4]}
+    assert np.allclose(ground.cell_speeds_from_fit(seven, classes, income, band), [100.0, 96.0, 25.0])
+    seven["scaled_classes"] = [1, 2, 3, 4, 6]
+    assert np.allclose(ground.cell_speeds_from_fit(seven, classes, income, band), [120.0, 96.0, 25.0])
