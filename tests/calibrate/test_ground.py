@@ -72,3 +72,25 @@ def test_a_barely_sampled_class_is_refused_not_fitted():
     assert np.isnan(got[0]), f"fitted a speed for roadless from 6 samples: {got[0]}"
     assert np.isnan(got[5]), "fitted a speed for a class with no distance at all"
     assert np.allclose(got[1:5], truth[1:5], rtol=0.05), got
+
+
+def test_the_urban_penalty_covers_exactly_the_bands_inside_its_radius():
+    """A journey of 1 km in every distance band and class: at radius 10 the
+    two bands within 10 km are penalised and nothing further out is, roadless
+    never is, and the highway can carry its own factor.
+
+    Mutation performed and reverted: `edges <= radius_km` made `<` (the band
+    ending AT the radius dropped) -> RED.
+    """
+    import numpy as np
+
+    from transport_maps.calibrate import ground as gfit
+
+    km = np.ones((1, 6, len(gfit.DIST_BANDS_KM) + 1))
+    groups = np.array([0, 0, 1, 1, 1, 1])
+    x = gfit.design(km, 10.0, groups, np.array([1.5, 3.0]))[0]
+    n = km.shape[2]
+    assert x[0] == n                              # roadless: never congested
+    assert x[1] == (n - 2) + 2 * 1.5              # highway: two urban bands at 1.5
+    assert (x[2:] == (n - 2) + 2 * 3.0).all()     # the rest at 3.0
+    assert gfit.band_of(np.array([0.0, 4.9, 5.0, 39.9, 40.0, 900.0])).tolist() == [0, 0, 1, 3, 4, 4]

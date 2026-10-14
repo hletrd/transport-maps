@@ -130,3 +130,104 @@ def save(path: Path, payload: dict) -> None:
 def sleep_between(seconds: float = 0.05) -> None:
     """Be a polite client; the free tier is not an invitation to hammer."""
     time.sleep(seconds)
+
+
+# --- the structured fit (2026-10-14) ----------------------------------------
+#
+# The OLS above minimises squared MINUTES, so the longest journeys decide it.
+# Over ground_samples2.json the shipped speeds leave journeys that are more
+# than 30% tertiary at a median observed/predicted of 0.74 -- 26% too slow on
+# exactly the trips that use those roads -- while the fit calls itself right
+# overall (0.99). A travel-time map is read in ratios: ten minutes wrong on a
+# half-hour trip matters as much as an hour on a five-hour one. So the fit
+# below minimises squared RELATIVE error, and the urban penalty is fitted as
+# a structure (which radius, which classes) rather than assumed.
+#
+# A journey is recorded as kilometres per road class (rows, 0 roadless .. 5
+# local) per distance band from the nearest city of URBAN_POP_MIN or more
+# (columns, DIST_BANDS_KM). A cell is "urban" under radius R exactly when its
+# band's upper edge is <= R, so every radius on a band edge is fittable from
+# one sample.
+
+#: Upper edges of the distance-to-city bands, km; the last band is open.
+DIST_BANDS_KM = (5.0, 10.0, 20.0, 40.0)
+#: Classes the sample cannot support (roadless, local) keep their published
+#: defaults and enter the fit as a known offset.
+FIXED_CLASSES = (0, 5)
+
+
+def band_of(d_km: np.ndarray) -> np.ndarray:
+    """Distance band index (0 .. len(DIST_BANDS_KM)) for each distance."""
+    return np.searchsorted(np.asarray(DIST_BANDS_KM), d_km, side="right")
+
+
+def design(km: np.ndarray, radius_km: float, groups: np.ndarray,
+           factors: np.ndarray) -> np.ndarray:
+    """(n, 6) congestion-weighted kilometres per class.
+
+    `km` is (n, 6, len(DIST_BANDS_KM) + 1). Bands within `radius_km` are urban
+    and their kilometres are multiplied by `factors[groups[class]]`; roadless
+    is never congested (graph/ground.cell_speed_kmh).
+    """
+    edges = np.r_[DIST_BANDS_KM, np.inf]
+    urban_band = edges <= radius_km
+    rural = km[:, :, ~urban_band].sum(axis=2)
+    urban = km[:, :, urban_band].sum(axis=2)
+    f = factors[groups].copy()
+    f[0] = 1.0
+    return rural + urban * f[None, :]
+
+
+def fit_relative(km: np.ndarray, observed_min: np.ndarray, radius_km: float,
+                 groups: np.ndarray, factors: np.ndarray,
+                 fixed_kmh: np.ndarray) -> np.ndarray:
+    """Free-flow speed per class minimising sum(((pred - obs) / obs) ** 2),
+    for one congestion structure. Classes in FIXED_CLASSES keep `fixed_kmh`;
+    a fitted class whose reciprocal comes back non-positive is NaN."""
+    X = design(km, radius_km, groups, factors)
+    free = [c for c in range(X.shape[1]) if c not in FIXED_CLASSES]
+    offset = sum(X[:, c] / fixed_kmh[c] for c in FIXED_CLASSES) * 60.0
+    w = 1.0 / observed_min
+    target = (observed_min - offset) / 60.0
+    recip, *_ = np.linalg.lstsq(X[:, free] * w[:, None], target * w, rcond=None)
+    speeds = np.array(fixed_kmh, dtype=float)
+    with np.errstate(divide="ignore"):
+        speeds[free] = np.where(recip > 0, 1.0 / recip, np.nan)
+    return speeds
+
+
+def fit_log(km: np.ndarray, observed_min: np.ndarray, radius_km: float,
+            groups: np.ndarray, factors: np.ndarray, fixed_kmh: np.ndarray,
+            weights: np.ndarray | None = None) -> np.ndarray:
+    """Free-flow speed per class minimising sum(log(pred / obs) ** 2).
+
+    The error a reader of the map sees is a ratio, and squared log error is
+    the one objective that treats 0.8x and 1.25x alike: squared relative
+    error, `fit_relative`, rewards predicting low and came out 6-9% fast on
+    ground_samples3.json. Started from `fit_relative`'s answer; classes in
+    FIXED_CLASSES keep `fixed_kmh`. `weights` scale each journey's term
+    (the caller balances journey kinds with them)."""
+    from scipy.optimize import least_squares
+
+    X = design(km, radius_km, groups, factors)
+    free = [c for c in range(X.shape[1]) if c not in FIXED_CLASSES]
+    offset = sum(X[:, c] / fixed_kmh[c] for c in FIXED_CLASSES) * 60.0
+    start = fit_relative(km, observed_min, radius_km, groups, factors, fixed_kmh)[free]
+    start = np.where(np.isfinite(start), start, 40.0)
+
+    root_w = np.sqrt(weights) if weights is not None else 1.0
+
+    def residual(log_v):
+        pred = offset + (X[:, free] / np.exp(log_v)[None, :]).sum(axis=1) * 60.0
+        return root_w * np.log(np.maximum(pred, 1e-6) / observed_min)
+
+    sol = least_squares(residual, np.log(start), method="lm")
+    speeds = np.array(fixed_kmh, dtype=float)
+    speeds[free] = np.exp(sol.x)
+    return speeds
+
+
+def predict(km: np.ndarray, speeds: np.ndarray, radius_km: float, groups: np.ndarray,
+            factors: np.ndarray) -> np.ndarray:
+    """Predicted minutes per journey."""
+    return (design(km, radius_km, groups, factors) / speeds[None, :]).sum(axis=1) * 60.0
