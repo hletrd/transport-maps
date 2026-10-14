@@ -576,13 +576,18 @@ def test_the_two_pricings_name_the_same_calibration_terms():
     exactly that.
     """
     import inspect
+    # Since rebuild 30 both price through ONE function, which is the stronger
+    # form of the same guarantee; the terms are required of that function.
     graph_src = inspect.getsource(rail.ride_edges)
     emit_src = inspect.getsource(rail_detail._line_between)
-    for term in ("stop_overhead_min", "detour_factor", "speed_kmh"):
-        assert term in graph_src, f"graph/rail.ride_edges no longer uses {term}"
-        assert term in emit_src, (
-            f"emit/rail_detail._line_between no longer uses {term}; the caption "
-            "would be chosen by a different rule from the charge")
+    for src, where in ((graph_src, "graph/rail.ride_edges"),
+                       (emit_src, "emit/rail_detail._line_between")):
+        assert "leg_minutes(" in src, (
+            f"{where} no longer prices legs through graph/rail.leg_minutes; the "
+            "caption would be chosen by a different rule from the charge")
+    pricing = inspect.getsource(rail.leg_minutes)
+    for term in ("stop_overhead_min", "detour_factor", "speed_kmh", "track_speed_factor"):
+        assert term in pricing, f"graph/rail.leg_minutes no longer uses {term}"
 
 
 # ---- a "via X" qualifier the traveller never passed ---------------------------

@@ -41,6 +41,11 @@ class RailTier:
 
     speed_kmh: float
     stop_overhead_min: float
+    # Where the relation's own line speed is mapped: running speed as a share
+    # of it, and the per-stop overhead fitted with that. None for a tier where
+    # the tier speed fits better (`high_speed`) or n is too small (`tourism`).
+    line_speed_factor: float | None = None
+    line_overhead_min: float | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,13 @@ class RailCalibration:
     boarding_min: float
     alighting_min: float
     tiers: dict[str, RailTier]
+    # Running speed on the track network's links (`sources/rail_track`) as a
+    # share of the line speed the track's `maxspeed` sets. Fitted; see
+    # `[rail] track_speed_factor`.
+    track_speed_factor: float = 1.0
+    # Share of a relation's member track that must carry `maxspeed` before its
+    # line speed is used over its tier's (`[rail] line_speed_min_cover`).
+    line_speed_min_cover: float = 0.5
 
 
 def load_rail_calibration(path=None) -> RailCalibration:
@@ -101,6 +113,54 @@ def stations(routes: pl.DataFrame) -> pl.DataFrame:
               .sort("station"))
 
 
+def leg_minutes(tiers, km, line_h, cal, vmax=None, cover=None) -> np.ndarray:
+    """Minutes for each leg: the ONE pricing `ride_edges` and the captions in
+    `emit/rail_detail` both use, so the service a caption names is the one
+    that set the time.
+
+    A relation's leg is its tier's overhead plus the chord at its tier speed
+    -- or, where the tier carries line-speed terms and the relation's own
+    line speed `vmax` is mapped over `line_speed_min_cover` of its track,
+    `line_overhead_min` plus the chord at `line_speed_factor x vmax`.
+    A track-network link (`line_h` set: hours at the line speed its track's
+    `maxspeed` allows) is that time at `track_speed_factor`, with no stop
+    overhead -- the link is part of an express ride, and the stop it would pay
+    for is the one at the end, which boarding and alighting already charge.
+    """
+    tiers = list(tiers)
+    km = np.asarray(km, float)
+    n = len(km)
+
+    def column(v):
+        return np.full(n, np.nan) if v is None else np.asarray(
+            [np.nan if x is None else x for x in v], float)
+
+    line_h, vmax, cover = column(line_h), column(vmax), column(cover)
+    link = ~np.isnan(line_h)
+    # A tier the calibration does not price must be a loud failure NAMING it,
+    # not a null that becomes a NaN edge and a silently unreachable station.
+    # polars' own `replace_strict` error says only "incomplete mapping", which
+    # would send a reader to the wrong file.
+    unpriced = sorted({t for t, is_link in zip(tiers, link) if not is_link} - set(cal.tiers))
+    if unpriced:
+        raise ValueError(
+            f"no rail calibration for service tier(s) {', '.join(map(str, unpriced))}; "
+            f"calibration.toml [rail.tiers] prices {', '.join(sorted(cal.tiers))}")
+    out = np.empty(n)
+    for i, (t, is_link) in enumerate(zip(tiers, link)):
+        if is_link:
+            out[i] = 60.0 * line_h[i] / cal.track_speed_factor
+            continue
+        c = cal.tiers[t]
+        if (c.line_speed_factor is not None and vmax[i] > 0
+                and cover[i] >= cal.line_speed_min_cover):
+            out[i] = (c.line_overhead_min
+                      + 60.0 * km[i] * cal.detour_factor / (c.line_speed_factor * vmax[i]))
+        else:
+            out[i] = c.stop_overhead_min + 60.0 * km[i] * cal.detour_factor / c.speed_kmh
+    return out
+
+
 def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
     """Running time between consecutive stops, in minutes.
 
@@ -130,22 +190,11 @@ def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
 
     km = _haversine_km(nxt["lat"].to_numpy(), nxt["lon"].to_numpy(),
                        nxt["to_lat"].to_numpy(), nxt["to_lon"].to_numpy())
-    # A tier the calibration does not price must be a loud failure NAMING it,
-    # not a null that becomes a NaN edge and a silently unreachable station.
-    # polars' own `replace_strict` error says only "incomplete mapping", which
-    # would send a reader to the wrong file.
-    unpriced = sorted(set(nxt["tier"].to_list()) - set(cal.tiers))
-    if unpriced:
-        raise ValueError(
-            f"no rail calibration for service tier(s) {', '.join(map(str, unpriced))}; "
-            f"calibration.toml [rail.tiers] prices {', '.join(sorted(cal.tiers))}")
-    speed = nxt["tier"].replace_strict(
-        {t: c.speed_kmh for t, c in cal.tiers.items()},
-        return_dtype=pl.Float64).to_numpy()
-    overhead = nxt["tier"].replace_strict(
-        {t: c.stop_overhead_min for t, c in cal.tiers.items()},
-        return_dtype=pl.Float64).to_numpy()
-    minutes = overhead + 60.0 * km * cal.detour_factor / speed
+    def col(name):
+        return nxt[name].to_list() if name in nxt.columns else None
+
+    minutes = leg_minutes(nxt["tier"].to_list(), km, col("line_h"), cal,
+                          vmax=col("vmax_kmh"), cover=col("vmax_cover"))
 
     out = pl.DataFrame({"from_station": nxt["station"], "to_station": nxt["to_station"],
                         "minutes": minutes})

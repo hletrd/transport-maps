@@ -204,7 +204,7 @@ small = 35.0
 # high-speed one, because a train decelerating from 300 km/h and back costs
 # minutes that one decelerating from 80 does not.
 #
-# ---- the fit ----
+# ---- the fit (rebuild 22; REFITTED for rebuild 30, see below) ----
 #
 # Fitted by least squares on log residuals (the ferry precedent) over the
 # 2,338 relations whose `duration` parses, whose stop sequence the extracts
@@ -328,6 +328,71 @@ small = 35.0
 #    station overhead and lands at 5.3 h. No amount of speed calibration
 #    reaches 3.1 h from a 21-stop stop sequence, and nothing in this file
 #    should be read as claiming it does.
+#
+# ---- rebuild 30: the track, read (2026-10-14) ----
+#
+# Both causes above are now addressed, from the member ways and the track
+# themselves (`sources/rail_track.py`):
+#
+# 1. A relation with NO usable `service` tag is promoted to `high_speed` when
+#    at least half its member track is high-speed (`highspeed=yes` or
+#    `maxspeed` >= 200) and its own line speed averages 200 or more. A tag is
+#    never overridden: promoting on track share alone took 1,009 relations,
+#    among them S-Bahn services tagged `commuter` on German 200 km/h lines.
+#    All twenty Shinkansen relations, the THSR and the Hokuriku/Joetsu
+#    services are now `high_speed`.
+# 2. Where the relations do not carry a high-speed line -- mainland China,
+#    above all -- it is built from the track: stations on high-speed track,
+#    the track length between neighbours, the time at line speed. An EXPRESS
+#    network: a ride pays boarding and running time, no intermediate stops.
+#    That is the long-distance service on such a line; it is optimistic by the
+#    dwell of the few stops a real express makes and by the one arrival
+#    overhead the express does not pay here (the relation fit puts it at
+#    4.5 min). On track a high-speed relation already runs over, its stops
+#    are the stations; elsewhere a station is the one nearest each switch.
+#    2,391 links, 131,600 km of track, in the rebuild-29 extracts.
+#
+# The refit, `scripts/fit_rail_tiers.py --refit --vmax`, over the same
+# extracts: 2,376 relations with a usable `duration`, 2,360 inside the
+# plausibility band, now tiered AS THE GRAPH PRICES THEM (promotion moved the
+# fast untagged services out of `default`, which is why `default` fell below
+# `commuter` and the tier order changed):
+#
+#   tier             n   overhead   speed   med pred/obs  log-sd  within 2x
+#   high_speed      97     4.84     220.8       0.99       0.175     98%
+#   long_distance  293     2.62      95.8       1.07       0.310     96%
+#   regional       516     2.17      85.9       1.04       0.305     96%
+#   commuter       741     1.29      73.1       1.03       0.223     97%
+#   default        686     2.15      71.4       1.09       0.462     91%
+#   tourism         27     1.34      21.7       1.10       0.610     78%
+#
+#   whole set: med pred/obs 1.03, log-sd 0.343, 95% within 2x, 85% within 1.5x
+#
+# THE LINE'S OWN SPEED. A tier is one speed for every line it covers, and
+# the track says how fast each line is. On the relations whose member track
+# has a `maxspeed` over at least `line_speed_min_cover` of its length, the
+# running speed `line_speed_factor x` the length-weighted harmonic mean of
+# that `maxspeed`, with its own per-stop overhead, fits better than the tier
+# in every tier but one (same observations, same criterion):
+#
+#   tier             n   tier sd   line sd   factor  95% CI          overhead
+#   high_speed      92    0.144     0.152    0.994   [0.956, 1.037]    4.57
+#   long_distance  261    0.287     0.219    0.701   [0.666, 0.739]    0.67
+#   regional       471    0.258     0.242    0.709   [0.671, 0.748]    1.07
+#   default        364    0.424     0.367    0.691   [0.651, 0.734]    0.96
+#   commuter       617    0.199     0.175    0.789   [0.739, 0.831]    1.13
+#   tourism          8    0.485     0.303    0.546   [0.451, 0.683]    0.00
+#
+# So it is used for the four tiers it improves and that have the
+# observations: NOT `high_speed`, where one speed fits better (its lines are
+# all built to much the same standard), and NOT `tourism`, on n=8. A UK
+# 125 mph intercity (Avanti, `long_distance`, ~200 km/h line speed) now runs
+# at ~140 km/h rather than the tier's 96.
+#
+# THE TRACK NETWORK'S FACTOR. On `high_speed` relations with mapped line
+# speed (n=92), `duration` against `legs x overhead + 60 x member_km /
+# vmax / factor`: factor 0.881, bootstrap 95% CI [0.848, 0.915], log-sd
+# 0.145, median predicted/observed 1.00.
 [rail]
 # Track is never a great circle: curves, valleys and junctions. Applied to the
 # straight-line distance between consecutive stops. NOT refitted here -- it was
@@ -340,68 +405,81 @@ detour_factor = 1.2
 # that the two TOGETHER are 20 minutes -- three surfaces used to say 15.
 boarding_min = 15.0
 alighting_min = 5.0
+# FITTED (rebuild 30, above): running speed on the track network's links as a
+# share of line speed. n=92 high_speed relations, CI [0.848, 0.915].
+track_speed_factor = 0.881
+# A relation's own line speed is used when `maxspeed` is mapped on at least
+# this share of its member track. A modelling threshold, NOT fitted: below
+# half, the mean speaks for part of the route only. The line-speed fits above
+# are on exactly the relations this admits.
+line_speed_min_cover = 0.5
 
 # Every tier below is FITTED, as tabulated above. `speed_kmh` is the running
 # speed applied to the great-circle chord between consecutive stops after
-# `detour_factor`; `stop_overhead_min` is charged once per leg. This header is
+# `detour_factor`; `stop_overhead_min` is charged once per leg. Where a tier
+# also carries `line_speed_factor` and `line_overhead_min`, a relation whose
+# line speed is mapped (`line_speed_min_cover`) runs at that factor times it
+# with that overhead instead -- the "line sd" fit above. This header is
 # written out rather than left implicit because tomllib sees `rail.tiers` as a
 # table either way, and test_header_regex_sees_every_table_tomllib_sees pins
 # the provenance regex against tomllib's view precisely so an implicit parent
 # cannot slip through unlabelled.
 [rail.tiers]
 
-# FITTED, n=57. Median predicted/observed 0.99, log-sd 0.156, 100% within 2x;
-# bootstrap 95% CI on the speed [208, 225]. 55 of the 57 are European.
-# Selected by `service=high_speed` or `highspeed=yes` -- read "what the tiers
-# do NOT fix" above before taking this as coverage.
+# FITTED (rebuild 30), n=97: median predicted/observed 0.99, log-sd 0.175,
+# 98% within 2x. Selected by `service=high_speed`, `highspeed=yes`, or an
+# untagged relation on high-speed track (promotion, above). No line-speed
+# terms: one speed fits these lines better than their own (0.144 vs 0.152).
 [rail.tiers.high_speed]
-speed_kmh = 214.7
-stop_overhead_min = 5.11
+speed_kmh = 220.8
+stop_overhead_min = 4.84
 
-# FITTED, n=228. Median predicted/observed 1.07, log-sd 0.299, 96% within 2x;
-# speed CI [93, 112]. 216 of the 228 are European. Also prices `national`
-# (n=44) and `international` (n=16), folded here because neither can identify
-# its own overhead and this tier scores them best (1.17 and 0.96).
+# FITTED (rebuild 30), n=293: median 1.07, log-sd 0.310, 96% within 2x. Also
+# prices `national` and `international`, folded here (rebuild 22). Line
+# speed: factor 0.701 [0.666, 0.739], 0.67 min a stop, n=261, log-sd 0.219.
 [rail.tiers.long_distance]
-speed_kmh = 103.9
-stop_overhead_min = 3.90
+speed_kmh = 95.8
+stop_overhead_min = 2.62
+line_speed_factor = 0.701
+line_overhead_min = 0.67
 
-# FITTED, n=497. Median predicted/observed 1.02, log-sd 0.437, 95% within 2x;
-# speed CI [80, 92]. The commonest tier on Earth: 41% of route relations.
+# FITTED (rebuild 30), n=516: median 1.04, log-sd 0.305, 96% within 2x. The
+# commonest tier on Earth. Line speed: factor 0.709 [0.671, 0.748], 1.07 min
+# a stop, n=471, log-sd 0.242.
 [rail.tiers.regional]
-speed_kmh = 86.7
-stop_overhead_min = 2.22
+speed_kmh = 85.9
+stop_overhead_min = 2.17
+line_speed_factor = 0.709
+line_overhead_min = 1.07
 
-# FITTED, n=717, on relations carrying a duration and NO `service` tag. Median
-# predicted/observed 1.08, log-sd 0.619, 85% within 2x; speed CI [75, 85]. The
-# weakest of the four large tiers, and the one that prices 26.7% of relations
-# worldwide and 85% of North America's -- which is why its fit set being a
-# near-even Asia/Europe split (339/328) matters more here than anywhere else
-# in this table. Also prices `night` (n=8), which scores 0.96 here against
-# 0.77 as long_distance.
-[rail.tiers.default]
-speed_kmh = 81.8
-stop_overhead_min = 2.46
-
-# FITTED, n=716. Median predicted/observed 1.05, log-sd 0.363, 97% within 2x;
-# speed CI [59, 77]. 596 of the 716 are European, and the per-region table
-# above shows this is the tier where that matters most: 61 km/h in Asia, 50 in
-# Europe, 43 in Oceania, 37 in South America.
+# FITTED (rebuild 30), n=741: median 1.03, log-sd 0.223, 97% within 2x. Mostly
+# European; the per-region skew recorded above (rebuild 22) stands. Line
+# speed: factor 0.789 [0.739, 0.831], 1.13 min a stop, n=617, log-sd 0.175.
 [rail.tiers.commuter]
-speed_kmh = 73.8
-stop_overhead_min = 1.32
+speed_kmh = 73.1
+stop_overhead_min = 1.29
+line_speed_factor = 0.789
+line_overhead_min = 1.13
 
-# FITTED, n=25, and the weakest number in this file. Median predicted/observed
-# 1.01 but log-sd 1.027 -- a factor of 2.8 at one sigma -- and only 73% within
-# 2x. Kept as its own tier rather than folded because every alternative is a
-# factor of two too fast (0.44-0.55) and the error direction is the safe one:
-# a heritage railway Dijkstra declines to select is correct behaviour. NOT a
-# published-figure default, because there is no published figure for "a
-# heritage railway" and inventing one would be worse than a weak fit that says
-# so.
+# FITTED (rebuild 30), n=686, relations with NO `service` tag: median 1.09,
+# log-sd 0.462, 91% within 2x -- still the weakest large tier, and the one
+# that prices most of North America. Slower than `commuter` since promotion
+# took the fast untagged services out of it. Also prices `night`. Line speed:
+# factor 0.691 [0.651, 0.734], 0.96 min a stop, n=364, log-sd 0.367.
+[rail.tiers.default]
+speed_kmh = 71.4
+stop_overhead_min = 2.15
+line_speed_factor = 0.691
+line_overhead_min = 0.96
+
+# FITTED (rebuild 30), n=27, and still the weakest number in this file: median
+# 1.10, log-sd 0.610, 78% within 2x. Kept as its own tier because every
+# alternative is a factor of two too fast and the error direction is the safe
+# one: a heritage railway Dijkstra declines to select is correct behaviour.
+# No line-speed terms on n=8.
 [rail.tiers.tourism]
-speed_kmh = 20.1
-stop_overhead_min = 0.90
+speed_kmh = 21.7
+stop_overhead_min = 1.34
 
 # Ferries. A MIXTURE, and each figure below says which it is.
 #

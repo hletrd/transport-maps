@@ -141,7 +141,7 @@ def _line_between(routes: pl.DataFrame, cal) -> dict[tuple[str, str], tuple[int,
     opposite-direction service is a documented fallback for the 27,359 -- where
     it is the best available answer rather than a wrong one.
     """
-    from transport_maps.graph.rail import _haversine_km, station_key
+    from transport_maps.graph.rail import _haversine_km, leg_minutes, station_key
 
     df = routes.sort(["route_id", "seq"]).with_columns(
         pl.struct("lat", "lon").map_elements(lambda s: station_key(s["lat"], s["lon"]),
@@ -158,16 +158,20 @@ def _line_between(routes: pl.DataFrame, cal) -> dict[tuple[str, str], tuple[int,
         st = g["station"].to_list()
         lat, lon = g["lat"].to_list(), g["lon"].to_list()
         tier = g["tier"][0] if "tier" in g.columns else None
-        t = cal.tiers.get(tier) if tier is not None else None
+        line_h = g["line_h"][0] if "line_h" in g.columns else None
+        vmax = g["vmax_kmh"][0] if "vmax_kmh" in g.columns else None
+        cover = g["vmax_cover"][0] if "vmax_cover" in g.columns else None
+        priced = line_h is not None or (tier is not None and tier in cal.tiers)
         for i, (a, b) in enumerate(pairwise(st)):
             if a == b:
                 continue
-            if t is None:
+            if not priced:
                 minutes = 0.0
             else:
+                # graph/rail.leg_minutes, the pricing ride_edges charges.
                 km = float(_haversine_km(lat[i], lon[i], lat[i + 1], lon[i + 1]))
-                minutes = round(
-                    t.stop_overhead_min + 60.0 * km * cal.detour_factor / t.speed_kmh, quant)
+                minutes = round(float(leg_minutes(
+                    [tier], [km], [line_h], cal, vmax=[vmax], cover=[cover])[0]), quant)
             for store, key in ((fwd, (a, b)), (rev, (b, a))):
                 best = store.get(key)
                 if best is None or minutes < best[0]:

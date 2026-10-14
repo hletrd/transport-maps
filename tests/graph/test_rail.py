@@ -12,7 +12,7 @@ def frame(rows):
 
 
 def stop(route_id, seq, lat, lon, name, tier="default", route_name="",
-         operator="", ref=""):
+         operator="", ref="", line_h=None):
     """A stop row carrying EVERY column of `osm.SCHEMA`.
 
     It used to build seven keys against an eight-column schema, and polars
@@ -23,7 +23,10 @@ def stop(route_id, seq, lat, lon, name, tier="default", route_name="",
     """
     return {"route_id": route_id, "seq": seq, "stop_id": route_id * 1000 + seq,
             "lat": lat, "lon": lon, "name": name, "tier": tier,
-            "route_name": route_name, "operator": operator, "ref": ref}
+            "route_name": route_name, "operator": operator, "ref": ref,
+            "member_km": None, "hs_share": None, "vmax_kmh": None, "vmax_cover": None,
+            "duration_min": None, "stops_listed": None,
+            "track_km": None, "line_h": line_h}
 
 
 def cal(**over):
@@ -34,8 +37,8 @@ def cal(**over):
     """
     tiers = {name: rail.RailTier(speed_kmh=kmh, stop_overhead_min=ovh)
              for name, (kmh, ovh) in (("tourism", (20.0, 0.5)),
-                                      ("commuter", (74.0, 1.0)),
-                                      ("default", (82.0, 1.5)),
+                                      ("default", (74.0, 1.0)),
+                                      ("commuter", (82.0, 1.5)),
                                       ("regional", (87.0, 2.0)),
                                       ("long_distance", (104.0, 3.0)),
                                       ("high_speed", (215.0, 5.0)))}
@@ -207,3 +210,48 @@ def test_the_shipped_high_speed_tier_tracks_published_timetables(name, km, legs,
         f"{name}: modelled {modelled:.0f} min against a published {published_min:.0f} "
         f"(ratio {ratio:.2f}); the fit's two-sigma band is "
         f"{1 / HIGH_SPEED_TWO_SIGMA:.2f} to {HIGH_SPEED_TWO_SIGMA:.2f}")
+
+
+# ---- rebuild 30: line speed and the track network's links -------------------
+
+def _cal30():
+    tiers = dict(CAL.tiers)
+    tiers["regional"] = rail.RailTier(speed_kmh=87.0, stop_overhead_min=2.0,
+                                      line_speed_factor=0.7, line_overhead_min=1.0)
+    return rail.RailCalibration(detour_factor=1.2, boarding_min=15.0, alighting_min=5.0,
+                                tiers=tiers, track_speed_factor=0.9, line_speed_min_cover=0.5)
+
+
+def test_a_link_is_its_track_time_at_the_fitted_factor_with_no_stop_overhead():
+    """Mutation performed and reverted: add the tier's stop overhead to a
+    link -> RED."""
+    got = rail.leg_minutes(["high_speed"], [100.0], [0.5], _cal30())
+    assert got[0] == pytest.approx(60.0 * 0.5 / 0.9)
+
+
+def test_a_relation_runs_at_its_own_line_speed_where_the_track_says_it():
+    """A regional train on a 160 km/h line runs at 0.7 x 160 with the
+    line-speed overhead; with the speed mapped on too little of its track,
+    or on a tier without line-speed terms, it runs at its tier.
+
+    Mutations performed and reverted, each RED: ignore `cover`; use the
+    tier overhead with the line speed.
+    """
+    c = _cal30()
+    km = 50.0
+    line = 1.0 + 60.0 * km * 1.2 / (0.7 * 160.0)
+    tier = 2.0 + 60.0 * km * 1.2 / 87.0
+    got = rail.leg_minutes(["regional", "regional", "high_speed"], [km] * 3, None, c,
+                           vmax=[160.0, 160.0, 300.0], cover=[0.9, 0.3, 0.9])
+    assert got[0] == pytest.approx(line)
+    assert got[1] == pytest.approx(tier)
+    hs = c.tiers["high_speed"]
+    assert got[2] == pytest.approx(hs.stop_overhead_min + 60.0 * km * 1.2 / hs.speed_kmh)
+
+
+def test_ride_edges_price_a_link_row_by_its_track():
+    """The frame's own `line_h` reaches the edge."""
+    rows = [stop(-7, 0, 30.0, 120.0, "A", tier="high_speed", line_h=0.32),
+            stop(-7, 1, 30.0, 121.0, "B", tier="high_speed", line_h=0.32)]
+    e = rail.ride_edges(frame(rows), _cal30())
+    assert e["minutes"][0] == pytest.approx(60.0 * 0.32 / 0.9)

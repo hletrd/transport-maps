@@ -4,11 +4,14 @@ A route relation carries an ORDERED list of stop members, which is the station
 sequence directly. The tempting alternative -- walking the member ways' geometry
 and inferring which station comes next -- is wrong on every branching line,
 every reversal, and every route whose ways are not contiguous in the relation.
-Member order is authoritative; geometry is not consulted at all.
+Member order is authoritative; geometry is not consulted for it.
 
 Two passes are required and cannot be merged: relations name their stops by node
 id, and a PBF stores nodes before relations, so the ids to look up are not known
-until after the node block has already streamed past.
+until after the node block has already streamed past. The second pass
+(`rail_track.scan`) reads the ways too since rebuild 30: what a relation's
+member track says about its speed, and the high-speed track no relation runs
+over, which `rail_track.network` turns into routes of its own.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ import osmium
 import polars as pl
 
 from .. import config
+from . import rail_track
 from ._utils import _atomic_write, _params_hash
 
 # Members carrying the passenger stop sequence. A route may use the modern
@@ -49,6 +53,21 @@ SCHEMA = {
     # here and `service` alone is not enough to caption a leg.
     "operator": pl.Utf8,
     "ref": pl.Utf8,
+    # What the relation's member ways say about its line (`rail_track.
+    # relation_profile`): their total length, the share of it that is
+    # high-speed track, and the length-weighted harmonic mean of `maxspeed`
+    # with the share of length it covers. Null where no member way resolved.
+    "member_km": pl.Float64, "hs_share": pl.Float64,
+    "vmax_kmh": pl.Float64, "vmax_cover": pl.Float64,
+    # The relation's own `duration` tag, in minutes, or null: the observation
+    # `[rail.tiers]` is fitted on, kept so the fit reproduces from this frame
+    # -- with the number of stops the relation LISTS, since only a sequence
+    # the extract resolves whole has a chord sum its duration describes.
+    "duration_min": pl.Float64, "stops_listed": pl.Int64,
+    # Set only on the rows `rail_track.network` adds: two-stop links between
+    # neighbouring stations on high-speed track, priced by the track's length
+    # and line speed rather than by a tier (`graph/rail.ride_edges`).
+    "track_km": pl.Float64, "line_h": pl.Float64,
 }
 
 # ---- the service tiers ------------------------------------------------------
@@ -63,7 +82,9 @@ SCHEMA = {
 # is NOT there: `suburban` has FIVE relations worldwide and `car_shuttle` five,
 # so neither earns a tier -- `commuter`, which an earlier guess did not include
 # at all, has 2,829.
-RAIL_TIERS = ("tourism", "commuter", "default", "regional",
+# Rebuild 30's refit put `default` (71.4 km/h) below `commuter` (73.1): the
+# fast untagged services it used to average in are promoted to `high_speed`.
+RAIL_TIERS = ("tourism", "default", "commuter", "regional",
               "long_distance", "high_speed")
 DEFAULT_TIER = "default"
 
@@ -119,7 +140,12 @@ def service_tier(tags) -> str:
 
 
 def _relations(path) -> tuple[dict, set[int]]:
-    """Ordered stop-node ids per train route, plus every id to resolve."""
+    """Ordered stop-node ids per train route, plus every id to resolve.
+
+    Also the route's member WAYS -- the track it runs over, which
+    `rail_track.relation_profile` reads for what the `service` tag does not
+    say -- and its `duration`, the observation the tiers are fitted on.
+    """
     routes, wanted = {}, set()
     for obj in osmium.FileProcessor(str(path), osmium.osm.RELATION):
         t = obj.tags
@@ -130,32 +156,38 @@ def _relations(path) -> tuple[dict, set[int]]:
                    if m.type == "n" and m.role in roles]
             if len(ids) >= MIN_STOPS:
                 routes[obj.id] = {"stops": ids,
+                                  "ways": [m.ref for m in obj.members if m.type == "w"],
                                   "name": t.get("name") or "",
                                   "tier": service_tier(t),
                                   "operator": (t.get("operator") or "").strip(),
-                                  "ref": (t.get("ref") or "").strip()}
+                                  "ref": (t.get("ref") or "").strip(),
+                                  "duration_min": parse_minutes(t.get("duration"))}
                 wanted.update(ids)
                 break
     return routes, wanted
 
 
-def _nodes(path, wanted: set[int]) -> dict:
-    """Coordinates and names for the stop ids a relation pass asked for."""
-    found = {}
-    if not wanted:
-        return found
-    for obj in osmium.FileProcessor(str(path), osmium.osm.NODE):
-        if obj.id in wanted:
-            found[obj.id] = (obj.location.lat, obj.location.lon,
-                             obj.tags.get("name") or "")
-    return found
-
-
 def _parse(path) -> list[dict]:
     routes, wanted = _relations(path)
-    coords = _nodes(path, wanted)
+    track = rail_track.scan(path, wanted)
+    coords = track.nodes
     rows = []
+    covered = set()
     for route_id, r in routes.items():
+        member_km, hs_share, vmax, cover = rail_track.relation_profile(r["ways"], track.ways)
+        # The tier the `service` tag gives -- or, for a relation that carries
+        # none, what its track says: every Shinkansen relation is untagged and
+        # was priced at `default`. A tag is never overridden. Run over this
+        # parse, promoting on track share alone took 1,009 relations to
+        # `high_speed`, among them S-Bahn and RE services tagged `commuter` and
+        # `regional` that stop everywhere on a German 200 km/h upgraded line.
+        tier = r["tier"]
+        if tier == DEFAULT_TIER and rail_track.promotes(hs_share, vmax):
+            tier = "high_speed"
+        # Any relation, not only a high-speed one: the UK's 125 mph main
+        # lines are high-speed track by `maxspeed` and run by `long_distance`
+        # relations, and an express link over them counted the line twice.
+        covered.update(w for w in r["ways"] if w in track.hs)
         # A stop whose node the extract does not contain (a route crossing the
         # region boundary) is dropped, not guessed at. Renumber so `seq` stays
         # gapless and a consumer can trust consecutive pairs are adjacent stops.
@@ -172,9 +204,38 @@ def _parse(path) -> list[dict]:
             rows.append({"route_id": route_id, "seq": seq, "stop_id": sid,
                          "lat": lat, "lon": lon,
                          "name": node_name,
-                         "tier": r["tier"],
+                         "tier": tier,
                          "route_name": r["name"],
-                         "operator": r["operator"], "ref": r["ref"]})
+                         "operator": r["operator"], "ref": r["ref"],
+                         "member_km": member_km or None,
+                         "hs_share": hs_share if member_km else None,
+                         "vmax_kmh": vmax, "vmax_cover": cover if member_km else None,
+                         "duration_min": r["duration_min"],
+                         "stops_listed": len(r["stops"]),
+                         "track_km": None, "line_h": None})
+    rows.extend(_link_rows(rail_track.network(track, covered)))
+    return rows
+
+
+def _link_rows(links) -> list[dict]:
+    """`rail_track.network`'s links as two-stop routes, so every consumer of
+    this frame -- stations, ride edges, the captions -- takes them as it takes
+    a relation. The id is negative, which no OSM relation is, and derived from
+    the two stations, so the same link parsed from two overlapping extracts is
+    one route and `_pick_one_extract_per_route` keeps one copy of it."""
+    import hashlib
+
+    rows = []
+    for link in links:
+        key = "|".join(f"{v[0]:.5f},{v[1]:.5f}" for v in (link.a, link.b)).encode()
+        rid = -(int.from_bytes(hashlib.sha1(key).digest()[:6], "big") + 1)
+        for seq, (lat, lon, name) in enumerate((link.a, link.b)):
+            rows.append({"route_id": rid, "seq": seq, "stop_id": rid * 2 - seq,
+                         "lat": lat, "lon": lon, "name": name, "tier": "high_speed",
+                         "route_name": link.name, "operator": link.operator, "ref": "",
+                         "member_km": None, "hs_share": None, "vmax_kmh": None,
+                         "vmax_cover": None, "duration_min": None, "stops_listed": 2,
+                         "track_km": link.track_km, "line_h": link.line_h})
     return rows
 
 
@@ -397,7 +458,10 @@ def _ferry_cache_path(fingerprint) -> pathlib.Path:
 #    `operator`/`ref` joined the schema. Without this bump the 257,007-row
 #    parquet is a cache HIT, the new columns are absent, every train reverts to
 #    one of two speeds, and every test stays green.
-RAIL_PARSER_VERSION = 3
+# 4: each relation's member ways read for its track profile, the tier
+#    promoted on high-speed track, and the links `rail_track.network` builds
+#    from the track itself appended (rebuild 30).
+RAIL_PARSER_VERSION = 4
 
 
 def _rail_cache_path(fingerprint) -> pathlib.Path:
@@ -411,7 +475,8 @@ def _rail_cache_path(fingerprint) -> pathlib.Path:
         "rail_routes-"
         + _params_hash(fingerprint, STOP_ROLES, PLATFORM_ROLES, MIN_STOPS, schema,
                        RAIL_TIERS, DEFAULT_TIER,
-                       sorted(_TIER_BY_SERVICE.items()), RAIL_PARSER_VERSION)
+                       sorted(_TIER_BY_SERVICE.items()), RAIL_PARSER_VERSION,
+                       rail_track.params())
         + ".parquet")
 
 

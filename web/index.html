@@ -1192,28 +1192,25 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          certain on the map. Long-haul flying also varies by about an hour on
          winds alone, which a distance-only model cannot represent. Treat
          anything over 10,000 km as approximate.</p>
-      <p><b>Rail.</b> Running time comes from one of six service tiers, 74 km/h
-         for a commuter service up to 215 km/h for a high-speed one, with a
-         separate 20 km/h tier for heritage and tourist lines, all fitted
+      <p><b>Rail.</b> Running time comes from one of six service tiers, 73 km/h
+         for a commuter service up to 221 km/h for a high-speed one, with a
+         separate 22 km/h tier for heritage and tourist lines, all fitted
          against journey times recorded in OpenStreetMap. A route&rsquo;s tier
-         is read from its own <code>service</code> tag where it carries one —
-         about three in four do; the rest fall to a general-purpose default,
-         which will be too slow for an express and too fast for a stopping
-         service. The largest error this model is known to make is on the
-         Tohoku Shinkansen, where it returns about 10 hours against a published
-         3 h 10, and the larger part of that is speed. All three Shinkansen
-         relations in the data carry no <code>service</code> tag at all, so all
-         three are priced at the default, 82 km/h; the tag that marks the line
-         as high-speed sits on the individual track segments rather than on the
-         route, so the route reads as ordinary. Pricing them as high-speed
-         instead would take about 5 hours off, 70% of the error. The stop
-         sequence is the second and smaller cause: the relation lists 21
-         station calls where the fastest train makes about six, and the
-         per-stop allowance for the other fifteen is 37 minutes, 9% of the
-         error. Corrected both ways the journey would still come out near
-         4 hours, so a better tag on its own would not reach the published
-         time. Long-distance express services on all-stations relations are
-         over-stated for the same reasons, anywhere in the world.</p>
+         is read from its own <code>service</code> tag where it carries one;
+         a route without one is read as high-speed when the track it runs on
+         is, which is how the Shinkansen are priced. Where the speed limit of
+         a route&rsquo;s track is mapped, any train but a high-speed or heritage
+         one runs at about 69 to 79% of it rather than at its tier&rsquo;s one
+         speed. Where no route is mapped over a high-speed line at all —
+         most of mainland China&rsquo;s — the line is built from the track
+         itself: its stations, the distance along it, and 88% of its speed
+         limit. That network assumes an express that does not stop on the
+         way, so it is a few minutes fast on a long journey. The largest known
+         errors left are the one high-speed speed, fitted mostly in Europe,
+         which is slow on Japan&rsquo;s Sanyo line (Shin-Osaka to Hiroshima
+         111 minutes against 81) and fast in Korea (Seoul to Busan 121 against
+         150), and routes mapped with every station call where the fastest
+         train makes few.</p>
       <p>Flight frequency is a gravity model fitted to two anchor routes, not
          a timetable. Rail legs carry no waiting time at all. A ferry is
          charged half the interval between sailings, taken from the route&rsquo;s

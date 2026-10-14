@@ -31,22 +31,23 @@ Dover-Calais, Dar es Salaam-Zanzibar, Wellington-Picton), and otherwise from a
 headway fitted to eight published crossings -- on top of the sailing and the terminal time. Rail legs
 carry no wait: they are charged running time, a per-stop allowance, and 20
 minutes for reaching the platform and leaving the arrival station. Running
-time comes from one of six service tiers, 74 km/h for a commuter service up
-to 215 km/h for a high-speed one, plus a separate 20 km/h tier for heritage
+time comes from one of six service tiers, 73 km/h for a commuter service up
+to 221 km/h for a high-speed one, plus a separate 22 km/h tier for heritage
 and tourist lines, fitted against OSM `duration` tags. A route's tier is
-read from its own OpenStreetMap `service` tag WHERE IT CARRIES ONE: about a
-quarter of route relations do not, and those fall to a general-purpose
-default. The model's largest known error is the Tohoku Shinkansen at about
-10 h against a published 3 h 10, and the larger part of that IS speed: all
-three Shinkansen relations carry no `service` tag at all, so all three are
-priced at the default, 82 km/h -- the `highspeed` tag sits on the track
-segments rather than on the route, so the route reads as ordinary. Pricing
-them as high-speed instead would take about 5 h off, 70% of the error. The
-stop sequence is the second and smaller cause: the relation lists 21 station
-calls where the fastest train makes about six, and the per-stop allowance for
-the other fifteen is 37 minutes, 9% of the error. Corrected both ways the
-journey would still come out near 4 h. Express services running on
-all-stations relations are over-stated the same way.
+read from its own OpenStreetMap `service` tag where it carries one; a route
+without one is read as high-speed when the track it runs on is (`highspeed`
+and `maxspeed` on the ways), which is how the Shinkansen are priced. Where
+the `maxspeed` of a route's track is mapped, any train but a high-speed or
+heritage one runs at about 69 to 79% of it rather than at its tier's one
+speed. Where no route is mapped over a high-speed line at all -- most of
+mainland China's -- the line is built from the track itself: its stations,
+the distance along it, and 88% of its speed limit. That network assumes an
+express that does not stop on the way, so it is a few minutes fast on a long
+journey. The largest known errors left are the one high-speed speed, fitted
+mostly in Europe, which is slow on Japan's Sanyo line (Shin-Osaka to
+Hiroshima 111 min against 81) and fast in Korea (Seoul to Busan 121 against
+150), and routes mapped with every station call where the fastest train
+makes few.
 
 ## How it is computed
 
