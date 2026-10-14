@@ -77,8 +77,9 @@ def extract(tmp_path, monkeypatch):
 def test_only_routes_with_a_usable_duration_become_observations(fit, extract):
     rows, dropped = fit.observations(extract)
     assert [r["name"] for r in rows] == ["Keeper", "Implausible"], dropped
-    assert dropped["no duration tag"] == 1
-    assert dropped["duration unparseable"] == 1
+    # Read from `rail_routes()` since rebuild 30, which keeps the PARSED
+    # duration: an absent tag and an unparseable one are both null there.
+    assert dropped["no usable duration tag"] == 2
 
 
 def test_the_implausibility_band_rejects_a_mis_tagged_duration(fit, extract):

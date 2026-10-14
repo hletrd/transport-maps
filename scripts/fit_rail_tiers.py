@@ -9,13 +9,15 @@ ferries. This script is what produced the figures in that block, and running it
 is how a reader checks them -- the pattern `scripts/ground_check.py` sets and
 CLAUDE.md names.
 
-    uv run python scripts/fit_rail_tiers.py            # audit the shipped figures
-    uv run python scripts/fit_rail_tiers.py --refit    # print a fresh fit
+    uv run python scripts/fit_rail_tiers.py                   # audit the shipped figures
+    uv run python scripts/fit_rail_tiers.py --refit           # print a fresh fit
+    uv run python scripts/fit_rail_tiers.py --refit --vmax    # + line speed and the
+                                                              #   track network's factor
 
-It reads the extracts' relations directly rather than `rail_routes()`, because
-the tags it needs (`duration`, and the raw `service` before tiering) are not
-columns of that parquet. The relation pass decodes no node or way blocks, so
-it costs seconds, not the minutes a full parse would.
+Since rebuild 30 it reads `rail_routes()`, which keeps each relation's parsed
+`duration`, the stops it lists, its tier as the graph prices it (promoted on
+high-speed track) and its member track's line speed -- the observations and
+the tiering are then exactly the graph's.
 
 NOTHING here writes to `calibration.toml`. Refitting is a human decision: the
 residuals below are not all flattering, and `tourism` in particular rests on 25
@@ -31,7 +33,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import osmium
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -60,54 +61,33 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 def observations(extracts_dir: Path) -> list[dict]:
     """One row per route relation that carries a usable `duration`.
 
+    Read from `rail_routes()` itself since rebuild 30, which keeps each
+    relation's `duration`, the number of stops it lists, its tier AS THE GRAPH
+    PRICES IT (promoted where its track is high-speed) and its track profile.
     A route the extracts resolve only PARTLY is dropped rather than used: its
     chord sum covers fewer stops than the tagged duration describes, so the
     implied speed would be too low by whatever share of the route is missing.
+    The track network's links (negative ids) carry no duration and are not
+    observations.
     """
-    paths = sorted(extracts_dir.glob("*-rail.osm.pbf"))
-    if not paths:
-        raise FileNotFoundError(f"no *-rail.osm.pbf in {extracts_dir}")
-
-    meta: dict[int, dict] = {}
-    for p in paths:
-        for obj in osmium.FileProcessor(str(p), osmium.osm.RELATION):
-            t = obj.tags
-            if t.get("type") != "route" or t.get("route") != "train":
-                continue
-            declared = 0
-            for roles in (osm.STOP_ROLES, osm.PLATFORM_ROLES):
-                ids = [m.ref for m in obj.members if m.type == "n" and m.role in roles]
-                if len(ids) >= osm.MIN_STOPS:
-                    declared = len(ids)
-                    break
-            rec = {"tier": osm.service_tier(t), "duration": t.get("duration"),
-                   "declared": declared, "name": t.get("name") or ""}
-            # A cross-border route appears in two extracts, each holding only
-            # its own side; keep whichever declares the most stops, which is
-            # the rule `_pick_one_extract_per_route` applies to the parquet.
-            if obj.id not in meta or declared > meta[obj.id]["declared"]:
-                meta[obj.id] = rec
-
-    routes = osm.rail_routes(extracts_dir=extracts_dir).sort("route_id", "seq")
-    grouped = routes.group_by("route_id", maintain_order=True).agg(pl.col("lat"), pl.col("lon"))
+    routes = osm.rail_routes(extracts_dir=extracts_dir).filter(
+        pl.col("route_id") > 0).sort("route_id", "seq")
+    grouped = routes.group_by("route_id", maintain_order=True).agg(
+        pl.col("lat"), pl.col("lon"), pl.first("tier"), pl.first("duration_min"),
+        pl.first("stops_listed"), pl.first("route_name"), pl.first("vmax_kmh"),
+        pl.first("vmax_cover"), pl.first("member_km"), pl.first("hs_share"))
 
     rows, dropped = [], collections.Counter()
-    for rid, lat, lon in zip(grouped["route_id"], grouped["lat"], grouped["lon"]):
-        m = meta.get(rid)
-        if m is None:
-            dropped["no relation metadata"] += 1
-            continue
-        if not m["duration"]:
-            dropped["no duration tag"] += 1
-            continue
-        minutes = osm.parse_minutes(m["duration"])
+    for g in grouped.iter_rows(named=True):
+        minutes = g["duration_min"]
         if minutes is None:
-            dropped["duration unparseable"] += 1
+            dropped["no usable duration tag"] += 1
             continue
         if minutes <= 0:
             dropped["duration non-positive"] += 1
             continue
-        if m["declared"] and len(lat) < m["declared"]:
+        lat, lon = g["lat"], g["lon"]
+        if g["stops_listed"] and len(lat) < g["stops_listed"]:
             dropped["stop sequence truncated by the extract"] += 1
             continue
         la, lo = np.asarray(lat, float), np.asarray(lon, float)
@@ -115,8 +95,10 @@ def observations(extracts_dir: Path) -> list[dict]:
         if km < MIN_ROUTE_KM:
             dropped[f"chord sum under {MIN_ROUTE_KM:g} km"] += 1
             continue
-        rows.append({"route_id": rid, "tier": m["tier"], "km": km,
-                     "obs_min": minutes, "legs": len(la) - 1, "name": m["name"]})
+        rows.append({"route_id": g["route_id"], "tier": g["tier"], "km": km,
+                     "obs_min": minutes, "legs": len(la) - 1, "name": g["route_name"],
+                     "vmax": g["vmax_kmh"], "cover": g["vmax_cover"] or 0.0,
+                     "member_km": g["member_km"], "hs_share": g["hs_share"]})
     return rows, dropped
 
 
@@ -162,11 +144,84 @@ def _fit(sub, detour):
     return max(res.x[0], 0.0), max(res.x[1], 5.0)
 
 
+def _fit_k(obs, base, legs, grid=np.arange(0.2, 1.21, 0.02)):
+    """(overhead, k) minimising log residuals of `legs*overhead + base/k`."""
+    from scipy.optimize import minimize
+
+    ly = np.log(obs)
+
+    def loss(p):
+        pred = legs * max(p[0], 0.0) + base / max(p[1], 0.05)
+        return float(np.mean((np.log(np.maximum(pred, 1e-6)) - ly) ** 2))
+
+    best = min((loss((o, k)), (o, k)) for o in np.arange(0.0, 8.01, 0.25) for k in grid)
+    res = minimize(loss, np.array(best[1]), method="Nelder-Mead",
+                   options={"xatol": 1e-4, "fatol": 1e-9, "maxiter": 4000})
+    o, k = max(res.x[0], 0.0), max(res.x[1], 0.05)
+    lg = np.log((legs * o + base / k) / obs)
+    return o, k, float(np.std(lg)), float(np.median(np.exp(lg)))
+
+
+# The share of a relation's track whose `maxspeed` is mapped before its line
+# speed is believed over its tier's. Below half, the mean speaks for a part of
+# the route only.
+VMAX_COVER = 0.5
+
+
+def vmax_study(clean, detour) -> None:
+    """Does the track's own line speed predict a `duration` better than the tier?
+
+    Per tier, on the relations whose member track is at least VMAX_COVER
+    mapped with `maxspeed`: the tier model (one speed, fitted) against a
+    line-speed model, running speed `k x` the harmonic-mean `maxspeed` of the
+    relation's own track. Same observations, same criterion; a lower log-sd is
+    the only argument for the second.
+
+    Then the factor the track network uses: on `high_speed` relations, a
+    `duration` against the relation's whole member track at line speed,
+    `legs x overhead + 60 x member_km / vmax / k`.
+    """
+    print()
+    print(f"line speed against tier, relations with maxspeed on >= {VMAX_COVER:.0%} of track")
+    print(f"{'tier':<16}{'n':>6}{'tier sd':>9}{'line sd':>9}{'k':>7}{'ovh':>7}{'med':>7}")
+    for tier in reversed(osm.RAIL_TIERS):
+        sub = [r for r in clean if r["tier"] == tier and r["vmax"] and r["cover"] >= VMAX_COVER]
+        if len(sub) < 8:
+            continue
+        km = np.array([r["km"] for r in sub]); legs = np.array([r["legs"] for r in sub], float)
+        obs = np.array([r["obs_min"] for r in sub]); vmax = np.array([r["vmax"] for r in sub])
+        o_t, v_t = _fit(sub, detour)
+        sd_t = float(np.std(np.log(_predict(o_t, v_t, km, legs, detour) / obs)))
+        base = 60.0 * km * detour / vmax
+        o, k, sd, med = _fit_k(obs, base, legs)
+        rng = np.random.default_rng(0)
+        ks = [_fit_k(obs[i], base[i], legs[i], grid=np.arange(0.3, 1.21, 0.05))[1]
+              for i in (rng.integers(0, len(sub), len(sub)) for _ in range(300))]
+        print(f"{tier:<16}{len(sub):>6}{sd_t:>9.3f}{sd:>9.3f}{k:>7.3f}{o:>7.2f}{med:>7.2f}"
+              f"   k 95% CI [{np.percentile(ks, 2.5):.3f}, {np.percentile(ks, 97.5):.3f}]")
+    sub = [r for r in clean if r["tier"] == "high_speed" and r["vmax"] and r["member_km"]
+           and r["cover"] >= VMAX_COVER]
+    if len(sub) >= 8:
+        obs = np.array([r["obs_min"] for r in sub]); legs = np.array([r["legs"] for r in sub], float)
+        base = np.array([60.0 * r["member_km"] / r["vmax"] for r in sub])
+        o, k, sd, med = _fit_k(obs, base, legs)
+        print(f"\ntrack network factor on high_speed relations, n={len(sub)}: "
+              f"k {k:.3f}, overhead {o:.2f} min/leg, log-sd {sd:.3f}, med p/o {med:.2f}")
+        rng = np.random.default_rng(0)
+        ks = []
+        for _ in range(500):
+            idx = rng.integers(0, len(sub), len(sub))
+            ks.append(_fit_k(obs[idx], base[idx], legs[idx], grid=np.arange(0.4, 1.21, 0.05))[1])
+        print(f"  bootstrap 95% CI on k: [{np.percentile(ks, 2.5):.3f}, {np.percentile(ks, 97.5):.3f}]")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--refit", action="store_true",
                     help="fit fresh constants instead of auditing the shipped ones")
     ap.add_argument("--extracts", type=Path, default=config.CACHE / "osm")
+    ap.add_argument("--vmax", action="store_true",
+                    help="also test line speed from the track's maxspeed against the tiers")
     args = ap.parse_args()
 
     rows, dropped = observations(args.extracts)
@@ -226,6 +281,9 @@ def main() -> int:
             continue
         print(f"  {f'{lo}-{hi}':<12}{m.sum():>6}"
               f"{np.median(old[m] / obs[m]):>8.2f}{np.median(new[m] / obs[m]):>8.2f}")
+
+    if args.vmax:
+        vmax_study(clean, detour)
 
     # Regional composition, because the fit is 74% European and the [rail]
     # block says so. Re-derived here rather than asserted.
