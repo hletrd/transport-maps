@@ -226,3 +226,23 @@ capped so the three together stay inside the owner's ~64 threads):
   closed airspace, a cheap re-audit of the live rebuild-32 data;
 - and 2f7c421 (legs of a surface journey that rides a train or a ferry its
   res-4 representative does not), which needs the per-origin solve.
+
+### Rebuild 33 progress
+
+- misc (69ce809..79fab7a): published sailing times where OSM has none
+  (Dar->Zanzibar edge 243 -> 183 min), Dalian Bay->Yantai timetable row
+  (965-999 -> 548 min; news-article source), coastal towns' cells join the
+  land set (Kota Kinabalu, Bodo, Tarawa: 11 cells), flights drawn round closed
+  airspace (dist/airspace.json, `airspaceUrl`), and a regression found in
+  the LIVE rebuild 32: the fastest-child rule read a border-straddling cell
+  from the far side (Hong Kong->Shenzhen 25 min against 72 by the graph,
+  Pyongyang->Dandong 167 vs 351) -- now the fastest child in the cell's home
+  zone, and the solver block refines readings at zoom 7+ only.
+- rail (cfc95af..009482a): each leg priced from its own track and speed
+  limit; maxspeed:forward/backward and :tilting read; fast conventional
+  track no relation runs (160-200 km/h) built as links (25,530 km). Out of
+  fold high_speed 0.087 -> 0.050. Rides: Tokyo->Sendai 112 -> 86 (90),
+  Delhi->Agra 153 -> 109 (100), Paris->Lyon 132 -> 117 (116), London->
+  Manchester 176 -> 157 (128); WORSE Berlin->Hamburg 104 -> 131 (105, only a
+  stopping ICE in OSM). Follow-up running: stops on track-built links (Korea
+  fast, Chengdu->Chongqing slow) and Berlin.
