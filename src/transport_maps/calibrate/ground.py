@@ -308,6 +308,15 @@ HIGHWAY_CLASSES = (1, MOTORWAY)
 REFERENCE_INCOME = 1
 
 
+#: Upper edges of the road-density bands, metres of road per km2
+#: (sources/roads.cell_road_density); the last band is open.
+DENSITY_BANDS = (250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0)
+
+
+def density_band_of(d: np.ndarray) -> np.ndarray:
+    return np.searchsorted(np.asarray(DENSITY_BANDS), d, side="right")
+
+
 def scaled_band_of(s: np.ndarray) -> np.ndarray:
     return np.searchsorted(np.asarray(SCALED_BANDS), s, side="right")
 

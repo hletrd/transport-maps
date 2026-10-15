@@ -146,6 +146,52 @@ def road_class_grid() -> np.ndarray:
     return best
 
 
+_density_cache: np.ndarray | None = None
+
+
+def road_density_grid() -> np.ndarray:
+    """Total road density per 5-arcmin cell, metres per km2: GRIP4's five
+    density rasters summed, NoData read as 0.
+
+    The class grid keeps only the best grade present, which a city core with
+    a motorway through it shares with the motorway's rural stretch; the total
+    density is what tells them apart (a dense street grid is thousands of
+    metres per km2, a lone highway a few hundred)."""
+    global _density_cache
+    if _density_cache is not None:
+        return _density_cache
+    cached = config.BUILD / (f"road_density_grid_"
+                             f"{_params_hash(GRIP4_URL, GRID_ROWS, GRID_COLS, N_TYPES, _sources())}.npy")
+    if cached.exists():
+        _density_cache = np.load(cached)
+        return _density_cache
+    total = np.zeros((GRID_ROWS, GRID_COLS), dtype=np.float32)
+    for road_type in range(1, N_TYPES + 1):
+        with rasterio.open(_ensure_raster(road_type)) as src:
+            band = src.read(1)
+        if band.shape != (GRID_ROWS, GRID_COLS):
+            raise RuntimeError(f"tp{road_type} has shape {band.shape}, expected {(GRID_ROWS, GRID_COLS)}")
+        total += np.where(band > GRIP4_NODATA, np.maximum(band, 0), 0).astype(np.float32)
+
+    def _write(tmp: Path) -> None:
+        with tmp.open("wb") as f:
+            np.save(f, total)
+
+    config.ensure_dirs()
+    _atomic_write(cached, _write)
+    _density_cache = total
+    return total
+
+
+def cell_road_density(cells: list[str]) -> np.ndarray:
+    """Total road density (m/km2) at each H3 cell's centroid, from
+    `road_density_grid`."""
+    if not len(cells):
+        return np.zeros(0, dtype=np.float32)
+    centres = np.array([h3.cell_to_latlng(c) for c in cells], dtype=float)
+    return road_density_grid()[_rows_of(centres[:, 0]), _cols_of(centres[:, 1])]
+
+
 def footprint_class(cells: list[str], pad: int = 0) -> tuple[np.ndarray, np.ndarray]:
     """(best road grade anywhere inside each H3 cell's footprint, whether
     GRIP4 has data anywhere in it), the window widened by `pad` grid cells

@@ -60,6 +60,8 @@ PAIRS = [
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--fit", action="append", default=[])
+    ap.add_argument("--decompose", action="store_true",
+                    help="break each shipped path down by class, built-up and road density")
     ap.add_argument("--rule", default=None,
                     help="motorway rule for the class map (sources/motorways.RULES); RULE if omitted")
     args = ap.parse_args()
@@ -67,11 +69,12 @@ def main() -> None:
 
     gc.disable()                     # as build-all does; see calibrate_ground.plan
     idx = nodes.build_index()
-    from transport_maps.sources import motorways
 
     grip = gmodel.grip_class(idx).astype(np.int64)
-    classes = np.where(motorways.motorway_mask(idx, args.rule or motorways.RULE),
-                       gmodel.MOTORWAY_CLASS, grip)
+    classes = gmodel.cell_class(idx, args.rule).astype(np.int64)
+    raised = int(((grip != classes) & (classes == gmodel.TRUNK_FLOOR_CLASS)).sum())
+    print(f"  trunk floor: {raised:,} of {len(classes):,} cells raised to class "
+          f"{gmodel.TRUNK_FLOOR_CLASS}", flush=True)
     country = countries.cell_country(idx.cells)
     income = countries.cell_income_group(country)
     zone = gmodel.cell_zones(country)
@@ -104,12 +107,57 @@ def main() -> None:
                                       + end_min)
         print(f"  {name} done", flush=True)
 
+    if args.decompose:
+        _decompose(idx, configs[0][1], country, zone, classes, scaled, ends)
     names = [c[0] for c in configs]
     print(f"\n  {'journey':28}" + "".join(f"{n[:12]:>13}" for n in names) + f"{'traffic':>9}{'free':>6}")
     for label, _s, _t, traffic, free in ends:
         row = "".join(f"{results[(n, label)]:>13.0f}" if results[(n, label)] is not None
                       else f"{'-':>13}" for n in names)
         print(f"  {label:28}{row}{traffic or '':>9}{free or '':>6}")
+
+
+def _decompose(idx, v, country, zone, classes, scaled, ends) -> None:
+    """Per pair under the shipped speeds: km and minutes by road class, how
+    much of each lies inside a city's built-up radius, the median road
+    density, and the run of classes for short paths."""
+    import h3
+
+    from transport_maps.sources import roads
+
+    r, c, d = gmodel.hex_edges(idx, speeds=v, country=country, zone=zone)
+    csr = sp.coo_matrix((d, (r, c)), shape=(idx.n, idx.n)).tocsr()
+    for label, s, t, traffic, _free in ends:
+        if s is None or t is None:
+            continue
+        dist, pred = sp.csgraph.dijkstra(csr, indices=[s], return_predecessors=True)
+        path, k = [t], t
+        while k != s and pred[0][k] >= 0:
+            k = int(pred[0][k])
+            path.append(k)
+        path = np.array(path[::-1])
+        cent = np.array([h3.cell_to_latlng(idx.cells[i]) for i in path])
+        seg = np.r_[0.0, gmodel.haversine_km(cent[:-1], cent[1:])]
+        dens = roads.cell_road_density([idx.cells[i] for i in path])
+        mins = seg / v[path] * 60.0
+        print(f"\n  {label}: {seg.sum():.1f} km, {mins.sum():.0f} min on the path "
+              f"(Google typical {traffic}), {len(path)} cells")
+        for cl in np.unique(classes[path]):
+            m = classes[path] == cl
+            inb = m & (scaled[path] < 1.0)
+            print(f"    class {cl}: {seg[m].sum():6.1f} km {mins[m].sum():6.1f} min "
+                  f"({seg[m].sum() / max(mins[m].sum(), 1e-9) * 60:5.1f} km/h); "
+                  f"inside built-up {seg[inb].sum():5.1f} km; "
+                  f"median density {np.median(dens[m]):7.0f} m/km2")
+        if len(path) <= 40:
+            runs, prev = [], None
+            for cl in classes[path]:
+                if cl == prev:
+                    runs[-1][1] += 1
+                else:
+                    runs.append([int(cl), 1])
+                prev = cl
+            print("    classes along the path: " + " ".join(f"{a}x{b}" for a, b in runs))
 
 
 if __name__ == "__main__":

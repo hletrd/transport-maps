@@ -138,10 +138,11 @@ def plan(args) -> None:
     # is planned on the paths it would give.
     from transport_maps.sources import motorways
 
-    classes = np.where(motorways.motorway_mask(idx, args.rule or motorways.RULE),
-                       gmodel.MOTORWAY_CLASS, gmodel.grip_class(idx)).astype(np.int64)
+    classes = gmodel.cell_class(idx, args.rule).astype(np.int64)
+    limit_band = motorways.limit_band_of(motorways.motorway_limit(idx, args.rule or motorways.RULE))
     country = countries.cell_country(idx.cells)
     income = countries.cell_income_group(country)
+    region = countries.cell_driving_region(country)
     if args.fit:
         # Route under a fitted candidate rather than calibration.toml, so a
         # refit can be re-planned on its own paths (and observed minutes
@@ -195,6 +196,9 @@ def plan(args) -> None:
         np.minimum(near, np.hypot((cent[:, 0] - la) * 111.0, (cent[:, 1] - lo) * 111.0 * coslat),
                    out=near)
     scaled, city_pop = urban.scaled_city_distance(ids)
+    from transport_maps.sources import roads
+
+    b_d = gfit.density_band_of(roads.cell_road_density(ids))
     pos = {int(v): i for i, v in enumerate(cells)}
     b_abs = gfit.band_of(near)
     b_s = gfit.scaled_band_of(scaled)
@@ -206,9 +210,17 @@ def plan(args) -> None:
         seg = np.r_[0.0, gmodel.haversine_km(cent[at[:-1]], cent[at[1:]])]
         km_abs = np.zeros((N_CLASSES, gfit.N_INCOME, len(gfit.DIST_BANDS_KM) + 1))
         km_s = np.zeros((N_CLASSES, gfit.N_INCOME, len(gfit.SCALED_BANDS) + 1, gfit.N_SIZES))
-        cl, inc = classes[path], income[path]
+        cl, inc, rg, lb = classes[path], income[path], region[path], limit_band[path]
         np.add.at(km_abs, (cl[1:], inc[1:], b_abs[at[1:]]), seg[1:])
         np.add.at(km_s, (cl[1:], inc[1:], b_s[at[1:]], b_z[at[1:]]), seg[1:])
+        # Sparse: class, income, driving region, scaled band, density band,
+        # signed-limit band (motorway cells; 0 elsewhere), km.
+        km_x: dict[tuple, float] = defaultdict(float)
+        lbm = np.where(cl == gmodel.MOTORWAY_CLASS, lb, 0)
+        for key, km in zip(zip(cl[1:].tolist(), inc[1:].tolist(), rg[1:].tolist(),
+                               b_s[at[1:]].tolist(), b_d[at[1:]].tolist(), lbm[1:].tolist()),
+                           seg[1:].tolist()):
+            km_x[key] += km
         if seg.sum() < 3.0:
             continue
         if kind == "airport":
@@ -223,10 +235,14 @@ def plan(args) -> None:
                      "to": [round(float(v), 5) for v in cent[at[-1]]],
                      "dest": [round(v, 5) for v in to],
                      "km_abs": np.round(km_abs, 3).tolist(), "km_s": np.round(km_s, 3).tolist(),
+                     "km_x": [[*k, round(v, 3)] for k, v in sorted(km_x.items())],
                      "model_min": round(model_min, 2)})
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps({"bands_km": list(gfit.DIST_BANDS_KM),
-                                    "scaled_bands": list(gfit.SCALED_BANDS), "journeys": rows}),
+                                    "scaled_bands": list(gfit.SCALED_BANDS),
+                                    "density_bands": list(gfit.DENSITY_BANDS),
+                                    "regions": ["other", *countries.DRIVING_REGIONS],
+                                    "journeys": rows}),
                         encoding="utf-8")
     print(f"  wrote {len(rows)} journeys to {args.out}: "
           + ", ".join(f"{s} {sum(r['stratum'] == s for r in rows)}" for s in STRATA))
