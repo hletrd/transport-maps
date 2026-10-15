@@ -209,3 +209,20 @@ highway (the res-4 cell's bridge route) under a 1 h 57 total by ferry;
 London->Calais lists 1 h 39 by road under 3 h 29. Fix: emit an override
 entry when the mode breakdown differs too (emit/override.py), which needs
 the per-origin solve -- the next rebuild.
+
+## Rebuild 33 scope (owner, 2026-10-15: "다 고치고 돌려")
+
+Everything still off goes into rebuild 33, in three worktree forks (h200 use
+capped so the three together stay inside the owner's ~64 threads):
+
+- roads: Cairo->Alexandria slow, US metro freeways slow (LA->San Diego,
+  Chicago->Milwaukee), Mexico City->Puebla fast, metro airport runs fast,
+  Tawau->TWU;
+- rail: London->Manchester (no relation; fast conventional lines),
+  per-line high-speed speeds (KTX fast, Tohoku/Sanyo slow), Delhi->Agra,
+  Milan->Turin;
+- misc: ferry sailing durations missing from OSM (Dar->Zanzibar), Dalian->
+  Yantai headway, Kota Kinabalu's own reading slot, flight lines drawn round
+  closed airspace, a cheap re-audit of the live rebuild-32 data;
+- and 2f7c421 (legs of a surface journey that rides a train or a ferry its
+  res-4 representative does not), which needs the per-origin solve.
