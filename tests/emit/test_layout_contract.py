@@ -213,10 +213,12 @@ def test_entry_k_of_every_per_origin_file_describes_hover_cell_k(path, monkeypat
 
 
 def test_the_override_and_reading_tier_share_the_hover_representative(monkeypatch, tmp_path):
-    """`.over.bin` lists a fine cell exactly when its own arrival airport
-    differs from its hover cell's representative. Siblings 0 and 1 landed
-    elsewhere than their centres (AP1, AP2 vs AP0) and must be listed; sibling
-    2 shares its centre's AP3 and must not be; no centre is ever listed. A
+    """`.over.bin` lists a fine cell when its own arrival airport differs
+    from its hover cell's representative, or when one of the two rides a train
+    or a ferry the other does not (emit/override.py, since 2f7c421). Siblings
+    0 and 1 landed elsewhere than their centres (AP1, AP2 vs AP0); sibling 2
+    shares its centre's AP3 but flies straight in where the centre goes on by
+    rail via st2 -- all three are listed; no centre is ever listed. A
     `base_hover` in another order than the representative would pair cells
     with the wrong parent's centre and list a centre.
 
@@ -240,5 +242,5 @@ def test_the_override_and_reading_tier_share_the_hover_representative(monkeypatc
     m = len(raw) // override.ENTRY_BYTES
     slots = np.frombuffer(raw[: 4 * m], "<u4").tolist()
     airport = np.frombuffer(raw[4 * m: 6 * m], "<u2").tolist()
-    want = sorted((slot(sibling[k]), k + 1) for k in (0, 1))
+    want = sorted((slot(sibling[k]), k + 1) for k in (0, 1, 2))
     assert list(zip(slots, airport)) == want
