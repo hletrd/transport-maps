@@ -27,8 +27,10 @@ small airport, 1 h 40 at a large one). A ferry leg IS charged an expected wait -
 half the interval between sailings, from the route's own OpenStreetMap
 timetable where it carries one, from the operators' published timetables on
 the busiest corridors (Hong Kong-Macau Outer Harbour and Taipa, Helsinki-Tallinn,
-Dover-Calais, Dar es Salaam-Zanzibar, Wellington-Picton), and otherwise from a
-headway fitted to eight published crossings -- on top of the sailing and the terminal time. Rail legs
+Dover-Calais, Dar es Salaam-Zanzibar, Wellington-Picton, Dalian-Yantai), which
+also give the sailing time where the route's own OpenStreetMap data has none,
+and otherwise from a headway fitted to eight published crossings -- on top of
+the sailing and the terminal time. Rail legs
 carry no wait: they are charged running time, a per-stop allowance, and 20
 minutes for reaching the platform and leaving the arrival station. Running
 time comes from one of six service tiers, 73 km/h for a commuter service up

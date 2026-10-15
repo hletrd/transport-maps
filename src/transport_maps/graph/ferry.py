@@ -127,8 +127,10 @@ class PublishedHeadway:
     `headway_min` is the mean gap between departures over the hours the
     corridor is served -- the same quantity as OSM's `interval` tag and as the
     published anchors the prior was fitted to, so a night with no sailing is not
-    charged, here or anywhere else in the ferry model. `basis` says how the
-    figure came out of the timetable, `source` where the timetable is, and
+    charged, here or anywhere else in the ferry model. `sailing_min`, where
+    given, is the timetabled time afloat, used for a way with no usable
+    `duration` tag -- the same quantity as that tag. `basis` says how the
+    figures came out of the timetable, `source` where the timetable is, and
     `checked` when it was read.
     """
 
@@ -140,6 +142,7 @@ class PublishedHeadway:
     basis: str
     source: str
     checked: str
+    sailing_min: float | None = None
 
 
 # Published-figure inputs, not fitted constants: the corridors where the prior
@@ -173,9 +176,11 @@ PUBLISHED_HEADWAYS = (
         "Helsinki - Tallinn",
         (60.155, 24.935), (59.444, 24.766), 3.0, 85.0,
         "Tallink, Viking Line and Eckero Line, 11 departures 07:30-21:40 "
-        "on 2026-10-15: 850 min / 10 gaps",
+        "on 2026-10-15: 850 min / 10 gaps; the 12 direct sailings of 2026-10-16 "
+        "take 120 (Tallink), 135 (Eckero) and 150 (Viking XPRS) min, median "
+        "135, for the one way with no duration tag (the prior gave it 174)",
         "https://laivaliput.fi/timetables/eng/helsinki-tallinn.html",
-        "2026-10-14"),
+        "2026-10-15", sailing_min=135.0),
     PublishedHeadway(
         "Dover - Calais",
         (51.125, 1.335), (50.972, 1.862), 2.0, 48.0,
@@ -187,16 +192,32 @@ PUBLISHED_HEADWAYS = (
         "Dar es Salaam - Zanzibar",
         (-6.8208, 39.2889), (-6.1572, 39.1916), 1.5, 95.0,
         "Azam Marine 07:00, 09:30, 12:30, 16:00 and Zan Fast Ferries 07:00, "
-        "12:00, 14:15, 16:30: 7 departures, 570 min / 6 gaps",
+        "12:00, 14:15, 16:30: 7 departures, 570 min / 6 gaps; the crossing "
+        "\"takes 1 1/2 to 2 hours, depending on the vessel\": 105 min. The OSM "
+        "way has no duration, and the speed prior sailed it in 165",
         "https://wildtosea.com/en/plan/dar-zanzibar-ferry/",
-        "2026-10-14 (page updated 2026-09-25)"),
+        "2026-10-15 (page updated 2026-09-25)", sailing_min=105.0),
     PublishedHeadway(
         "Wellington - Picton",
         (-41.272, 174.785), (-41.284, 174.005), 2.0, 229.0,
         "Interislander 19 and Bluebridge 25 sailings a week, 02:00-20:30, "
-        "week of 2026-10-05: 10,080 min / 44",
+        "week of 2026-10-05: 10,080 min / 44; both take \"around 3 hours 30 "
+        "minutes\": 210 min, which the tagged ways say too -- the one untagged "
+        "way sailed in 146 under the prior and undercut them",
         "https://www.directferries.com/wellington_picton_ferry.htm",
-        "2026-10-14"),
+        "2026-10-15", sailing_min=210.0),
+    PublishedHeadway(
+        "Dalian (Dalian Bay) - Yantai",
+        (39.026, 121.739), (37.578, 121.383), 3.0, 197.0,
+        "Bohai Ferry and others from Dalian Bay, 2026-10-01: 12:50, 22:00, "
+        "22:10, 22:40, 590 min / 3 gaps; sailing \"6-7 hours\" there and 7 h "
+        "on the operators' 2023 table: 420 min. The operator's own site "
+        "(bohaiferry.com) refused connections; the prior charged 552 min of "
+        "waiting and sailed it in 5 h 30. The old port's ways keep the prior",
+        "https://www.sina.cn/news/article/nitrshv1838393.html",
+        "2026-10-15 (article 2026-10-01; table "
+        "http://dl.bendibao.com/traffic/2023825/79395.shtm, 2023-08-25)",
+        sailing_min=420.0),
 )
 
 
@@ -207,13 +228,25 @@ def _km(a: tuple[float, float], b: tuple[float, float]) -> float:
     return 2 * 6371.0088 * math.asin(math.sqrt(h))
 
 
-def published_headway_min(from_ll: tuple[float, float], to_ll: tuple[float, float]) -> float | None:
-    """The PUBLISHED_HEADWAYS figure for a way with these two ends, or None."""
+def published_row(from_ll: tuple[float, float], to_ll: tuple[float, float]) -> PublishedHeadway | None:
+    """The PUBLISHED_HEADWAYS row for a way with these two ends, or None."""
     for row in PUBLISHED_HEADWAYS:
         for p, q in ((from_ll, to_ll), (to_ll, from_ll)):
             if _km(p, row.a) <= row.radius_km and _km(q, row.b) <= row.radius_km:
-                return row.headway_min
+                return row
     return None
+
+
+def published_headway_min(from_ll: tuple[float, float], to_ll: tuple[float, float]) -> float | None:
+    """The PUBLISHED_HEADWAYS headway for a way with these two ends, or None."""
+    row = published_row(from_ll, to_ll)
+    return row.headway_min if row is not None else None
+
+
+def published_sailing_min(from_ll: tuple[float, float], to_ll: tuple[float, float]) -> float | None:
+    """The PUBLISHED_HEADWAYS sailing time for a way with these two ends, or None."""
+    row = published_row(from_ll, to_ll)
+    return row.sailing_min if row is not None else None
 
 
 @dataclass(frozen=True)

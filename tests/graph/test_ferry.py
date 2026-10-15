@@ -63,9 +63,11 @@ def test_a_crossing_becomes_a_two_way_edge_with_a_plausible_time():
     # time -- wide enough that deleting the terminal term entirely left it
     # green (proven by mutation in the cycle-8 review).
     # Helsinki-Tallinn is one of the corridors with a published timetable
-    # (ferry.PUBLISHED_HEADWAYS), so its untagged way waits on that headway.
+    # (ferry.PUBLISHED_HEADWAYS), so its untagged way waits on that headway
+    # and sails for the timetabled time.
     km = _KM_HEL_TLL
-    sail = CAL.berth_min + 60.0 * km / CAL.speed_kmh
+    sail = ferry.published_sailing_min(HEL, TLL)
+    assert sail is not None
     wait = ferry.expected_wait_min(ferry.sailings_per_week(
         km, CAL, ferry.published_headway_min(HEL, TLL)))
     assert d[0] == pytest.approx(sail + wait + CAL.terminal_min, rel=0.02)
@@ -231,8 +233,9 @@ def test_a_tagged_interval_beats_the_prior():
     _, _, modelled = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
     assert tagged.min() != pytest.approx(modelled.min()), \
         "the OSM interval tag was parsed and then ignored"
+    # The way has no duration tag, so it sails for the corridor's timetable.
     assert tagged.min() == pytest.approx(
-        ferry.sailing_min(_KM_HEL_TLL, CAL) + CAL.terminal_min + 60, rel=0.03)
+        ferry.published_sailing_min(HEL, TLL) + CAL.terminal_min + 60, rel=0.03)
 
 
 @pytest.mark.needs_inputs
@@ -241,10 +244,11 @@ def test_a_tagged_duration_beats_the_speed_model():
     _, _, tagged = build._ferry_edges(
         idx, _links([_link(1, HEL, TLL, duration_min=125.0)]), CAL)
     _, _, modelled = build._ferry_edges(idx, _links([_link(1, HEL, TLL)]), CAL)
-    # The real Helsinki-Tallinn sailing is about 2 h; the model says ~3 h.
+    # The way's own 125 min beats the corridor's timetabled 135 (and the
+    # speed prior's ~3 h, which an untagged way off a corridor would get).
     assert tagged.min() < modelled.min()
     assert tagged.min() - modelled.min() == pytest.approx(
-        125.0 - ferry.sailing_min(_KM_HEL_TLL, CAL), rel=0.01)
+        125.0 - ferry.published_sailing_min(HEL, TLL), rel=0.01)
 
 
 @pytest.mark.needs_inputs
@@ -402,3 +406,36 @@ def test_every_published_headway_says_where_it_came_from():
     for row in ferry.PUBLISHED_HEADWAYS:
         assert row.source.startswith("https://") and row.checked[:4].isdigit() and row.basis, row
         assert ferry.MIN_INTERVAL_MIN <= row.headway_min <= ferry.MAX_INTERVAL_MIN, row
+
+
+DALIAN_BAY = (39.0263, 121.7388)
+DALIAN_OLD_PORT = (38.9339, 121.6556)
+YANTAI = (37.5586, 121.3771)
+
+
+def test_an_untagged_way_sails_for_its_corridors_timetabled_time():
+    """Dar es Salaam -> Zanzibar's way has no duration tag and the speed prior
+    sailed it in 165 min against the published 1 1/2 to 2 hours; Dalian Bay ->
+    Yantai sailed in about 5 h 30 against 7. An untagged way on a timetabled
+    corridor takes the timetable's sailing; a usable tag still wins; a way off
+    the corridor (Dalian's old port) keeps the prior.
+
+    Mutations performed and reverted, each RED: drop the published-sailing
+    fallback in build._ferry_edges (the first assertion); let it override a
+    usable tag (the second); widen the Dalian row to the old port (the third).
+    """
+    idx = _index([DALIAN_BAY, DALIAN_OLD_PORT, YANTAI])
+
+    def cost(link):
+        return build._ferry_edges(idx, _links([link]), CAL)[2][0]
+
+    def expect(a, b, duration, interval):
+        km = float(ground.haversine_km(np.array([list(a)]), np.array([list(b)]))[0])
+        return ferry.crossing_min(km, CAL, duration_min=duration, interval_min=interval)
+
+    assert cost(_link(1, DALIAN_BAY, YANTAI)) == pytest.approx(
+        expect(DALIAN_BAY, YANTAI, 420.0, 197.0))
+    assert cost(_link(2, DALIAN_BAY, YANTAI, duration_min=380.0)) == pytest.approx(
+        expect(DALIAN_BAY, YANTAI, 380.0, 197.0))
+    assert cost(_link(3, DALIAN_OLD_PORT, YANTAI)) == pytest.approx(
+        expect(DALIAN_OLD_PORT, YANTAI, None, None))

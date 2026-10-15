@@ -521,9 +521,14 @@ def _ferry_edges(idx: NodeIndex, links, cal,
         # The way's own `interval` tag, else its corridor's published
         # timetable (ferry.PUBLISHED_HEADWAYS), else the prior in crossing_min.
         interval = row.get("interval_min")
+        ends = ((row["from_lat"], row["from_lon"]), (row["to_lat"], row["to_lon"]))
         if interval is None:
-            interval = ferry.published_headway_min((row["from_lat"], row["from_lon"]),
-                                                   (row["to_lat"], row["to_lon"]))
+            interval = ferry.published_headway_min(*ends)
+        # The same for the time afloat: the way's own usable `duration` tag,
+        # else the corridor's timetabled sailing, else the speed prior.
+        duration = row.get("duration_min")
+        if ferry.trusted_duration_min(km, duration) is None:
+            duration = ferry.published_sailing_min(*ends) or duration
         kept_any, first_reason = False, None
         for uu in dict.fromkeys((u, *idx.landings.get(u, ()))):
             for vv in dict.fromkeys((v, *idx.landings.get(v, ()))):
@@ -537,7 +542,7 @@ def _ferry_edges(idx: NodeIndex, links, cal,
                 b_cells.append(vv)
                 minutes.append(ferry.crossing_min(
                     km, cal,
-                    duration_min=row.get("duration_min"),
+                    duration_min=duration,
                     interval_min=interval,
                     service_fraction=row.get("service_fraction") if row.get("service_fraction") is not None else 1.0,
                     extra=extra))
