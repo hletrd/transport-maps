@@ -246,3 +246,16 @@ capped so the three together stay inside the owner's ~64 threads):
   Manchester 176 -> 157 (128); WORSE Berlin->Hamburg 104 -> 131 (105, only a
   stopping ICE in OSM). Follow-up running: stops on track-built links (Korea
   fast, Chengdu->Chongqing slow) and Berlin.
+- rail follow-up (e9ffd02): no change, on evidence -- a fitted stop share on
+  track links scored 0.164 against express 0.070 out of fold; Korea is a
+  5-stop KTX relation (Daejeon->Busan nonstop), not track links;
+  Chengdu->Chongqing was a check-station artefact (61 vs 62 to Shapingba);
+  Berlin->Hamburg needs a timetable source (OSM maps 160 where LZB runs 230).
+- roads (ed6364f..654349a): motorway speed by its signed limit (73.6 / 89.1
+  / 102.4 km/h), a North America multiplier 1.231, lower-middle and low
+  income merged, an OSM trunk floor; out of fold metro 0.131 -> 0.113,
+  intercity 0.089 -> 0.074, rural 0.135 -> 0.095, airport 0.153 -> 0.156.
+  Cairo->Alexandria 214 -> 193 (151), LA->San Diego 157 -> 140 (123). Open:
+  city-centre airport runs (London->LHR 35 vs 51), Lagos->Ibadan, Mexico
+  City->Puebla, Tawau (the coast severs the town cell; road_crossings).
+- Rebuild 33 started from 654349a with 64 workers (30/4/15/15).
