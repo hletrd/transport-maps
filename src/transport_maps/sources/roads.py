@@ -149,6 +149,13 @@ def road_class_grid() -> np.ndarray:
 _density_cache: np.ndarray | None = None
 
 
+def _density_cache_path(sources: list[str]):
+    """Keyed on the rasters (`sources`, their hashes) and the grid they are
+    read onto, as `_grid_cache_path` is; no threshold, which density ignores."""
+    return config.BUILD / (f"road_density_grid_"
+                           f"{_params_hash(GRIP4_URL, GRID_ROWS, GRID_COLS, N_TYPES, sources)}.npy")
+
+
 def road_density_grid() -> np.ndarray:
     """Total road density per 5-arcmin cell, metres per km2: GRIP4's five
     density rasters summed, NoData read as 0.
@@ -160,8 +167,7 @@ def road_density_grid() -> np.ndarray:
     global _density_cache
     if _density_cache is not None:
         return _density_cache
-    cached = config.BUILD / (f"road_density_grid_"
-                             f"{_params_hash(GRIP4_URL, GRID_ROWS, GRID_COLS, N_TYPES, _sources())}.npy")
+    cached = _density_cache_path(_sources())
     if cached.exists():
         _density_cache = np.load(cached)
         return _density_cache
