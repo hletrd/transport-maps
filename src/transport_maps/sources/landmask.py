@@ -43,7 +43,8 @@ ANTARCTICA_MAX_LAT = -60.0
 POLE_CLIP_LAT = -89.9
 WEDGE_COUNT = 12
 # Part of the land-cell cache stamp: which polyfill produced the universe.
-POLYFILL_METHOD = "pole-cells+shelves-lakes; h3shape_to_cells_experimental(overlap)"
+POLYFILL_METHOD = ("pole-cells+shelves-lakes; h3shape_to_cells_experimental(overlap)"
+                   "; +town cells beside land")
 
 _MULTIPOLYGON_TYPE_ID = 6
 
@@ -51,6 +52,10 @@ _MULTIPOLYGON_TYPE_ID = 6
 LAND_ZIP = "ne_10m_land.zip"
 ICE_ZIP = "ne_10m_antarctic_ice_shelves_polys.zip"
 LAKES_ZIP = "ne_10m_lakes.zip"
+# GeoNames cities15000, the gazetteer's and the road model's input
+# (sources/roads.CITIES_URL): the towns whose own cell the coastline misses.
+TOWNS_URL = "https://download.geonames.org/export/dump/cities15000.zip"
+TOWNS_ZIP = "cities15000.zip"
 
 
 def _download(url: str = LAND_URL, name: str = LAND_ZIP) -> pathlib.Path:
@@ -61,7 +66,8 @@ def _download(url: str = LAND_URL, name: str = LAND_ZIP) -> pathlib.Path:
 
 def _archives() -> list[tuple[str, str]]:
     """(url, cache name) of every archive the land universe is cut from."""
-    return [(LAND_URL, LAND_ZIP), (ICE_URL, ICE_ZIP), (LAKES_URL, LAKES_ZIP)]
+    return [(LAND_URL, LAND_ZIP), (ICE_URL, ICE_ZIP), (LAKES_URL, LAKES_ZIP),
+            (TOWNS_URL, TOWNS_ZIP)]
 
 
 def _sources() -> list[str]:
@@ -271,6 +277,33 @@ def land_cell_landmasses(res: int) -> list[tuple[int, ...]]:
     return [tuple(p) for p in rows]
 
 
+def _town_cells(res: int, land: set[str]) -> set[str]:
+    """The cell of each GeoNames town the 1:10m coastline leaves at sea, where
+    a neighbouring cell is land.
+
+    Natural Earth's 1:10m coast runs a kilometre or two off in places, and a
+    town on it can lose its whole cell: downtown Kota Kinabalu (500,421
+    people, a departure city) touched no land polygon, so every reading of
+    the city itself was "open water" or a 45 km cell's number, and the origin
+    snapped 2.0 km away (measured 2026-10-15: 12 of 34,162 towns of 15,000+,
+    1.09 M people, every one 1-2 km out but two island towns). A town's
+    centre is land by definition. Only a cell beside land joins -- 11 of the
+    12 on rebuild 32's universe, Bodo, Etajima, Veraval and Tarawa among them
+    -- so a town whose nearest land cell is farther (Kien Hai, 10 km out)
+    stays off rather than becoming land no edge reaches. The cell touches no
+    land part, which `land_cell_landmasses` reports as () -- "never sever".
+    """
+    from transport_maps.sources import roads
+
+    lat, lon, _pop = roads._settlements()
+    out: set[str] = set()
+    for la, lo in zip(lat.tolist(), lon.tolist(), strict=True):
+        c = h3.latlng_to_cell(la, lo, res)
+        if c not in land and any(n in land for n in h3.grid_ring(c, 1)):
+            out.add(c)
+    return out
+
+
 def land_cells(res: int) -> list[str]:
     """H3 cells at `res` overlapping land. Cached to parquet.
 
@@ -299,6 +332,7 @@ def land_cells(res: int) -> list[str]:
     if failures:
         raise RuntimeError(f"{len(failures)} land parts failed to cellify: {failures[:5]}")
 
+    cells |= _town_cells(res, cells)
     ordered = sorted(cells)
     _atomic_write(out, lambda tmp: pl.DataFrame({"cell": ordered}).write_parquet(tmp))
     return ordered

@@ -77,6 +77,8 @@ def test_islands_survive_a_cache_free_run(tmp_path, monkeypatch):
     male = shapely.box(73.5093 - 0.01, 4.1755 - 0.01, 73.5093 + 0.01, 4.1755 + 0.01)
     nauru = shapely.box(166.9209 - 0.01, -0.5477 - 0.01, 166.9209 + 0.01, -0.5477 + 0.01)
     monkeypatch.setattr(landmask, "_land_parts", lambda: [male, nauru])
+    # The town cells (test_landmask_towns.py) read GeoNames; not this test's subject.
+    monkeypatch.setattr(landmask, "_town_cells", lambda res, land: set())
 
     result = set(landmask.land_cells(config.SOLVE_RES))
 
