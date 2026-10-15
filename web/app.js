@@ -343,6 +343,9 @@ let raf = 0;
 let scaleTimer = 0;            // scheduleScaleRefresh's debounce; see the resize listener
 let pinB = null;                // the destination, once one is set
 let airports = [];              // OurAirports rows, for search and the route
+// Where each flight timed round closed airspace turns (airspace.json), keyed
+// "SRC DST"; null until it lands, and in a build that wrote none.
+let airspace = null;
 let addressSeq = 0, reverseSeq = 0;
 let active = null;              // the departure city
 // The point the departure marker was actually dropped on, {lat, lon}, when
@@ -3570,6 +3573,27 @@ function greatCircle(a, b) {
   return unwrap(pts);
 }
 
+//: A flight from a to b ([lon, lat] each) as drawn: through the turns
+//: airspace.json gives for the pair `from` -> `to` (IATA), else the great
+//: circle. Since rebuild 30 a flight barred from closed airspace is TIMED on
+//: the taut path round it (graph/airspace.py) -- Haneda to Paris 14 h 10, not
+//: the great circle's 12 h 11 -- and drawing the great circle put a line
+//: across Russia under a time that goes round it.
+function flightPath(a, b, from, to) {
+  const turns = airspace && airspace.get(`${from} ${to}`);
+  const ok = Array.isArray(turns) && turns.length > 0 && turns.every((t) =>
+    Array.isArray(t) && t.length === 2 && Number.isFinite(t[0]) && Number.isFinite(t[1])
+    && Math.abs(t[0]) <= 90 && Math.abs(t[1]) <= 180);
+  if (!ok) return greatCircle(a, b);
+  const pts = [a, ...turns.map(([la, lo]) => [lo, la]), b];
+  const out = [];
+  for (let i = 1; i < pts.length; i++) {
+    const seg = greatCircle(pts[i - 1], pts[i]);
+    out.push(...(i === 1 ? seg : seg.slice(1)));
+  }
+  return unwrap(out);
+}
+
 // The same chain renderLegsInto walks, in the same order, with the same
 // meaning: chain[0] is the airport reached from the departure city by ground,
 // an "arr" node is a flight from the node before it, a "dep" node is a
@@ -3611,7 +3635,7 @@ function renderRoute() {
     for (let k = 1; k < chain.length; k++) {
       if (chain[k].kind !== "arr") continue;      // a connection stays put
       const a = at(chain[k - 1].code), b = at(chain[k].code);
-      if (a && b) add(greatCircle(a, b), "air");
+      if (a && b) add(flightPath(a, b, chain[k - 1].code, chain[k].code), "air");
     }
     const last = at(chain[chain.length - 1].code);
     if (last && !same(last, to)) add(unwrap([last, to]), "ground");
@@ -4918,6 +4942,17 @@ fetch("./airports.json")
     // site, so the line and the text can never be two interpretations).
     // The exact point's legs name their airports through the same table.
     if (pinB) { renderLegs(); paintExact(false); }
+  })
+  .catch(() => {});
+// The turns of the flights timed round closed airspace (flightPath). Asked
+// for only when index.json says the build wrote them; until they land, or
+// if they never do, a flight is drawn on its great circle as before.
+if (meta.airspaceUrl) fetch(`./${meta.airspaceUrl}`)
+  .then((r) => (okOr(r, meta.airspaceUrl) ? r.json() : null))
+  .then((a) => {
+    if (!a || a.version !== 1 || !a.pairs || typeof a.pairs !== "object") return;
+    airspace = new Map(Object.entries(a.pairs));
+    if (pinB) renderLegs();
   })
   .catch(() => {});
 // How many departure cities the list shows when nothing is being searched.

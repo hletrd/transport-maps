@@ -47,7 +47,8 @@ MAX_NONSTOP_KM = 15_400.0
 MAX_UNKNOWN_PAIR_FRACTION = 0.02
 
 
-def _flown_km(net: pl.DataFrame, meta: dict) -> dict[tuple[str, str], float]:
+def _flown_km(net: pl.DataFrame, meta: dict,
+              paths_out: dict | None = None) -> dict[tuple[str, str], float]:
     """The distance flown for every pair whose great circle crosses airspace
     closed to it (graph/airspace.py); pairs absent fly the great circle. A
     network without the `overfly` column (a test's stub) crosses nothing."""
@@ -60,7 +61,7 @@ def _flown_km(net: pl.DataFrame, meta: dict) -> dict[tuple[str, str], float]:
     pairs = [(s, d, meta[s][:2], meta[d][:2], bool(o))
              for s, d, o in zip(net["src"], net["dst"], net["overfly"])
              if s in meta and d in meta]
-    flown = airspace.detoured_km(grid, pairs)
+    flown = airspace.detoured_km(grid, pairs, paths_out)
     if flown:
         extra = sorted(((km - h3.great_circle_distance(meta[s][:2], meta[d][:2], unit="km"), s, d)
                         for (s, d), km in flown.items()), reverse=True)
@@ -83,6 +84,7 @@ def _air_edges(
     idx: NodeIndex,
     rejected_out: list[tuple[str, str, float]] | None = None,
     unknown_out: list[tuple[str, str]] | None = None,
+    flight_paths_out: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Directed flight edges. Pairs failing `is_geographically_plausible` are
     dropped and, if `rejected_out` is given, appended to it as (src, dst, km)
@@ -148,7 +150,7 @@ def _air_edges(
     rejected: list[tuple[str, str, float]] = []
     unknown: list[tuple[str, str]] = []
     net = routes.route_network()
-    flown = _flown_km(net, meta)
+    flown = _flown_km(net, meta, flight_paths_out)
     for src, dst in zip(net["src"], net["dst"]):
         if src not in known or dst not in known:
             unknown.append((src, dst))
@@ -598,6 +600,7 @@ def build_graph(
     country=None,
     zone=None,
     ferry_keys_out: list | None = None,
+    flight_paths_out: dict | None = None,
 ) -> sp.csr_matrix:
     """Assemble the graph. Pass a list as `rejected_air_pairs` to have it filled
     with the (src, dst, km) triples `is_geographically_plausible` dropped, and
@@ -609,6 +612,10 @@ def build_graph(
     passes the ones it already holds, so each is derived once per build
     rather than once per edge builder (R5). Either way every builder sees the
     same arrays.
+
+    Pass a dict as `flight_paths_out` to have it receive, for every flight
+    routed round closed airspace, the points its path turns at
+    (graph/airspace.detoured_km), keyed (src, dst) IATA.
 
     Pass a list as `ferry_keys_out` to have it receive one sorted int64 array,
     `u * idx.n + v` for every ferry edge: emit/modes books a cell-to-cell tree
@@ -636,7 +643,7 @@ def build_graph(
         _span_edges(idx, rules),
     ]
     if exclude != "air":
-        parts += [_air_edges(idx, rejected_air_pairs, unknown_airport_pairs),
+        parts += [_air_edges(idx, rejected_air_pairs, unknown_airport_pairs, flight_paths_out),
                   _access_edges(idx),
                   _transfer_edges(idx)]
     if idx.has_rail and exclude != "rail":

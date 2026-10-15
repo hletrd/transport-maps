@@ -103,12 +103,19 @@ def great_circle_points(a, b, step_km: float = 25.0) -> np.ndarray:
 
 
 def _pulled_km(closed, points: np.ndarray) -> float:
-    """Length of the path through `points` pulled taut round `closed`: from
-    each point, straight on to the farthest later point whose great circle
-    stays clear, found by bisection. Every segment kept is checked clear, so
-    the result is a real path round the closed area; on the grid's own
-    corridor it is within a few per cent of the shortest one."""
+    """Length of the path through `points` pulled taut round `closed`."""
+    return _pulled(closed, points)[0]
+
+
+def _pulled(closed, points: np.ndarray) -> tuple[float, list[int]]:
+    """(length, the indices of `points` it turns at) of the path through
+    `points` pulled taut round `closed`: from each point, straight on to the
+    farthest later point whose great circle stays clear, found by bisection.
+    Every segment kept is checked clear, so the result is a real path round
+    the closed area; on the grid's own corridor it is within a few per cent of
+    the shortest one. The turns are what the page draws the flight through."""
     total, i, n = 0.0, 0, len(points) - 1
+    turns: list[int] = []
     while i < n:
         if not _crosses(closed, points[i], points[n]):
             j = n
@@ -122,11 +129,14 @@ def _pulled_km(closed, points: np.ndarray) -> float:
                     lo = mid
             j = lo
         total += h3.great_circle_distance(tuple(points[i]), tuple(points[j]), unit="km")
+        if j < n:
+            turns.append(j)
         i = j
-    return total
+    return total, turns
 
 
-def detoured_km(grid: Grid, pairs) -> dict[tuple[str, str], float]:
+def detoured_km(grid: Grid, pairs,
+                paths_out: dict | None = None) -> dict[tuple[str, str], float]:
     """Flown distance for every pair whose great circle crosses the airspace
     closed to it. `pairs` holds (src, dst, (lat, lon), (lat, lon), overfly).
     Pairs that cross nothing are absent: they fly the great circle. A pair
@@ -136,7 +146,12 @@ def detoured_km(grid: Grid, pairs) -> dict[tuple[str, str], float]:
     The grid's shortest path round the closed cells is only a corridor: its
     zig-zag along cell centres runs 0-10% over the great circle depending on
     the heading, so its length is not used. The path is pulled taut instead
-    (`_pulled_km`), from airport to airport through the corridor's cells."""
+    (`_pulled_km`), from airport to airport through the corridor's cells.
+
+    Pass a dict as `paths_out` to receive, for each detoured pair, the points
+    the taut path turns at between its two airports, (lat, lon) rounded to
+    three decimals: the page draws the flight through them rather than on the
+    great circle the timing no longer follows."""
     out: dict[tuple[str, str], float] = {}
     want: dict[str, list] = {"all": [], "restricted": []}
     for src, dst, a, b, overfly in pairs:
@@ -166,5 +181,9 @@ def detoured_km(grid: Grid, pairs) -> dict[tuple[str, str], float]:
             points = np.vstack([a, grid.latlng[path[::-1][1:-1]], b]) if len(path) > 2 \
                 else np.array([a, b], dtype=float)
             gc = h3.great_circle_distance(a, b, unit="km")
-            out[(src, dst)] = max(gc, _pulled_km(closed, points))
+            km, turns = _pulled(closed, points)
+            out[(src, dst)] = max(gc, km)
+            if paths_out is not None and km > gc:
+                paths_out[(src, dst)] = [(round(float(points[t][0]), 3), round(float(points[t][1]), 3))
+                                         for t in turns]
     return out

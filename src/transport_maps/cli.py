@@ -738,9 +738,10 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # origin cost ~4.8s x every origin for the same value.
     speeds = ground.cell_speed_kmh(idx, classes=cell_class, country=country)
     ferry_keys: list = []
+    flight_paths: dict = {}
     csr = build.build_graph(idx, rail_routes=rail_routes, ferry_links=ferry_links,
                             exclude=exclude, speeds=speeds, country=country, zone=zone,
-                            ferry_keys_out=ferry_keys)
+                            ferry_keys_out=ferry_keys, flight_paths_out=flight_paths)
     # Graph-level gate: runs once, before any origin is solved, because a
     # disconnected airport is a property of the network rather than of a
     # particular origin -- and per-origin coverage cannot see it. Without
@@ -818,6 +819,13 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # of res-3 parents holding land does not vary with the departure city.
     if exclude is None:
         index.write_reading_parents(idx, config.DIST / "reading_parents.bin")
+    # Where the flights timed round closed airspace go, for the page to draw
+    # them there (emit/airspace_json.py). The graph's, so the full set's alone.
+    if exclude is None:
+        from transport_maps.emit import airspace_json
+
+        n = airspace_json.write_airspace(flight_paths, config.DIST / "airspace.json")
+        logging.getLogger(__name__).info("airspace.json: %d detoured flight(s)", n)
 
     print(f"{'origin':<20}{'coverage':>10}{'bands':>8}{'pmtiles KB':>12}{'pid':>8}{'peak MB':>10}")
 

@@ -151,6 +151,8 @@ def test_every_index_json_key_the_page_reads_is_written(tmp_path):
     # every origin has its .over.bin, so the one origin here gets one.
     (tmp_path / "origins").mkdir()
     (tmp_path / "origins" / "s.over.bin").write_bytes(b"")
+    # airspaceUrl likewise only beside the build's airspace.json.
+    (tmp_path / "airspace.json").write_text("{}")
     # `solver` is written only beside a solver bundle stamped by the same
     # build, so the bundle is faked with that build's id.
     identity = index.build_identity()
@@ -405,7 +407,12 @@ def test_flights_are_great_circles_and_ground_legs_are_not():
     rather than pretending to a path it does not have."""
     body = APP[APP.index("function renderRoute()"):]
     body = body[:body.index("\nfunction ")]
-    assert 'add(greatCircle(a, b), "air")' in body
+    # A flight timed round closed airspace is drawn through its turns
+    # (flightPath); every other flight is its great circle.
+    assert 'add(flightPath(a, b, chain[k - 1].code, chain[k].code), "air")' in body
+    path = APP[APP.index("function flightPath("):]
+    path = path[:path.index("\n}\n")]
+    assert "return greatCircle(a, b);" in path and "greatCircle(pts[i - 1], pts[i])" in path
     assert 'unwrap([from, to]), "ground"' in body or 'unwrap([from, first]), "ground"' in body
     assert "function greatCircle" in APP and "function unwrap" in APP
 

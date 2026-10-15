@@ -227,6 +227,8 @@ function legsTo() {{
 }}
 {_function("unwrap")}
 {_function("greatCircle")}
+let airspace = null;
+{_function("flightPath")}
 {_function("renderRoute")}
 renderRoute();
 console.log(JSON.stringify({{ flowAsked, feats: feats.map((f) => [f.properties.kind,
@@ -286,3 +288,35 @@ def test_a_partial_chain_draws_no_leg_to_its_first_airport(render_route):
     for name, got in (("partial", partial), ("complete", whole)):
         assert [k for k, _, _ in got].count("air") == 1, (
             f"the {name} chain lost the flight KUL -> MRU: {got}")
+
+
+def test_a_flight_timed_round_closed_airspace_is_drawn_through_its_turns(node, tmp_path):
+    """Haneda -> Paris is timed on the taut path round Russia (graph/
+    airspace.py); airspace.json gives its turns. The drawn line passes through
+    each turn, stays south of the great circle's polar route, and ends at the
+    two airports; a pair airspace.json does not list, a malformed entry or no
+    file at all draws the great circle exactly.
+
+    Mutation performed and reverted: flightPath returns greatCircle whatever
+    the table says -> RED.
+    """
+    hnd, cdg = [139.78, 35.55], [2.55, 49.01]
+    turn = [43.0, 59.0]                      # lat, lon: a turn south of Russia
+    src = (_function("unwrap") + "\n" + _function("greatCircle") + "\n"
+           + "let airspace = new Map([['HND CDG', [[43.0, 59.0]]], ['HND BAD', [[95, 0]]]]);\n"
+           + _function("flightPath") + "\n"
+           + f"const a = {json.dumps(hnd)}, b = {json.dumps(cdg)};\n"
+           + "const out = {via: flightPath(a, b, 'HND', 'CDG'), plain: flightPath(a, b, 'HND', 'XXX'),"
+           + " bad: flightPath(a, b, 'HND', 'BAD'), gc: greatCircle(a, b)};\n"
+           + "airspace = null; out.none = flightPath(a, b, 'HND', 'CDG');\n"
+           + "process.stdout.write(JSON.stringify(out));\n")
+    path = tmp_path / "flight.cjs"
+    path.write_text(src, encoding="utf-8")
+    got = json.loads(subprocess.run([node, str(path)], capture_output=True, text=True,
+                                    check=True).stdout)
+    via = got["via"]
+    assert via[0] == pytest.approx(hnd) and via[-1] == pytest.approx(cdg)
+    assert any(abs(p[0] - turn[1]) < 1e-6 and abs(p[1] - turn[0]) < 1e-6 for p in via)
+    assert max(p[1] for p in via) < max(p[1] for p in got["gc"]) - 5, (
+        "the detoured line still runs as far north as the polar great circle")
+    assert got["plain"] == got["gc"] and got["bad"] == got["gc"] and got["none"] == got["gc"]

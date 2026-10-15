@@ -108,3 +108,24 @@ def test_the_flight_edge_carries_the_detoured_block_time(monkeypatch, grid):
         air.block_time_min(flown, "large", "large", cal) + border
     assert edge[(idx.airport_index("CDG"), idx.airport_intl_arr_index("ICN"))] == \
         air.block_time_min(gc, "large", "large", cal) + border
+
+
+def test_the_turns_a_detour_returns_are_a_clear_path_of_its_length(grid):
+    """The page draws a detoured flight through the turns airspace.json holds
+    (emit/airspace_json.py). Airport -> turns -> airport must be a path that
+    never crosses the closed area and whose length is the distance the flight
+    is timed on; an overflying pair returns none.
+
+    Mutation performed and reverted: record the corridor's cell centres
+    instead of the taut path's turns -> RED (longer than the flown distance).
+    """
+    paths: dict = {}
+    out = airspace.detoured_km(grid, [("ICN", "CDG", ICN, CDG, False),
+                                      ("CDG", "ICN", CDG, ICN, True)], paths)
+    assert set(paths) == {("ICN", "CDG")} and paths[("ICN", "CDG")]
+    pts = [ICN, *paths[("ICN", "CDG")], CDG]
+    length = sum(h3.great_circle_distance(pts[k], pts[k + 1], unit="km")
+                 for k in range(len(pts) - 1))
+    assert length == pytest.approx(out[("ICN", "CDG")], rel=0.002)
+    for k in range(len(pts) - 1):
+        assert not airspace._crosses(grid.closed_restricted, pts[k], pts[k + 1]), (pts[k], pts[k + 1])

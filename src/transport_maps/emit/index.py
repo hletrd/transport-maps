@@ -489,6 +489,10 @@ def write_index(origins: list[dict], out: Path, *, hover_cell_count: int | None 
     origins_dir = Path(out).parent / "origins"
     if origins and all((origins_dir / f"{o['slug']}.over.bin").exists() for o in origins):
         payload["overrideUrlSuffix"] = ".over.bin"
+    # Where the flights timed round closed airspace go (emit/airspace_json.py),
+    # advertised only when the build wrote it, for the same reason.
+    if (Path(out).parent / "airspace.json").exists():
+        payload["airspaceUrl"] = "airspace.json"
     # Exclusion variants ("avoid flights" and the rest) complete for EVERY
     # origin listed above, and only those: offering one built for fewer cities
     # would load bands for some and 404 for the rest (transport_maps.variants).
