@@ -30,12 +30,19 @@ from .itinerary import NO_AIRPORT
 from .modes import CHANNELS, MAX_MINUTES
 
 ENTRY_BYTES = 4 + 2 + 2 * len(CHANNELS)
+# Minutes on a train or a ferry above which a journey counts as using it, for
+# telling a reading cell's route from its res-4 representative's. A few
+# minutes is a station or a pier the path brushes; a quarter of an hour is a
+# ride the legs should list.
+MODE_DIFFERS_MIN = 15.0
 
 
 def override_entries(idx, last: np.ndarray, acc: np.ndarray, rep: np.ndarray,
                      base_hover: np.ndarray, layout,
                      source: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(slots, airport ordinals, mode minutes) for the cells to override.
+    """(slots, airport ordinals, mode minutes) for the cells to override: those
+    whose arrival airport differs from their res-4 representative's, or that
+    ride a train or a ferry the representative does not (or the reverse).
 
     `last` is itinerary.arrival_airport_per_node, `acc` modes.mode_minutes_per_node,
     `rep` hover.representative_array (a node per hover parent), `base_hover` the
@@ -49,7 +56,14 @@ def override_entries(idx, last: np.ndarray, acc: np.ndarray, rep: np.ndarray,
     ok = (src >= 0) & (rep_node >= 0)
     own = np.where(ok, last[np.where(ok, src, 0)], -1)
     theirs = np.where(ok, last[np.where(ok, rep_node, 0)], -1)
-    pick = np.flatnonzero(ok & (own != theirs))
+    # A surface journey differs too when one of the two rides a train or a
+    # ferry and the other does not: Hong Kong -> Macau read 1 h 57 by ferry
+    # under legs listing 38 min by highway, the res-4 cell's bridge route
+    # (2026-10-15). The airport test alone never saw it.
+    special = [CHANNELS.index("rail"), CHANNELS.index("ferry")]
+    mine = acc[np.where(ok, src, 0)][:, special] >= MODE_DIFFERS_MIN
+    rep_modes = acc[np.where(ok, rep_node, 0)][:, special] >= MODE_DIFFERS_MIN
+    pick = np.flatnonzero(ok & ((own != theirs) | (mine != rep_modes).any(axis=1)))
     slots = layout.dest[pick].astype(np.int64)
     order = np.argsort(slots, kind="stable")
     pick, slots = pick[order], slots[order]

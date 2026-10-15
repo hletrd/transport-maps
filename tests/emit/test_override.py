@@ -58,3 +58,21 @@ def test_a_cell_the_reading_does_not_show_is_never_listed():
         source = np.array([0, 1, -1, 3])             # slot 30 shows no node
     slots, _, _ = override.override_entries(Idx(), last, acc, rep, base_hover, Gap())
     assert slots.tolist() == [20]
+
+
+def test_a_cell_that_rides_a_ferry_its_representative_does_not_is_listed():
+    """HK -> Macau read 1 h 57 by ferry under legs listing 38 min by highway:
+    neither cell flew, so the airport test never listed the reading cell.
+
+    Mutation performed and reverted: drop the mode test from the pick -> RED.
+    """
+    last = np.full(8, -1)
+    acc = np.zeros((8, len(modes.CHANNELS)))
+    acc[0] = [0, 0, 38, 0, 0, 0]                    # representative: road over a bridge
+    acc[1] = [0, 0, 40, 2, 0, 0]                    # same journey
+    acc[2] = [0, 79, 38, 0, 0, 0]                   # by ferry
+    acc[3] = [0, 5, 40, 0, 0, 0]                    # brushes a pier: same journey
+    slots, airport, minutes = override.override_entries(
+        Idx(), last, acc, np.array([0]), np.array([0, 0, 0, 0]), Layout())
+    assert slots.tolist() == [30]
+    assert minutes[0].tolist() == [0, 79, 38, 0, 0, 0]
