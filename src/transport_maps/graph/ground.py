@@ -91,6 +91,42 @@ def load_road_model(path=None) -> tuple[np.ndarray, float]:
 # Read once, at import, like the speeds above.
 INCOME_SPEED_MULTIPLIER, END_MINUTES = load_road_model()
 
+
+#: calibration.toml [ground_motorway] keys, by sources/motorways.limit_band_of
+#: band 1 .. 3 (band 0, no signed limit, is [ground] motorway_kmh).
+MOTORWAY_LIMIT_KEYS = ("under_95_kmh", "from_95_kmh", "from_115_kmh")
+
+
+def load_motorway_and_region(path=None) -> tuple[np.ndarray, np.ndarray]:
+    """calibration.toml [ground_motorway] and [ground_region]: the motorway
+    speed per signed-limit band (no signed limit first, [ground]
+    motorway_kmh), and the speed multiplier per driving region
+    (sources/countries.DRIVING_REGIONS; index 0, every other country, is 1).
+    Both FITTED with the class speeds; provenance in calibration.toml."""
+    import tomllib
+
+    path = path or (config.ROOT / "calibration.toml")
+    with open(path, "rb") as fh:
+        raw = tomllib.load(fh)
+    mw = raw["ground_motorway"]
+    missing = [k for k in MOTORWAY_LIMIT_KEYS if k not in mw]
+    if missing:
+        raise ValueError(f"{path} [ground_motorway] is missing {', '.join(missing)}")
+    limit = np.array([float(raw["ground"]["motorway_kmh"])]
+                     + [float(mw[k]) for k in MOTORWAY_LIMIT_KEYS], dtype=np.float64)
+    reg = raw["ground_region"]
+    missing = [k for k in countries.DRIVING_REGIONS if k not in reg]
+    if missing:
+        raise ValueError(f"{path} [ground_region] is missing {', '.join(missing)}")
+    region = np.array([1.0] + [float(reg[k]) for k in countries.DRIVING_REGIONS], dtype=np.float64)
+    if not ((limit > 0).all() and (region > 0).all()):
+        raise ValueError(f"{path}: motorway speeds and region multipliers must be positive; "
+                         f"got {limit.tolist()}, {region.tolist()}")
+    return limit, region
+
+
+MOTORWAY_SPEED_BY_LIMIT_KMH, REGION_SPEED_MULTIPLIER = load_motorway_and_region()
+
 # Directed edge slots preallocated per cell: six ring neighbours plus the
 # cross-resolution pairs along split seams. Measured at 8.0 per cell over the
 # res-6/7 universe (82 M edges over 10.2 M cells); the guard below turns an
@@ -113,14 +149,27 @@ def grip_class(idx: NodeIndex) -> np.ndarray:
     return roads.cell_class(idx.cells)
 
 
-def cell_class(idx: NodeIndex) -> np.ndarray:
-    """Road class per cell: GRIP4's (`grip_class`), raised to MOTORWAY_CLASS
-    where an OSM motorway crosses the cell. Per index cell, fine children
-    included -- a motorway crosses a few of a split cell's children, not all
-    of them. The refinement itself (graph/nodes, refine.dense_mask) still
-    reads GRIP4 alone, so the cell universe does not move with it."""
+#: The class a cell crossed by any OSM motorway or trunk is raised to when
+#: GRIP4 grades it below that (TRUNK_RAISED): GRIP4 misses roads OSM has. The
+#: coast road from Tawau to its airport is OSM trunk and GRIP4 roadless and
+#: tertiary, so the 27 km run went 145 km round inland (rebuild 32: 216 min).
+TRUNK_FLOOR_CLASS = 2
+TRUNK_RAISED = (0, 4, 5)
+
+
+def cell_class(idx: NodeIndex, rule: str | None = None) -> np.ndarray:
+    """Road class per cell: GRIP4's (`grip_class`), raised to
+    TRUNK_FLOOR_CLASS where any OSM motorway or trunk crosses a cell GRIP4
+    grades roadless, tertiary or local, and to MOTORWAY_CLASS where an OSM
+    motorway (under `rule`, sources/motorways.RULE if None) crosses the cell.
+    Per index cell, fine children included -- a motorway crosses a few of a
+    split cell's children, not all of them. The refinement itself
+    (graph/nodes, refine.dense_mask) still reads GRIP4 alone, so the cell
+    universe does not move with it."""
     cls = grip_class(idx)
-    return np.where(motorways.motorway_mask(idx), MOTORWAY_CLASS, cls)
+    trunk = motorways.motorway_mask(idx, "any")
+    cls = np.where(trunk & np.isin(cls, TRUNK_RAISED), TRUNK_FLOOR_CLASS, cls)
+    return np.where(motorways.motorway_mask(idx, rule or motorways.RULE), MOTORWAY_CLASS, cls)
 
 
 def built_up_mask(idx: NodeIndex) -> np.ndarray:
@@ -155,12 +204,25 @@ def cell_speed_kmh(idx: NodeIndex, classes: np.ndarray | None = None,
     if classes is None:
         classes = cell_class(idx)
     speeds = SPEED_BY_ROAD_CLASS_KMH[classes].astype(np.float64)
+    # A motorway is priced by its signed limit (the highest among the OSM
+    # ways crossing the cell), not one speed for every expressway: Cairo ->
+    # Alexandria's desert motorway is signed 100-120 and drove at the speed
+    # of the country's average one (rebuild 32: 214 min against 151).
+    motorway = classes == MOTORWAY_CLASS
+    if motorway.any():
+        band = motorways.limit_band_of(motorways.motorway_limit(idx))
+        speeds[motorway] = MOTORWAY_SPEED_BY_LIMIT_KMH[band[motorway]]
     # The same grade of road is driven faster in a rich country than a poor
     # one: one speed per class was 23% too slow on North American town
     # journeys and 24% too fast in low-income countries (2026-10-15 audit of
-    # rebuild 30's fit). A fitted multiplier per World Bank income group.
+    # rebuild 30's fit). A fitted multiplier per World Bank income group, and
+    # one for North America on top of its income group's (rebuild 33).
+    if country is None:
+        country = countries.cell_country(idx.cells)
     scaled = np.isin(classes, INCOME_SCALED_CLASSES)
-    speeds[scaled] *= INCOME_SPEED_MULTIPLIER[cell_income(idx, country)[scaled]]
+    mult = (INCOME_SPEED_MULTIPLIER[cell_income(idx, country)]
+            * REGION_SPEED_MULTIPLIER[countries.cell_driving_region(country)])
+    speeds[scaled] *= mult[scaled]
     # GRIP4 gives a cell the grade of its BEST road, so a dense city cell with a
     # motorway through it is charged at motorway speed, and the hex path runs
     # straight across a city on those cells: London -> LHR went 22 km of

@@ -29,14 +29,15 @@ from transport_maps import config
 from transport_maps.graph import air, ground
 from transport_maps.sources import urban
 
-# The ground and urban values were refitted on 2026-10-15, with the OSM
+# The ground and urban values were refitted on 2026-10-15 (rebuild 33: signed
+# motorway limits, a North America multiplier), with the OSM
 # motorway class (calibration.toml [ground], [ground_income], [urban];
 # scripts/calibrate_ground.py); these are
 # the values that refit wrote, and what the move checks below still pin is the
 # plumbing: one loader, floats, a key that does not move with the TOML's
 # number formatting.
-OLD_SPEEDS = [5.0, 42.9, 49.7, 55.6, 36.3, 25.0, 87.8]
-OLD_URBAN = (200_000.0, 40.0, 1.36, 1.0)
+OLD_SPEEDS = [5.0, 42.9, 47.7, 56.6, 34.6, 25.0, 82.0]
+OLD_URBAN = (200_000.0, 40.0, 1.354, 1.0)
 OLD_AIR_BOUNDS = (400.0, 0.5)
 OLD_LAND_BORDER_MIN = 45.0
 #: urban._mask_cache_path(CELLS).name before the move.
@@ -91,18 +92,22 @@ def _edited(tmp_path, old: str, new: str):
 def test_each_loader_reads_the_file_not_a_literal(tmp_path):
     """Equal to the old literals is also what an unmoved literal would give.
     Each loader must follow an edit to the file it is pointed at."""
-    p = _edited(tmp_path, "motorway_kmh = 87.8", "motorway_kmh = 120.0")
+    p = _edited(tmp_path, "motorway_kmh = 82.0", "motorway_kmh = 120.0")
     assert ground.load_ground_calibration(p)[0][ground.MOTORWAY_CLASS] == 120.0
     p = _edited(tmp_path, "highway_kmh = 42.9", "highway_kmh = 111.0")
     assert ground.load_ground_calibration(p)[0][1] == 111.0
-    p = _edited(tmp_path, "built_up_factor = 1.36", "built_up_factor = 3.0")
+    p = _edited(tmp_path, "built_up_factor = 1.354", "built_up_factor = 3.0")
     assert urban.load_urban_calibration(p)[2] == 3.0
     p = _edited(tmp_path, "built_up_extent = 1.0", "built_up_extent = 1.5")
     assert urban.load_urban_calibration(p)[3] == 1.5
-    p = _edited(tmp_path, "end_min = 11.4", "end_min = 9.0")
+    p = _edited(tmp_path, "end_min = 10.8", "end_min = 9.0")
     assert ground.load_road_model(p)[1] == 9.0
-    p = _edited(tmp_path, "lower_middle = 0.824", "lower_middle = 0.5")
+    p = _edited(tmp_path, "lower_middle = 0.815", "lower_middle = 0.5")
     assert ground.load_road_model(p)[0][2] == 0.5
+    p = _edited(tmp_path, "from_95_kmh = 89.1", "from_95_kmh = 70.0")
+    assert ground.load_motorway_and_region(p)[0][2] == 70.0
+    p = _edited(tmp_path, "north_america = 1.231", "north_america = 2.0")
+    assert ground.load_motorway_and_region(p)[1][1] == 2.0
     p = _edited(tmp_path, "knee_km = 400.0", "knee_km = 300.0")
     assert air.load_frequency_bounds(p)[0] == 300.0
     p = _edited(tmp_path, "pop_min = 200000.0", "pop_min = 200000")
@@ -115,6 +120,7 @@ def test_each_loader_reads_the_file_not_a_literal(tmp_path):
              "URBAN_BUILT_UP_EXTENT"),
      "load_urban_calibration"),
     (ground, ("INCOME_SPEED_MULTIPLIER", "END_MINUTES"), "load_road_model"),
+    (ground, ("MOTORWAY_SPEED_BY_LIMIT_KMH", "REGION_SPEED_MULTIPLIER"), "load_motorway_and_region"),
     (air, ("KNEE_KM", "MIN_FLIGHTS_PER_WEEK"), "load_frequency_bounds"),
 ])
 def test_the_module_constants_come_from_the_loader(module, names, loader):

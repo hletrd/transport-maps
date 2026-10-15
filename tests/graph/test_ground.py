@@ -19,12 +19,16 @@ def test_every_cell_has_a_positive_speed(idx):
 
 
 def test_speeds_span_the_full_range(idx):
-    """From walking pace up to a high-income country's open highway: the
-    fastest class times the largest income multiplier (graph/ground.py)."""
+    """From walking pace up to a high-income country's open motorway: the
+    fastest class -- since rebuild 33 a motorway signed 115 km/h or more --
+    times the largest income and region multipliers (graph/ground.py); a US
+    interstate signed 75 mph is that cell."""
     speeds = ground.cell_speed_kmh(idx)
     k, m = ground.SPEED_BY_ROAD_CLASS_KMH, ground.INCOME_SPEED_MULTIPLIER
+    fastest = max(k[list(ground.INCOME_SCALED_CLASSES)].max(),
+                  ground.MOTORWAY_SPEED_BY_LIMIT_KMH.max())
     assert speeds.min() == k.min()
-    assert np.isclose(speeds.max(), k[list(ground.INCOME_SCALED_CLASSES)].max() * m.max())
+    assert np.isclose(speeds.max(), fastest * m.max() * ground.REGION_SPEED_MULTIPLIER.max())
 
 
 def test_roadless_terrain_is_slower_than_motorway_terrain(idx):

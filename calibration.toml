@@ -726,8 +726,10 @@ interval_decay = 1.5137
 # tests/test_licence_firewall.py refuses any list in this file, because a
 # list is what a dump of records would look like.
 #
-# Classes 1-4 and 6 (42.9, 49.7, 55.6, 36.3; 87.8) are FITTED -- jointly with
-# [ground_income], `end_min` below and [urban] built_up_factor -- against
+# Classes 1-4 and 6 (42.9, 47.7, 56.6, 34.6; 82.0 where no limit is signed,
+# [ground_motorway] by signed limit) are FITTED -- jointly with
+# [ground_income], [ground_region], `end_min` below and [urban]
+# built_up_factor -- against
 # 1,396 real driving journeys from Google Routes (scripts/calibrate_ground.py,
 # 2026-10-15): the 750 town journeys of the rebuild-30 fit plus 646 from the
 # centres of 150 cities of 1 M or more (to their airport, to towns 15-150 km
@@ -790,17 +792,59 @@ interval_decay = 1.5137
 # each airport kerb on the access and egress edges (graph/build.
 # _access_edges), so a drive to an airport pays it like any other.
 #
+# Rebuild 33 (2026-10-15) refitted all of [ground], [ground_income],
+# [ground_motorway], [ground_region] and [urban] built_up_factor on the same
+# 1,396 journeys and target, re-planned under the structure below (graph/
+# ground.cell_class's trunk floor in the paths; two rounds, the second moving
+# no constant by more than 3%). Three structural changes, each chosen out of
+# fold (scripts/calibrate_ground.py journeys, five folds by source):
+#   * motorways priced by their signed limit ([ground_motorway]), not one
+#     speed: mean of the strata's median |log| 0.119 -> 0.110;
+#   * a North America multiplier ([ground_region]): North American journeys
+#     sat at 0.92 observed/predicted in sample with one high-income
+#     multiplier; an East Asia one fitted at 1.01 and is not kept;
+#   * lower_middle and low as one multiplier (they fitted 0.813 and 0.824 apart,
+#     71 low-income journeys; tied they score 0.1102 against 0.1110).
+# Tried and not kept: a penalty by GRIP4 road density (sources/roads.
+# cell_road_density; factors 0.90-1.05, no gain), one by city size, a factor
+# for the city core alone, and motorways exempt from the built-up penalty
+# (0.1106 against 0.1110: a tie, so the penalty stays as it was).
+#
+# Out of fold, median |log(observed/predicted)| (median ratio), rebuild 32's
+# structure on its own paths against this fit on its own:
+#   stratum    rebuild 32      rebuild 33
+#   metro      0.131 (0.98)    0.113 (0.98)
+#   intercity  0.089 (0.97)    0.074 (1.00)
+#   rural      0.135 (0.99)    0.095 (0.99)
+#   airport    0.153 (0.97)    0.156 (0.97)
+#
+# Checked, never fitted (scripts/ground_pairs.py, ground minutes, rebuild 32
+# -> rebuild 33; Google typical traffic): Cairo -> Alexandria 214 -> 193
+# (151), Los Angeles -> San Diego 157 -> 140 (123), Chicago -> Milwaukee 108
+# -> 102 (93), Mexico City -> Puebla 117 -> 124 (142), Tokyo -> NRT 73 -> 84
+# (84), London -> LHR 31 -> 35 (51), Paris -> CDG 35 -> 37 (48), New York ->
+# JFK 33 -> 33 (48), Lagos -> Ibadan 137 -> 146 (129), Mumbai -> Pune 171 ->
+# 174 (161). Tawau -> TWU stays 224 min for 27 km: Natural Earth's coast
+# severs three of the six edges of the town's cell (east, north-east and
+# north), and neither a fixed link nor a road crossing rejoins them, so the
+# path runs 145 km round inland. Why road_crossings misses the coast road is
+# not yet traced. The city-centre
+# airport runs of London, Paris and New York stay the largest error: their
+# hex paths run motorway cells straight across the city, and nothing the
+# sample carries -- road density, city size, core distance -- separates them
+# from the city journeys the fit gets right.
+#
 # Read by graph/ground.py (SPEED_BY_ROAD_CLASS_KMH, END_MINUTES). The sampled
 # journeys stay in data/build/ and nothing from them reaches dist/.
 [ground]
 roadless_kmh = 5.0       # class 0, published-figure default
 highway_kmh = 42.9       # class 1, FITTED
-primary_kmh = 49.7       # class 2, FITTED
-secondary_kmh = 55.6     # class 3, FITTED
-tertiary_kmh = 36.3      # class 4, FITTED
+primary_kmh = 47.7       # class 2, FITTED
+secondary_kmh = 56.6     # class 3, FITTED
+tertiary_kmh = 34.6      # class 4, FITTED
 local_kmh = 25.0         # class 5, published-figure default
-motorway_kmh = 87.8      # class 6, FITTED
-end_min = 11.4           # per journey, both ends together, FITTED
+motorway_kmh = 82.0      # class 6 with no signed limit, FITTED ([ground_motorway])
+end_min = 10.8           # per journey, both ends together, FITTED
 
 # Free-flow speed multiplier per World Bank income group, applied to classes
 # 1-4 and 6 (graph/ground.cell_speed_kmh); the group comes from each cell's
@@ -812,10 +856,30 @@ end_min = 11.4           # per journey, both ends together, FITTED
 # definition; a motorway is 102 km/h in a high-income country and 71 in a
 # low-income one.
 [ground_income]
-high = 1.167             # FITTED
+high = 1.055             # FITTED
 upper_middle = 1.0       # the reference
-lower_middle = 0.824     # FITTED
-low = 0.812              # FITTED
+lower_middle = 0.815     # FITTED, one multiplier with low (see [ground])
+low = 0.815              # FITTED, one multiplier with lower_middle
+
+# A motorway cell (class 6) priced by its signed limit: the highest OSM
+# maxspeed among the motorway ways crossing it (sources/motorways.
+# motorway_limit), in bands under 95, 95-115 and 115 km/h or more
+# (LIMIT_BANDS_KMH); a cell no crossing way signs is [ground] motorway_kmh.
+# FITTED with [ground] (rebuild 33, see there). Upper-middle-income speeds;
+# [ground_income] and [ground_region] scale them like the other classes.
+[ground_motorway]
+under_95_kmh = 73.6      # FITTED
+from_95_kmh = 89.1       # FITTED
+from_115_kmh = 102.4     # FITTED
+
+# Speed multiplier for a driving region (sources/countries.DRIVING_REGIONS:
+# north_america = USA and Canada), on top of [ground_income], applied to the
+# same classes. FITTED with [ground] (rebuild 33): with one high-income
+# multiplier, North American journeys came out 9% too slow in sample (median
+# observed/predicted 0.917) while Europe's sat at 0.98; an East Asia
+# multiplier was tried and fitted at 1.01, so it is not kept.
+[ground_region]
+north_america = 1.231    # FITTED
 
 # The built-up areas, from Natural Earth populated places of `pop_min` or more
 # (`pop_max`; sources/urban.py).
@@ -844,7 +908,7 @@ low = 0.812              # FITTED
 [urban]
 pop_min = 200000.0
 radius_km = 40.0
-built_up_factor = 1.36   # FITTED
+built_up_factor = 1.354  # FITTED
 built_up_extent = 1.0    # city built-up radii, FITTED (structure)
 
 # Crossing a land border. Charged on the ground edge between two cells whose

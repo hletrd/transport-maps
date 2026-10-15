@@ -226,12 +226,14 @@ def mode_detail() -> dict[str, str]:
     # the range from the low-income to the high-income figure, so the
     # sentence states what the model charges rather than one country's case.
     mult = ground.INCOME_SPEED_MULTIPLIER
-    lo, hi = float(mult.min()), float(mult.max())
+    lo = float(mult.min() * ground.REGION_SPEED_MULTIPLIER.min())
+    hi = float(mult.max() * ground.REGION_SPEED_MULTIPLIER.max())
 
     def span(*classes: int) -> str:
-        v = [kmh[c] for c in classes]
+        v = [x for c in classes
+             for x in (ground.MOTORWAY_SPEED_BY_LIMIT_KMH if c == ground.MOTORWAY_CLASS else [kmh[c]])]
         if all(c in ground.INCOME_SCALED_CLASSES for c in classes):
-            return f"{min(v) * lo:.0f}-{max(v) * hi:.0f} km/h by country income"
+            return f"{min(v) * lo:.0f}-{max(v) * hi:.0f} km/h by country"
         return f"{min(v):.0f}-{max(v):.0f} km/h" if len(set(v)) > 1 else f"{v[0]:.0f} km/h"
     ends = (f" Every road journey also pays {ground.END_MINUTES:.0f} min at its two ends, "
             "fitted with the speeds.")
@@ -285,8 +287,9 @@ def mode_detail() -> dict[str, str]:
         # Two classes on one channel (emit/modes.ROAD_CHANNEL): a cell an
         # OpenStreetMap motorway crosses, and GRIP4's other highways, which
         # cannot tell an expressway from an old national road.
-        "highway": f"Motorways and expressways mapped in OpenStreetMap, fitted at "
-                   f"{span(ground.MOTORWAY_CLASS)}; other highways at {span(1)}. Both "
+        "highway": f"Motorways and expressways mapped in OpenStreetMap, fitted by their "
+                   f"signed limit at {span(ground.MOTORWAY_CLASS)}; other highways at "
+                   f"{span(1)}. Both "
                    f"{in_cities}.{ends}",
         # sorted(): the table is ordered by road class, not by speed, so
         # classes 2 and 3 (57 and 50 km/h) printed "fitted at 57-50 km/h" --

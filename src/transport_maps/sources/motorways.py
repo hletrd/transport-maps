@@ -48,7 +48,7 @@ EXPRESSWAY_TAGS = ("motorway", "expressway", "motorroad")
 #: "fast_trunk": also trunk signed FAST_TRUNK_KMH or more. "fast_trunk" was
 #: chosen out of fold with the speeds (calibration.toml [ground] says by how
 #: much); FAST_TRUNK_KMH is a round threshold, not fitted.
-RULES = ("motorway", "expressway", "fast_trunk")
+RULES = ("motorway", "expressway", "fast_trunk", "any")
 RULE = "fast_trunk"
 FAST_TRUNK_KMH = 100.0
 #: Spacing of the points a way is sampled at before each is given its cell.
@@ -139,6 +139,8 @@ def selected(df: pl.DataFrame, rule: str = RULE) -> pl.DataFrame:
     """The ways `rule` counts as motorway."""
     if rule not in RULES:
         raise ValueError(f"unknown motorway rule {rule!r}; one of {RULES}")
+    if rule == "any":
+        return df
     keep = pl.col("highway") == "motorway"
     if rule in ("expressway", "fast_trunk"):
         keep = keep | pl.col("expressway")
@@ -148,7 +150,7 @@ def selected(df: pl.DataFrame, rule: str = RULE) -> pl.DataFrame:
 
 
 def densify(lat: np.ndarray, lon: np.ndarray, starts: np.ndarray,
-            step_km: float = DENSIFY_KM) -> tuple[np.ndarray, np.ndarray]:
+            step_km: float = DENSIFY_KM, with_way: bool = False):
     """Points every `step_km` or closer along polylines, their vertices
     included. `lat`/`lon` are all ways' nodes end to end and `starts` the
     index of each way's first node. A segment across the antimeridian is
@@ -167,7 +169,11 @@ def densify(lat: np.ndarray, lon: np.ndarray, starts: np.ndarray,
     plat = lat[a] + t * (lat[a + 1] - lat[a])
     plon = lon[a] + t * (lon[a + 1] - lon[a])
     # The last node of each segment: t never reaches 1 above.
-    return np.r_[plat, lat[i + 1]], np.r_[plon, lon[i + 1]]
+    if not with_way:
+        return np.r_[plat, lat[i + 1]], np.r_[plon, lon[i + 1]]
+    way_of_node = np.repeat(np.arange(len(starts)), np.diff(np.r_[starts, len(lat)]))
+    return (np.r_[plat, lat[i + 1]], np.r_[plon, lon[i + 1]],
+            np.r_[way_of_node[a], way_of_node[i + 1]])
 
 
 def _mask_cache_path(cells: list[str], ways_key: str, rule: str = RULE) -> pathlib.Path:
@@ -213,3 +219,50 @@ def motorway_mask(idx, rule: str = RULE, *, extracts_dir=None) -> np.ndarray:
           f"{int(mask.sum()):,} cells", flush=True)
     return mask
 
+
+
+#: Upper edges of the signed-limit bands of a motorway cell, km/h; band 0 is a
+#: cell no crossing way carries a maxspeed for.
+LIMIT_BANDS_KMH = (95.0, 115.0)
+
+
+def limit_band_of(kmh: np.ndarray) -> np.ndarray:
+    """0 for no signed limit (NaN), else 1 + the band of the limit."""
+    kmh = np.asarray(kmh, dtype=float)
+    out = 1 + np.searchsorted(np.asarray(LIMIT_BANDS_KMH), np.nan_to_num(kmh), side="right")
+    return np.where(np.isfinite(kmh), out, 0).astype(np.int64)
+
+
+def motorway_limit(idx, rule: str = RULE, *, extracts_dir=None) -> np.ndarray:
+    """The highest signed limit (km/h) among the ways under `rule` crossing
+    each cell of `idx`, NaN where none carries one -- the cell assignment
+    `motorway_mask` makes."""
+    import h3
+
+    df, key = ways(extracts_dir=extracts_dir)
+    cached = config.CACHE / (f"motorway_limit-"
+                             f"{_mask_cache_path(list(idx.cells), key, rule).stem.split('-', 1)[1]}.parquet")
+    if cached.exists():
+        return pl.read_parquet(cached)["limit"].to_numpy()
+    sel = selected(df, rule)
+    lens = sel["lat"].list.len().to_numpy()
+    starts = np.r_[0, np.cumsum(lens)[:-1]].astype(np.int64)
+    lat = sel["lat"].explode(empty_as_null=True).to_numpy()
+    lon = sel["lon"].explode(empty_as_null=True).to_numpy()
+    plat, plon, way = densify(lat, lon, starts, with_way=True)
+    limit = sel["maxspeed_kmh"].to_numpy().astype(float)
+    have = np.isfinite(limit[way])
+    split = idx._split
+    best: dict[str, float] = {}
+    for la, lo, v in zip(plat[have].tolist(), plon[have].tolist(), limit[way][have].tolist()):
+        base = h3.latlng_to_cell(la, lo, config.SOLVE_RES)
+        c = h3.latlng_to_cell(la, lo, config.FINE_RES) if base in split else base
+        if v > best.get(c, -1.0):
+            best[c] = v
+    out = np.full(idx.n_cells, np.nan)
+    for c, v in best.items():
+        pos = idx.try_cell_index(c)
+        if pos is not None:
+            out[pos] = v
+    _atomic_write(cached, lambda tmp: pl.DataFrame({"limit": out}).write_parquet(tmp))
+    return out

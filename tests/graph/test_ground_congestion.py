@@ -19,12 +19,18 @@ from transport_maps.graph import ground
 from transport_maps.sources import countries, urban
 
 
-def _speeds(monkeypatch, classes, scaled, groups):
+def _speeds(monkeypatch, classes, scaled, groups, limits=None, regions=None):
+    n = len(classes)
     monkeypatch.setattr(urban, "scaled_city_distance",
                         lambda cells: (np.asarray(scaled, dtype=float), np.zeros(len(cells))))
     monkeypatch.setattr(countries, "cell_income_group", lambda country: np.asarray(groups))
-    idx = SimpleNamespace(cells=[f"c{i}" for i in range(len(classes))], base_cells=[])
-    return ground.cell_speed_kmh(idx, np.asarray(classes), country=np.array([""] * len(classes)))
+    monkeypatch.setattr(countries, "cell_driving_region",
+                        lambda country: np.asarray(regions if regions is not None else [0] * n))
+    monkeypatch.setattr(ground.motorways, "motorway_limit",
+                        lambda idx, *a, **k: np.asarray(limits if limits is not None
+                                                        else [np.nan] * n, dtype=float))
+    idx = SimpleNamespace(cells=[f"c{i}" for i in range(n)], base_cells=[])
+    return ground.cell_speed_kmh(idx, np.asarray(classes), country=np.array([""] * n))
 
 
 def test_the_penalty_is_drawn_at_each_citys_own_extent(monkeypatch):
@@ -50,7 +56,8 @@ def test_the_income_multiplier_scales_the_fitted_classes_only(monkeypatch):
     far = [9.0, 9.0, 9.0, 9.0]
     v = _speeds(monkeypatch, [1, 4, 0, 5], far, [0, 3, 0, 3])
     assert np.allclose(v, [k[1] * m[0], k[4] * m[3], k[0], k[5]])
-    assert m[0] > m[1] == 1.0 > m[2] > m[3]
+    # Lower-middle and low are one fitted multiplier since rebuild 33.
+    assert m[0] > m[1] == 1.0 > m[2] >= m[3]
 
 
 def test_roadless_terrain_is_never_slowed_by_traffic(monkeypatch):
@@ -71,16 +78,64 @@ def test_an_osm_motorway_raises_a_cell_to_the_motorway_class(monkeypatch):
     alone -> RED."""
     monkeypatch.setattr(ground, "grip_class", lambda idx: np.array([1, 0, 3, 5]))
     monkeypatch.setattr(ground.motorways, "motorway_mask",
-                        lambda idx: np.array([True, True, False, False]))
+                        lambda idx, rule=None: (np.zeros(4, bool) if rule == "any"
+                                                else np.array([True, True, False, False])))
     cls = ground.cell_class(SimpleNamespace(cells=list("abcd"), base_cells=[]))
     assert cls.tolist() == [ground.MOTORWAY_CLASS, ground.MOTORWAY_CLASS, 3, 5]
+
+
+def test_an_osm_trunk_raises_a_cell_grip4_grades_below_primary(monkeypatch):
+    """GRIP4 misses roads OSM has: the coast road from Tawau to its airport is
+    OSM trunk and GRIP4 roadless and tertiary, so a 27 km run went 145 km
+    round inland (rebuild 32). A cell any OSM motorway or trunk crosses is at
+    least primary where GRIP4 graded it roadless, tertiary or local; a better
+    GRIP4 grade (highway, secondary) is kept, and a motorway still wins.
+
+    Mutation performed and reverted: drop the trunk floor from cell_class ->
+    RED."""
+    monkeypatch.setattr(ground, "grip_class", lambda idx: np.array([0, 4, 5, 1, 3, 0, 0]))
+    any_trunk = np.array([True, True, True, True, True, False, True])
+    motorway = np.array([False, False, False, False, False, False, True])
+    monkeypatch.setattr(ground.motorways, "motorway_mask",
+                        lambda idx, rule=None: any_trunk if rule == "any" else motorway)
+    cls = ground.cell_class(SimpleNamespace(cells=list("abcdefg"), base_cells=[]))
+    assert cls.tolist() == [2, 2, 2, 1, 3, 0, ground.MOTORWAY_CLASS]
+
+
+def test_a_motorway_runs_at_the_speed_of_its_signed_limit(monkeypatch):
+    """No signed limit, under 95, 95-115 and 115 km/h or more each have their
+    fitted speed (calibration.toml [ground_motorway]): the desert motorway
+    from Cairo to Alexandria is signed 100-120 and drove at the country's
+    average motorway speed before (rebuild 32: 214 min against 151).
+
+    Mutation performed and reverted: drop the limit lookup (every motorway at
+    motorway_kmh) -> RED."""
+    t = ground.MOTORWAY_SPEED_BY_LIMIT_KMH
+    mw = ground.MOTORWAY_CLASS
+    v = _speeds(monkeypatch, [mw] * 4, [9.0] * 4, [1] * 4, limits=[np.nan, 80.0, 100.0, 120.0])
+    assert np.allclose(v, t)
+    assert len(set(t.tolist())) == 4
+
+
+def test_north_america_drives_faster_than_its_income_group(monkeypatch):
+    """With one high-income multiplier North American journeys came out 9%
+    too slow (rebuild 32's fit); [ground_region] north_america scales the
+    fitted classes on top of the income multiplier, and nothing else.
+
+    Mutation performed and reverted: drop the region multiplier -> RED."""
+    k, m = ground.SPEED_BY_ROAD_CLASS_KMH, ground.INCOME_SPEED_MULTIPLIER
+    r = ground.REGION_SPEED_MULTIPLIER
+    v = _speeds(monkeypatch, [1, 1, 5], [9.0] * 3, [0, 0, 0], regions=[1, 0, 1])
+    assert np.allclose(v, [k[1] * m[0] * r[1], k[1] * m[0], k[5]])
+    assert r[1] > 1.0
 
 
 def test_a_motorway_cell_runs_at_the_motorway_speed(monkeypatch):
     """Its own fitted speed, income-scaled exactly when the fit chose that
     (INCOME_SCALED_CLASSES), and slowed in a city like any road."""
-    k, m = ground.SPEED_BY_ROAD_CLASS_KMH, ground.INCOME_SPEED_MULTIPLIER
+    m = ground.INCOME_SPEED_MULTIPLIER
     mw = ground.MOTORWAY_CLASS
+    base = ground.MOTORWAY_SPEED_BY_LIMIT_KMH[0]
     scale = m[3] if mw in ground.INCOME_SCALED_CLASSES else 1.0
     v = _speeds(monkeypatch, [mw, mw], [9.0, 0.1], [3, 3])
-    assert np.allclose(v, [k[mw] * scale, k[mw] * scale / urban.URBAN_BUILT_UP_FACTOR])
+    assert np.allclose(v, [base * scale, base * scale / urban.URBAN_BUILT_UP_FACTOR])

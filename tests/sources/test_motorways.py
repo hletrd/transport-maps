@@ -36,7 +36,8 @@ def test_each_rule_counts_exactly_its_ways():
                 ("trunk", False, 110.0, [0, 1], [0, 1]),
                 ("trunk", False, 80.0, [0, 1], [0, 1])])
     got = {r: sorted(motorways.selected(df, r)["way_id"].to_list()) for r in motorways.RULES}
-    assert got == {"motorway": [0], "expressway": [0, 1], "fast_trunk": [0, 1, 2]}
+    assert got == {"motorway": [0], "expressway": [0, 1], "fast_trunk": [0, 1, 2],
+                   "any": [0, 1, 2, 3]}
     with pytest.raises(ValueError):
         motorways.selected(df, "everything")
 
@@ -139,3 +140,27 @@ def test_a_point_is_looked_up_as_the_index_looks_it_up(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "CACHE", tmp_path)
     mask = motorways.motorway_mask(idx, "motorway")
     assert mask.tolist() == [True] + [False] * (len(cells) - 1)
+
+
+def test_a_motorway_cell_takes_the_highest_signed_limit_crossing_it(monkeypatch, tmp_path):
+    """Two motorways cross one cell, signed 90 and 120: the cell is 120. A
+    cell only an unsigned way crosses has no limit (NaN, band 0), and the
+    bands split at 95 and 115.
+
+    Mutation performed and reverted: keep the first limit seen rather than
+    the highest -> RED."""
+    lat0, lon0 = 37.5, 127.0
+    a = h3.latlng_to_cell(lat0, lon0, config.SOLVE_RES)
+    far = h3.latlng_to_cell(lat0 + 0.5, lon0, config.SOLVE_RES)
+    cells = [a, far]
+    pos = {c: i for i, c in enumerate(cells)}
+    idx = SimpleNamespace(cells=cells, n_cells=2, _split=frozenset(), try_cell_index=pos.get)
+    df = _ways([("motorway", False, 90.0, [lat0, lat0], [lon0 - 0.01, lon0 + 0.01]),
+                ("motorway", False, 120.0, [lat0 - 0.01, lat0 + 0.01], [lon0, lon0]),
+                ("motorway", False, None, [lat0 + 0.5, lat0 + 0.5], [lon0 - 0.01, lon0 + 0.01])])
+    monkeypatch.setattr(motorways, "ways", lambda **_: (df, "lim"))
+    monkeypatch.setattr(config, "CACHE", tmp_path)
+    limit = motorways.motorway_limit(idx, "motorway")
+    assert limit[pos[a]] == 120.0 and np.isnan(limit[pos[far]])
+    assert motorways.limit_band_of(np.array([np.nan, 80.0, 95.0, 100.0, 115.0, 130.0])).tolist() \
+        == [0, 1, 2, 2, 3, 3]

@@ -219,6 +219,24 @@ def cell_income_group(country: np.ndarray) -> np.ndarray:
     return np.array([income_group(c) for c in codes], dtype=np.int64)[inverse.reshape(-1)]
 
 
+#: Driving regions whose road speeds a fitted multiplier sets apart from
+#: their income group (calibration.toml [ground_region]), by ADM0_A3. Index 0
+#: is every other country. Only North America earned one out of fold: with
+#: one high-income multiplier its journeys came out 9% too slow in sample,
+#: and an East Asia multiplier fitted at 1.01 (rebuild 33, 2026-10-15).
+DRIVING_REGIONS = {
+    "north_america": ("USA", "CAN"),
+}
+_REGION_OF_A3 = {a3: k + 1 for k, members in enumerate(DRIVING_REGIONS.values()) for a3 in members}
+
+
+def cell_driving_region(country: np.ndarray) -> np.ndarray:
+    """0 for no driving region, else 1 + its index in DRIVING_REGIONS, per cell
+    from its ADM0_A3 (cell_country)."""
+    codes, inverse = np.unique(np.asarray(country, dtype=str), return_inverse=True)
+    return np.array([_REGION_OF_A3.get(c, 0) for c in codes], dtype=np.int64)[inverse.reshape(-1)]
+
+
 def iso2(a3: str) -> str:
     """ISO-2 for an ADM0_A3, loading the table on first use."""
     if not A3_TO_A2:

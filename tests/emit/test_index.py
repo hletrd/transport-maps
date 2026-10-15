@@ -233,8 +233,12 @@ def test_the_road_prose_says_halved_only_when_the_factor_is_two(monkeypatch):
         assert f"{shipped} inside a city's built-up area" in prose[key], (key, prose[key])
         assert f"pays {ground.END_MINUTES:.0f} min at its two ends" in prose[key]
     hw = ground.SPEED_BY_ROAD_CLASS_KMH[1]
-    mult = ground.INCOME_SPEED_MULTIPLIER
-    assert f"{hw * mult.min():.0f}-{hw * mult.max():.0f} km/h" in prose["highway"]
+    lo = ground.INCOME_SPEED_MULTIPLIER.min() * ground.REGION_SPEED_MULTIPLIER.min()
+    hi = ground.INCOME_SPEED_MULTIPLIER.max() * ground.REGION_SPEED_MULTIPLIER.max()
+    assert f"{hw * lo:.0f}-{hw * hi:.0f} km/h" in prose["highway"]
+    # Rebuild 33: a motorway is quoted over its signed-limit speeds.
+    mw = ground.MOTORWAY_SPEED_BY_LIMIT_KMH
+    assert f"signed limit at {mw.min() * lo:.0f}-{mw.max() * hi:.0f} km/h" in prose["highway"]
 
     monkeypatch.setattr(urban, "URBAN_BUILT_UP_FACTOR", 2.0)
     prose = index.mode_detail()
