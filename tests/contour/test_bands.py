@@ -400,3 +400,48 @@ def test_h3_shapes_become_the_same_polygons_without_the_geo_round_trip():
         want = list(shapely.get_parts(shape(h3.h3shape_to_geo(s))))
         got = bands._h3shape_parts(s)
         assert [shapely.to_wkb(g) for g in got] == [shapely.to_wkb(g) for g in want]
+
+
+def test_a_split_cell_over_a_border_is_painted_from_its_home_zones_child():
+    """Rebuild 32 painted (and read) a split res-6 cell at zoom 3-6 in its
+    fastest child of any zone, so the cell over the Shenzhen River took a Hong
+    Kong child's time from Hong Kong: 36 min to Shenzhen against 72 by the
+    graph. With the reading source (emit/hover.reading_source, zone-aware) as
+    `base_source`, the base level paints the home zone's fastest child.
+
+    Mutation performed and reverted: ignore `base_source` in
+    band_feature_collection (the np.minimum.at branch always) -> RED.
+    """
+    from shapely.geometry import Point, shape
+
+    from transport_maps.emit import hover
+    from transport_maps.graph import refine
+    centre = h3.latlng_to_cell(37.5, 127.0, config.SOLVE_RES)
+    base = sorted(h3.grid_disk(centre, 1))
+    split = np.array([c == centre for c in base])
+    cells, base_index, fine = refine.refine(base, split)
+
+    class Idx:
+        def try_cell_index(self, cell):
+            return cells.index(cell) if cell in cells else None
+    idx = Idx(); idx.cells = cells; idx.n_cells = len(cells)
+    idx.base_cells = base; idx.base_index = base_index; idx.fine = fine
+    edges = np.asarray(config.BAND_EDGES_MIN, dtype=float)
+    minutes = np.full(len(cells), edges[4] + 1.0)          # band 5 everywhere...
+    kids = np.flatnonzero(fine)
+    centre_child = cells.index(h3.cell_to_center_child(centre, config.FINE_RES))
+    other = next(k for k in kids if k != centre_child)
+    minutes[other] = 1.0                                   # ...but one child, across a border
+    zone = np.array(["KR"] * len(cells), dtype=object)
+    zone[other] = "KP"
+    layout = hover.reading_layout(idx)
+    src = hover.reading_source(idx, layout, minutes, zone=zone)
+    assert src[base.index(centre)] != other, "the reading took the child across the border"
+    fc = bands.band_feature_collection(idx, minutes, base_source=src)
+    base_level = bands.lod_features(fc, 1)
+    by_band = {f["properties"]["band"]: shape(f["geometry"]) for f in base_level}
+    la, lo = h3.cell_to_latlng(centre)
+    assert 0 not in by_band or not by_band[0].contains(Point(lo, la)), (
+        "the zoom 5-6 paint took the child across the border")
+    # Without zones it is the fastest child of any zone, as before.
+    assert hover.reading_source(idx, layout, minutes)[base.index(centre)] == other

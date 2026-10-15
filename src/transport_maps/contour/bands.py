@@ -357,7 +357,8 @@ def _fill_rings(minutes: np.ndarray, nb: np.ndarray, ring: np.ndarray) -> None:
 
 
 def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=None,
-                            skip_native: bool = False, flags: dict | None = None) -> dict:
+                            skip_native: bool = False, flags: dict | None = None,
+                            base_source: np.ndarray | None = None) -> dict:
     """GeoJSON FeatureCollection: one feature per occupied band per level of
     detail (see LODS), each level in ascending band order with unreachable
     land last.
@@ -372,6 +373,11 @@ def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=Non
     `contour.grid.native_edges(idx)`; the build computes both once in the
     parent process and hands them to every forked worker. `flags` is
     `precompute_flags(idx, grid)`, likewise once per build (R2).
+
+    `base_source`, where given, is the node each base cell is painted from at
+    zoom 3-6 (emit/hover.reading_source: the fastest child in the cell's home
+    zone), so the paint and the reading tier name one node; without it a
+    split cell is painted in its fastest child of any zone.
     """
     if len(cell_minutes) < idx.n_cells:
         raise ValueError("cell_minutes shorter than the cell universe")
@@ -397,7 +403,10 @@ def band_feature_collection(idx, cell_minutes: np.ndarray, grid=None, native=Non
     # The base grid carries the fastest of each cell's children, then its
     # sea rings, then bands.
     base_minutes = np.full(len(cells6), np.inf)
-    if refined:
+    if refined and base_source is not None:
+        has = base_source >= 0
+        base_minutes[: len(base_cells)][has] = minutes[base_source[has]]
+    elif refined:
         np.minimum.at(base_minutes, idx.base_index, minutes)
     else:
         base_minutes[: len(base_cells)] = minutes

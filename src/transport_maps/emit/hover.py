@@ -308,7 +308,8 @@ def reading_layout(idx) -> ReadingLayout:
         parents=[h3.int_to_str(int(v)) for v in parent_ids], dest=dest, source=source)
 
 
-def reading_source(idx, layout: ReadingLayout, cell_minutes: np.ndarray) -> np.ndarray:
+def reading_source(idx, layout: ReadingLayout, cell_minutes: np.ndarray,
+                   zone: np.ndarray | None = None) -> np.ndarray:
     """`layout.source` for one origin: where graph/refine.py split a base cell,
     the slot takes its FASTEST child (ties to the lowest node position), not
     its centre child.
@@ -322,12 +323,32 @@ def reading_source(idx, layout: ReadingLayout, cell_minutes: np.ndarray) -> np.n
     behind their fastest (audit of 2026-10-14). Where the centre child is no
     node at all, the slot used to be padding -- "no route" -- while its
     siblings were reached; it now reads them.
+
+    With `zone` (ground.cell_zones, per node), the fastest child is sought
+    among those in the cell's HOME zone, its centre child's: a res-6 cell
+    straddling a border otherwise read the child across it. Rebuild 32 put
+    Shenzhen 36 min from Hong Kong (the Hong Kong-side child) against 72 by
+    the graph, Macau 61 min from Jiangmen against 99 (the Zhuhai-side
+    child), and Sinuiju-side children under Dandong (2026-10-15). A cell
+    whose centre child is no node, or in no zone, takes the fastest child of
+    any zone, as before. The tiles' zoom 3-6 paint takes the same node
+    (contour/bands.py `base_source`), so colour and number still agree.
     """
     fine = np.asarray(getattr(idx, "fine", np.zeros(0, dtype=bool)), dtype=bool)
     if not fine.any():
         return layout.source
     pos = np.flatnonzero(fine)
     base = np.asarray(idx.base_index)[pos]
+    if zone is not None:
+        codes, inverse = np.unique(np.asarray(zone), return_inverse=True)
+        code = inverse.reshape(-1)
+        empty = np.flatnonzero(codes == "")
+        if len(empty):
+            code = np.where(code == empty[0], -1, code)
+        centre = layout.source
+        home = np.where(centre >= 0, code[np.maximum(centre, 0)], -1)
+        keep = (home[base] < 0) | (code[pos] == home[base])
+        pos, base = pos[keep], base[keep]
     m = np.asarray(cell_minutes[pos], dtype=np.float64)
     order = np.lexsort((pos, m, base))
     head = np.r_[True, base[order][1:] != base[order][:-1]]

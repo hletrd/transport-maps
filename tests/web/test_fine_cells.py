@@ -81,7 +81,6 @@ import * as h3 from {json.dumps(H3_JS)};
 const READING_RES = 6, READING_PARENT_RES = 3, SOLVE_RES = 6, FINE_RES = 7;
 {_js.statement("const FINE_NO_CELL")}
 {_js.statement("const FINE_NATIVE_ZOOM")}
-{_js.statement("const FINE_BASE_ZOOM")}
 let ZOOM = 8, avoid = null, POINT = false;
 const map = {{ getZoom: () => ZOOM }};
 const pointShown = () => POINT;
@@ -103,13 +102,19 @@ def test_zoom_7_reads_the_res7_cell_under_the_pointer(node, tmp_path):
     assert got == {"t": 33, "res": 7}
 
 
-def test_zooms_3_to_6_read_the_split_cell_by_its_fastest_child(node, tmp_path):
-    """Mutation performed and reverted: take the centre child at the base
-    level -> RED."""
+def test_zooms_3_to_6_leave_the_split_cell_to_the_reading_tier(node, tmp_path):
+    """Below zoom 7 the tiles paint each res-6 cell from the node the reading
+    tier holds for it -- the fastest child in the cell's home zone (emit/
+    hover.reading_source) -- which a block, carrying no zones, cannot
+    reproduce: its minimum over all seven read Shenzhen across the border.
+
+    Mutation performed and reverted: fineLevel answers "native" from zoom 3
+    -> RED.
+    """
     got = _run(node, tmp_path, _page(*_block_at(*POINT))
-               + "ZOOM = 5.9; const a = at(); ZOOM = 3; const b = at();"
+               + "ZOOM = 6.9; const a = at(); ZOOM = 3; const b = at();"
                  "console.log(JSON.stringify([a, b]));")
-    assert got == [{"t": 20, "res": 6}, {"t": 20, "res": 6}]
+    assert got == [None, None]
 
 
 def test_where_a_block_says_nothing_new_the_reading_tier_answers(node, tmp_path):
@@ -249,7 +254,6 @@ def test_a_resting_pointer_asks_once_and_a_refusal_holds_requests_back(node, tmp
 import * as h3 from {json.dumps(H3_JS)};
 const READING_RES = 6, READING_PARENT_RES = 3, SOLVE_RES = 6, FINE_RES = 7;
 {_js.statement("const FINE_NATIVE_ZOOM")}
-{_js.statement("const FINE_BASE_ZOOM")}
 {_js.statement("const FINE_REST_MS")}
 {_js.statement("const FINE_KEEP")}
 const avoid = null, map = {{ getZoom: () => 8 }}, pointShown = () => false;

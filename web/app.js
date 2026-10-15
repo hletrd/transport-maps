@@ -128,11 +128,11 @@ const fineCells = { armed: false, blocks: new Map(), ctl: null, timer: 0, retryA
                     tipAt: null, level: null };
 // wire.NO_CELL: a slot no solver cell covers. The reading tier answers there.
 const FINE_NO_CELL = 65534;
-// contour/bands.py LODS: the native level (the solver's cells) from zoom 7,
-// the res-6 base level from zoom 3. Below 3 the tiles draw res-4 cells and
-// nothing here applies. Tile levels change at whole zooms.
+// contour/bands.py LODS: the native level (the solver's cells) from zoom 7.
+// Below it the tiles draw res-6 cells, each painted from the node the reading
+// tier holds for it (emit/hover.reading_source), so a block adds nothing
+// there. Tile levels change at whole zooms.
 const FINE_NATIVE_ZOOM = 7;
-const FINE_BASE_ZOOM = 3;
 // How long the pointer rests before a block is asked for, and how many are
 // kept: a block is ~6 KB of JSON, and one a pointer merely crossed is not
 // worth a request.
@@ -3458,39 +3458,35 @@ function readingGrid() {
 }
 
 //: Which tile level the bands are drawn at, for the block readings: "native"
-//: (the solver's cells), "base" (res-6 cells) or null where a block says
-//: nothing the reading tier does not -- below zoom 3, on the map from a
-//: point (res-4 cells of its own), and under an avoided mode, whose tiles
-//: were solved without that mode and have no native level.
+//: (the solver's cells, zoom 7 and above) or null where a block says nothing
+//: the reading tier does not -- below zoom 7, where each res-6 cell is
+//: painted from the node the tier holds; on the map from a point (res-4
+//: cells of its own); and under an avoided mode, whose tiles were solved
+//: without that mode and have no native level.
+//:
+//: It answered "base" at zoom 3-6 too, reading a split cell's fastest child
+//: of ANY zone from the block, as the tiles then painted it. Rebuild 33 paints
+//: and reads the fastest child in the cell's home zone (a res-6 cell over a
+//: border had read the child across it: Shenzhen 36 min from Hong Kong), which
+//: the block, carrying no zones, cannot reproduce -- and need not.
 function fineLevel() {
   if (!fineCells.armed || avoid || pointShown() || !active || !READING_RES) return null;
-  const z = Math.floor(map.getZoom());
-  return z >= FINE_NATIVE_ZOOM ? "native" : z >= FINE_BASE_ZOOM ? "base" : null;
+  return Math.floor(map.getZoom()) >= FINE_NATIVE_ZOOM ? "native" : null;
 }
 
 //: {t, res} for the cell the tiles draw under a point, from a kept block, or
 //: null to read the reading tier: no block yet, a base cell that was not
 //: split (the tier already holds it), or a slot with no cell.
 function fineReading(lat, lon) {
-  const level = fineLevel();
-  if (!level) return null;
+  if (!fineLevel()) return null;
   const cell = h3.latLngToCell(lat, lon, FINE_RES);
   const b = fineCells.blocks.get(`${active.slug}|${h3.cellToParent(cell, READING_PARENT_RES)}`);
   if (!b) return null;
   const slot = readingSlot(BigInt("0x" + cell), FINE_RES);
   const per = 7 ** (FINE_RES - SOLVE_RES);
-  const base = Math.floor(slot / per);
-  if (!b.split[base]) return null;
-  if (level === "native") {
-    const t = b.times[slot];
-    return t === FINE_NO_CELL ? null : { t, res: FINE_RES };
-  }
-  // The base level colours a split cell by its fastest child.
-  let t = Infinity;
-  for (let k = base * per; k < base * per + per; k++) {
-    if (b.times[k] !== FINE_NO_CELL) t = Math.min(t, b.times[k]);
-  }
-  return t === Infinity ? null : { t, res: SOLVE_RES };
+  if (!b.split[Math.floor(slot / per)]) return null;
+  const t = b.times[slot];
+  return t === FINE_NO_CELL ? null : { t, res: FINE_RES };
 }
 
 //: Ask for the block under a resting pointer, once. One request at a time,

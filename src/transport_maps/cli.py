@@ -393,9 +393,15 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     # every origin's band tiles, and three full sets would not fit on the web
     # host beside the real one (variants.py). They keep the reading tier.
     slim = variant is not None
+    # The node each reading slot shows and each zoom 3-6 cell is painted from:
+    # a split cell's fastest child in its home zone (emit/hover.reading_source),
+    # one choice for the tiles, the reading tier and the route behind it.
+    reading_src = hover.reading_source(idx, shared["reading"], minutes[: idx.n_cells],
+                                       zone=shared.get("zone"))
     fc = bands.band_feature_collection(idx, minutes[: idx.n_cells],
                                        grid=shared["grid"], native=shared["native"],
-                                       skip_native=slim, flags=shared["band_flags"])
+                                       skip_native=slim, flags=shared["band_flags"],
+                                       base_source=reading_src)
     validate.check_bands_cover(idx, shared["grid"], shared["native"], fc, skip_native=slim)
 
     root = shared.get("out_root", config.DIST)
@@ -422,9 +428,6 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
                                       ferry_keys=shared.get("ferry_keys"))
 
     hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin", parents=parents, rep=rep)
-    # The node each reading slot shows -- a split cell's fastest child, as the
-    # tiles paint it -- shared by the reading tier and the route behind it.
-    reading_src = hover.reading_source(idx, shared["reading"], minutes[: idx.n_cells])
     hover.write_reading(idx, minutes[: idx.n_cells], out / f"{slug}.r6.bin",
                         layout=shared["reading"], source=reading_src)
     # The route behind the fine reading wherever it differs from the coarse
