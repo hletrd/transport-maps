@@ -141,11 +141,8 @@ def _line_between(routes: pl.DataFrame, cal) -> dict[tuple[str, str], tuple[int,
     opposite-direction service is a documented fallback for the 27,359 -- where
     it is the best available answer rather than a wrong one.
     """
-    from transport_maps.graph.rail import _haversine_km, leg_minutes, station_key
+    from transport_maps.graph.rail import priced_legs
 
-    df = routes.sort(["route_id", "seq"]).with_columns(
-        pl.struct("lat", "lon").map_elements(lambda s: station_key(s["lat"], s["lon"]),
-                                             return_dtype=pl.Utf8).alias("station"))
     # A tie is an equality between floats produced by the same arithmetic on
     # the same inputs, so it is exact -- but rounding keeps that true when two
     # relations place "the same" station on coordinates metres apart, which is
@@ -153,31 +150,36 @@ def _line_between(routes: pl.DataFrame, cal) -> dict[tuple[str, str], tuple[int,
     quant = 2
     fwd: dict[tuple[str, str], tuple[float, list[int]]] = {}
     rev: dict[tuple[str, str], tuple[float, list[int]]] = {}
-    for rid, g in df.group_by("route_id", maintain_order=True):
-        route_id = int(rid[0] if isinstance(rid, tuple) else rid)
-        st = g["station"].to_list()
-        lat, lon = g["lat"].to_list(), g["lon"].to_list()
-        tier = g["tier"][0] if "tier" in g.columns else None
-        line_h = g["line_h"][0] if "line_h" in g.columns else None
-        vmax = g["vmax_kmh"][0] if "vmax_kmh" in g.columns else None
-        cover = g["vmax_cover"][0] if "vmax_cover" in g.columns else None
-        priced = line_h is not None or (tier is not None and tier in cal.tiers)
-        for i, (a, b) in enumerate(pairwise(st)):
-            if a == b:
-                continue
-            if not priced:
-                minutes = 0.0
-            else:
-                # graph/rail.leg_minutes, the pricing ride_edges charges.
-                km = float(_haversine_km(lat[i], lon[i], lat[i + 1], lon[i + 1]))
-                minutes = round(float(leg_minutes(
-                    [tier], [km], [line_h], cal, vmax=[vmax], cover=[cover])[0]), quant)
-            for store, key in ((fwd, (a, b)), (rev, (b, a))):
-                best = store.get(key)
-                if best is None or minutes < best[0]:
-                    store[key] = (minutes, [route_id])
-                elif minutes == best[0]:
-                    best[1].append(route_id)
+    # graph/rail.priced_legs, the pricing ride_edges charges -- the same legs,
+    # scaled to the same timetables.
+    if "tier" in routes.columns:
+        unpriced = (routes.filter(~pl.col("tier").is_in(list(cal.tiers))
+                                  & pl.col("line_h").is_null()) if "line_h" in routes.columns
+                    else routes.filter(~pl.col("tier").is_in(list(cal.tiers))))
+        priced_rows = routes.join(unpriced.select("route_id").unique(), on="route_id", how="anti")
+    else:
+        unpriced, priced_rows = routes, routes.clear()
+    legs = priced_legs(priced_rows, cal) if len(priced_rows) else None
+    rows = [] if legs is None else list(legs.iter_rows())
+    if len(unpriced):
+        from transport_maps.graph.rail import station_key
+
+        u = unpriced.sort(["route_id", "seq"]).with_columns(
+            pl.struct("lat", "lon").map_elements(lambda s: station_key(s["lat"], s["lon"]),
+                                                 return_dtype=pl.Utf8).alias("station"))
+        for rid, g in u.group_by("route_id", maintain_order=True):
+            route_id = int(rid[0] if isinstance(rid, tuple) else rid)
+            rows.extend((route_id, a, b, 0.0) for a, b in pairwise(g["station"].to_list()))
+    for route_id, a, b, m in rows:
+        if a == b:
+            continue
+        route_id, minutes = int(route_id), round(float(m), quant)
+        for store, key in ((fwd, (a, b)), (rev, (b, a))):
+            best = store.get(key)
+            if best is None or minutes < best[0]:
+                store[key] = (minutes, [route_id])
+            elif minutes == best[0]:
+                best[1].append(route_id)
     out = {k: tuple(v[1]) for k, v in fwd.items()}
     for k, v in rev.items():
         out.setdefault(k, tuple(v[1]))

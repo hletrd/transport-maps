@@ -578,13 +578,16 @@ def test_the_two_pricings_name_the_same_calibration_terms():
     import inspect
     # Since rebuild 30 both price through ONE function, which is the stronger
     # form of the same guarantee; the terms are required of that function.
+    # Since rebuild 33 that function is `priced_legs`, which also scales a
+    # relation's legs to its own timetable -- so the caption must call it too.
     graph_src = inspect.getsource(rail.ride_edges)
     emit_src = inspect.getsource(rail_detail._line_between)
     for src, where in ((graph_src, "graph/rail.ride_edges"),
                        (emit_src, "emit/rail_detail._line_between")):
-        assert "leg_minutes(" in src, (
-            f"{where} no longer prices legs through graph/rail.leg_minutes; the "
+        assert "priced_legs(" in src, (
+            f"{where} no longer prices legs through graph/rail.priced_legs; the "
             "caption would be chosen by a different rule from the charge")
+    assert "leg_minutes(" in inspect.getsource(rail.priced_legs)
     pricing = inspect.getsource(rail.leg_minutes)
     for term in ("stop_overhead_min", "detour_factor", "speed_kmh", "track_speed_factor"):
         assert term in pricing, f"graph/rail.leg_minutes no longer uses {term}"

@@ -46,6 +46,20 @@ class RailTier:
     # the tier speed fits better (`high_speed`) or n is too small (`tourism`).
     line_speed_factor: float | None = None
     line_overhead_min: float | None = None
+    # Since rebuild 33, the line-speed price of a leg whose line speed is v:
+    #   line_overhead_min + line_stop_loss_min * v/100
+    #     + 60 km / (line_speed_factor * v + line_speed_floor_kmh)
+    # The stop costs more the faster the line (braking from it and climbing
+    # back to it), and a slow line is run nearer its limit than a fast one.
+    # Without these the error ran with line speed: slope -0.27 (commuter) to
+    # -0.31 (regional) in log(predicted/observed) per log line speed, lines
+    # under 80 km/h 10-22% too slow. Zero leaves the old form; which tier
+    # uses which term was chosen out of fold (calibration.toml [rail.tiers]).
+    line_stop_loss_min: float = 0.0
+    line_speed_floor_kmh: float = 0.0
+    # Whether the tier's trains run at `maxspeed:tilting` where the track
+    # carries one (`rail_track.way_speeds`). Chosen out of fold.
+    line_speed_tilting: bool = False
 
 
 @dataclass(frozen=True)
@@ -113,7 +127,15 @@ def stations(routes: pl.DataFrame) -> pl.DataFrame:
               .sort("station"))
 
 
-def leg_minutes(tiers, km, line_h, cal, vmax=None, cover=None) -> np.ndarray:
+def _line_price(c: RailTier, km: float, v: float) -> float:
+    """A leg of `km` along track at line speed `v`, by the tier's line terms."""
+    return (c.line_overhead_min + c.line_stop_loss_min * v / 100.0
+            + 60.0 * km / (c.line_speed_factor * v + c.line_speed_floor_kmh))
+
+
+def leg_minutes(tiers, km, line_h, cal, vmax=None, cover=None, leg_km=None,
+                leg_line_h=None, leg_unknown_km=None, leg_line_h_tilt=None,
+                leg_unknown_km_tilt=None) -> np.ndarray:
     """Minutes for each leg: the ONE pricing `ride_edges` and the captions in
     `emit/rail_detail` both use, so the service a caption names is the one
     that set the time.
@@ -126,6 +148,16 @@ def leg_minutes(tiers, km, line_h, cal, vmax=None, cover=None) -> np.ndarray:
     `maxspeed` allows) is that time at `track_speed_factor`, with no stop
     overhead -- the link is part of an express ride, and the stop it would pay
     for is the one at the end, which boarding and alighting already charge.
+
+    Since rebuild 33 a relation leg whose OWN track is known
+    (`leg_km`, `leg_line_h`, `leg_unknown_km` from `rail_track.leg_profiles`)
+    with `maxspeed` over `line_speed_min_cover` of it is priced from that
+    track rather than from the relation's average: `line_overhead_min` plus
+    its hours at line speed, its unmapped km at the relation's line speed
+    (else the tier's, along track), over `line_speed_factor`. A line is not
+    one speed: the KTX via Suwon runs 111 km of 150 km/h conventional line
+    between Suwon and Daejeon, which the relation's 196 km/h average priced
+    at 41 min against an hour.
     """
     tiers = list(tiers)
     km = np.asarray(km, float)
@@ -136,6 +168,12 @@ def leg_minutes(tiers, km, line_h, cal, vmax=None, cover=None) -> np.ndarray:
             [np.nan if x is None else x for x in v], float)
 
     line_h, vmax, cover = column(line_h), column(vmax), column(cover)
+    lk, lh, lu = column(leg_km), column(leg_line_h), column(leg_unknown_km)
+    lht, lut = column(leg_line_h_tilt), column(leg_unknown_km_tilt)
+    lht, lut = np.where(np.isnan(lht), lh, lht), np.where(np.isnan(lut), lu, lut)
+    profiled = (~np.isnan(lk) & ~np.isnan(lh) & (np.nan_to_num(lk) > 0)
+                & (1 - np.nan_to_num(lu) / np.where(np.nan_to_num(lk) > 0, lk, 1.0)
+                   >= cal.line_speed_min_cover))
     link = ~np.isnan(line_h)
     # A tier the calibration does not price must be a loud failure NAMING it,
     # not a null that becomes a NaN edge and a silently unreachable station.
@@ -152,29 +190,38 @@ def leg_minutes(tiers, km, line_h, cal, vmax=None, cover=None) -> np.ndarray:
             out[i] = 60.0 * line_h[i] / cal.track_speed_factor
             continue
         c = cal.tiers[t]
-        if (c.line_speed_factor is not None and vmax[i] > 0
+        if c.line_speed_factor is not None and profiled[i]:
+            # The leg's own track: its length, and its speed as its length
+            # over its hours at mapped maxspeed (unmapped km at the relation's
+            # line speed, else the tier's along track).
+            fill = vmax[i] if vmax[i] > 0 else c.speed_kmh * cal.detour_factor
+            h_i, u_i = (lht[i], lut[i]) if c.line_speed_tilting else (lh[i], lu[i])
+            hours = h_i + np.nan_to_num(u_i) / fill
+            out[i] = _line_price(c, lk[i], lk[i] / hours if hours > 0 else fill)
+        elif (c.line_speed_factor is not None and vmax[i] > 0
                 and cover[i] >= cal.line_speed_min_cover):
-            out[i] = (c.line_overhead_min
-                      + 60.0 * km[i] * cal.detour_factor / (c.line_speed_factor * vmax[i]))
+            out[i] = _line_price(c, km[i] * cal.detour_factor, vmax[i])
         else:
             out[i] = c.stop_overhead_min + 60.0 * km[i] * cal.detour_factor / c.speed_kmh
     return out
 
 
-def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
-    """Running time between consecutive stops, in minutes.
+def priced_legs(routes: pl.DataFrame, cal) -> pl.DataFrame:
+    """Every route's legs between consecutive stops and their minutes:
+    `route_id`, `from_station`, `to_station`, `minutes`. What `ride_edges`
+    resolves to a graph and what `emit/rail_detail` captions -- one pricing.
 
     Consecutive means consecutive in `seq` WITHIN one route; the shift must be
     partitioned or the last stop of one route joins to the first of the next
     and invents an edge across the country.
 
-    Each leg is priced by its route's SERVICE TIER. This replaced a two-speed
-    model -- 200 km/h if the relation carried `highspeed=yes` or
-    `service=high_speed`, else 75 -- whose selector 1% of route relations on
-    Earth carry and 0% outside Europe, so a Tokyo commuter train and a
-    Shinkansen were the same train. Against 2,338 OSM `duration` tags the two
-    speeds ran a median 0.74 of observed and twice too fast below 20 km; the
-    tiers run 1.04 with no residual distance trend.
+    A relation's own `duration` is NOT applied to its legs, though 2,385
+    relations carry one: it times one train, and the stop list is often
+    another -- a Nozomi relation listing six stops without Nagoya under a
+    144 min tag, a Hayabusa listing the 18 stops of every Hayabusa under one
+    train's 237. Scaled to those, Tokyo-Shin-Osaka rode in 110 min and
+    Tokyo-Sendai in 68 (rebuild 33's trial). The durations are what the tier
+    terms are fitted on instead, where such errors average out.
     """
     df = routes.with_columns(
         pl.struct("lat", "lon")
@@ -190,14 +237,33 @@ def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
 
     km = _haversine_km(nxt["lat"].to_numpy(), nxt["lon"].to_numpy(),
                        nxt["to_lat"].to_numpy(), nxt["to_lon"].to_numpy())
+
     def col(name):
         return nxt[name].to_list() if name in nxt.columns else None
 
     minutes = leg_minutes(nxt["tier"].to_list(), km, col("line_h"), cal,
-                          vmax=col("vmax_kmh"), cover=col("vmax_cover"))
+                          vmax=col("vmax_kmh"), cover=col("vmax_cover"),
+                          leg_km=col("leg_km"), leg_line_h=col("leg_line_h"),
+                          leg_unknown_km=col("leg_unknown_km"),
+                          leg_line_h_tilt=col("leg_line_h_tilt"),
+                          leg_unknown_km_tilt=col("leg_unknown_km_tilt"))
+    return pl.DataFrame({"route_id": nxt["route_id"], "from_station": nxt["station"],
+                         "to_station": nxt["to_station"], "minutes": minutes})
 
-    out = pl.DataFrame({"from_station": nxt["station"], "to_station": nxt["to_station"],
-                        "minutes": minutes})
+
+def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
+    """Running time between consecutive stops, in minutes: the fastest service
+    over each hop of `priced_legs`.
+
+    Each leg is priced by its route's SERVICE TIER. This replaced a two-speed
+    model -- 200 km/h if the relation carried `highspeed=yes` or
+    `service=high_speed`, else 75 -- whose selector 1% of route relations on
+    Earth carry and 0% outside Europe, so a Tokyo commuter train and a
+    Shinkansen were the same train. Against 2,338 OSM `duration` tags the two
+    speeds ran a median 0.74 of observed and twice too fast below 20 km; the
+    tiers run 1.04 with no residual distance trend.
+    """
+    out = priced_legs(routes, cal).drop("route_id")
     # Several routes share a track segment at different speeds; the fastest
     # service that actually runs is the one a traveller would take.
     return out.group_by("from_station", "to_station").agg(pl.col("minutes").min())

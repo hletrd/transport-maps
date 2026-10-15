@@ -12,7 +12,7 @@ def frame(rows):
 
 
 def stop(route_id, seq, lat, lon, name, tier="default", route_name="",
-         operator="", ref="", line_h=None):
+         operator="", ref="", line_h=None, leg=None):
     """A stop row carrying EVERY column of `osm.SCHEMA`.
 
     It used to build seven keys against an eight-column schema, and polars
@@ -26,7 +26,11 @@ def stop(route_id, seq, lat, lon, name, tier="default", route_name="",
             "route_name": route_name, "operator": operator, "ref": ref,
             "member_km": None, "hs_share": None, "vmax_kmh": None, "vmax_cover": None,
             "duration_min": None, "stops_listed": None,
-            "track_km": None, "line_h": line_h}
+            "track_km": None, "line_h": line_h,
+            "leg_km": leg[0] if leg else None, "leg_line_h": leg[1] if leg else None,
+            "leg_unknown_km": leg[2] if leg else None,
+            "leg_line_h_tilt": leg[1] if leg else None,
+            "leg_unknown_km_tilt": leg[2] if leg else None}
 
 
 def cal(**over):
@@ -255,3 +259,54 @@ def test_ride_edges_price_a_link_row_by_its_track():
             stop(-7, 1, 30.0, 121.0, "B", tier="high_speed", line_h=0.32)]
     e = rail.ride_edges(frame(rows), _cal30())
     assert e["minutes"][0] == pytest.approx(60.0 * 0.32 / 0.9)
+
+
+# ---- rebuild 33: each leg priced from its own track --------------------------
+
+def _cal33(tilting=False):
+    tiers = dict(CAL.tiers)
+    tiers["long_distance"] = rail.RailTier(
+        speed_kmh=104.0, stop_overhead_min=3.0, line_speed_factor=0.7, line_overhead_min=0.5,
+        line_stop_loss_min=1.0, line_speed_floor_kmh=10.0, line_speed_tilting=tilting)
+    return rail.RailCalibration(detour_factor=1.2, boarding_min=15.0, alighting_min=5.0,
+                                tiers=tiers, track_speed_factor=0.9, line_speed_min_cover=0.5)
+
+
+def _price(km, v):
+    return 0.5 + 1.0 * v / 100.0 + 60.0 * km / (0.7 * v + 10.0)
+
+
+def test_a_leg_runs_at_its_own_track_speed_not_the_relations_average():
+    """The KTX via Suwon: 111 km of 150 km/h line inside a relation whose
+    track averages 196. Its leg is priced at 150, from the leg's own track
+    length -- not the chord, not the relation's speed. A leg with maxspeed on
+    too little of its track falls back to the relation's speed.
+
+    Mutations performed and reverted, each RED: ignore the leg profile (the
+    relation's 196 prices it); fill the unmapped km at the tier speed while
+    the relation's is known; drop the stop-loss term from `_line_price`.
+    """
+    c = _cal33()
+    got = rail.leg_minutes(
+        ["long_distance"] * 3, [90.0] * 3, None, c, vmax=[196.0] * 3, cover=[0.9] * 3,
+        leg_km=[111.0, 100.0, 100.0], leg_line_h=[111.0 / 150.0, 0.25, 0.1],
+        leg_unknown_km=[0.0, 49.0, 80.0])
+    assert got[0] == pytest.approx(_price(111.0, 150.0))
+    # 51 km at 204, 49 unmapped at the relation's 196: 0.25 + 0.25 h.
+    assert got[1] == pytest.approx(_price(100.0, 100.0 / (0.25 + 49.0 / 196.0)))
+    # 80% unmapped: the relation's speed over the chord along track.
+    assert got[2] == pytest.approx(_price(90.0 * 1.2, 196.0))
+
+
+def test_a_tilting_tier_reads_the_tilting_speed_and_others_do_not():
+    """`maxspeed:tilting`: the WCML is 110 mph, 125 for a Pendolino.
+
+    Mutation performed and reverted: read the tilting columns whatever the
+    tier's flag -> RED (the second assertion).
+    """
+    kw = dict(vmax=[177.0], cover=[0.9], leg_km=[100.0], leg_line_h=[100.0 / 177.0],
+              leg_unknown_km=[0.0], leg_line_h_tilt=[100.0 / 201.0], leg_unknown_km_tilt=[0.0])
+    tilt = rail.leg_minutes(["long_distance"], [90.0], None, _cal33(True), **kw)
+    plain = rail.leg_minutes(["long_distance"], [90.0], None, _cal33(False), **kw)
+    assert tilt[0] == pytest.approx(_price(100.0, 201.0))
+    assert plain[0] == pytest.approx(_price(100.0, 177.0))

@@ -68,6 +68,15 @@ SCHEMA = {
     # neighbouring stations on high-speed track, priced by the track's length
     # and line speed rather than by a tier (`graph/rail.ride_edges`).
     "track_km": pl.Float64, "line_h": pl.Float64,
+    # On a relation's stop row, the leg from this stop to the next along the
+    # relation's own track (`rail_track.leg_profiles`): its length, the hours
+    # it takes at the `maxspeed` mapped on it, and the km of it with none.
+    # Null on the last stop, and where the stops could not be placed on the
+    # track. `graph/rail.leg_minutes` prices a leg from these when they cover
+    # it, rather than from the relation's one average speed.
+    "leg_km": pl.Float64, "leg_line_h": pl.Float64, "leg_unknown_km": pl.Float64,
+    # The same two where a tilting train may run faster (`maxspeed:tilting`).
+    "leg_line_h_tilt": pl.Float64, "leg_unknown_km_tilt": pl.Float64,
 }
 
 # ---- the service tiers ------------------------------------------------------
@@ -169,7 +178,8 @@ def _relations(path) -> tuple[dict, set[int]]:
 
 def _parse(path) -> list[dict]:
     routes, wanted = _relations(path)
-    track = rail_track.scan(path, wanted)
+    members = {w for r in routes.values() for w in r["ways"]}
+    track = rail_track.scan(path, wanted, members)
     coords = track.nodes
     rows = []
     covered = set()
@@ -187,14 +197,18 @@ def _parse(path) -> list[dict]:
         # Any relation, not only a high-speed one: the UK's 125 mph main
         # lines are high-speed track by `maxspeed` and run by `long_distance`
         # relations, and an express link over them counted the line twice.
-        covered.update(w for w in r["ways"] if w in track.hs)
+        covered.update(w for w in r["ways"] if w in track.hs or w in track.fast)
         # A stop whose node the extract does not contain (a route crossing the
         # region boundary) is dropped, not guessed at. Renumber so `seq` stays
         # gapless and a consumer can trust consecutive pairs are adjacent stops.
         resolved = [(sid, coords[sid]) for sid in r["stops"] if sid in coords]
         if len(resolved) < MIN_STOPS:
             continue
+        legs = rail_track.leg_profiles(
+            [sid for sid, _ in resolved], {sid: (c[0], c[1]) for sid, c in resolved},
+            r["ways"], track.member) or []
         for seq, (sid, (lat, lon, node_name)) in enumerate(resolved):
+            leg = legs[seq] if seq < len(legs) else None
             # A stop node with no `name` gets an EMPTY name, not the route's.
             # It used to inherit `r["name"]`, and `emit/rail_detail` then
             # published that as the station: 1,144 of 124,488 shipped rows read
@@ -212,30 +226,53 @@ def _parse(path) -> list[dict]:
                          "vmax_kmh": vmax, "vmax_cover": cover if member_km else None,
                          "duration_min": r["duration_min"],
                          "stops_listed": len(r["stops"]),
-                         "track_km": None, "line_h": None})
+                         "track_km": None, "line_h": None,
+                         "leg_km": leg[0] if leg else None,
+                         "leg_line_h": leg[1] if leg else None,
+                         "leg_unknown_km": leg[2] if leg else None,
+                         "leg_line_h_tilt": leg[3] if leg else None,
+                         "leg_unknown_km_tilt": leg[4] if leg else None})
     rows.extend(_link_rows(rail_track.network(track, covered)))
+    rows.extend(_link_rows(rail_track.network(track, covered, pool=track.fast),
+                           tier="long_distance"))
     return rows
 
 
-def _link_rows(links) -> list[dict]:
+def _link_rows(links, tier: str = "high_speed") -> list[dict]:
     """`rail_track.network`'s links as two-stop routes, so every consumer of
     this frame -- stations, ride edges, the captions -- takes them as it takes
     a relation. The id is negative, which no OSM relation is, and derived from
-    the two stations, so the same link parsed from two overlapping extracts is
-    one route and `_pick_one_extract_per_route` keeps one copy of it."""
+    the two stations and the tier, so the same link parsed from two
+    overlapping extracts is one route and `_pick_one_extract_per_route` keeps
+    one copy of it.
+
+    A high-speed link is priced as an express (`line_h`, the track network's
+    factor). A fast conventional link (`tier` long_distance) is priced as one
+    leg of a long-distance train over its own track (`leg_km`, `leg_line_h`),
+    by that tier's fitted line terms: there is no express to model on a
+    160 km/h line whose trains OSM does not list."""
     import hashlib
 
     rows = []
+    express = tier == "high_speed"
     for link in links:
-        key = "|".join(f"{v[0]:.5f},{v[1]:.5f}" for v in (link.a, link.b)).encode()
+        key = ("|".join(f"{v[0]:.5f},{v[1]:.5f}" for v in (link.a, link.b))
+               + ("" if express else f"|{tier}")).encode()
         rid = -(int.from_bytes(hashlib.sha1(key).digest()[:6], "big") + 1)
         for seq, (lat, lon, name) in enumerate((link.a, link.b)):
+            leg = not express and seq == 0
             rows.append({"route_id": rid, "seq": seq, "stop_id": rid * 2 - seq,
-                         "lat": lat, "lon": lon, "name": name, "tier": "high_speed",
+                         "lat": lat, "lon": lon, "name": name, "tier": tier,
                          "route_name": link.name, "operator": link.operator, "ref": "",
                          "member_km": None, "hs_share": None, "vmax_kmh": None,
                          "vmax_cover": None, "duration_min": None, "stops_listed": 2,
-                         "track_km": link.track_km, "line_h": link.line_h})
+                         "track_km": link.track_km,
+                         "line_h": link.line_h if express else None,
+                         "leg_km": link.track_km if leg else None,
+                         "leg_line_h": link.line_h if leg else None,
+                         "leg_unknown_km": 0.0 if leg else None,
+                         "leg_line_h_tilt": link.line_h if leg else None,
+                         "leg_unknown_km_tilt": 0.0 if leg else None})
     return rows
 
 
@@ -461,7 +498,9 @@ def _ferry_cache_path(fingerprint) -> pathlib.Path:
 # 4: each relation's member ways read for its track profile, the tier
 #    promoted on high-speed track, and the links `rail_track.network` builds
 #    from the track itself appended (rebuild 30).
-RAIL_PARSER_VERSION = 4
+# 5: each relation leg's own track profile (leg_km, leg_line_h,
+#    leg_unknown_km, and the two at the tilting speed).
+RAIL_PARSER_VERSION = 5
 
 
 def _rail_cache_path(fingerprint) -> pathlib.Path:

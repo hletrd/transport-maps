@@ -15,7 +15,7 @@ LAT = 30.0
 STEP = 0.002                      # node spacing along the line, degrees of longitude
 
 
-def _line_pbf(path, *, relation=None, maxspeed="300", loops=True):
+def _line_pbf(path, *, relation=None, maxspeed="300", loops=True, highspeed=True):
     """Main line w1 from 120.0 to 121.0 E with a loop near each end, stations
     A and B beside it. `relation` is a tags dict for a train relation over the
     line calling at A and B, or None for no relation."""
@@ -24,13 +24,14 @@ def _line_pbf(path, *, relation=None, maxspeed="300", loops=True):
     nodes = list(main)
     nodes += [(1, LAT + 0.002, 120.003, {"railway": "station", "name": "A"}),
               (2, LAT + 0.002, 120.997, {"railway": "station", "name": "B"})]
+    hs = {"highspeed": "yes"} if highspeed else {}
     ways = [(1, [m[0] for m in main],
-             {"railway": "rail", "highspeed": "yes", "maxspeed": maxspeed, "usage": "main"})]
+             {"railway": "rail", **hs, "maxspeed": maxspeed, "usage": "main"})]
     if loops:
         nodes += [(3, LAT + 0.0005, 120.003), (4, LAT + 0.0005, 120.997)]
-        ways += [(2, [1001, 3, 1002], {"railway": "rail", "service": "siding", "highspeed": "yes"}),
+        ways += [(2, [1001, 3, 1002], {"railway": "rail", "service": "siding", **hs}),
                  (3, [1000 + n - 3, 4, 1000 + n - 2],
-                  {"railway": "rail", "service": "siding", "highspeed": "yes"})]
+                  {"railway": "rail", "service": "siding", **hs})]
     w = osmium.SimpleWriter(str(path))
     for node in nodes:
         nid, la, lo = node[:3]
@@ -125,3 +126,86 @@ def test_track_a_relation_runs_over_is_not_counted_twice(tmp_path, tags):
     df = _parse(tmp_path, relation=tags)
     assert df.filter(pl.col("route_id") < 0).is_empty()
     assert df.filter(pl.col("route_id") == 500).height == 2
+
+
+# ---- rebuild 33: each leg's own track, and the fast conventional lines -------
+
+@pytest.mark.parametrize("tags,want", [
+    ({"maxspeed": "200"}, (200.0, 200.0)),
+    ({"maxspeed:forward": "160", "maxspeed:backward": "120"}, (160.0, 160.0)),
+    ({"maxspeed": "110 mph", "maxspeed:tilting": "125 mph"}, (177.028, 201.168)),
+    ({"maxspeed": "200", "maxspeed:tilting": "160"}, (200.0, 200.0)),
+    ({"maxspeed:tilting": "200"}, (None, None)),
+])
+def test_a_ways_speed_reads_the_directional_and_tilting_tags(tags, want):
+    """14,000 European ways carry only `maxspeed:forward`/`:backward`, and the
+    WCML is 110 mph but 125 for a Pendolino.
+
+    Mutations performed and reverted, each RED: drop the directional
+    fallback; take `maxspeed:tilting` even where it is the lower.
+    """
+    got = rail_track.way_speeds(tags)
+    assert got == (pytest.approx(want[0]) if want[0] else None,
+                   pytest.approx(want[1]) if want[1] else None)
+
+
+def _two_speed_pbf(path):
+    """A long-distance relation A-M-B along 30 N: A to M on a 150 km/h way
+    (200 for a tilting train), M to B on a 300 km/h one. The relation lists
+    the second way first, and B is a station node 300 m off the line."""
+    w = osmium.SimpleWriter(str(path))
+    stop = {"railway": "stop", "public_transport": "stop_position"}
+    for i in range(501):
+        nid = 1000 + i
+        tags = {**stop, "name": "A"} if nid == 1000 else {**stop, "name": "M"} if nid == 1250 else {}
+        w.add_node(osmium.osm.mutable.Node(id=nid, location=(120.0 + i * STEP, LAT), tags=tags))
+    w.add_node(osmium.osm.mutable.Node(id=1, location=(121.0, LAT + 0.0027),
+                                       tags={"railway": "station", "name": "B"}))
+    w.add_way(osmium.osm.mutable.Way(id=1, nodes=list(range(1000, 1251)), tags={
+        "railway": "rail", "maxspeed": "150", "maxspeed:tilting": "200", "usage": "main"}))
+    w.add_way(osmium.osm.mutable.Way(id=2, nodes=list(range(1250, 1501)), tags={
+        "railway": "rail", "maxspeed": "300", "usage": "main"}))
+    members = [("n", 1000, "stop"), ("n", 1250, "stop"), ("n", 1, "stop"),
+               ("w", 2, ""), ("w", 1, "")]
+    w.add_relation(osmium.osm.mutable.Relation(id=500, members=members, tags={
+        "type": "route", "route": "train", "service": "long_distance", "name": "IC"}))
+    w.close()
+
+
+def test_each_leg_carries_its_own_tracks_length_and_speed(tmp_path):
+    """A relation is two lines at two speeds; each leg must say which.
+
+    Mutations performed and reverted, each RED: place a stop anywhere on the
+    chain rather than after the previous one; drop the nearest-node
+    placement of a station beside the line; read the line speed for the
+    tilting columns.
+    """
+    _two_speed_pbf(tmp_path / "x-rail.osm.pbf")
+    df = pl.DataFrame(osm._parse(tmp_path / "x-rail.osm.pbf"), schema=osm.SCHEMA)
+    rel = df.filter(pl.col("route_id") == 500).sort("seq")
+    assert rel["name"].to_list() == ["A", "M", "B"]
+    km = 0.5 * 96.3
+    assert rel["leg_km"][:2].to_list() == pytest.approx([km, km], rel=0.02)
+    assert rel["leg_line_h"][:2].to_list() == pytest.approx([km / 150, km / 300], rel=0.02)
+    assert rel["leg_line_h_tilt"][:2].to_list() == pytest.approx([km / 200, km / 300], rel=0.02)
+    assert rel["leg_unknown_km"][:2].to_list() == pytest.approx([0.0, 0.0], abs=0.01)
+
+
+@pytest.mark.parametrize("maxspeed,links", [("180", 2), ("140", 0)])
+def test_fast_conventional_track_no_relation_runs_over_is_a_long_distance_leg(
+        tmp_path, maxspeed, links):
+    """A 180 km/h main line OSM lists no train on becomes a `long_distance`
+    link priced from its track by that tier's line terms -- not a
+    high-speed express. Under 160 km/h it is left alone.
+
+    Mutations performed and reverted, each RED: drop the fast network from
+    `_parse`; price its links as an express (`line_h`); FAST_MIN_KMH 120.
+    """
+    df = _parse(tmp_path, maxspeed=maxspeed, highspeed=False)
+    got = df.filter(pl.col("route_id") < 0).sort("seq")
+    assert got.height == links
+    if links:
+        assert set(got["tier"]) == {"long_distance"}
+        assert got["line_h"].is_null().all()
+        assert got["leg_km"][0] == pytest.approx(96.3, abs=1.5)
+        assert got["leg_line_h"][0] == pytest.approx(got["leg_km"][0] / 180.0, rel=0.02)

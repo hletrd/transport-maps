@@ -69,6 +69,13 @@ STATION_TRACK_KM = 0.8
 STATION_SWITCH_KM = 1.0
 # A relation is high-speed when at least half its member track is.
 PROMOTE_SHARE = 0.5
+# Placing a stop on its relation's track (`leg_profiles`): a platform node
+# beside the line is placed at the nearest track node within this distance,
+# and a leg whose track runs more than LEG_MAX_DETOUR times its chord is a
+# misplaced stop or a broken chain, not a route (rail track rarely exceeds
+# 1.5x; the worst real mountain lines approach 2.5x).
+STOP_TRACK_KM = 0.5
+LEG_MAX_DETOUR = 3.0
 _EARTH_KM = 6371.0088
 _MAXSPEED = re.compile(r"^(\d+(?:\.\d+)?)\s*(mph|km/h|kmh|kph)?$")
 _NOT_MAINLINE_STATION = ("subway", "light_rail", "monorail", "funicular", "miniature", "tram")
@@ -76,7 +83,15 @@ _NOT_MAINLINE_STATION = ("subway", "light_rail", "monorail", "funicular", "minia
 # 2: promotion only of untagged relations whose line speed is high-speed.
 # 3: track a high-speed relation runs over is left out of the network.
 # 4: ... and track any train relation runs over.
-TRACK_VERSION = 4
+# 5: each relation leg's own track profile (`leg_profiles`).
+# 6: directional and tilting maxspeed (`way_speeds`).
+# 7: the fast conventional network (`Track.fast`).
+TRACK_VERSION = 7
+# The lowest line speed of the fast conventional network: the commonest
+# upgraded main-line speed (160 km/h -- China's K/T/Z lines, Russia's
+# Moscow-Nizhny Novgorod, Germany's Ausbaustrecken) and the floor of the
+# UIC's "upgraded line" band. A modelling threshold, not fitted.
+FAST_MIN_KMH = 160.0
 
 
 def params() -> tuple:
@@ -84,7 +99,7 @@ def params() -> tuple:
     return (HS_MIN_KMH, HS_SERVICES, EXCLUDED_USAGE, HS_DEFAULT_KMH, STATION_TRACK_KMH,
             GAP_SNAP_KM, BRIDGE_KM, CONNECTOR_MAX_WAY_KM, STATION_TRACK_KM,
             STATION_SWITCH_KM, PROMOTE_SHARE, _NOT_MAINLINE_STATION, _MAXSPEED.pattern,
-            TRACK_VERSION)
+            STOP_TRACK_KM, LEG_MAX_DETOUR, FAST_MIN_KMH, TRACK_VERSION)
 
 
 def parse_maxspeed(raw: str | None) -> float | None:
@@ -99,6 +114,25 @@ def parse_maxspeed(raw: str | None) -> float | None:
     if m.group(2) == "mph":
         v *= 1.609344
     return v if 5.0 <= v <= 600.0 else None
+
+
+def way_speeds(tags) -> tuple[float | None, float | None]:
+    """(line speed, line speed for a tilting train) of a track way, km/h.
+
+    `maxspeed`, else the faster of `maxspeed:forward` and `:backward` -- about
+    14,000 European ways carry only the directional pair and read as unmapped
+    before rebuild 33. The tilting speed is `maxspeed:tilting` where it is
+    higher (16,150 European ways: the West Coast Main Line is 110 mph and 125
+    for a Pendolino), else the line speed. Which tiers run at it is fitted
+    (`[rail.tiers]` `line_speed_tilting`).
+    """
+    v = parse_maxspeed(tags.get("maxspeed"))
+    if v is None:
+        d = [x for x in (parse_maxspeed(tags.get("maxspeed:forward")),
+                         parse_maxspeed(tags.get("maxspeed:backward"))) if x is not None]
+        v = max(d) if d else None
+    tilt = parse_maxspeed(tags.get("maxspeed:tilting"))
+    return v, (max(tilt, v) if (tilt is not None and v is not None) else v)
 
 
 def is_high_speed(tags_highspeed: str | None, vmax: float | None) -> bool:
@@ -127,16 +161,24 @@ class Track:
     ways: dict[int, tuple[float, float | None, bool]] = field(default_factory=dict)
     # High-speed running, siding and crossover ways, with their geometry.
     hs: dict[int, tuple] = field(default_factory=dict)
+    # Fast conventional running track, FAST_MIN_KMH up to high-speed, with its
+    # geometry: the second track network (`network(..., pool=track.fast)`).
+    fast: dict[int, tuple] = field(default_factory=dict)
     # Short other main and station track, for bridging gaps and finding switches.
     conn: dict[int, tuple] = field(default_factory=dict)
     # railway=station|halt nodes that a main-line train can call at.
     stations: list[tuple] = field(default_factory=list)
     # Coordinates and names of the relation stop nodes asked for.
     nodes: dict[int, tuple] = field(default_factory=dict)
+    # way id -> (node ids, lats, lons, maxspeed or None) for every way a train
+    # relation lists: the track `leg_profiles` walks between two stops.
+    member: dict[int, tuple] = field(default_factory=dict)
 
 
-def scan(path, wanted_nodes: set[int]) -> Track:
-    """One pass over an extract's nodes and ways, with locations."""
+def scan(path, wanted_nodes: set[int], member_ways: frozenset | set = frozenset()) -> Track:
+    """One pass over an extract's nodes and ways, with locations. The
+    geometry of `member_ways` -- the ways the train relations list -- is kept
+    for `leg_profiles`."""
     import osmium
 
     out = Track()
@@ -162,17 +204,24 @@ def scan(path, wanted_nodes: set[int]) -> Track:
         if len(lat) < 2:
             continue
         km = float(_hav(lat[:-1], lon[:-1], lat[1:], lon[1:]).sum())
-        vmax = parse_maxspeed(t.get("maxspeed"))
+        vmax, vtilt = way_speeds(t)
         hs = is_high_speed(t.get("highspeed"), vmax)
         svc = t.get("service") or ""
         out.ways[o.id] = (km, vmax, hs)
+        ids = np.fromiter((n.ref for n in o.nodes), np.int64)
+        if o.id in member_ways:
+            out.member[o.id] = (ids, lat, lon, (vmax, vtilt))
         if svc not in HS_SERVICES:
             continue
-        ids = np.fromiter((n.ref for n in o.nodes), np.int64)
         if hs and t.get("usage") not in EXCLUDED_USAGE:
             out.hs[o.id] = (ids, lat, lon, vmax, svc, t.get("name") or "",
                             t.get("operator") or "")
-        elif km <= CONNECTOR_MAX_WAY_KM:
+            continue
+        if (not svc and vmax is not None and vmax >= FAST_MIN_KMH
+                and t.get("usage") not in EXCLUDED_USAGE):
+            out.fast[o.id] = (ids, lat, lon, vmax, svc, t.get("name") or "",
+                              t.get("operator") or "")
+        if km <= CONNECTOR_MAX_WAY_KM:
             out.conn[o.id] = (ids, lat, lon, svc)
     return out
 
@@ -210,6 +259,122 @@ def relation_profile(member_ways, ways) -> tuple[float, float, float | None, flo
     return total, hs_km / total, (cov_km / inv if inv > 0 else None), cov_km / total
 
 
+def _chain(member_ways, member):
+    """A relation's member track as one ordered polyline: node ids, lats,
+    lons, and from its start to each node the km, the hours at mapped line
+    speed and the km with no `maxspeed`. Each way is turned to start where the
+    previous one ended; a way that does not touch it (OSM relations do skip
+    pieces) is joined by a straight hop counted as km with no line speed.
+    None when the relation lists no way the extract holds."""
+    ws = [member[w] for w in member_ways if w in member]
+    if not ws:
+        return None
+    if len(ws) > 1:
+        (i0, a0, o0, v0), nxt = ws[0], ws[1][0]
+        if i0[-1] not in (nxt[0], nxt[-1]) and i0[0] in (nxt[0], nxt[-1]):
+            ws[0] = (i0[::-1], a0[::-1], o0[::-1], v0)
+
+    def speeds(v, n):
+        """(n, 2): the way's line speed and tilting speed on n segments."""
+        return np.tile([np.nan if x is None else x for x in v], (n, 1)).astype(float)
+
+    i0, a0, o0, v0 = ws[0]
+    ids, las, los = [i0], [a0], [o0]
+    segv = [speeds(v0, len(i0) - 1)]
+    for wi, wla, wlo, v in ws[1:]:
+        end, ela, elo = ids[-1][-1], las[-1][-1], los[-1][-1]
+        if wi[0] != end and (wi[-1] == end
+                             or float(_hav(ela, elo, wla[-1], wlo[-1]))
+                             < float(_hav(ela, elo, wla[0], wlo[0]))):
+            wi, wla, wlo = wi[::-1], wla[::-1], wlo[::-1]
+        if wi[0] == end:
+            ids.append(wi[1:]); las.append(wla[1:]); los.append(wlo[1:])
+            segv.append(speeds(v, len(wi) - 1))
+        else:
+            ids.append(wi); las.append(wla); los.append(wlo)
+            segv.append(np.r_[np.full((1, 2), np.nan), speeds(v, len(wi) - 1)])
+    nid, la, lo = np.concatenate(ids), np.concatenate(las), np.concatenate(los)
+    seg = _hav(la[:-1], lo[:-1], la[1:], lo[1:])[:, None]
+    v = np.concatenate(segv)
+    known = np.isfinite(v)
+    km = np.r_[0.0, np.cumsum(seg[:, 0])]
+    # (n, 2) each: column 0 at the line speed, column 1 at the tilting speed.
+    h = np.r_[[[0.0, 0.0]], np.cumsum(np.where(known, seg / np.where(known, v, 1.0), 0.0), axis=0)]
+    unk = np.r_[[[0.0, 0.0]], np.cumsum(np.where(known, 0.0, seg), axis=0)]
+    return nid, la, lo, km, h, unk
+
+
+def leg_profiles(stops, stop_coords, member_ways, member) -> list[tuple | None] | None:
+    """For each pair of consecutive stops, (track km, hours at mapped line
+    speed, km with no maxspeed, the same two at the tilting speed) along the
+    relation's own track, or None where the stops cannot be placed on it.
+
+    A relation is priced from these rather than from one speed over its
+    whole length because a line is not one speed: the KTX that runs via
+    Suwon takes the 150 km/h conventional line between Suwon and Daejeon and
+    the 300 km/h one beyond, and a Komachi's nonstop Omiya-Sendai leg is all
+    320 km/h track while its Akita end is a 130 km/h mini-shinkansen. Priced
+    at the relation's average, the first leg was 41 min for an hour's ride.
+
+    A stop is placed at its own node where the track passes through it (a
+    stop position), else at the nearest track node within STOP_TRACK_KM (a
+    platform beside the line), and always after the previous stop. A leg
+    whose track is shorter than its chord, or more than LEG_MAX_DETOUR times
+    it, is a misplaced stop or a broken chain and gets None.
+    """
+    ch = _chain(member_ways, member)
+    if ch is None:
+        return None
+    nid, la, lo, km, h, unk = ch
+    where: dict[int, list[int]] = {}
+    for i, x in enumerate(nid.tolist()):
+        where.setdefault(x, []).append(i)
+    xyz = _xyz(la, lo)
+
+    def place(sid, lat, lon, after):
+        for i in where.get(sid, ()):
+            if i >= after:
+                return i
+        d = np.linalg.norm(xyz[after:] - _xyz([lat], [lon])[0], axis=1) if after < len(nid) else []
+        if len(d) and d.min() <= STOP_TRACK_KM:
+            return after + int(d.argmin())
+        return None
+
+    def run(order):
+        pos, after = [], 0
+        for sid, (lat, lon) in order:
+            i = place(sid, lat, lon, after)
+            pos.append(i)
+            if i is not None:
+                after = i
+        return pos
+
+    seq = [(sid, stop_coords[sid]) for sid in stops]
+    pos = run(seq)
+    if sum(p is None for p in pos) > len(pos) // 2:
+        # The track listed the other way round from the stops.
+        nid, la, lo = nid[::-1], la[::-1], lo[::-1]
+        km, h, unk = km[-1] - km[::-1], h[-1] - h[::-1], unk[-1] - unk[::-1]
+        where = {}
+        for i, x in enumerate(nid.tolist()):
+            where.setdefault(x, []).append(i)
+        xyz = _xyz(la, lo)
+        pos = run(seq)
+    out = []
+    for (a, (sa, ca)), (b, (sb, cb)) in zip(zip(pos, seq), zip(pos[1:], seq[1:])):
+        if a is None or b is None or b <= a:
+            out.append(None)
+            continue
+        tk = float(km[b] - km[a])
+        chord = float(_hav(ca[0], ca[1], cb[0], cb[1]))
+        if tk < 0.9 * chord or (chord > 1.0 and tk > LEG_MAX_DETOUR * chord):
+            out.append(None)
+            continue
+        dh, du = h[b] - h[a], unk[b] - unk[a]
+        out.append((tk, float(dh[0]), float(du[0]), float(dh[1]), float(du[1])))
+    return out
+
+
 @dataclass(frozen=True)
 class Link:
     """Two neighbouring stations on high-speed track."""
@@ -222,7 +387,7 @@ class Link:
     operator: str
 
 
-def network(track: Track, covered_ways: set[int]) -> list[Link]:
+def network(track: Track, covered_ways: set[int], pool: dict | None = None) -> list[Link]:
     """The high-speed track no train relation runs over, as station-to-station
     links.
 
@@ -235,12 +400,18 @@ def network(track: Track, covered_ways: set[int]) -> list[Link]:
     station within STATION_TRACK_KM of the running track and STATION_SWITCH_KM
     of a switch on it, the switch's own nearest one -- preferring a station of
     the track's operator, then a station over a halt.
+
+    `pool` is the track to build from: the high-speed track by default, or
+    `track.fast` for the fast conventional lines (since rebuild 33) -- China's
+    21,700 km and Russia's 6,500 km of 160-200 km/h main line that no train
+    relation runs over, which carried no train at all before.
     """
     import scipy.sparse as sp
     from scipy.sparse.csgraph import connected_components, dijkstra
     from scipy.spatial import cKDTree
 
-    if not track.hs:
+    pool = track.hs if pool is None else pool
+    if not pool:
         return []
     node_of: dict[int, int] = {}
     lats: list[float] = []
@@ -259,7 +430,7 @@ def network(track: Track, covered_ways: set[int]) -> list[Link]:
     ea, eb, ek, eh, kind = [], [], [], [], []
     node_op: dict[int, str] = {}
     node_name: dict[int, str] = {}
-    for wid, (ids, lat, lon, vmax, svc, name, op) in track.hs.items():
+    for wid, (ids, lat, lon, vmax, svc, name, op) in pool.items():
         if wid in covered_ways:
             continue
         ix = index(ids, lat, lon)
