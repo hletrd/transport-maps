@@ -416,7 +416,10 @@ detour_factor = 1.2
 boarding_min = 15.0
 alighting_min = 5.0
 # FITTED (rebuild 30, above): running speed on the track network's links as a
-# share of line speed. n=92 high_speed relations, CI [0.848, 0.915].
+# share of line speed. n=92 high_speed relations, CI [0.848, 0.915]. Links
+# charge no intermediate stop: a fitted share of the high_speed tier's stop
+# cost per link was worse out of fold on the 29 timetabled relations that
+# re-ride the network (median |log| 0.164 vs 0.070; sources/rail_track.py).
 track_speed_factor = 0.881
 # A relation's own line speed is used when `maxspeed` is mapped on at least
 # this share of its member track. A modelling threshold, NOT fitted: below

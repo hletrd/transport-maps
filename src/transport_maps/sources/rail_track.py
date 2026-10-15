@@ -28,6 +28,18 @@ at four of the Tokaido line's sixteen stations, a G train at a handful of
 twenty-odd). It is therefore optimistic by the dwell of the stops a real train
 makes on the way, a few minutes each; `[rail] track_speed_factor` is fitted on
 timetabled services that did stop, which absorbs part of that.
+
+Charging a share of those stops was tried and is worse (rebuild 33). The 29
+high-speed relations with a `duration` that re-ride whole over a network built
+from ALL high-speed track (16 services, Asia and Europe) call at 0.39 of the
+stations they pass, and across 1,847 called pairs of 413 relations the share
+runs from 0.13 (ДОСС) and 0.23 (DB) to 0.64 (THSR) and 0.78 (JR West). Each
+link charged a fitted share p of the high_speed tier's per-stop cost, run at
+its line factor: out of fold (five folds by service) median |log p/o| 0.164,
+log-sd 0.270, p 0.22-0.44 by fold -- against 0.070 and 0.293 for this express
+pricing. A single share prices every service as the average train, so a
+Nozomi and a Madrid-Barcelona nonstop run slow and a Kodama still runs fast;
+what would separate them is which trains run, which OSM does not say here.
 """
 
 from __future__ import annotations
