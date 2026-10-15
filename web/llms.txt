@@ -39,17 +39,21 @@ and tourist lines, fitted against OSM `duration` tags. A route's tier is
 read from its own OpenStreetMap `service` tag where it carries one; a route
 without one is read as high-speed when the track it runs on is (`highspeed`
 and `maxspeed` on the ways), which is how the Shinkansen are priced. Where
-the `maxspeed` of a route's track is mapped, any train but a high-speed or
-heritage one runs at about 69 to 79% of it rather than at its tier's one
-speed. Where no route is mapped over a high-speed line at all -- most of
-mainland China's -- the line is built from the track itself: its stations,
-the distance along it, and 88% of its speed limit. That network assumes an
-express that does not stop on the way, so it is a few minutes fast on a long
-journey. The largest known errors left are the one high-speed speed, fitted
-mostly in Europe, which is slow on Japan's Sanyo line (Shin-Osaka to
-Hiroshima 111 min against 81) and fast in Korea (Seoul to Busan 121 against
-150), and routes mapped with every station call where the fastest train
-makes few.
+the `maxspeed` of a route's track is mapped, each stretch between two stops
+runs at a share of the limit on that stretch -- about 59 to 90% of it on a
+160 km/h line, by tier -- and each stop costs more the faster the line,
+rather than the whole route running at its tier's one speed. Where no route
+is mapped over a high-speed line at all -- most of mainland China's -- the
+line is built from the track itself: its stations, the distance along it,
+and 88% of its speed limit. That network assumes an express that does not
+stop on the way, so it is a few minutes fast on a long journey. Main lines
+of 160 km/h or more that no route is mapped on are built the same way and
+priced as a long-distance train. The largest known errors left are Korea,
+fast (Seoul to Busan 120 min against 150, the line beyond Daejeon built from
+track with no stops), and Japan's Sanyo line (Shin-Osaka to Hiroshima 98
+against 81), Britain's West Coast line (London to Manchester 157 against
+128) and Berlin to Hamburg (131 against 105, on a stopping train), all slow;
+and routes mapped with every station call where the fastest train makes few.
 
 ## How it is computed
 

@@ -53,11 +53,15 @@ def test_the_tier_speeds_printed_are_the_fitted_ones(name):
 @pytest.mark.parametrize("name", SURFACES)
 def test_the_line_speed_shares_printed_are_the_fitted_ones(name):
     text = SURFACES[name]
-    m = re.search(r"about (\d+) to (\d+)% of it", text)
+    m = re.search(r"about (\d+) to (\d+)% of it on a (\d+) km/h line", text)
     assert m, f"{name}: the line-speed share is not stated"
-    factors = [t.line_speed_factor for t in CAL.tiers.values() if t.line_speed_factor]
-    assert (int(m.group(1)), int(m.group(2))) == (round(100 * min(factors)),
-                                                  round(100 * max(factors)))
+    # Since rebuild 33 a tier may carry a speed floor (`line_speed_floor_kmh`),
+    # so its share of the limit depends on the limit: the copy names one.
+    v = int(m.group(3))
+    shares = [(t.line_speed_factor * v + t.line_speed_floor_kmh) / v
+              for t in CAL.tiers.values() if t.line_speed_factor]
+    assert (int(m.group(1)), int(m.group(2))) == (round(100 * min(shares)),
+                                                  round(100 * max(shares)))
     m = re.search(r"and (\d+)% of its speed limit", text)
     assert m and int(m.group(1)) == round(100 * CAL.track_speed_factor), (
         f"{name}: the track network's share is not calibration.toml's "

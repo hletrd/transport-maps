@@ -194,10 +194,11 @@ def test_mode_detail_reads_the_calibration_it_describes(monkeypatch):
     # The charge the page quotes is boarding AND alighting. It used to quote
     # boarding alone and so said 15 minutes where the journey pays 20.
     assert f"{rc.boarding_min + rc.alighting_min:.0f} min" in detail["rail"]
-    # The model uses the straight-line chord between stops times a detour
-    # factor; `sources/osm.py` states geometry is never consulted, so the
-    # tooltip must not claim the train follows the track.
-    assert "along the track" not in detail["rail"]
+    # Since rebuild 33 a stretch with a mapped speed limit is priced along its
+    # own track and the rest on the chord times the detour factor; the
+    # tooltip must say both, and quote the factor the graph uses.
+    assert "along its own track" in detail["rail"]
+    assert f"times {rc.detour_factor:.1f} for curves" in detail["rail"]
 
     def fake(path=None):
         tiers = {**rc.tiers,

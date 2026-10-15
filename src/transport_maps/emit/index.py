@@ -242,17 +242,20 @@ def mode_detail() -> dict[str, str]:
         # detour factor, and `sources/osm.py` states outright that geometry is
         # never consulted; and it charged only `boarding_min`, so it said 15
         # minutes where the journey actually pays 20 (`boarding_min` on the way
-        # in plus `alighting_min` on the way out).
+        # in plus `alighting_min` on the way out). Since rebuild 33 a stretch
+        # whose track has a mapped speed limit IS priced along that track
+        # (`rail_track.leg_profiles`), so the chord is now the fallback.
         "rail": "Scheduled trains from OpenStreetMap route relations, stop to stop. "
                 f"Six service tiers, read from each route's own OSM `service` tag "
                 f"where it carries one (about a quarter of relations do not, and "
                 f"fall to a general-purpose default), "
                 f"{tier_lo.speed_kmh:.0f} km/h for a commuter train up to "
                 f"{tier_hi.speed_kmh:.0f} km/h for a high-speed one, and "
-                f"{tier_heritage.speed_kmh:.0f} km/h for heritage and tourist lines, "
-                "over the straight-line "
-                f"distance between stops times {rc.detour_factor:.1f} for curves, plus a "
-                "per-stop allowance. "
+                f"{tier_heritage.speed_kmh:.0f} km/h for heritage and tourist lines. "
+                "Where the speed limit of a route's track is mapped, each stretch "
+                "between stops runs along its own track at a fitted share of that "
+                "limit; elsewhere over the straight-line distance between stops times "
+                f"{rc.detour_factor:.1f} for curves. A per-stop allowance is added. "
                 f"{rc.boarding_min + rc.alighting_min:.0f} min covers reaching the platform "
                 "and leaving the arrival station.",
         # Every figure comes from the ferry calibration the graph itself uses,
