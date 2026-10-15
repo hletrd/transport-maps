@@ -184,3 +184,28 @@ stratum out of fold (metro 0.147 -> 0.131, intercity 0.135 -> 0.089, rural
 half (full map 672/1462) rather than finished and deployed, and rebuild 32
 started from fffd1c1 after scripts/osm_roads.sh filtered the seven extracts
 on h200 (513 s for Europe, the slowest).
+
+## Rebuild 32 shipped (2026-10-15)
+
+Rebuild 32 (a2df09c1-20261014T181857Z, from fffd1c1) finished 08:15, all four
+maps exit 0, check_variants 0 faster cells; solver deployed (Seoul->Gumi 163
+-> 119 min), data and page deployed through deploy_from_h200.sh (10 chunks,
+~145 GB), ALL CHECKS PASSED at the four viewports. airports.json regenerated
+from the build's OurAirports (6 rows changed); places.json is the audited
+Sep 9 gazetteer.
+
+Live checks: Shanghai->Hangzhou 1 h 30 via 沪昆高速线 (~1 h 45), Tokyo->Osaka
+3 h 08 via のぞみ (~2 h 55), Mumbai->Pune 2 h 39 (Google 2 h 39), HK->Macau
+1 h 57 (1 h 57); hover band = drawn band at 156 of 156 points at zoom 9 around
+Seoul (live before: 127). Still off (from the 54 pairs): Cairo->Alexandria
+3 h 33 (2 h 30 drive), LA->San Diego +31%, Chicago->Milwaukee +20%, London->
+Manchester rail 3 h 31 (2 h 49), Mexico City->Puebla -16%, KTX ~15% fast.
+
+Found on the live check: the itinerary of a SURFACE journey is the res-4
+representative's, and `.over.bin` replaces it with the reading cell's own
+route only when the ARRIVAL AIRPORT differs. Where the two take different
+surface modes the legs describe another journey: HK->Macau lists 38 min by
+highway (the res-4 cell's bridge route) under a 1 h 57 total by ferry;
+London->Calais lists 1 h 39 by road under 3 h 29. Fix: emit an override
+entry when the mode breakdown differs too (emit/override.py), which needs
+the per-origin solve -- the next rebuild.
