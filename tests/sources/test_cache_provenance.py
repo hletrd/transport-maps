@@ -56,6 +56,7 @@ from transport_maps.sources import (
     airports,
     countries,
     fixed_links,
+    gtfs_rail,
     landmask,
     motorways,
     osm,
@@ -261,6 +262,11 @@ def _road_crossings_path(sources=None):
         return road_crossings._cache_path("asia", "k")
 
 
+
+def _gtfs_path():
+    from types import SimpleNamespace
+    return gtfs_rail._cache_path([SimpleNamespace(sha256=SRC)])
+
 STAMPED = [
     (roads, "GRIP4_URL", "https://example.invalid/grip4_{n}.zip", lambda: roads._grid_cache_path(SRCS)),
     (roads, "DENSITY_THRESHOLD", 0.5, lambda: roads._grid_cache_path(SRCS)),
@@ -372,6 +378,11 @@ STAMPED = [
     # The land parts reach the key through `_landmass_key()`, a call the AST
     # reader drops as "how the key is computed": this row is what proves it.
     (landmask, "LANDMASS_VERSION", 999, _road_crossings_path),
+    # The feed list names the tier each feed's legs are tagged with; the route
+    # types decide which trips are trains.
+    (gtfs_rail, "FEEDS", [{"name": "x", "tier": "regional"}], _gtfs_path),
+    (gtfs_rail, "RAIL_ROUTE_TYPES", {2}, _gtfs_path),
+    (gtfs_rail, "GTFS_PARSER_VERSION", 999, _gtfs_path),
 ]
 
 
@@ -443,6 +454,7 @@ _COVERED_BY_TABLE = {
     "fixed_links._params_key",
     "road_crossings._params_key",
     "countries._cache_path",
+    "gtfs_rail._cache_path",
 }
 #: Stamping functions deliberately outside it, each with the reason. A new
 #: entry here is a decision someone has to write down, not a silent omission.

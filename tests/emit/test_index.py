@@ -48,6 +48,9 @@ REQUIRED_ATTRIBUTION = {
     "LSIB": "Public Domain",
     "GeoNames": "CC BY",
     "HydroLAKES": "CC BY",
+    # sources/gtfs_rail.FEEDS: the timetables rail legs are timed from.
+    "DELFI": "CC BY",
+    "KorailGTFS": "CC BY",
     # The fitted cruise speed and climb/descent penalty are derived from their
     # data, so the ODbL attribution obligation applies to us too.
     "adsb.lol": "ODbL",

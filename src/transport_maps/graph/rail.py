@@ -97,6 +97,29 @@ def station_key(lat: float, lon: float) -> str:
     return h3.latlng_to_cell(lat, lon, STATION_RES)
 
 
+# The key suffix of a station's ALIGHT-ONLY twin: where a timetabled leg
+# (sources/gtfs_rail) arrives. The twin has no ride edge out, so a traveller
+# who wants another train goes out to the cell and pays alighting and
+# boarding again (`[rail]`, 20 min) -- a connection, where the plain station
+# lets OSM's through-rides chain for free. Without it every leg was the
+# fastest train for its own pair and a journey chained them free of charge:
+# Berlin -> Munich in 217 min, which no single train runs and the fastest ICE
+# takes 236 for.
+ALIGHT_SUFFIX = "~a"
+
+
+def row_stations(df: pl.DataFrame) -> pl.Series:
+    """The station key of each stop row: its res-9 cell, with ALIGHT_SUFFIX
+    where the row is the alighting end of a timetabled leg."""
+    keys = df.select(pl.struct("lat", "lon").map_elements(
+        lambda s: station_key(s["lat"], s["lon"]), return_dtype=pl.Utf8)).to_series()
+    if "alight_only" not in df.columns:
+        return keys.alias("station")
+    alight = df["alight_only"].fill_null(False)
+    return (pl.select(pl.when(alight).then(keys + ALIGHT_SUFFIX).otherwise(keys))
+              .to_series().alias("station"))
+
+
 # A second haversine, separate from `ground.haversine_km`, whose signature
 # takes four scalar/array arguments rather than two (n,2) pair arrays. Same
 # formula, same radius. Collapsing the two touches the rail build path's
@@ -111,12 +134,9 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 
 
 def stations(routes: pl.DataFrame) -> pl.DataFrame:
-    """One row per physical station, with the cell it sits in."""
-    df = routes.with_columns(
-        pl.struct("lat", "lon")
-        .map_elements(lambda s: station_key(s["lat"], s["lon"]), return_dtype=pl.Utf8)
-        .alias("station")
-    )
+    """One row per physical station (and per alight-only twin), with the
+    cell it sits in."""
+    df = routes.with_columns(row_stations(routes))
     return (df.group_by("station")
               .agg(pl.col("lat").mean(), pl.col("lon").mean(),
                    pl.col("name").first())
@@ -223,11 +243,7 @@ def priced_legs(routes: pl.DataFrame, cal) -> pl.DataFrame:
     Tokyo-Sendai in 68 (rebuild 33's trial). The durations are what the tier
     terms are fitted on instead, where such errors average out.
     """
-    df = routes.with_columns(
-        pl.struct("lat", "lon")
-        .map_elements(lambda s: station_key(s["lat"], s["lon"]), return_dtype=pl.Utf8)
-        .alias("station")
-    ).sort("route_id", "seq")
+    df = routes.with_columns(row_stations(routes)).sort("route_id", "seq")
 
     nxt = df.with_columns(
         pl.col("station").shift(-1).over("route_id").alias("to_station"),
@@ -247,8 +263,14 @@ def priced_legs(routes: pl.DataFrame, cal) -> pl.DataFrame:
                           leg_unknown_km=col("leg_unknown_km"),
                           leg_line_h_tilt=col("leg_line_h_tilt"),
                           leg_unknown_km_tilt=col("leg_unknown_km_tilt"))
+    # A leg a timetable times (sources/gtfs_rail) is the scheduled minutes,
+    # not a price: the observation itself, where a feed has one.
+    timed = (nxt["timetabled_min"].to_numpy(allow_copy=True).astype(float)
+             if "timetabled_min" in nxt.columns else np.full(len(nxt), np.nan))
+    minutes = np.where(np.isnan(timed), minutes, timed)
     return pl.DataFrame({"route_id": nxt["route_id"], "from_station": nxt["station"],
-                         "to_station": nxt["to_station"], "minutes": minutes})
+                         "to_station": nxt["to_station"], "minutes": minutes,
+                         "timetabled": ~np.isnan(timed)})
 
 
 def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
@@ -264,6 +286,19 @@ def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
     tiers run 1.04 with no residual distance trend.
     """
     out = priced_legs(routes, cal).drop("route_id")
+    # Where a timetable times a pair of stations, its fastest train IS the
+    # service, and an OSM price between the same two stations -- a guess at
+    # trains no faster than it -- does not get to undercut it. The timetabled
+    # leg arrives at the station's alight-only twin, so the pair is matched on
+    # the station itself.
+    base_to = pl.col("to_station").str.replace(f"{ALIGHT_SUFFIX}$", "")
+    timed = (out.filter(pl.col("timetabled"))
+                .select("from_station", base_to.alias("_to")).unique())
+    out = (out.with_columns(base_to.alias("_to"))
+              .join(timed.with_columns(pl.lit(True).alias("_covered")),
+                    on=["from_station", "_to"], how="left")
+              .filter(pl.col("timetabled") | pl.col("_covered").is_null())
+              .drop("_to", "_covered", "timetabled"))
     # Several routes share a track segment at different speeds; the fastest
     # service that actually runs is the one a traveller would take.
     return out.group_by("from_station", "to_station").agg(pl.col("minutes").min())

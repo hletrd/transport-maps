@@ -21,6 +21,7 @@ from transport_maps.sources import (
     airports,
     countries,
     geofabrik,
+    gtfs_rail,
     landmask,
     roads,
     routes,
@@ -31,7 +32,8 @@ from transport_maps.sources import (
 def _file_urls() -> set[str]:
     return ({airports.AIRPORTS_URL, landmask.LAND_URL, landmask.ICE_URL, landmask.LAKES_URL,
              countries.COUNTRIES_URL, urban.PLACES_URL, roads.CITIES_URL}
-            | {roads.GRIP4_URL.format(n=n) for n in range(1, roads.N_TYPES + 1)})
+            | {roads.GRIP4_URL.format(n=n) for n in range(1, roads.N_TYPES + 1)}
+            | {f["url"] for f in gtfs_rail.FEEDS})
 
 
 def _state_urls() -> set[str]:

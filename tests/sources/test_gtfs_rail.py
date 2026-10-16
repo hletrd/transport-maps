@@ -1,0 +1,99 @@
+"""sources/gtfs_rail: rail legs timed from open GTFS timetables."""
+
+from __future__ import annotations
+
+import zipfile
+
+import polars as pl
+
+from transport_maps.graph import rail
+from transport_maps.sources import gtfs_rail
+
+
+def _feed(tmp_path):
+    """Stations A, B (two platforms under a parent), C; two trips A-B-C, the
+    first faster, whose train dwells 8 min at A and 2 at B; a bus to ignore."""
+    files = {
+        "agency.txt": "agency_id,agency_name\n1,DB Fernverkehr AG\n",
+        "routes.txt": "route_id,agency_id,route_short_name,route_type\nr,1,ICE,2\nbus,1,SEV,3\n",
+        "stops.txt": ("stop_id,stop_name,stop_lat,stop_lon,parent_station,location_type\n"
+                      "a,A Hbf,52.50,13.30,,\n"
+                      "pb,\"B, B Hbf\",52.80,12.00,,1\n"
+                      "b1,B Hbf,52.801,12.001,pb,\n"
+                      "b2,B Hbf,52.802,12.002,pb,\n"
+                      "c,C Hbf,53.55,10.00,,\n"),
+        "trips.txt": "trip_id,route_id,trip_short_name\nfast,r,28\nslow,r,26\nsev,bus,1\n",
+        "stop_times.txt": ("trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+                           "fast,09:52:00,10:00:00,a,1\n"
+                           "fast,10:30:00,10:31:00,b1,2\n"
+                           "fast,10:31:00,10:32:00,b2,3\n"
+                           "fast,11:00:00,11:00:00,c,4\n"
+                           "slow,23:52:00,24:00:00,a,1\n"
+                           "slow,24:40:00,24:42:00,b1,2\n"
+                           "slow,25:20:00,25:20:00,c,3\n"
+                           "sev,10:00:00,10:00:00,a,1\n"
+                           "sev,10:05:00,10:05:00,c,2\n"),
+    }
+    path = tmp_path / "feed.zip"
+    with zipfile.ZipFile(path, "w") as z:
+        for name, text in files.items():
+            z.writestr(name, text)
+    return path
+
+
+def test_every_pair_of_calls_is_timed_from_departure_to_arrival(tmp_path):
+    """Boarding at A rides from A's DEPARTURE (the 8 min dwell there is not
+    the traveller's); a ride through B pays B's dwell; the two platforms of B
+    are one call; of two trips on one pattern each leg takes the faster; the
+    bus is not a train; times past 24:00 continue the day.
+
+    Mutations performed and reverted, each RED: time legs arrival-to-arrival
+    (A->C reads 68); keep the first platform's departure at B (B->C reads 29).
+    """
+    (pat,) = gtfs_rail.patterns(_feed(tmp_path))
+    assert [s[1] for s in pat["stops"]] == ["A Hbf", "B Hbf", "C Hbf"]
+    assert pat["stops"][1][:1] == ("pb",)
+    assert pat["minutes"] == {(0, 1): 30.0, (0, 2): 60.0, (1, 2): 28.0}
+    assert pat["trips"] == 2 and pat["operator"] == "DB Fernverkehr AG"
+
+
+def test_a_feed_supersedes_its_operators_relations_at_its_tiers_only():
+    """Korail runs Seoul's commuter lines too, which its feed does not carry.
+
+    Mutation performed and reverted: drop the tier test -> RED (the commuter
+    relation is dropped).
+    """
+    df = pl.DataFrame({"operator": ["DB Fernverkehr AG", "DB Regio", "한국철도공사",
+                                    "한국철도공사", None],
+                       "tier": ["high_speed", "regional", "commuter", "high_speed",
+                                "long_distance"]})
+    assert gtfs_rail.superseded(df).to_list() == [True, False, False, True, False]
+
+
+def _row(rid, seq, lat, lon, name, tier="regional", **kw):
+    return {"route_id": rid, "seq": seq, "stop_id": rid * 10 + seq, "lat": lat, "lon": lon,
+            "name": name, "tier": tier, "route_name": "", "operator": "", "ref": "", **kw}
+
+
+def test_a_timed_leg_wins_its_pair_and_one_train_is_one_leg():
+    """An OSM price between two timed stations does not undercut the
+    timetable; a timed leg arrives at the alight-only twin, which no ride
+    leaves, so two timed trains do not chain for free.
+
+    Mutations performed and reverted, each RED: drop the `_covered` filter
+    (the OSM A->B price survives); arrive at the plain station (a ride edge
+    leaves B's arrival).
+    """
+    a, b, c = (52.50, 13.30), (52.80, 12.00), (53.55, 10.00)
+    osm_ab = [_row(1, 0, *a, "A", tier="high_speed"), _row(1, 1, *b, "B", tier="high_speed")]
+    timed = [_row(-2, 0, *a, "A", timetabled_min=40.0, alight_only=False),
+             _row(-2, 1, *b, "B", alight_only=True),
+             _row(-3, 0, *b, "B", timetabled_min=30.0, alight_only=False),
+             _row(-3, 1, *c, "C", alight_only=True)]
+    routes = pl.DataFrame(osm_ab + timed)
+    edges = rail.ride_edges(routes, rail.load_rail_calibration())
+    ka, kb, kc = (rail.station_key(*p) for p in (a, b, c))
+    got = {(r["from_station"], r["to_station"]): r["minutes"] for r in edges.iter_rows(named=True)}
+    assert got == {(ka, kb + rail.ALIGHT_SUFFIX): 40.0, (kb, kc + rail.ALIGHT_SUFFIX): 30.0}
+    assert set(rail.stations(routes)["station"]) == {
+        ka, kb, kb + rail.ALIGHT_SUFFIX, kc + rail.ALIGHT_SUFFIX}

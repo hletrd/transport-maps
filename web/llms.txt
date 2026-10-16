@@ -140,6 +140,8 @@ drawn one by one, the page asks the solver for the child under the pointer.
 - LSIB, U.S. Department of State (public domain) - international boundaries; dashed lines are armistice lines, lines of control, claims and boundaries in dispute
 - GeoNames (CC BY 4.0) - departure cities and the place names under the cursor (cities15000)
 - HydroLAKES (CC BY 4.0) - lake outlines drawn on the map
+- DELFI e.V., via gtfs.de (CC BY 4.0) - scheduled journey times of German long-distance trains
+- KorailGTFS, Mikołaj Kuranowski (CC BY 4.0) - scheduled journey times of Korail intercity trains
 - adsb.lol (ODbL) - observed flights behind the fitted cruise speed and climb/descent penalty
 
 At runtime the page calls two external services: OpenStreetMap's Nominatim

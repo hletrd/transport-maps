@@ -75,6 +75,13 @@ def _load_rail():
         return None
     print(f"rail:     included -- {routes['route_id'].n_unique():,} routes, "
           f"{len(routes):,} stops")
+    # The trains open timetables time (sources/gtfs_rail), beside OSM's.
+    from transport_maps.sources import gtfs_rail
+
+    n = len(routes)
+    routes = gtfs_rail.with_timetables(routes)
+    print(f"rail:     timetables -- {len(routes) - n:,} timed calls from "
+          f"{', '.join(f['name'] for f in gtfs_rail.FEEDS)}")
     return routes
 
 
@@ -618,6 +625,10 @@ def _check_inputs(exclude: str | None = None) -> None:
     roads._sources()              # the five GRIP4 archives
     roads._settlements_source()   # GeoNames cities15000, for GRIP4's holes in towns
     geofabrik.refresh()           # the OSM extracts, against Geofabrik's state.txt
+    if exclude != "rail":
+        from transport_maps.sources import gtfs_rail
+
+        gtfs_rail.refresh()       # open rail timetables (GTFS)
     if exclude != "air":
         # The Wikipedia crawl and the Wikidata resolution: articles and titles
         # past their max age are fetched again (sources/routes.py). A no-air

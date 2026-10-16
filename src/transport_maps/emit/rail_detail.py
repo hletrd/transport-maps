@@ -160,13 +160,13 @@ def _line_between(routes: pl.DataFrame, cal) -> dict[tuple[str, str], tuple[int,
     else:
         unpriced, priced_rows = routes, routes.clear()
     legs = priced_legs(priced_rows, cal) if len(priced_rows) else None
-    rows = [] if legs is None else list(legs.iter_rows())
+    rows = [] if legs is None else list(
+        legs.select("route_id", "from_station", "to_station", "minutes").iter_rows())
     if len(unpriced):
-        from transport_maps.graph.rail import station_key
+        from transport_maps.graph.rail import row_stations
 
-        u = unpriced.sort(["route_id", "seq"]).with_columns(
-            pl.struct("lat", "lon").map_elements(lambda s: station_key(s["lat"], s["lon"]),
-                                                 return_dtype=pl.Utf8).alias("station"))
+        u = unpriced.sort(["route_id", "seq"])
+        u = u.with_columns(row_stations(u))
         for rid, g in u.group_by("route_id", maintain_order=True):
             route_id = int(rid[0] if isinstance(rid, tuple) else rid)
             rows.extend((route_id, a, b, 0.0) for a, b in pairwise(g["station"].to_list()))
@@ -275,13 +275,13 @@ def lookup_tables(routes: pl.DataFrame | None, cal=None) -> dict:
     """
     if routes is None:
         return {"lines": {}, "stop_names": {}, "route_label": {}, "route_stops": {}}
-    from transport_maps.graph.rail import load_rail_calibration, station_key
+    from transport_maps.graph.rail import load_rail_calibration, row_stations
 
     stop_names: dict[str, str] = {}
-    for lat, lon, nm in zip(routes["lat"].to_list(), routes["lon"].to_list(), routes["name"].to_list()):
+    for key, nm in zip(row_stations(routes).to_list(), routes["name"].to_list()):
         # A stop with no name of its own stays empty rather than taking the
         # first named route through it; `railVia` degrades on the empty string.
-        stop_names.setdefault(station_key(lat, lon), nm or "")
+        stop_names.setdefault(key, nm or "")
     return {"lines": _line_between(routes, cal or load_rail_calibration()),
             "route_label": _route_labels(routes),
             "route_stops": _route_stop_counts(routes),

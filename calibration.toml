@@ -426,6 +426,13 @@ track_speed_factor = 0.881
 # half, the mean speaks for part of the route only. The line-speed fits above
 # are on exactly the relations this admits.
 line_speed_min_cover = 0.5
+# TIMETABLES (rebuild 34): where an open GTFS feed times a train
+# (sources/gtfs_rail.FEEDS: German long-distance via DELFI/gtfs.de, Korail
+# intercity via KorailGTFS, both CC BY 4.0), a leg between two of its calls is
+# its scheduled departure-to-arrival minutes -- an observation, not a price --
+# and the OSM relations of that operator at the feed's tiers are dropped. No
+# constant here moves for it: the tiers stay fitted on OSM `duration` tags and
+# price every train no feed covers.
 
 # EACH LEG ITS OWN TRACK (rebuild 33). A line is not one speed: the KTX via
 # Suwon runs 111 km of 150 km/h conventional line inside a relation whose

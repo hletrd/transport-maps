@@ -101,6 +101,20 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
         "usedFor": "lake outlines drawn on the map (Messager et al. 2016)",
     },
     {
+        # sources/gtfs_rail.FEEDS; the feed's own attributions.txt names DELFI
+        # and gtfs.de as producers.
+        "name": "DELFI e.V. (German timetable, via gtfs.de)",
+        "licence": "CC BY 4.0",
+        "url": "https://gtfs.de/en/feeds/de_fv/",
+        "usedFor": "scheduled journey times of German long-distance trains (ICE, IC, EC)",
+    },
+    {
+        "name": "KorailGTFS (Mikołaj Kuranowski)",
+        "licence": "CC BY 4.0",
+        "url": "https://mkuran.pl/gtfs/",
+        "usedFor": "scheduled journey times of Korail intercity trains (KTX, ITX, Mugunghwa)",
+    },
+    {
         "name": "adsb.lol",
         "licence": "ODbL 1.0",
         "url": "https://adsb.lol/",

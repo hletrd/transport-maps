@@ -112,6 +112,8 @@ from `dist/` must carry the same credits; `dist/index.json` ships them in its
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) | ODbL 1.0 | coastlines drawn on the map (water polygons via [osmdata.openstreetmap.de](https://osmdata.openstreetmap.de/)); rail route relations and ferry ways; upstream source of the GRIP4 road network |
 | [GeoNames](https://www.geonames.org/) | CC BY 4.0 | departure cities and the place names under the cursor (cities15000) |
 | [HydroLAKES](https://www.hydrosheds.org/products/hydrolakes) | CC BY 4.0 | lake outlines drawn on the map (Messager et al. 2016) |
+| [DELFI e.V. (German timetable, via gtfs.de)](https://gtfs.de/en/feeds/de_fv/) | CC BY 4.0 | scheduled journey times of German long-distance trains (ICE, IC, EC) |
+| [KorailGTFS (Mikołaj Kuranowski)](https://mkuran.pl/gtfs/) | CC BY 4.0 | scheduled journey times of Korail intercity trains (KTX, ITX, Mugunghwa) |
 | [adsb.lol](https://adsb.lol/) | ODbL 1.0 | observed flights behind the fitted cruise speed and climb/descent penalty |
 
 OpenStreetMap enters three ways: rail route relations and ferry ways
