@@ -76,3 +76,30 @@ def test_a_cell_that_rides_a_ferry_its_representative_does_not_is_listed():
         Idx(), last, acc, np.array([0]), np.array([0, 0, 0, 0]), Layout())
     assert slots.tolist() == [30]
     assert minutes[0].tolist() == [0, 79, 38, 0, 0, 0]
+
+
+def test_a_cell_across_a_border_or_far_off_its_representative_is_listed():
+    """Hong Kong -> Macau printed 2 h 40 over the res-4 cell's "42 min by
+    highway": same mode, same (no) airport, but the reading cell is in Macau
+    and the representative is not, and the totals are two hours apart.
+
+    Mutations performed and reverted, each RED: drop the zone test (slot 30
+    goes); drop the time test (slot 20 goes); compare the gap without the
+    share (slot 40, 70 min against 400, is listed).
+    """
+    last = np.full(8, -1)
+    acc = np.zeros((8, len(modes.CHANNELS)))
+    acc[:4, 2] = [42, 44, 70, 160]                  # all by road
+    zone = np.array(["HK", "HK", "MO", "HK", "", "", "", ""])
+    minutes = np.array([42.0, 470.0, 70.0, 160.0, 0, 0, 0, 0])
+    # node 1: 428 min off (and over half) -> listed by time; node 2: Macau, only
+    # 28 min off -> by zone alone; node 3: 118 min off -> by time.
+    slots, _, _ = override.override_entries(
+        Idx(), last, acc, np.array([0]), np.array([0, 0, 0, 0]), Layout(),
+        cell_minutes=minutes, zone=zone)
+    assert slots.tolist() == [10, 20, 30]
+    near = np.array([400.0, 470.0, 150.0, 160.0, 0, 0, 0, 0])   # node 1 only 70 min off a 470
+    slots, _, _ = override.override_entries(
+        Idx(), last, acc, np.array([0]), np.array([0, 0, 0, 0]), Layout(),
+        cell_minutes=near, zone=np.array(["HK"] * 4 + [""] * 4))
+    assert 10 not in slots.tolist()

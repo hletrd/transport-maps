@@ -436,7 +436,8 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     # Tinian at Saipan's 7 h 38 -- faster than the full map's 9 h 32, which no
     # map with fewer modes can be.
     override.write_override(idx, last, acc, rep_arr, shared["base_hover"],
-                            shared["reading"], out / f"{slug}.over.bin", source=reading_src)
+                            shared["reading"], out / f"{slug}.over.bin", source=reading_src,
+                            cell_minutes=minutes[: idx.n_cells], zone=shared.get("zone"))
     routes_json.write_routes(idx, minutes, predecessors, out / f"{slug}.json")
     itinerary.write_itinerary(idx, minutes, predecessors, out / f"{slug}.air.bin",
                               parents=parents, rep=rep, last=last)

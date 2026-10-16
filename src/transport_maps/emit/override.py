@@ -35,14 +35,27 @@ ENTRY_BYTES = 4 + 2 + 2 * len(CHANNELS)
 # minutes is a station or a pier the path brushes; a quarter of an hour is a
 # ride the legs should list.
 MODE_DIFFERS_MIN = 15.0
+# And when the totals part far enough that the representative's legs cannot be
+# the journey printed above them: more than an hour, and more than half the
+# longer of the two. Hong Kong -> Macau printed 2 h 40 over the res-4 cell's
+# "42 min by highway" (2026-10-16). Measured on rebuild 33's arrays this adds
+# about 50 slots an origin; the zone test below catches the rest of that case.
+TIME_DIFFERS_MIN = 60.0
+TIME_DIFFERS_SHARE = 0.5
 
 
 def override_entries(idx, last: np.ndarray, acc: np.ndarray, rep: np.ndarray,
                      base_hover: np.ndarray, layout,
-                     source: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                     source: np.ndarray | None = None, *,
+                     cell_minutes: np.ndarray | None = None,
+                     zone: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(slots, airport ordinals, mode minutes) for the cells to override: those
-    whose arrival airport differs from their res-4 representative's, or that
-    ride a train or a ferry the representative does not (or the reverse).
+    whose arrival airport differs from their res-4 representative's, that
+    ride a train or a ferry the representative does not (or the reverse),
+    that lie in another immigration zone than the representative (`zone`,
+    per cell: the journey crosses a border the representative's does not), or
+    whose total parts from the representative's by more than TIME_DIFFERS_MIN
+    and TIME_DIFFERS_SHARE (`cell_minutes`).
 
     `last` is itinerary.arrival_airport_per_node, `acc` modes.mode_minutes_per_node,
     `rep` hover.representative_array (a node per hover parent), `base_hover` the
@@ -63,7 +76,18 @@ def override_entries(idx, last: np.ndarray, acc: np.ndarray, rep: np.ndarray,
     special = [CHANNELS.index("rail"), CHANNELS.index("ferry")]
     mine = acc[np.where(ok, src, 0)][:, special] >= MODE_DIFFERS_MIN
     rep_modes = acc[np.where(ok, rep_node, 0)][:, special] >= MODE_DIFFERS_MIN
-    pick = np.flatnonzero(ok & ((own != theirs) | (mine != rep_modes).any(axis=1)))
+    differs = (own != theirs) | (mine != rep_modes).any(axis=1)
+    if zone is not None:
+        z = np.asarray(zone)
+        za, zb = z[np.where(ok, src, 0)], z[np.where(ok, rep_node, 0)]
+        differs |= (za != zb) & (za != "") & (zb != "")
+    if cell_minutes is not None:
+        ta = np.asarray(cell_minutes, dtype=np.float64)[np.where(ok, src, 0)]
+        tb = np.asarray(cell_minutes, dtype=np.float64)[np.where(ok, rep_node, 0)]
+        fin = np.isfinite(ta) & np.isfinite(tb)
+        gap = np.abs(np.where(fin, ta - tb, 0.0))
+        differs |= fin & (gap > TIME_DIFFERS_MIN) & (gap > TIME_DIFFERS_SHARE * np.maximum(ta, tb))
+    pick = np.flatnonzero(ok & differs)
     slots = layout.dest[pick].astype(np.int64)
     order = np.argsort(slots, kind="stable")
     pick, slots = pick[order], slots[order]
@@ -75,8 +99,11 @@ def override_entries(idx, last: np.ndarray, acc: np.ndarray, rep: np.ndarray,
 
 
 def write_override(idx, last, acc, rep, base_hover, layout, out: Path,
-                   source: np.ndarray | None = None) -> int:
-    slots, airport, minutes = override_entries(idx, last, acc, rep, base_hover, layout, source)
+                   source: np.ndarray | None = None, *,
+                   cell_minutes: np.ndarray | None = None,
+                   zone: np.ndarray | None = None) -> int:
+    slots, airport, minutes = override_entries(idx, last, acc, rep, base_hover, layout, source,
+                                               cell_minutes=cell_minutes, zone=zone)
     _io.write_bytes(out, slots.astype("<u4").tobytes() + airport.astype("<u2").tobytes()
                     + minutes.astype("<u2").tobytes())
     return len(slots)
