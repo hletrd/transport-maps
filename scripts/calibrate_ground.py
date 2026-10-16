@@ -76,8 +76,22 @@ def _crow_km(a, b) -> np.ndarray:
     return 2 * 6371.0 * np.arcsin(np.sqrt(h))
 
 
+def _listed(path) -> list[tuple[str, tuple[float, float], list[tuple[str, tuple[float, float]]]]]:
+    """Designs from a file of explicit journeys ({"journeys": [{"from", "to",
+    "kind", "design"}]}), grouped by source: the 2026-10-16 airport probe
+    (each of 58 major airports from its city centre and from three towns)
+    planned the same way as the sample."""
+    by_src: dict = defaultdict(list)
+    for r in json.loads(Path(path).read_text(encoding="utf-8"))["journeys"]:
+        by_src[(r.get("design", "listed"), tuple(r["from"]))].append(
+            (r.get("kind", "towns"), tuple(r["to"])))
+    return [(d, here, dests) for (d, here), dests in sorted(by_src.items())]
+
+
 def _designs(args) -> list[tuple[str, tuple[float, float], list[tuple[str, tuple[float, float]]]]]:
     """(design, source point, [(kind, destination point)]) per source."""
+    if args.journeys is not None:
+        return _listed(args.journeys)
     import pyogrio
 
     from transport_maps.sources import urban
@@ -458,6 +472,8 @@ def main() -> None:
     a.add_argument("--rule", default=None, help="sources/motorways.RULES; its RULE if omitted")
     a.add_argument("--fit", type=_path, default=None,
                    help="route under this fit's speeds (fit --out), not calibration.toml's")
+    a.add_argument("--journeys", type=_path, default=None,
+                   help="plan these explicit journeys instead of the towns and metro designs")
     o = sub.add_parser("observe")
     o.add_argument("--plan", type=_path, default=config.BUILD / "ground_plan4.json")
     o.add_argument("--out", type=_path, default=config.BUILD / "ground_samples4.json")
