@@ -92,7 +92,8 @@ def test_border_is_a_real_cost_not_a_rounding_error(cal):
 # Each pair names the sourced fact in `graph/transfers.py`. Mutations performed
 # and reverted, each -> red: drop "AX" from the Schengen list (Åland pairs);
 # drop "MC", "SM" or "VA" (its own pair); drop "IM", "JE" or "GG" from the CTA
-# (its pairs); add "AD" to Schengen, or any overseas department to it (the
+# (its pairs) or drop the CNM/ESB/WSB/MF rows (the four added 2026-10-16);
+# add "AD" to Schengen, or any overseas department to it (the
 # not-shared pairs); empty AIRPORT_COUNTRY (Ercan).
 
 @pytest.mark.parametrize("a,b,why", [
@@ -106,6 +107,10 @@ def test_border_is_a_real_cost_not_a_rounding_error(cal):
     ("JE", "GB", "Jersey: Common Travel Area"),
     ("GG", "IE", "Guernsey: Common Travel Area"),
     ("JE", "GG", "between two Crown Dependencies"),
+    ("CNM", "CY", "Cyprus's UN buffer zone: one passage, not a zone of its own"),
+    ("ESB", "CY", "Dhekelia: no frontier barrier with the Republic (Protocol 3)"),
+    ("WSB", "CY", "Akrotiri: no frontier barrier with the Republic (Protocol 3)"),
+    ("MF", "SX", "Saint-Martin / Sint Maarten: open since 1648"),
 ])
 def test_corrected_members_share_a_zone(a, b, why):
     assert not transfers.crosses_border(a, b), why
@@ -121,6 +126,9 @@ def test_corrected_members_share_a_zone(a, b, why):
     ("YT", "FR", "Mayotte: outside Schengen"),
     ("CY", "GR", "Cyprus has not had internal controls lifted"),
     ("CYN", "CY", "the Green Line is a controlled crossing"),
+    ("CNM", "CYN", "the buffer zone to the north is the Green Line crossing"),
+    ("ESB", "CYN", "Pergamos and Strovilia cross from Dhekelia to the north"),
+    ("MF", "GP", "Saint-Martin's island zone is not Guadeloupe's"),
     ("IM", "FR", "the CTA is not Schengen"),
 ])
 def test_places_that_keep_a_border_keep_it(a, b, why):

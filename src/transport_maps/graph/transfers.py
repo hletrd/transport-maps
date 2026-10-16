@@ -60,6 +60,32 @@ from transport_maps.graph.air import Calibration
 #   CR-20's premise that no desk exists was checked and is wrong. On the
 #   ground those cells are Natural Earth's FRA, i.e. Schengen; no surface edge
 #   joins a department to Europe, so that reading changes no edge.
+#
+# Added 2026-10-16 (rebuild 34), each a land border with no passport desk
+# that the table charged as a crossing:
+#
+# - Cyprus's UN buffer zone (Natural Earth "CNM", no ISO code) and the UK
+#   Sovereign Base Areas of Akrotiri ("WSB") and Dhekelia ("ESB") take the
+#   Republic's zone, CY. The UK undertook "not to create customs posts or
+#   other frontier barriers between the Sovereign Base Areas and the Republic
+#   of Cyprus" (Act of Accession 2003, Protocol No 3, https://eur-lex.europa.eu/
+#   legal-content/EN/TXT/HTML/?uri=CELEX:12003T/PRO/03), so Larnaca -> Ayia
+#   Napa, whose road runs through Dhekelia, paid CY -> ESB -> CY: two crossings,
+#   93 min of border on a domestic drive (122 min in all, rebuild 33). And a
+#   Green Line crossing (Ledra Street, Ledra Palace, Limnitis ...) is one
+#   passage through the buffer zone with "passport checks on each side"
+#   (https://eos-tour.com/how-to-cross-the-green-line-in-nicosia-a-practical-
+#   guide/; UNFICYP, https://unficyp.unmissions.org/en/about-buffer-zone): with
+#   the zone its own, south -> north paid CY -> CNM -> CYN, twice. In CY's zone
+#   it pays once, at the northern administration's line. The north (CYN)
+#   keeps its own zone, as does the air side's Ercan above.
+# - Saint-Martin (MF) shares Sint Maarten's (SX) zone: the island's border has
+#   been open since the Treaty of Concordia of 1648, with "no border or
+#   passport checks" at its four crossings (https://en.wikipedia.org/wiki/
+#   Saint_Martin%E2%80%93Sint_Maarten_border). Philipsburg -> Marigot paid a
+#   47.6 min crossing (55 min in all). A flight from Grand Case (SFG) still
+#   leaves the zone like any other, so nothing on the air side changes but the
+#   SFG <-> SXM hop.
 IMMIGRATION_ZONES: dict[str, str] = {
     **{c: "SCHENGEN" for c in (
         "AT", "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR",
@@ -69,6 +95,8 @@ IMMIGRATION_ZONES: dict[str, str] = {
         "AX", "MC", "SM", "VA",
     )},
     **{c: "CTA" for c in ("IE", "GB", "IM", "JE", "GG")},
+    **{c: "CY" for c in ("CNM", "ESB", "WSB")},
+    "MF": "SX",
 }
 
 # Airports whose OurAirports `iso_country` names a different immigration
