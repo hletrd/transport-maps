@@ -330,3 +330,12 @@ Three worktree forks, ~64 threads on h200 between them:
   Munich 224 -> 242 (246). Not available openly: National Rail (account),
   JR West.
 - Nicosia (ab552d0) departs from Eleftheria Square, the Republic side.
+- airport access table (worktree-agent-a4a7989cd4d4d43f2: ace1ec2, 804c6a4;
+  NOT merged): a signed per-airport access minute for 1,227 airports from
+  2,582 Google Routes typical-traffic drives, shrunk toward 0; airport
+  stratum 0.139 -> 0.124 out of fold (mean 0.1077 -> 0.1041), centre runs
+  barely move (London->LHR 36 -> 40 vs 51; Paris->CDG and Singapore->SIN
+  move the wrong way). Held back for the owner: it ships a per-airport table
+  derived from Google Maps Platform data, which may not fit its terms.
+- Rebuild 34 started from ad73f52 (64 workers) without that table; both
+  GTFS feeds fetched by the inputs check.
