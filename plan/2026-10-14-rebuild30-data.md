@@ -315,3 +315,18 @@ Three worktree forks, ~64 threads on h200 between them:
   36 (51) barely moves -- the error is leaving the centre and differs by
   city. A measured per-airport access term for the busiest airports is being
   built (airports fork).
+- ports (a2ced87, 3be39d2 -> c956957): the remaining third-zone sea cells,
+  case by case. Fixed: Cyprus's UN buffer zone and base areas (Larnaca->
+  Ayia Napa 122 -> 32), the open Saint-Martin border (Philipsburg->Marigot
+  55 -> 10), the head of the Gulf of Aqaba (Egypt and Jordan joined across
+  the water; Taba->Aqaba 64 -> 107 via Eilat as in reality), Gibraltar's
+  North Mole berth. Left: Egypt<->Saudi mid-gulf (the 1:10m mask makes the
+  gulf land; closing EGY-SAU would also cut real ferries), BES read
+  SCHENGEN (no edge affected).
+- rail GTFS (8cb81d7, 3d33129, 01513b0 -> 4912197): DELFI German
+  long-distance (gtfs.de, CC BY 4.0) and KorailGTFS (CC BY 4.0) time their
+  operators' rides stop to stop: Berlin->Hamburg 131 -> 107 (107), Seoul->
+  Busan 120 -> 138 (138), Seoul->Gimcheon-Gumi 67 -> 80 (84), Berlin->
+  Munich 224 -> 242 (246). Not available openly: National Rail (account),
+  JR West.
+- Nicosia (ab552d0) departs from Eleftheria Square, the Republic side.
