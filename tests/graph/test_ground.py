@@ -48,6 +48,7 @@ def test_hex_edge_cost_uses_destination_speed_not_source(idx, monkeypatch):
     swap `hex_edges` picked. With a real per-cell field, u->v and v->u can
     now be forced to genuinely differ, so this pins the direction down.
     """
+
     import h3
 
     # Find a pair of adjacent land cells so both u->v and v->u edges exist.
@@ -83,3 +84,39 @@ def test_hex_edge_cost_uses_destination_speed_not_source(idx, monkeypatch):
     # source's speed instead would swap these two expected values.
     assert uv[0] == pytest.approx(dist_km / slow * 60.0)
     assert vu[0] == pytest.approx(dist_km / fast * 60.0)
+
+
+def test_a_border_port_island_takes_its_listed_zone_only_where_no_country_is_drawn(monkeypatch):
+    """The HZMB lands on a reclaimed island Natural Earth does not draw; its
+    cells took China from Zhuhai and Hong Kong -> Macau paid two crossings.
+    PORT_ZONES relabels the cells in the box whose centroid is in no country
+    -- and nothing else: Zhuhai's drawn land beside it keeps China.
+
+    Mutations performed and reverted, each RED: relabel every cell in the box
+    (drop the sea test); drop the row (Hong Kong -> Macau pays two again).
+    """
+    import itertools
+
+    import h3
+
+    island = h3.latlng_to_cell(22.2217, 113.5915, 7)   # the port island (sea centroid)
+    zhuhai = h3.latlng_to_cell(22.2391, 113.5760, 7)   # Zhuhai's drawn shore
+    macau = h3.latlng_to_cell(22.1949, 113.5386, 7)    # Macau, outside the box
+    cells = [zhuhai, island, macau]
+
+    class Idx:
+        def try_cell_index(self, c):
+            return cells.index(c) if c in cells else None
+
+    monkeypatch.setattr(ground, "_sea_centroid", lambda cs: np.array([c == island for c in cs]))
+    monkeypatch.setattr(ground, "cell_zones",
+                        lambda cc: np.array([{"CHN": "CN", "MAC": "MO"}[c] for c in cc]))
+    zone = ground.zones_at(Idx(), np.array(["CHN", "CHN", "MAC"]))
+    assert zone.tolist() == ["CN", "HK", "MO"]
+    crossing = 45.0
+    def charged(z):
+        return sum(crossing for a, b in itertools.pairwise(z) if a and b and a != b)
+    # Hong Kong -> the island -> Macau, and Hong Kong -> the island -> Zhuhai:
+    # one crossing each where the island read China.
+    assert charged(["HK", zone[1], zone[2]]) == crossing
+    assert charged(["HK", zone[1], zone[0]]) == crossing

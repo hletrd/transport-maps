@@ -735,7 +735,7 @@ def _build_all_locked(limit: int | None, only: list[str] | None = None,
     # and spans each through _border_rules) and the road class twice more, a
     # ~4 M-cell raster pass each time (PR-5, R5).
     country = countries.cell_country(idx.cells)
-    zone = ground.cell_zones(country)
+    zone = ground.zones_at(idx, country)
     cell_class = ground.cell_class(idx)
     # Reused by check_monotonic_ground in every origin as well: the ground
     # speed grid does not change between origins, and re-deriving it per

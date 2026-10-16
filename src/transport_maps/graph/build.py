@@ -344,7 +344,7 @@ def _border_rules(idx: NodeIndex, country=None, zone=None):
     if country is None:
         country = countries.cell_country(idx.cells)
     if zone is None:
-        zone = ground.cell_zones(country)
+        zone = ground.zones_at(idx, country)
     return country, zone, ground._land_border_min(), countries.is_closed
 
 

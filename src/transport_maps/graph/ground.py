@@ -242,6 +242,80 @@ def cell_zones(country) -> np.ndarray:
                      for c in country])
 
 
+#: Border-control port areas on land Natural Earth does not draw, whose cells
+#: therefore took a neighbour's country (countries._fill_blanks) and with it a
+#: zone that charged a second crossing. (name, (lat_min, lat_max, lon_min,
+#: lon_max), zone, why, source). Only cells whose centroid is in no country
+#: polygon are relabelled; land the polygons do cover keeps its own zone.
+#:
+#: A third zone between two cannot be priced exactly on edges alone: no entry
+#: and exit charge on such a run gives one crossing from A to B and none from
+#: A back to A (that needs a copy of the run per zone). A run-wide "transit"
+#: rule tried on 2026-10-16 marked 9,896 cells along borders and slowed 13 M
+#: cells from Hong Kong by up to 161 min, so the cases are listed, each with
+#: the zone that makes its real traffic pay one crossing.
+PORT_ZONES = (
+    ("Hong Kong-Zhuhai-Macau Bridge: the Zhuhai-Macau port island, its "
+     "landing and its link to Macau",
+     (22.205, 22.252, 113.560, 113.630), "HK",
+     "The bridge lands on a reclaimed island where Zhuhai and Macau both clear "
+     "arrivals from Hong Kong; its cells took China from Zhuhai, so Hong Kong "
+     "-> Macau paid HK -> CN -> MO, 90 min of border (2 h 40 against ~1 h 57, "
+     "2026-10-16). In Hong Kong's zone, the bridge's far end, a journey from "
+     "Hong Kong to either city pays one crossing; Zhuhai <-> Macau keeps its "
+     "own land border at Gongbei, which does not cross the island.",
+     "https://en.wikipedia.org/wiki/Hong_Kong%E2%80%93Zhuhai%E2%80%93Macau_Bridge"),
+)
+
+
+def _sea_centroid(cells: list[str]) -> np.ndarray:
+    """True per cell whose centroid is in no country polygon."""
+    import shapely
+    from shapely import STRtree
+
+    geoms, _codes = countries._polygons()
+    ll = np.array([h3.cell_to_latlng(c) for c in cells]).reshape(-1, 2)
+    hit, _ = STRtree(geoms).query(shapely.points(ll[:, 1], ll[:, 0]), predicate="within")
+    out = np.ones(len(cells), dtype=bool)
+    out[np.unique(hit)] = False
+    return out
+
+
+def port_zones(idx) -> dict[int, str]:
+    """Graph position -> zone for the PORT_ZONES cells: index cells (either
+    resolution) with their centroid inside a row's box and in no country."""
+    found: dict[int, str] = {}
+    for _name, (lat0, lat1, lon0, lon1), zone, _why, _src in PORT_ZONES:
+        poly = h3.LatLngPoly([(lat0, lon0), (lat0, lon1), (lat1, lon1), (lat1, lon0)])
+        cand = []
+        for res in (config.SOLVE_RES, config.FINE_RES):
+            for c in h3.polygon_to_cells(poly, res):
+                pos = idx.try_cell_index(c)
+                if pos is not None:
+                    cand.append((pos, c))
+        if not cand:
+            continue
+        sea = _sea_centroid([c for _, c in cand])
+        for (pos, _c), is_sea in zip(cand, sea, strict=True):
+            if is_sea:
+                found[pos] = zone
+    return found
+
+
+def zones_at(idx, country) -> np.ndarray:
+    """The zone per cell the edge builders charge borders by: cell_zones, with
+    PORT_ZONES applied."""
+    zone = cell_zones(country)
+    over = port_zones(idx)
+    if over:
+        width = max(zone.dtype.itemsize // 4, max(len(z) for z in over.values()))
+        zone = zone.astype(f"<U{width}")
+        for pos, z in over.items():
+            zone[pos] = z
+        logger.info("%d cell(s) given a border port's zone (PORT_ZONES)", len(over))
+    return zone
+
+
 def hex_edges(idx: NodeIndex, speeds: np.ndarray | None = None,
               country: np.ndarray | None = None, zone: np.ndarray | None = None
               ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -265,7 +339,7 @@ def hex_edges(idx: NodeIndex, speeds: np.ndarray | None = None,
     if country is None:
         country = countries.cell_country(idx.cells)
     if zone is None:
-        zone = cell_zones(country)
+        zone = zones_at(idx, country)
     crossing_min = _land_border_min()
 
     # Preallocated: at 82 million edges, three Python lists peaked at 19 GB
