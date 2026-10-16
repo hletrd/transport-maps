@@ -9642,8 +9642,11 @@ country = "SR"
 [[origin]]
 slug = "nicosia"
 name = "Nicosia"
-lat = 35.1728
-lon = 33.354
+# Eleftheria Square, the Republic side: GeoNames 146268 and the old
+# coordinate fall in res-6 cells of Northern Cyprus beside the Green Line, so
+# the departure started across a border (2026-10-16).
+lat = 35.1696
+lon = 33.3604
 country = "CY"
 
 [[origin]]
