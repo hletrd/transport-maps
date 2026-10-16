@@ -298,3 +298,20 @@ Three worktree forks, ~64 threads on h200 between them:
 - rail: open timetable feeds (GTFS, licences checked) where OSM lacks the
   service or the speed -- Berlin->Hamburg, London->Manchester, KTX, Sanyo;
 - access: city-centre airport runs ~30% fast (London->LHR 35 vs 51).
+
+### Rebuild 34 progress
+
+- zones (1e590a3, c336e2a -> 41431f5): the HZMB island's sea-centroid cells
+  were majority-filled as China, so the bridge paid HK->CN and CN->MO;
+  `PORT_ZONES` (sourced boxes) relabels them HK: HK->Macau 150 -> 105 in the
+  graph (~1 h 55 door to door; real ~1 h 57), none slower from HK. A general
+  "transit" rule was tried and rejected (13 M cells slower from HK). Legs:
+  `.over.bin` also lists a reading cell in another zone than its res-4
+  representative, or whose total parts by > 60 min and > half (+14%).
+  The other 24 third-zone blank cells are being checked (ports fork).
+- access (ea6f5d9, 4371627 -> 3b841e8): a second slowdown in a city's core
+  (x1.242 inside half its built-up radius), refit on 1,603 journeys incl. a
+  207-journey airport probe: mean out-of-fold 0.1108 -> 0.1077; London->LHR
+  36 (51) barely moves -- the error is leaving the centre and differs by
+  city. A measured per-airport access term for the busiest airports is being
+  built (airports fork).
