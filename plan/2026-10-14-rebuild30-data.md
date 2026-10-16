@@ -259,3 +259,32 @@ capped so the three together stay inside the owner's ~64 threads):
   city-centre airport runs (London->LHR 35 vs 51), Lagos->Ibadan, Mexico
   City->Puebla, Tawau (the coast severs the town cell; road_crossings).
 - Rebuild 33 started from 654349a with 64 workers (30/4/15/15).
+
+## Rebuild 33 shipped (2026-10-16)
+
+21005af1-20261015T080404Z from 654349a, 64 workers (30/4/15/15): full map
+05:44, no-air 07:43 (about a day at 64 threads); check_variants 0 faster.
+Solver deployed (Seoul->Gumi 121 min), data and page deployed. The first
+browser_verify run failed (opening view over 90 s, nothing painted at zoom
+3, 3 console errors) right after the 145 GB sync with the web host's page
+cache cold; rerun minutes later: ALL CHECKS PASSED, console 0, opening view
+28 s cold and 3 s warm. Readings in the first minutes after a deploy come
+from the res-4 tier until the 10 MB `.r6.bin` arrives ("read from the wider
+grid"); not a defect, but worth warming the cache after a deploy.
+
+Live (r6): Hong Kong->Shenzhen 1 h 24 (rebuild 32: 25 min, the cross-border
+child), Tokyo->Osaka 3 h 04 via のぞみ, London->Calais 3 h 15, Delhi->Agra
+3 h 03, LA->San Diego 2 h 18, Cairo->Alexandria 3 h 12, Haneda->Paris drawn
+round closed airspace (peak 49.1 N), Kota Kinabalu own cell 0 min; hover
+band = drawn band at 155 of 156 points (zoom 9, Seoul).
+
+Open after rebuild 33:
+- Hong Kong->Macau 2 h 40 (real ~1 h 57): the HZMB's mid-bridge island and
+  the Zhuhai/Macau port fall in res-6 cells assigned to China, so the bridge
+  route pays two land crossings (HK->CN->MO, 45 min each) where a traveller
+  clears one; its legs list the res-4 cell's 42 min (same mode, so no
+  override entry).
+- Berlin->Hamburg 2 h 43 (~2 h 17): OSM maps 160 km/h on LZB-230 track and
+  has no limited-stop ICE; needs a timetable source (DELFI GTFS).
+- KTX ~15% fast (a 5-stop relation), London->Manchester rail slow, city-centre
+  airport runs ~30% fast, Lagos->Ibadan +12%, Mexico City->Puebla -12%.
