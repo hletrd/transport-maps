@@ -219,9 +219,14 @@ def mode_detail() -> dict[str, str]:
     # (CR3-7). The word is now derived from the number.
     from transport_maps.sources.roads import SETTLED_DENSITY_PER_KM2
 
+    # And the core's second factor (rebuild 34), stated as the product a core
+    # cell pays, rounded as the factor itself is shown.
+    core = round(urban.URBAN_BUILT_UP_FACTOR * urban.URBAN_CORE_FACTOR, 2)
     in_cities = (f"{urban_slowdown(urban.URBAN_BUILT_UP_FACTOR)} inside a city's built-up area "
                  f"(the disc its population fills at {SETTLED_DENSITY_PER_KM2:,.0f} people "
-                 f"per km2, for cities over {urban.URBAN_POP_MIN:,.0f} people)")
+                 f"per km2, for cities over {urban.URBAN_POP_MIN:,.0f} people) and "
+                 f"{urban_slowdown(core)} in its core, the inner "
+                 f"{urban.URBAN_CORE_EXTENT:g} of that disc's radius")
     # Free-flow speed by World Bank income group (graph/ground.py): quoted as
     # the range from the low-income to the high-income figure, so the
     # sentence states what the model charges rather than one country's case.

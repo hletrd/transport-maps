@@ -65,7 +65,7 @@ between adjacent cells is charged at a per-cell speed derived from GRIP4
 road-density rasters and OpenStreetMap motorways (priced by their signed
 limit) and trunk roads, scaled by the country's income group and, for the US
 and Canada, a regional factor, and slowed inside cities by a fitted
-congestion factor. Flights connect airport pairs taken
+congestion factor, and again in a city's core. Flights connect airport pairs taken
 from Wikipedia's "Airlines and destinations" tables, resolved to IATA codes
 through Wikidata property P238, with block time modelled from great-circle
 distance, or from the shortest way round airspace closed to the route's

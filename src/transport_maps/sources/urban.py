@@ -56,11 +56,28 @@ def load_urban_calibration(path=None) -> tuple[float, float, float, float]:
     return pop_min, radius_km, factor, extent
 
 
+def load_urban_core(path=None) -> tuple[float, float]:
+    """calibration.toml [urban]: (core_factor, core_extent) -- the second
+    slowdown a city's core pays, inside `core_extent` built-up radii, on top
+    of built_up_factor (rebuild 34)."""
+    import tomllib
+
+    path = path or (config.ROOT / "calibration.toml")
+    with open(path, "rb") as fh:
+        raw = tomllib.load(fh)["urban"]
+    factor, extent = float(raw["core_factor"]), float(raw["core_extent"])
+    if not (factor >= 1.0 and extent > 0):
+        raise ValueError(f"{path} [urban] needs core_factor >= 1 and core_extent > 0; "
+                         f"got {factor}, {extent}")
+    return factor, extent
+
+
 # Read once, at import. The masks' caches key on pop_min and their geometry;
-# the factor and extent only decide speeds (graph/ground.cell_speed_kmh) and
+# the factors and extents only decide speeds (graph/ground.cell_speed_kmh) and
 # are in no cache.
 (URBAN_POP_MIN, URBAN_RADIUS_KM, URBAN_BUILT_UP_FACTOR,
  URBAN_BUILT_UP_EXTENT) = load_urban_calibration()
+URBAN_CORE_FACTOR, URBAN_CORE_EXTENT = load_urban_core()
 
 # Natural Earth populated places, for the urban mask only. The page's
 # gazetteer (emit/places.py) moved to GeoNames; this stays on Natural Earth

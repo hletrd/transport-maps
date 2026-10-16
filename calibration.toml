@@ -834,17 +834,48 @@ interval_decay = 1.5137
 # sample carries -- road density, city size, core distance -- separates them
 # from the city journeys the fit gets right.
 #
+# Rebuild 34 (2026-10-16) adds one structure and refits every constant above
+# and below: the built-up factor splits into the city's CORE -- inside half
+# its built-up radius, [urban] core_extent -- and the rest of the radius
+# ([urban] core_factor on top of built_up_factor).
+#
+# Why: city-centre airport runs were the largest error (London -> LHR 35 min
+# against Google's 51), so a probe was observed (2026-10-16, 223 TRAFFIC_AWARE
+# calls, Tuesday 10:00 local): 61 major airports, each from its departure
+# city's centre and from three towns 25-70 km out. Centre runs came out 1.125
+# observed/model and town runs to the same airports 1.041, correlating only
+# 0.38 airport by airport; a per-airport approach term (leave one journey out)
+# scored 0.136 against 0.124 without one. The error is in leaving a city
+# centre, not in reaching an airport.
+#
+# The fit (scripts/fit_ground_structures.py, five folds by source, each
+# stratum a quarter of the weight) is on the 1,396 journeys of rebuild 33's
+# sample plus the 207 probe journeys planned the same way (scripts/
+# calibrate_ground.py plan --journeys), the probe in the airport stratum:
+# 1,603 journeys. Out of fold, mean of the strata's median |log|:
+#   rebuild 33's structure 0.1108; + city core 0.1077; + core for high-income
+#   cities only 0.1108. Probe journeys 0.131 -> 0.128, airport stratum 0.145
+#   -> 0.139 (median ratio 1.006). The core factor fits 1.21-1.32 across the
+#   five folds. On rebuild 33's sample alone the core also won (0.1096 ->
+#   0.1079) but generalised worse to the probe (0.124 -> 0.130), which is why
+#   the probe is in the fit rather than only in the check.
+# Not fixed by it: a city-centre run to a hub is still the noisiest journey
+# the map prices (median |log| 0.187 for the probe's centre runs, median
+# ratio 1.08), with errors both ways (Atlanta and Sydney 0.7, Dubai and
+# London 1.5); nothing on the path -- class, income, region, density, built-
+# up distance -- separates them.
+#
 # Read by graph/ground.py (SPEED_BY_ROAD_CLASS_KMH, END_MINUTES). The sampled
 # journeys stay in data/build/ and nothing from them reaches dist/.
 [ground]
 roadless_kmh = 5.0       # class 0, published-figure default
-highway_kmh = 42.9       # class 1, FITTED
-primary_kmh = 47.7       # class 2, FITTED
-secondary_kmh = 56.6     # class 3, FITTED
-tertiary_kmh = 34.6      # class 4, FITTED
+highway_kmh = 44.5       # class 1, FITTED
+primary_kmh = 47.3       # class 2, FITTED
+secondary_kmh = 56.8     # class 3, FITTED
+tertiary_kmh = 34.5      # class 4, FITTED
 local_kmh = 25.0         # class 5, published-figure default
-motorway_kmh = 82.0      # class 6 with no signed limit, FITTED ([ground_motorway])
-end_min = 10.8           # per journey, both ends together, FITTED
+motorway_kmh = 84.4      # class 6 with no signed limit, FITTED ([ground_motorway])
+end_min = 11.0           # per journey, both ends together, FITTED
 
 # Free-flow speed multiplier per World Bank income group, applied to classes
 # 1-4 and 6 (graph/ground.cell_speed_kmh); the group comes from each cell's
@@ -856,10 +887,10 @@ end_min = 10.8           # per journey, both ends together, FITTED
 # definition; a motorway is 102 km/h in a high-income country and 71 in a
 # low-income one.
 [ground_income]
-high = 1.055             # FITTED
+high = 1.056             # FITTED
 upper_middle = 1.0       # the reference
-lower_middle = 0.815     # FITTED, one multiplier with low (see [ground])
-low = 0.815              # FITTED, one multiplier with lower_middle
+lower_middle = 0.813     # FITTED, one multiplier with low (see [ground])
+low = 0.813              # FITTED, one multiplier with lower_middle
 
 # A motorway cell (class 6) priced by its signed limit: the highest OSM
 # maxspeed among the motorway ways crossing it (sources/motorways.
@@ -868,9 +899,9 @@ low = 0.815              # FITTED, one multiplier with lower_middle
 # FITTED with [ground] (rebuild 33, see there). Upper-middle-income speeds;
 # [ground_income] and [ground_region] scale them like the other classes.
 [ground_motorway]
-under_95_kmh = 73.6      # FITTED
-from_95_kmh = 89.1       # FITTED
-from_115_kmh = 102.4     # FITTED
+under_95_kmh = 73.5      # FITTED
+from_95_kmh = 87.8       # FITTED
+from_115_kmh = 101.2     # FITTED
 
 # Speed multiplier for a driving region (sources/countries.DRIVING_REGIONS:
 # north_america = USA and Canada), on top of [ground_income], applied to the
@@ -879,7 +910,7 @@ from_115_kmh = 102.4     # FITTED
 # observed/predicted 0.917) while Europe's sat at 0.98; an East Asia
 # multiplier was tried and fitted at 1.01, so it is not kept.
 [ground_region]
-north_america = 1.231    # FITTED
+north_america = 1.224    # FITTED
 
 # The built-up areas, from Natural Earth populated places of `pop_min` or more
 # (`pop_max`; sources/urban.py).
@@ -904,12 +935,19 @@ north_america = 1.231    # FITTED
 # motorway through it is charged near motorway speed; the factor stands for
 # the streets a journey actually takes there.
 #
+# `core_factor` = 1.242 slows the roads inside `core_extent` = 0.5 of a city's
+# built-up radii a second time, so a core cell pays 1.253 x 1.242 = 1.56 (see
+# [ground], rebuild 34: city-centre departures ran 12% fast and the whole-
+# radius factor could not price them without slowing the suburbs).
+#
 # The masks' caches key on pop_min, the density and their geometry.
 [urban]
 pop_min = 200000.0
 radius_km = 40.0
-built_up_factor = 1.354  # FITTED
+built_up_factor = 1.253  # FITTED (rebuild 34: the radius outside the core)
 built_up_extent = 1.0    # city built-up radii, FITTED (structure)
+core_factor = 1.242      # FITTED (rebuild 34), on top of built_up_factor
+core_extent = 0.5        # city built-up radii, FITTED (structure: the sample's finest band)
 
 # Crossing a land border. Charged on the ground edge between two cells whose
 # countries sit in different immigration zones, the same test the air model

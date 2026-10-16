@@ -172,15 +172,21 @@ def cell_class(idx: NodeIndex, rule: str | None = None) -> np.ndarray:
     return np.where(motorways.motorway_mask(idx, rule or motorways.RULE), MOTORWAY_CLASS, cls)
 
 
-def built_up_mask(idx: NodeIndex) -> np.ndarray:
-    """The cells whose roads [urban] built_up_factor slows: inside a city's
-    own built-up radius times built_up_extent (sources/urban.
-    scaled_city_distance), on the base grid and carried down."""
+def city_distance(idx: NodeIndex) -> np.ndarray:
+    """Per index cell, the distance to the nearest city in that city's
+    built-up radii (sources/urban.scaled_city_distance), on the base grid and
+    carried down."""
     if len(getattr(idx, "base_cells", [])):
         s, _pop = urban.scaled_city_distance(list(idx.base_cells))
-        return refine.expand(s < urban.URBAN_BUILT_UP_EXTENT, idx)
+        return refine.expand(s, idx)
     s, _pop = urban.scaled_city_distance(list(idx.cells))
-    return s < urban.URBAN_BUILT_UP_EXTENT
+    return s
+
+
+def built_up_mask(idx: NodeIndex) -> np.ndarray:
+    """The cells whose roads [urban] built_up_factor slows: inside a city's
+    own built-up radius times built_up_extent."""
+    return city_distance(idx) < urban.URBAN_BUILT_UP_EXTENT
 
 
 def cell_income(idx: NodeIndex, country: np.ndarray | None = None) -> np.ndarray:
@@ -231,8 +237,18 @@ def cell_speed_kmh(idx: NodeIndex, classes: np.ndarray | None = None,
     # stands for the streets a journey actually takes.
     # Only where there are roads to be congested. A roadless cell is already at
     # walking pace, and traffic does not make walking slower.
-    congested = built_up_mask(idx) & (classes > 0)
-    speeds = np.where(congested, speeds / urban.URBAN_BUILT_UP_FACTOR, speeds)
+    #
+    # And a city's core a second time (rebuild 34): inside half its built-up
+    # radius every departure ran slow -- 58 major airports from their city
+    # centres came out 1.125 observed/model against 1.041 from towns around
+    # them -- and the whole-radius factor could not price that without
+    # slowing the suburbs ([urban] core_factor).
+    near = city_distance(idx)
+    roads = classes > 0
+    speeds = np.where(roads & (near < urban.URBAN_BUILT_UP_EXTENT),
+                      speeds / urban.URBAN_BUILT_UP_FACTOR, speeds)
+    speeds = np.where(roads & (near < urban.URBAN_CORE_EXTENT),
+                      speeds / urban.URBAN_CORE_FACTOR, speeds)
     return speeds
 
 

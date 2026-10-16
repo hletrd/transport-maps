@@ -137,5 +137,20 @@ def test_a_motorway_cell_runs_at_the_motorway_speed(monkeypatch):
     mw = ground.MOTORWAY_CLASS
     base = ground.MOTORWAY_SPEED_BY_LIMIT_KMH[0]
     scale = m[3] if mw in ground.INCOME_SCALED_CLASSES else 1.0
-    v = _speeds(monkeypatch, [mw, mw], [9.0, 0.1], [3, 3])
+    # 0.75 radii: inside the built-up disc, outside its core (rebuild 34).
+    v = _speeds(monkeypatch, [mw, mw], [9.0, 0.75], [3, 3])
     assert np.allclose(v, [base * scale, base * scale / urban.URBAN_BUILT_UP_FACTOR])
+
+
+def test_a_city_core_is_slowed_twice(monkeypatch):
+    """Inside `core_extent` built-up radii a road cell pays the core factor on
+    top of the built-up one; at the core's edge it pays the built-up factor
+    alone (rebuild 34: city-centre departures ran 12% fast).
+
+    Mutation performed and reverted: drop the core line from
+    cell_speed_kmh -> RED."""
+    k, f, c = ground.SPEED_BY_ROAD_CLASS_KMH, urban.URBAN_BUILT_UP_FACTOR, urban.URBAN_CORE_FACTOR
+    e = urban.URBAN_CORE_EXTENT
+    v = _speeds(monkeypatch, [2, 2, 0], [0.99 * e, e, 0.1], [1, 1, 1])
+    assert np.allclose(v, [k[2] / (f * c), k[2] / f, k[0]])
+    assert c > 1.0 and e < urban.URBAN_BUILT_UP_EXTENT
