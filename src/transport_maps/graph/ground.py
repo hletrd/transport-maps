@@ -281,6 +281,36 @@ PORT_ZONES = (
      "Hong Kong to either city pays one crossing; Zhuhai <-> Macau keeps its "
      "own land border at Gongbei, which does not cross the island.",
      "https://en.wikipedia.org/wiki/Hong_Kong%E2%80%93Zhuhai%E2%80%93Macau_Bridge"),
+    ("Head of the Gulf of Aqaba, off Eilat",
+     (29.475, 29.508, 34.925, 34.965), "IL",
+     "Egypt and Jordan share no land border: between them 'a small strip of "
+     "Israeli territory juts out' at Eilat, and the land route runs Taba "
+     "crossing -> Eilat -> Wadi Araba crossing. The sea cells at the head of "
+     "the gulf took Egypt and Jordan from their shores, so Taba -> Aqaba "
+     "crossed EG -> JO once, straight over the water (64 min, rebuild 33). In "
+     "Israel's zone a journey round the head pays both crossings it really "
+     "pays, and Egypt -> Israel and Israel -> Jordan still pay one each.",
+     "https://en.wikipedia.org/wiki/Gulf_of_Aqaba"),
+    ("Mid Gulf of Aqaba, where the Egyptian and Jordanian fills meet",
+     (29.378, 29.410, 34.868, 34.922), "IL",
+     "The 1:10m land mask takes the narrow gulf's cells as land and the fill "
+     "splits them down the middle, Egypt to the west and Jordan to the east, so "
+     "the graph had an Egypt - Jordan land border in mid-gulf (29.38-29.41 N) "
+     "that no road crosses: with the head of the gulf fixed above, Taba -> "
+     "Aqaba took it at one crossing (88 min). The four cells where the two "
+     "fills meet, in Israel's zone, make that shortcut pay both crossings the "
+     "road round the head pays. The coastal cells keep their country, so a "
+     "journey along either coast is unchanged.",
+     "https://en.wikipedia.org/wiki/Gulf_of_Aqaba"),
+    ("Gibraltar's North Mole, the Tanger Med ferry berth",
+     (36.150, 36.162, -5.372, -5.358), "GI",
+     "The Gibraltar - Tanger Med ferry (FRS/DFDS, one to two a week) berths at "
+     "the North Mole, reclaimed land Natural Earth's coast leaves at sea; its "
+     "cell took Spain from La Linea, so Gibraltar -> Tangier by that ferry "
+     "paid GI -> ES at the land border and ES -> MA at sea (Gibraltar -> "
+     "Tangier 249 min by Algeciras, rebuild 33). In Gibraltar's zone the "
+     "ferry pays the one crossing it makes.",
+     "https://www.ferryhopper.com/en/ferry-routes/direct/gibraltar-tangier"),
 )
 
 

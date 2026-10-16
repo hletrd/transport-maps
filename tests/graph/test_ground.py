@@ -120,3 +120,22 @@ def test_a_border_port_island_takes_its_listed_zone_only_where_no_country_is_dra
     # one crossing each where the island read China.
     assert charged(["HK", zone[1], zone[2]]) == crossing
     assert charged(["HK", zone[1], zone[0]]) == crossing
+
+
+@pytest.mark.parametrize("lat,lon,zone,why", [
+    (29.4834, 34.9300, "IL", "head of the Gulf of Aqaba: Egypt and Jordan meet only through Eilat"),
+    (29.3834, 34.9010, "IL", "mid gulf, where the Egyptian and Jordanian fills meet"),
+    (36.1569, -5.3651, "GI", "Gibraltar's North Mole, the Tanger Med ferry berth"),
+])
+def test_each_listed_port_sea_cell_falls_in_its_row(lat, lon, zone, why):
+    """The sea cells the 2026-10-16 audit found charging a crossing the road
+    does not make (or skipping one it makes) sit in a PORT_ZONES box with the
+    zone that prices their traffic right. Measured on rebuild 33's graph:
+    Taba -> Aqaba 64 -> 107 min (two crossings, as via Eilat), Gibraltar's
+    ferry pays one crossing, not GI -> ES -> MA.
+
+    Mutation performed and reverted: drop the mid-gulf row -> RED.
+    """
+    hits = [z for _n, (a, b, c, d), z, _w, _s in ground.PORT_ZONES
+            if a <= lat <= b and c <= lon <= d]
+    assert hits == [zone], why
