@@ -96,4 +96,25 @@ def test_a_timed_leg_wins_its_pair_and_one_train_is_one_leg():
     got = {(r["from_station"], r["to_station"]): r["minutes"] for r in edges.iter_rows(named=True)}
     assert got == {(ka, kb + rail.ALIGHT_SUFFIX): 40.0, (kb, kc + rail.ALIGHT_SUFFIX): 30.0}
     assert set(rail.stations(routes)["station"]) == {
-        ka, kb, kb + rail.ALIGHT_SUFFIX, kc + rail.ALIGHT_SUFFIX}
+        ka, kb, kc, ka + rail.ALIGHT_SUFFIX, kb + rail.ALIGHT_SUFFIX, kc + rail.ALIGHT_SUFFIX}
+
+
+def test_rides_run_back_into_the_other_twin():
+    """The graph makes every ride two-way (`rail.two_way`). Reversed naively a
+    timed A -> B~a is B~a -> A, a ride leaving an alighting twin, from which a
+    second train continues with no change paid; reversed OSM B -> A would
+    undercut the timetable; and two stops in one station are no ride (the
+    zero-weight edge the build refused).
+
+    Mutations performed and reverted, each RED: reverse into the plain
+    station; drop the anti-join on timed pairs; drop the one-station filter.
+    """
+    a, b, c = "a", "b", "c"
+    x = rail.ALIGHT_SUFFIX
+    edges = pl.DataFrame({"from_station": [a, b, b, a],
+                          "to_station": [b + x, a, c, a + x],
+                          "minutes": [40.0, 20.0, 30.0, 0.0]})
+    got = {(r["from_station"], r["to_station"]): r["minutes"]
+           for r in rail.two_way(edges).iter_rows(named=True)}
+    assert got == {(a, b + x): 40.0, (b, a + x): 40.0, (b, c): 30.0, (c, b): 30.0}
+    assert rail.reverse_ride(a, b + x) == (b, a + x)

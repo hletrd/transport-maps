@@ -109,7 +109,8 @@ SNAP_M = 600.0
 # MISS rather than a silently reused wrong answer (osm.RAIL_PARSER_VERSION).
 # 2: a leg per pair of calls, departure(i) -> arrival(j).
 # 3: the alighting row marked `alight_only` (graph/rail.ALIGHT_SUFFIX).
-GTFS_PARSER_VERSION = 3
+# 4: legs of no running time dropped.
+GTFS_PARSER_VERSION = 4
 
 # GTFS route_type values that are trains: 2 (rail) and the extended 100-117
 # (railway service). Buses a rail feed carries (replacement services) are not.
@@ -215,6 +216,12 @@ def timetable_rows() -> pl.DataFrame:
         for pat in pats:
             base = feed["name"] + "|" + "|".join(s[0] for s in pat["stops"])
             for (i, j), minutes in pat["minutes"].items():
+                if minutes <= 0:
+                    # A timing point the train passes in the same minute
+                    # (DB's border marker "Kehl(Gr)"): no ride, and a
+                    # zero-weight edge the graph build refuses. The stops
+                    # either side still join through their longer pairs.
+                    continue
                 key = f"{base}|{i}|{j}".encode()
                 rid = -(int.from_bytes(hashlib.sha1(b"gtfs|" + key).digest()[:6], "big") + 1)
                 for seq, k in enumerate((i, j)):

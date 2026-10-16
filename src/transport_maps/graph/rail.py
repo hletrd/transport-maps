@@ -135,8 +135,15 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 
 def stations(routes: pl.DataFrame) -> pl.DataFrame:
     """One row per physical station (and per alight-only twin), with the
-    cell it sits in."""
+    cell it sits in. Every timetabled stop is both, even a feed's terminus
+    that only one direction boards or alights at, since `two_way` runs each
+    timed ride back the other way."""
     df = routes.with_columns(row_stations(routes))
+    if "alight_only" in df.columns:
+        timed = df.filter(pl.col("alight_only").is_not_null())
+        base = pl.col("station").str.replace(f"{ALIGHT_SUFFIX}$", "")
+        df = pl.concat([df, timed.with_columns(base.alias("station")),
+                        timed.with_columns((base + ALIGHT_SUFFIX).alias("station"))])
     return (df.group_by("station")
               .agg(pl.col("lat").mean(), pl.col("lon").mean(),
                    pl.col("name").first())
@@ -302,3 +309,41 @@ def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
     # Several routes share a track segment at different speeds; the fastest
     # service that actually runs is the one a traveller would take.
     return out.group_by("from_station", "to_station").agg(pl.col("minutes").min())
+
+
+def reverse_ride(a: str, b: str) -> tuple[str, str]:
+    """The ride `two_way` runs back over a -> b: a timed leg into b's
+    alighting twin returns from b into a's."""
+    if b.endswith(ALIGHT_SUFFIX):
+        return b[: -len(ALIGHT_SUFFIX)], a + ALIGHT_SUFFIX
+    return b, a
+
+
+def two_way(edges: pl.DataFrame) -> pl.DataFrame:
+    """`ride_edges` run in both directions, each pair at its faster one.
+
+    OSM usually models the two directions of a service as separate relations,
+    but not always, and a line present in only one direction would otherwise
+    be a one-way railway. A timed leg X -> Y~a runs back as Y -> X~a: the
+    reverse of boarding at X and alighting at Y is boarding at Y and alighting
+    at X, never a ride that LEAVES an alighting twin -- which would let a
+    second train continue from it without the change being paid. And as in
+    `ride_edges`, where a timetable times a pair in either direction, an OSM
+    price for it does not survive by being reversed.
+    """
+    timed = pl.col("to_station").str.ends_with(ALIGHT_SUFFIX)
+    base_to = pl.col("to_station").str.replace(f"{ALIGHT_SUFFIX}$", "")
+    pairs = (edges.with_columns(timed.alias("_t"),
+                                pl.min_horizontal("from_station", base_to).alias("a"),
+                                pl.max_horizontal("from_station", base_to).alias("b"))
+                  .filter(pl.col("a") != pl.col("b"))
+                  .group_by("a", "b", "_t").agg(pl.col("minutes").min()))
+    covered = pairs.filter(pl.col("_t")).select("a", "b")
+    pairs = pl.concat([pairs.filter(pl.col("_t")),
+                       pairs.filter(~pl.col("_t")).join(covered, on=["a", "b"], how="anti")])
+    suffix = pl.when(pl.col("_t")).then(pl.lit(ALIGHT_SUFFIX)).otherwise(pl.lit(""))
+    return pl.concat([
+        pairs.select(pl.col("a").alias("from_station"),
+                     pl.concat_str("b", suffix).alias("to_station"), "minutes"),
+        pairs.select(pl.col("b").alias("from_station"),
+                     pl.concat_str("a", suffix).alias("to_station"), "minutes")])

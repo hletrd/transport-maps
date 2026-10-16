@@ -141,7 +141,7 @@ def _line_between(routes: pl.DataFrame, cal) -> dict[tuple[str, str], tuple[int,
     opposite-direction service is a documented fallback for the 27,359 -- where
     it is the best available answer rather than a wrong one.
     """
-    from transport_maps.graph.rail import priced_legs
+    from transport_maps.graph.rail import priced_legs, reverse_ride
 
     # A tie is an equality between floats produced by the same arithmetic on
     # the same inputs, so it is exact -- but rounding keeps that true when two
@@ -174,7 +174,7 @@ def _line_between(routes: pl.DataFrame, cal) -> dict[tuple[str, str], tuple[int,
         if a == b:
             continue
         route_id, minutes = int(route_id), round(float(m), quant)
-        for store, key in ((fwd, (a, b)), (rev, (b, a))):
+        for store, key in ((fwd, (a, b)), (rev, reverse_ride(a, b))):
             best = store.get(key)
             if best is None or minutes < best[0]:
                 store[key] = (minutes, [route_id])

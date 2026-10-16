@@ -375,26 +375,18 @@ def _span_edges(idx: NodeIndex, rules=None) -> tuple[np.ndarray, np.ndarray, np.
 def _rail_edges(idx: NodeIndex, routes, cal, rules=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Station-to-station rides, plus the cell edges that board and alight.
 
-    Rides are symmetrised. OSM usually models the two directions of a service
-    as separate relations, but not always, and a line present in only one
-    direction would otherwise be a one-way railway. Where both directions do
-    exist the pair is collapsed to the faster of the two, which also keeps the
-    edge list free of the duplicates `build_graph` refuses.
+    Rides are symmetrised (`rail.two_way`): where both directions exist the
+    pair is collapsed to the faster of the two, which also keeps the edge list
+    free of the duplicates `build_graph` refuses.
     """
-    e = rail.ride_edges(routes, cal)
     known = set(idx.stations)
-    e = e.filter(pl.col("from_station").is_in(known) & pl.col("to_station").is_in(known))
-
-    lo = pl.min_horizontal("from_station", "to_station")
-    hi = pl.max_horizontal("from_station", "to_station")
-    undirected = (e.with_columns(lo.alias("a"), hi.alias("b"))
-                   .group_by("a", "b").agg(pl.col("minutes").min())
-                   .filter(pl.col("a") != pl.col("b")))
+    rides = (rail.two_way(rail.ride_edges(routes, cal))
+                 .filter(pl.col("from_station").is_in(known) & pl.col("to_station").is_in(known)))
 
     country, zone, crossing, is_closed = rules or _border_rules(idx)
     a_l, b_l, m_l = [], [], []
     cut = 0
-    for sa, sb, mins in zip(undirected["a"], undirected["b"], undirected["minutes"]):
+    for sa, sb, mins in zip(rides["from_station"], rides["to_station"], rides["minutes"]):
         ca, cb = idx.station_cell_index(sa), idx.station_cell_index(sb)
         if is_closed(country[ca], country[cb]):
             cut += 1
@@ -403,7 +395,7 @@ def _rail_edges(idx: NodeIndex, routes, cal, rules=None) -> tuple[np.ndarray, np
             mins = float(mins) + crossing
         a_l.append(idx.station_index(sa)); b_l.append(idx.station_index(sb)); m_l.append(float(mins))
     if cut:
-        logger.info("%d rail segment(s) cut at closed land borders", cut)
+        logger.info("%d rail ride(s) cut at closed land borders, each direction counted", cut)
     a = np.array(a_l, dtype=np.int64); b = np.array(b_l, dtype=np.int64); m = np.array(m_l, dtype=np.float64)
 
     # Boarding is charged on the way IN to the network and alighting on the way
@@ -411,9 +403,9 @@ def _rail_edges(idx: NodeIndex, routes, cal, rules=None) -> tuple[np.ndarray, np
     s = np.array([idx.station_index(x) for x in idx.stations], dtype=np.int64)
     c = np.array([idx.station_cell_index(x) for x in idx.stations], dtype=np.int64)
 
-    rows = np.concatenate([a, b, c, s])
-    cols = np.concatenate([b, a, s, c])
-    data = np.concatenate([m, m,
+    rows = np.concatenate([a, c, s])
+    cols = np.concatenate([b, s, c])
+    data = np.concatenate([m,
                            np.full(s.size, cal.boarding_min, dtype=float),
                            np.full(s.size, cal.alighting_min, dtype=float)])
     return rows, cols, data
