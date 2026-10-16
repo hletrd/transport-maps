@@ -288,3 +288,13 @@ Open after rebuild 33:
   has no limited-stop ICE; needs a timetable source (DELFI GTFS).
 - KTX ~15% fast (a 5-stop relation), London->Manchester rail slow, city-centre
   airport runs ~30% fast, Lagos->Ibadan +12%, Mexico City->Puebla -12%.
+
+## Rebuild 34 scope (owner, 2026-10-16: "go on fix all")
+
+Three worktree forks, ~64 threads on h200 between them:
+- zones: split base cells whose res-7 children span two immigration zones
+  (or another general rule) so a bridge like the HZMB pays one crossing;
+  legs that describe the headline's journey when the totals differ;
+- rail: open timetable feeds (GTFS, licences checked) where OSM lacks the
+  service or the speed -- Berlin->Hamburg, London->Manchester, KTX, Sanyo;
+- access: city-centre airport runs ~30% fast (London->LHR 35 vs 51).
