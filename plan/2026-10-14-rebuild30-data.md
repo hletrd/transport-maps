@@ -339,3 +339,18 @@ Three worktree forks, ~64 threads on h200 between them:
   derived from Google Maps Platform data, which may not fit its terms.
 - Rebuild 34 started from ad73f52 (64 workers) without that table; both
   GTFS feeds fetched by the inputs check.
+
+## Rebuild 34 shipped (2026-10-17)
+
+2f990555-20261016T083038Z from ad73f52, 64 workers; all four maps exit 0,
+check_variants 0 faster. Solver, data and page deployed; browser_verify
+passed first time (opening view 2 s, console 0). Live: Hong Kong->Macau
+1 h 56 (real 1 h 57; legs now 1 h 56 too), Berlin->Hamburg 2 h 20 via ICE
+28 (~2 h 17), Seoul->Busan 2 h 59 via KTX-청룡 (~2 h 55-3 h), hover band =
+drawn band 155/156 (zoom 9, Seoul). Other pairs moved 2-4 min slower (the
+core slowdown and 11.0 end minutes).
+
+Still open: the per-airport access table (owner's call on Google terms);
+London->Manchester rail (National Rail needs an account); Shin-Osaka->
+Hiroshima (no open JR West timetable); city-centre airport runs ~25-35%
+fast; Egypt<->Saudi across the Gulf of Aqaba (land in the 1:10m mask).
