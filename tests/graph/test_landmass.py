@@ -730,3 +730,122 @@ def test_a_ferry_under_the_length_floor_is_kept_where_it_is_the_only_way_across(
     r, _, _ = build._ferry_edges(_index([A, B]), links, cal, dropped_out=dropped, rules=rules)
     assert len(r) == 0 and dropped == {"outside length window": 1}, \
         "between joined neighbours the floor still drops it"
+
+
+# ---- Water cells: no road across a gulf both of whose shores are one landmass --
+
+def _gulf(gap_w, gap_e, linked=(), cut_east=False, landfalls=()):
+    """A's seven-cell patch, every cell split, over a north-south channel of
+    water with land either side -- both shores ONE landmass, as the Gulf of
+    Aqaba's are, so `severed_pairs` (which compares parts) sees nothing to cut.
+    Returns the hex adjacency left once `water_pairs` is applied."""
+    la, lo = h3.cell_to_latlng(A)
+    polygons = [shapely.box(lo - 1.0, la - 1.0, lo - gap_w, la + 1.0),
+                shapely.box(lo + gap_e, la - 1.0, lo + 1.0, la + 1.0)]
+    bases = [A, *RING]
+    cells = [k for b in bases for k in h3.cell_to_children(b, config.FINE_RES)]
+    pos = {c: i for i, c in enumerate(cells)}
+    water = landmass.water_cells(bases, polygons)
+    east = {c for c in cells if polygons[1].intersects(
+        shapely.Polygon([(x, y) for y, x in h3.cell_to_boundary(c)]))}
+    # The east shore as an island `severed_pairs` already cut every water cell from.
+    before = frozenset((pos[w], pos[n]) for w in water for n in h3.grid_ring(w, 1)
+                       if n in east) if cut_east else frozenset()
+    before = before | {(b, a) for a, b in before}
+    cut = landmass.water_pairs(water, pos, set(linked), polygons, before,
+                               frozenset(pos[c] for c in landfalls)) | before
+    adj = {c: {n for n in h3.grid_ring(c, 1) if n in pos and (pos[c], pos[n]) not in cut}
+           for c in cells}
+    shore = {c: next((i for i, p in enumerate(polygons)
+                      if p.intersects(shapely.Polygon([(x, y) for y, x in h3.cell_to_boundary(c)]))),
+                     None) for c in cells}
+    return adj, water, shore, pos, cut
+
+
+def _reach(adj, start):
+    seen, todo = {start}, [start]
+    while todo:
+        for n in adj[todo.pop()]:
+            if n not in seen:
+                seen.add(n)
+                todo.append(n)
+    return seen
+
+
+def test_no_chain_of_water_cells_joins_two_shores_of_one_landmass():
+    """Rebuild 34: Taba -> Haql read 122 min, driven down the middle of the
+    Gulf of Aqaba over cells that touch no land at all.
+
+    Mutations performed and reverted: water-water pairs left joined in
+    water_pairs (`if n in water: continue` in the final loop) -> red; no edge
+    kept from an offshore cell towards land -> red. (Every land neighbour kept
+    rather than the nearest shore's turns the next test red.)
+    """
+    adj, water, shore, _, _ = _gulf(0.08, 0.09)
+    offshore = [w for w in water if all(shore[n] is None for n in h3.grid_ring(w, 1) if n in shore)]
+    assert offshore, "fixture: the channel must hold cells out of sight of land"
+    west = next(c for c, s in shore.items() if s == 0)
+    east = {c for c, s in shore.items() if s == 1}
+    assert not _reach(adj, west) & east, "a road across the water"
+    for w in water:
+        assert any(shore[c] is not None for c in _reach(adj, w)), f"{w} cut off from both shores"
+
+
+def test_a_water_cell_touching_both_shores_keeps_only_the_nearer():
+    """A channel one cell wide: each water cell borders land on both sides."""
+    adj, water, shore, _, _ = _gulf(0.02, 0.03)
+    assert water
+    for w in water:
+        sides = {shore[n] for n in adj[w]} - {None}
+        assert len(sides) == 1, f"{w} joins shores {sides}, want only its nearer one"
+
+
+def test_a_water_cell_the_island_was_cut_from_keeps_the_main_shore():
+    """Rebuild 35's first try left 3,194 cells unreachable (Aland, Lofoten,
+    the Korean and Dalmatian islands): a water cell `severed_pairs` had cut
+    from an island kept only its edge to that island, the nearer shore.
+
+    Mutation performed and reverted: water_pairs ignoring `severed` -> red.
+    """
+    adj, water, shore, _, _ = _gulf(0.02, 0.025, cut_east=True)
+    for w in water:
+        assert any(shore[c] == 0 for c in _reach(adj, w)), f"{w} reaches no shore"
+
+
+def test_a_trunk_road_over_natural_earths_water_keeps_its_cells_joined():
+    """The road check of 2026-10-17: 408 motorway and trunk hops (349 ways)
+    ran between cells this rule had cut -- reclaimed coast in Jiangsu, the
+    Pingtan approach -- where OSM has road and Natural Earth has sea.
+
+    Mutation performed and reverted: road_hops joining no hop -> red.
+    """
+    la, lo = h3.cell_to_latlng(A)
+    _, water, _, pos, _ = _gulf(0.04, 0.05)
+    at = lambda y, x: pos.get(h3.latlng_to_cell(y, x, config.FINE_RES))  # noqa: E731
+    road = pl.DataFrame({"way_id": [1], "highway": ["trunk"], "lat": [[la, la]],
+                         "lon": [[lo - 0.1, lo + 0.1]]})
+    hops = landmass.road_hops(road, water, pos, at)
+    assert hops
+    adj, _, shore, _, _ = _gulf(0.04, 0.05, linked=hops)
+    west = at(la, lo - 0.08)
+    cells = list(pos)
+    assert any(shore[c] == 1 for c in _reach(adj, cells[west])), "the trunk road crosses"
+
+
+def test_a_bridge_ending_in_a_water_cell_keeps_it_joined_to_both_shores():
+    """The Ikema Ohashi's Miyako end falls in a cell Natural Earth calls sea;
+    tied to the nearer land, Ikema's, the bridge led nowhere.
+
+    Mutation performed and reverted: water_pairs ignoring `landfalls` -> red.
+    """
+    _, water, _, _, _ = _gulf(0.02, 0.03)
+    end = sorted(water)[0]
+    adj, _, shore, _, _ = _gulf(0.02, 0.03, landfalls={end})
+    assert {shore[n] for n in adj[end]} - {None} == {0, 1}
+
+
+def test_a_bridge_over_the_water_keeps_its_pairs():
+    _, _, _, pos, cut = _gulf(0.04, 0.05)
+    linked = {p for u, v in sorted(cut)[:6] for p in ((u, v), (v, u))}
+    _, _, _, _, cut2 = _gulf(0.04, 0.05, linked=linked)
+    assert not linked & cut2 and cut - linked <= cut2

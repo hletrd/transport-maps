@@ -318,12 +318,35 @@ def _severed(base_cells, split_set, cell_pos, cell_at) -> tuple[frozenset, dict,
         landmass.spanning_links(links, at, ground.SPEED_BY_ROAD_CLASS_KMH), linked,
         cells=list(cell_pos))
     base_parts = landmask.land_cell_landmasses(config.SOLVE_RES)
+    polygons = landmask._land_parts()
     water: set[str] = set()
     fine_parts = landmass.fine_cell_parts(base_cells, base_parts, split_set,
-                                          landmask._land_parts(), water=water)
+                                          polygons, water=water)
     landings = landmass.shore_landings(fine_parts, water, cell_pos)
     severed = landmass.severed_pairs(base_cells, base_parts, split_set, cell_pos, linked,
                                      fine_parts=fine_parts)
+    # Open water inside split base cells: no edge across it but a fixed
+    # link's, and each water cell tied to one shore (graph/landmass).
+    open_water = landmass.water_cells_cached(
+        [b for b, parts in zip(base_cells, base_parts) if parts and b in split_set], polygons)
+    # A motorway or trunk stepping between two cells says the "water" is a
+    # road's ground (reclaimed land, an embankment): those pairs stay too.
+    roads: set[tuple[int, int]] = set()
+    if open_water:
+        from transport_maps.sources import motorways
+        try:
+            roads = landmass.road_hops(motorways.ways()[0], open_water, cell_pos, at)
+        except FileNotFoundError as exc:
+            logger.warning("no motorway extracts (%s): water cells judged without them", exc)
+    landfalls = frozenset(at(lats[k], lons[k]) for lats, lons in
+                          zip(links["lat"].to_list(), links["lon"].to_list())
+                          if lats for k in (0, -1))
+    at_water = landmass.water_pairs(open_water, cell_pos, linked | roads, polygons, severed,
+                                    landfalls - {None})
+    logger.info("%d water-only fine cell(s); %d pair(s) at them severed, %d kept for "
+                "motorway and trunk", len(open_water), len(at_water - severed) // 2,
+                len(roads) // 2)
+    severed = severed | at_water
     logger.info("%d fixed link(s) and %d road crossing(s) join %d adjacent cell pair(s); "
                 "%d pair(s) severed across open water (%d fine cells of %d straddling base "
                 "cells judged one by one); %d road span(s) over water added",

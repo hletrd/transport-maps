@@ -481,3 +481,302 @@ def _continue_dead_ends(cell_of, bridge_degree, end_at, end_class, cell_index_at
         km = _haversine_km(*end_at[a], *end_at[b])
         speed = float(speed_kmh_by_class[_minor(end_class[a], end_class[b])])
         join(a, b, km, 60.0 * km / speed)
+
+
+# --- water-only cells ---------------------------------------------------------
+#
+# A split base cell is replaced by all seven of its FINE_RES children, and the
+# children of a coastal one include cells of open water: 146,962 of them on
+# rebuild 34's graph. They inherit the base cell's land parts, so
+# `severed_pairs` never cut them, and hex_edges joined them like any land cell.
+# Where both shores of a water body belong to ONE land part -- the Gulf of
+# Aqaba, whose Sinai and Hejaz coasts are both Afro-Eurasia -- a chain of them
+# ran down the middle of the sea: Taba to Haql read 122 min over a road through
+# the gulf, paying Egypt->Israel and Israel->Saudi Arabia on the way (the head
+# cells are labelled Israel, graph/ground.PORT_ZONES), where the land route
+# runs through Israel and Jordan and the sea route is a ferry. Same-part shores
+# are the rule, not the exception -- every gulf, fjord, lagoon and big lake of
+# a continent -- so this is judged by water, not by landmass.
+#
+# A cell is WATER when its hexagon touches no land polygon (`landmask`'s,
+# lakes already cut out: driving across Natural Earth's lakes is as wrong as
+# across the sea). Measured on a sample of 3,000: 6% hold land in OSM's
+# coastline outside a Natural Earth lake, and the largest of those are river
+# mouths OSM's sea polygons close off (the Amazon, the Tocantins, the
+# Yangtze) -- water again. A water cell
+#
+#   * keeps its edges to the land neighbours of its NEAREST local shore only:
+#     the land inside its neighbours' hexagons is split into its connected
+#     pieces, and a neighbour counts when its hexagon meets the piece nearest
+#     the water cell's centre -- so one water cell can no longer join the two
+#     shores of a strait two cells wide;
+#   * keeps no edge to another water cell, except, where it has no land
+#     neighbour at all, ONE edge towards land: to a water neighbour one step
+#     nearer (breadth-first from the cells that touch land). Each offshore
+#     cell, ferry landing or airport on Natural Earth's water is then still
+#     reached from exactly one shore, and no chain can carry a journey from
+#     one shore to another;
+#   * keeps every edge a fixed link or a road crossing passes along (`linked`):
+#     a bridge's deck runs over water cells, and that is the one road there;
+#   * keeps every edge an OSM motorway or trunk steps along (`road_hops`):
+#     where one runs, Natural Earth's coast is wrong, not the road -- reclaimed
+#     land on the Jiangsu coast, the approaches to the Pingtan bridge. A first
+#     run without this cut 408 such hops in 349 ways. Minor roads are not read
+#     (motorways.ways holds only these two classes), so a village street on
+#     reclaimed land can still be cut: the limit, stated;
+#   * keeps every land neighbour where a fixed link ENDS in it: the Ikema
+#     Ohashi (Miyako) lands in a cell Natural Earth calls sea, and tied to
+#     its nearest piece of land -- Ikema's -- the bridge led nowhere;
+#   * never leans on a pair `severed_pairs` already cut: a water cell between
+#     an island and the mainland stays with the shore that rule left it. A
+#     first run without this stranded 3,194 cells (Aland, Lofoten, the Korean
+#     and Dalmatian islands), each tied only to the island it was cut from.
+#
+# Measured on rebuild 34's graph (2026-10-17): 193,456 pairs cut, 0.47% of
+# its edges; no motorway or trunk hop among them. Taba -> Haql goes from 122
+# min over the gulf to 176 by Eilat and Aqaba; the bridges and ferries
+# (Kerch, Oresund, Messina, the Causeway, King Fahd) read as before. 93 cells
+# in 39 groups are no longer reached at all; bar two whose way in was a ferry
+# the re-pricing could not tell from the hex edge, they are islets with no
+# bridge, tunnel or ferry (Hart Island off the Bronx is one) -- the parts
+# rule's own outcome. 2.6% of cells are later from Seoul, Cairo or Istanbul
+# and 4.7% from Oslo, by 2-3 min at the median; the most are the far shores
+# of Lake Onega, the Amazon and Tocantins mouths, the Patagonian and
+# Norwegian fjords, and the coast of Guinea-Bissau.
+WATER_CELLS_VERSION = 1
+
+
+def water_cells_cached(bases: list[str], polygons: list) -> set[str]:
+    """`water_cells`, cached in data/build: keyed on the land universe (the
+    archives `landmask` reads and its own constants), the split base cells
+    and WATER_CELLS_VERSION -- the geometry pass costs minutes, and every
+    input that shapes it is in the key."""
+    import hashlib
+
+    from transport_maps.sources import landmask
+    from transport_maps.sources._utils import _atomic_write, _params_hash
+
+    if not bases:
+        return set()
+    split_hash = hashlib.sha256("".join(sorted(bases)).encode()).hexdigest()
+    stamp = _params_hash(landmask._landmasses_cache_path(config.SOLVE_RES, landmask._sources()).name,
+                         split_hash, config.FINE_RES, WATER_CELLS_VERSION)
+    out = config.BUILD / f"water_cells_r{config.FINE_RES}_{stamp}.parquet"
+    if out.exists():
+        return set(pl.read_parquet(out)["cell"].to_list())
+    found = water_cells(bases, polygons)
+    config.ensure_dirs()
+    _atomic_write(out, lambda tmp: pl.DataFrame({"cell": sorted(found)},
+                                                schema={"cell": pl.Utf8}).write_parquet(tmp))
+    return found
+
+
+def water_cells(bases: list[str], polygons: list) -> set[str]:
+    """The FINE_RES children of `bases` (split base cells) whose hexagon
+    touches no polygon of `polygons` (the land parts).
+
+    The tree holds the hexagons and the polygons are the queries: shapely
+    prepares the query geometry, so each continent is prepared once rather
+    than tested whole against every hexagon."""
+    import numpy as np
+    import shapely
+
+    def hexagons(cells: list[str]):
+        # One by one: a boundary has 6 vertices, 5 at a pentagon and up to
+        # 10 where it crosses an icosahedron edge, so no single array holds them.
+        return np.array([shapely.Polygon([(lo, la) for la, lo in h3.cell_to_boundary(c)])
+                         for c in cells], dtype=object)
+
+    _part, inside = shapely.STRtree(hexagons(bases)).query(polygons, predicate="contains")
+    inland = set(inside.tolist())
+    coastal = [b for i, b in enumerate(bases) if i not in inland]
+    kids = [k for b in coastal for k in h3.cell_to_children(b, config.FINE_RES)]
+    if not kids:
+        return set()
+    _part, touched = shapely.STRtree(hexagons(kids)).query(polygons, predicate="intersects")
+    land = set(touched.tolist())
+    return {k for i, k in enumerate(kids) if i not in land}
+
+
+def _graph_neighbours(cell: str, cell_pos: dict[str, int]) -> list[str]:
+    """The graph cells hex_edges joins `cell` (a FINE_RES cell) to: each ring
+    neighbour that is a graph cell, else its unsplit base cell."""
+    out = []
+    for n in h3.grid_ring(cell, 1):
+        if n in cell_pos:
+            out.append(n)
+        else:
+            p = h3.cell_to_parent(n, config.SOLVE_RES)
+            if p in cell_pos and p not in out:
+                out.append(p)
+    return out
+
+
+def _tiles(polygons: list, max_coords: int = 512):
+    """`polygons` cut into pieces of at most `max_coords` vertices, halving
+    the longer side of the box each time: one continent intersected against
+    each of a hundred thousand small areas would be read whole every time."""
+    import numpy as np
+    import shapely
+
+    out, stack = [], [(g, g.bounds) for g in polygons]
+    while stack:
+        g, (x0, y0, x1, y1) = stack.pop()
+        if shapely.get_num_coordinates(g) <= max_coords or max(x1 - x0, y1 - y0) < 1e-3:
+            out.append(g)
+            continue
+        if x1 - x0 >= y1 - y0:
+            xm = (x0 + x1) / 2
+            halves = [(x0, y0, xm, y1), (xm, y0, x1, y1)]
+        else:
+            ym = (y0 + y1) / 2
+            halves = [(x0, y0, x1, ym), (x0, ym, x1, y1)]
+        for box in halves:
+            piece = shapely.intersection(g, shapely.box(*box))
+            if not piece.is_empty and piece.area > 0:
+                stack.append((piece, box))
+    return np.array(out, dtype=object)
+
+
+def road_hops(ways: pl.DataFrame, water: set[str], cell_pos: dict[str, int],
+              cell_index_at: Callable[[float, float], int | None]) -> set[tuple[int, int]]:
+    """Ordered (u, v) graph-cell pairs a way of `ways` (lat/lon lists, as
+    `motorways.ways` gives) steps directly between, at least one of them a
+    `water` cell. A motorway or trunk is there, so the cell is not open water
+    whatever Natural Earth's coast says: reclaimed land (Jiangsu, Fujian), a
+    causeway's embankment, a bridge's approach tagged as plain road. Sampled
+    as `motorways.motorway_mask` samples them; only the points near a water
+    cell are looked up."""
+    from transport_maps.sources import motorways
+
+    if not water or ways.is_empty():
+        return set()
+    lens = ways["lat"].list.len().to_numpy()
+    starts = np.r_[0, np.cumsum(lens)[:-1]].astype(np.int64)
+    lat = ways["lat"].explode().to_numpy()
+    lon = ways["lon"].explode().to_numpy()
+    # Points in walking order: densify's interior points sort by node index
+    # plus fraction, each segment's last node by its own index.
+    ends = np.r_[starts[1:], len(lat)]
+    seg = np.ones(len(lat), dtype=bool)
+    seg[ends - 1] = False
+    i = np.flatnonzero(seg)
+    i = i[np.abs(lon[i + 1] - lon[i]) < 180.0]
+    dy = (lat[i + 1] - lat[i]) * 111.0
+    dx = (lon[i + 1] - lon[i]) * 111.0 * np.cos(np.radians(0.5 * (lat[i] + lat[i + 1])))
+    n = np.maximum(1, np.ceil(np.hypot(dx, dy) / motorways.DENSIFY_KM).astype(np.int64))
+    which = np.repeat(np.arange(len(i)), n)
+    t = (np.arange(len(which)) - np.repeat(np.cumsum(n) - n, n)) / n[which]
+    a = i[which]
+    plat = np.r_[lat[a] + t * (lat[a + 1] - lat[a]), lat[i + 1]]
+    plon = np.r_[lon[a] + t * (lon[a + 1] - lon[a]), lon[i + 1]]
+    order_key = np.r_[a + t, (i + 1).astype(float)]
+    way_of = np.repeat(np.arange(len(starts)), lens)[np.r_[a, i + 1]]
+    # The 0.1-degree bins around each water cell (a res-7 cell is ~0.03).
+    bins = set()
+    for w in water:
+        la, lo = h3.cell_to_latlng(w)
+        r, c = math.floor(la * 10), math.floor(lo * 10)
+        bins.update((r + dr, c + dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1))
+    near = np.fromiter(((r, c) in bins for r, c in zip(np.floor(plat * 10).astype(np.int64).tolist(),
+                                                       np.floor(plon * 10).astype(np.int64).tolist())),
+                       dtype=bool, count=len(plat))
+    # Keep a near point's way neighbours too, so the hop into the area counts.
+    order = np.argsort(order_key, kind="stable")
+    near_o = near[order]
+    near_o = near_o | np.r_[near_o[1:], False] | np.r_[False, near_o[:-1]]
+    ranks = np.flatnonzero(near_o)
+    water_pos = {cell_pos[w] for w in water if w in cell_pos}
+    pairs: set[tuple[int, int]] = set()
+    prev, prev_rank, prev_way = None, -2, -1
+    for r in ranks.tolist():
+        k = order[r]
+        here = cell_index_at(float(plat[k]), float(plon[k]))
+        if (here is not None and prev is not None and here != prev and r == prev_rank + 1
+                and way_of[k] == prev_way and (here in water_pos or prev in water_pos)):
+            pairs.add((prev, here))
+            pairs.add((here, prev))
+        prev, prev_rank, prev_way = here, r, way_of[k]
+    return pairs
+
+
+def water_pairs(water: set[str], cell_pos: dict[str, int], linked: set[tuple[int, int]],
+                polygons: list, severed: frozenset = frozenset(),
+                landfalls: frozenset = frozenset()) -> frozenset[tuple[int, int]]:
+    """Ordered (u, v) graph-cell pairs at a water cell that hex_edges must not
+    join (see the block comment above). `severed` holds the pairs already cut
+    (`severed_pairs`): a water cell between an island and the main shore is
+    tied to the shore that rule left it, never to the one it cut.
+    `landfalls` are the graph positions of cells a fixed link ends in: a
+    bridge ends on land, so where its end falls in a water cell the coast is
+    wrong there and the cell keeps every land neighbour."""
+    import shapely
+
+    tiles = _tiles(polygons)
+    tree = shapely.STRtree(tiles)
+    water = {w for w in water if w in cell_pos}
+    keep: set[frozenset] = set()
+    land_nb: dict[str, list[str]] = {}
+    nbrs: dict[str, list[str]] = {}
+    for w in water:
+        nb = [n for n in _graph_neighbours(w, cell_pos)
+              if (cell_pos[w], cell_pos[n]) not in severed]
+        nbrs[w] = nb
+        land_nb[w] = [n for n in nb if n not in water]
+
+    def hexagon(c: str):
+        return shapely.Polygon([(lo, la) for la, lo in h3.cell_to_boundary(c)])
+
+    for w, lands in land_nb.items():
+        if cell_pos[w] in landfalls:
+            keep.update(frozenset((w, n)) for n in lands)
+            continue
+        if len(lands) == 1:
+            keep.add(frozenset((w, lands[0])))
+            continue
+        if not lands:
+            continue
+        hexes = {n: hexagon(n) for n in lands}
+        if any(hx.bounds[2] - hx.bounds[0] > 180 for hx in hexes.values()):
+            # Across the antimeridian a hexagon in plain lon/lat wraps the
+            # globe the long way; the few there (Fiji, Chukotka) keep every
+            # land neighbour, as before.
+            keep.update(frozenset((w, n)) for n in lands)
+            continue
+        area = shapely.union_all(list(hexes.values()))
+        idx = tree.query(area, predicate="intersects")
+        land = shapely.union_all(shapely.intersection(tiles[idx], area)) if len(idx) else None
+        pieces = [] if land is None or land.is_empty else \
+            [g for g in shapely.get_parts(land) if g.area > 0]
+        if not pieces:
+            keep.update(frozenset((w, n)) for n in lands)
+            continue
+        centre = shapely.Point(h3.cell_to_latlng(w)[::-1])
+        near = min(pieces, key=lambda g: g.distance(centre))
+        for n, hx in hexes.items():
+            if hx.intersects(near) and shapely.intersection(hx, near).area > 0:
+                keep.add(frozenset((w, n)))
+
+    # Offshore water: one edge each, towards land, breadth-first.
+    level = {w for w, lands in land_nb.items() if lands}
+    seen = set(level)
+    while level:
+        nxt = set()
+        for w in level:
+            for n in nbrs[w]:
+                if n in water and n not in seen:
+                    keep.add(frozenset((n, w)))
+                    seen.add(n)
+                    nxt.add(n)
+        level = nxt
+
+    out: set[tuple[int, int]] = set()
+    for w in water:
+        u = cell_pos[w]
+        for n in nbrs[w]:
+            v = cell_pos[n]
+            if frozenset((w, n)) in keep or (u, v) in linked or (v, u) in linked:
+                continue
+            out.add((u, v))
+            out.add((v, u))
+    return frozenset(out)
