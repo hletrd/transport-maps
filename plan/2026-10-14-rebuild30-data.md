@@ -371,3 +371,11 @@ stays on OSM (no National Rail account). Two forks:
   and the airport stratum did not slow. Not shipped. The sample shows no
   centre-run bias (0.96-1.05 obs/pred); London/Paris/NYC's 25-35% are
   specific to those check points. Patch kept in the session scratchpad.
+- straits (58d070a -> 3195a72): a split coastal cell's open-sea children took
+  the base cell's landmass, so chains of them drove down gulfs where both
+  shores share a landmass (Sinai-Hejaz). Water cells now keep edges only to
+  their nearest shore; fixed links, road crossings and OSM motorway/trunk
+  steps are kept. 193,456 cell pairs cut (0.47% of edges); no motorway or
+  trunk way crosses a cut. Taba->Haql 122 -> 176 (via Eilat and Aqaba);
+  Bosporus, Messina, Kerch, Oresund, Johor unchanged. ~3 min more build.
+- Rebuild 35 started from 3195a72.
