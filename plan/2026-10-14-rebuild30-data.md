@@ -354,3 +354,14 @@ Still open: the per-airport access table (owner's call on Google terms);
 London->Manchester rail (National Rail needs an account); Shin-Osaka->
 Hiroshima (no open JR West timetable); city-centre airport runs ~25-35%
 fast; Egypt<->Saudi across the Gulf of Aqaba (land in the 1:10m mask).
+
+## Rebuild 35 scope (owner, 2026-10-17: "gogo fix all")
+
+Owner's decisions: the per-airport access table derived from Google Routes
+is NOT shipped (Google Maps Platform terms; branch deleted); Britain's rail
+stays on OSM (no National Rail account). Two forks:
+- access: city-centre airport runs from open data only (OSM road circuity,
+  street network), Google only as the fit reference;
+- straits: sever ground edges across water OSM shows as sea where the 1:10m
+  mask closes a narrow gulf or strait (Gulf of Aqaba first), unless a fixed
+  link or ferry serves it.
