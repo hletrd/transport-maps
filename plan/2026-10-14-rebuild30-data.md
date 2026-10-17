@@ -379,3 +379,15 @@ stays on OSM (no National Rail account). Two forks:
   trunk way crosses a cut. Taba->Haql 122 -> 176 (via Eilat and Aqaba);
   Bosporus, Messina, Kerch, Oresund, Johor unchanged. ~3 min more build.
 - Rebuild 35 started from 3195a72.
+
+## Rebuild 35 discarded, rebuild 36 (2026-10-18)
+
+Rebuild 35 finished (all four maps exit 0) but check_variants failed: every
+avoid-a-mode map read faster than the full map somewhere (no-ferry 217,839
+reading cells, no-rail 267,423, no-air 1,384; worst 114 min at Samarkand).
+Cause: landmass.water_pairs kept an offshore water cell's edge towards the
+first neighbour a breadth-first walk reached it from, iterating a SET of cell
+strings -- so each build process, with its own PYTHONHASHSEED, kept
+different edges (the four logs severed 193,405-193,416 pairs). Not deployed.
+Fixed by walking in sorted order, with a test under four hash seeds;
+rebuild 36 started from it.
