@@ -365,3 +365,9 @@ stays on OSM (no National Rail account). Two forks:
 - straits: sever ground edges across water OSM shows as sea where the 1:10m
   mask closes a narrow gulf or strait (Gulf of Aqaba first), unless a fixed
   link or ferry serves it.
+- access (no commit): motorway speed only on the cell steps an OSM motorway
+  runs along (413,470 pairs), refit and re-planned: mean out-of-fold 0.1072
+  -> 0.1060, but +-0.005 over fold seeds and bootstrap (0.47 chance worse),
+  and the airport stratum did not slow. Not shipped. The sample shows no
+  centre-run bias (0.96-1.05 obs/pred); London/Paris/NYC's 25-35% are
+  specific to those check points. Patch kept in the session scratchpad.
