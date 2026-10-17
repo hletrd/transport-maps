@@ -758,17 +758,22 @@ def water_pairs(water: set[str], cell_pos: dict[str, int], linked: set[tuple[int
                 keep.add(frozenset((w, n)))
 
     # Offshore water: one edge each, towards land, breadth-first.
-    level = {w for w, lands in land_nb.items() if lands}
+    # In a fixed order: which of its water neighbours an offshore cell keeps
+    # is the first one this walk reaches it from, and walking a set took that
+    # order from the process's string hash seed. Rebuild 35's four maps, one
+    # process each, then kept different edges, and every avoid-a-mode map
+    # read faster than the full one in thousands of cells (2026-10-18).
+    level = sorted(w for w, lands in land_nb.items() if lands)
     seen = set(level)
     while level:
-        nxt = set()
+        nxt = []
         for w in level:
             for n in nbrs[w]:
                 if n in water and n not in seen:
                     keep.add(frozenset((n, w)))
                     seen.add(n)
-                    nxt.add(n)
-        level = nxt
+                    nxt.append(n)
+        level = sorted(nxt)
 
     out: set[tuple[int, int]] = set()
     for w in water:

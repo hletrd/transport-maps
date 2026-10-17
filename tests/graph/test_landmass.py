@@ -849,3 +849,23 @@ def test_a_bridge_over_the_water_keeps_its_pairs():
     linked = {p for u, v in sorted(cut)[:6] for p in ((u, v), (v, u))}
     _, _, _, _, cut2 = _gulf(0.04, 0.05, linked=linked)
     assert not linked & cut2 and cut - linked <= cut2
+
+
+def test_the_water_cells_kept_do_not_depend_on_the_hash_seed():
+    """Rebuild 35's four maps ran in four processes and kept different edges
+    from offshore water cells: the walk took its order from a set of cell
+    strings, i.e. from each process's PYTHONHASHSEED, and every avoid-a-mode
+    map then read faster than the full one in thousands of cells.
+
+    Mutation performed and reverted: walk `level` as a set again -> RED.
+    """
+    import subprocess
+    import sys
+
+    src = ("import tests.graph.test_landmass as t\n"
+           "_, _, _, _, cut = t._gulf(0.08, 0.09)\n"
+           "print(sorted(cut))\n")
+    outs = {subprocess.run([sys.executable, "-c", src], capture_output=True, text=True, check=True,
+                           cwd=config.ROOT, env={**__import__('os').environ, "PYTHONHASHSEED": seed}
+                           ).stdout for seed in ("1", "2", "3", "4")}
+    assert len(outs) == 1, "the severed pairs change with the hash seed"
