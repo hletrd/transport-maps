@@ -391,3 +391,17 @@ strings -- so each build process, with its own PYTHONHASHSEED, kept
 different edges (the four logs severed 193,405-193,416 pairs). Not deployed.
 Fixed by walking in sorted order, with a test under four hash seeds;
 rebuild 36 started from it.
+
+## Rebuild 36 shipped (2026-10-18)
+
+2a1950e9-20261017T232044Z from 53ead6f: the four maps severed the same
+193,412 water pairs, check_variants 0 faster cells. Solver, data and page
+deployed; browser_verify passed first time (opening view 1 s, console 0).
+Live: Hong Kong->Macau 1 h 58, Berlin->Hamburg 2 h 20 (ICE 28), Seoul->
+Busan 2 h 59 (KTX), Cairo->Taba 5 h 27 by CAI->AQJ (no road over the
+gulf); hover band = drawn band 155/156 at zoom 9. Of the 54 audit pairs
+only Hong Kong->Macau moved against rebuild 34 (1 h 56 -> 1 h 58).
+
+Left, by the owner's decisions or for want of open data: per-airport access
+(Google terms), British rail (National Rail account), JR West, city-centre
+airport runs (no bias in the sample; London/Paris/NYC specific).
