@@ -470,3 +470,16 @@ same two stations only, so a corridor whose OSM relation is priced too FAST
 through a run of stops stays too fast -- Shanghai -> Kunming 539 (G201: 575),
 Beijing -> Fuzhou 436 (G87: 471), Changchun -> Shanghai 516 (562). Rome ->
 Milan stays on OSM (no licensed feed); Britain stays on OSM (owner).
+
+### Rebuild 37 restarted on 2bb3e98 (2026-10-20 23:39)
+
+The full local suite had one red test, `tests/cli/test_worker_imports.py`,
+and it was red at 129e670 too: not the timetables. It was a real data error.
+`with_end_minutes` adds half of `[ground] end_min` (11.0) to every node and
+the other half to every cell, and the mode breakdown ran on the shifted
+minutes, so the arrival half went to whatever reached the cell -- every
+rail-reached cell said 5.5 min more rail than it rode (e225ac1). The solver's
+`railMin` had the same leak (2bb3e98, with a test that goes red on the old
+rule). The first start (18b7023, 23:01) had finished no origin; it was
+stopped and restarted on 2bb3e98 with the same service date. Renfe's feed
+was updated upstream in between, and all four builds read the new copy.
