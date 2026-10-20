@@ -287,7 +287,7 @@ def counts_from_dist(bundle_path: Path, dist: Path) -> tuple[int, int]:
 
 def journey_legs(path: list[int], minutes: np.ndarray, n_cells: int,
                  n_airports: int, n_stations: int = 0,
-                 layers: int = 1) -> list[dict[str, Any]]:
+                 layers: int = 1, *, end_min: float = 0.0) -> list[dict[str, Any]]:
     """The journey along `path` (node ids, departure first) as legs.
 
     Each node is classified by its range in the layout docs/contract.md
@@ -323,6 +323,11 @@ def journey_legs(path: list[int], minutes: np.ndarray, n_cells: int,
     Minutes are rounded at each node and a leg is the difference of its two
     ends, so the legs sum exactly to the rounded total and `railMin` never
     exceeds its leg.
+
+    `minutes` carries the door ends (`with_end_minutes`, `end_min`): they are
+    in a leg's `min`, which is door to door, but no train's, so `railMin` is
+    read off the minutes without them. Counted with them, the half added at
+    the destination cell was rail wherever a train reached it.
     """
     first_stn = n_cells + 2 * n_airports
     # A FORMAT-1 graph has stations to the end; a FORMAT-2 one ends them where
@@ -342,6 +347,11 @@ def journey_legs(path: list[int], minutes: np.ndarray, n_cells: int,
         return node >= first_stn and (end_stn is None or node < end_stn)
 
     at = [round(float(minutes[v])) for v in path]
+    # Each node's door shift, as with_end_minutes laid it: none at the
+    # departure, both halves at a cell, one half at any other node.
+    bare = [round(float(minutes[v]) - (0.0 if k == 0 else end_min if v < n_cells
+                                       else end_min / 2.0))
+            for k, v in enumerate(path)]
     legs: list[dict[str, Any]] = []
     for k in range(1, len(path)):
         u, v = path[k - 1], path[k]
@@ -352,7 +362,8 @@ def journey_legs(path: list[int], minutes: np.ndarray, n_cells: int,
         elif su and sv and su[0] == "arr" and sv[0] == "dep":
             legs.append({"kind": "connect", "at": su[1], "min": m})
         else:
-            rail = m if (station(u) or station(v)) else 0
+            rail = (min(m, max(0, bare[k] - bare[k - 1]))
+                    if (station(u) or station(v)) else 0)
             if legs and legs[-1]["kind"] == "surface":
                 legs[-1]["min"] += m
                 legs[-1]["railMin"] += rail
@@ -481,7 +492,8 @@ class GraphSolver:
         reachable = math.isfinite(t)
         legs = None
         if reachable and pred is not None and layout is not None:
-            legs = journey_legs(walk_back(pred, start[0], end[0]), dist, *layout)
+            legs = journey_legs(walk_back(pred, start[0], end[0]), dist, *layout,
+                                end_min=float(self.bundle.meta.get("endMinutes", 0.0)))
         lat, lon = self.bundle.centre(start[0])
         return ok_body(minutes=round(t) if reachable else None,
                        snapped_km=start[1], snapped_lat=lat, snapped_lon=lon, legs=legs)

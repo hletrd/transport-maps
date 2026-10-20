@@ -45,3 +45,18 @@ def test_the_service_answers_what_the_build_would_with_the_bundles_end_minutes(t
     want = bundle.with_end_minutes(raw, 0, len(cells), 12.0)[len(cells) - 1]
     assert got["minutes"] == round(want) == round(raw[len(cells) - 1] + 12.0)
     assert sum(leg["min"] for leg in got["legs"]) == got["minutes"]
+
+
+def test_the_door_ends_are_in_a_legs_minutes_but_not_its_rail():
+    """A cell, a station, a ride to the next station, a cell: 10 minutes to
+    the train, 60 on it, 10 off it -- 80 on edges that touch a station, which
+    is how .modes.bin counts rail -- and end_min 11 on top. The surface leg is
+    door to door, 91; its rail stays 80. Mutation performed and reverted:
+    count the shifted `m` as rail on station edges, as before -> red (91)."""
+    n_cells, n_air = 2, 1
+    st0, st1 = n_cells + 2 * n_air, n_cells + 2 * n_air + 1
+    raw = np.full(n_cells + 2 * n_air + 2, np.inf)
+    raw[[0, st0, st1, 1]] = [0.0, 10.0, 70.0, 80.0]
+    shifted = bundle.with_end_minutes(raw, 0, n_cells, 11.0)
+    legs = bundle.journey_legs([0, st0, st1, 1], shifted, n_cells, n_air, 2, end_min=11.0)
+    assert legs == [{"kind": "surface", "min": 91, "railMin": 80}]
