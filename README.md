@@ -124,7 +124,7 @@ from `dist/` must carry the same credits; `dist/index.json` ships them in its
 | [Fintraffic / digitraffic.fi (Finnish timetable)](https://www.digitraffic.fi/en/railway-traffic/) | CC BY 4.0 | scheduled journey times of VR Pendolino, InterCity and night trains |
 | [Rejseplanen (Danish timetable)](https://datavejviser-indtastning.digst.govcloud.dk/dataset/rejseplanen-gtfs) | CC BY 4.0 | scheduled journey times of DSB InterCity, IC Lyn and EuroCity trains |
 | [VIA Rail Canada (Canadian timetable)](https://www.viarail.ca/en/developer-resources) | Open Government Licence - Canada 2.0 | scheduled journey times of VIA Rail intercity and long-distance trains |
-| [Published timetables of JR East, JR Central, JR West, JR Kyushu and China Railway (12306)](https://timetables.jreast.co.jp/) | timetable facts, each cited to its operator's page | scheduled journey times of the fastest Shinkansen and Chinese high-speed trains between major stations |
+| [Published timetables of JR East, JR Central, JR West, JR Kyushu, China Railway (12306) and Amtrak](https://timetables.jreast.co.jp/) | timetable facts, each cited to its operator's page | scheduled journey times of the fastest Shinkansen, Chinese high-speed and Acela trains between major stations |
 | [adsb.lol](https://adsb.lol/) | ODbL 1.0 | observed flights behind the fitted cruise speed and climb/descent penalty |
 
 OpenStreetMap enters three ways: rail route relations and ferry ways

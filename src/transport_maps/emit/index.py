@@ -180,10 +180,10 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
     {
         # sources/rail_published.TRAINS: a handful of trains' calls, each row
         # citing the page it was read from. Times are facts; credited all the same.
-        "name": "Published timetables of JR East, JR Central, JR West, JR Kyushu and China Railway (12306)",
+        "name": "Published timetables of JR East, JR Central, JR West, JR Kyushu, China Railway (12306) and Amtrak",
         "licence": "timetable facts, each cited to its operator's page",
         "url": "https://timetables.jreast.co.jp/",
-        "usedFor": "scheduled journey times of the fastest Shinkansen and Chinese high-speed trains between major stations",
+        "usedFor": "scheduled journey times of the fastest Shinkansen, Chinese high-speed and Acela trains between major stations",
     },
     {
         "name": "adsb.lol",
