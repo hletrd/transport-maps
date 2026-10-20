@@ -405,3 +405,68 @@ only Hong Kong->Macau moved against rebuild 34 (1 h 56 -> 1 h 58).
 Left, by the owner's decisions or for want of open data: per-airport access
 (Google terms), British rail (National Rail account), JR West, city-centre
 airport runs (no bias in the sample; London/Paris/NYC specific).
+
+## Rebuild 37 scope (owner, 2026-10-20: every official timetable that is open)
+
+Feeds added to sources/gtfs_rail.FEEDS, each licence read on 2026-10-20 and
+none needing an account or key: SNCF (ODbL), Renfe (CC BY 4.0),
+opentransportdata.swiss (its terms of use: publish derived data, cite the
+source), ÖBB (CC BY 4.0), OVapi (CC0), NMBS/SNCB (CC BY 4.0, anonymous
+tier), Entur for Vy, SJ Nord and Go-Ahead (NLOD 2.0), Fintraffic (CC BY
+4.0), Rejseplanen (CC BY 4.0), VIA Rail (OGL-Canada 2.0). National feeds
+carry every regional train, so `select` takes the intercity services only.
+Left out for their terms: Amtrak's GTFS (its only statement is a FOIA answer
+allowing use "as long as the user has the intent to benefit Amtrak") and
+Trenitalia's (the NeTEx on Italy's NAP states no licence; the CC BY GTFS
+conversion licenses only the converter's work).
+
+Where no feed exists, sources/rail_published lists trains from the
+operators' own pages, each row citing its page: 17 Shinkansen trains (JR
+East and JR Kyushu timetable pages), 16 China Railway trains (12306), 9
+Acela trains (Amtrak's timetable PDF).
+
+Found while measuring, and fixed:
+- 370f494: OVapi times London's Eurostar calls in London's clock on some
+  trips and Amsterdam's on others (London -> Lille 21 min, London -> Paris
+  102); opentransportdata.swiss carries an SNCF TGV Paris -> Lyon in 110
+  min that SNCF's own export does not run.
+- 8fb89df: SBB's EC Florence -> Bologna (72 min) was the only timing of
+  that pair and erased OSM's 37-min Frecciarossa, so Rome -> Milan rode in
+  242 instead of 181. A feed now names its home country; a leg with
+  neither end there sits beside OSM's prices instead of replacing them.
+- 5e232a9: OVapi puts München Ost at (0, 0) (Nightjet legs of 5,500 km in
+  24 min) and DELFI times ICE 77 Emmerich -> Arnhem, 30 km, in 2 min (live
+  since rebuild 34). Calls at (0, 0) are skipped and legs over 320 km/h
+  point to point (a minute allowed) dropped; after it the fastest timed leg
+  of any feed is 310 km/h on a short hop, and p99.9 is under 252.
+
+Station-to-station rides (scripts/rail_rides.py; ride only, no boarding or
+alighting charge), rebuild 36 -> 37:
+
+| corridor | r36 | r37 | timetable |
+| --- | --- | --- | --- |
+| Shin-Osaka -> Hiroshima | 98.3 | 79.0 | Nozomi 64, 79 |
+| Tokyo -> Shin-Osaka | 146.6 | 141.0 | Nozomi 64, 141 |
+| Tokyo -> Sendai | 86.0 | 85.0 | Hayabusa 23 from Ueno, 85 |
+| Paris -> Lyon | 117.1 | 112.0 | SNCF 113 (an OSM leg at 112 survives beside it) |
+| Paris -> Marseille | 198.0 | 182.0 | SNCF |
+| Madrid -> Barcelona | 155.1 | 181.0 | Renfe's fastest in the feed is 182 (nonstop) |
+| Zurich -> Geneva | 179.1 | 170.0 | SBB |
+| Vienna -> Salzburg | 156.8 | 142.8 | ÖBB |
+| Vienna -> Budapest | 169.0 | 157.0 | ÖBB |
+| Oslo -> Bergen | 451.2 | 395.0 | Entur |
+| Copenhagen -> Aarhus | 186.9 | 153.0 | Rejseplanen |
+| New York -> Washington | 201.8 | 175.0 | Acela 2271, 175 |
+| Toronto -> Montreal | 355.9 | 296.0 | VIA |
+| Beijing -> Shanghai | 270.2 | 258.0 | G25, 258 |
+| Berlin -> Hamburg | 107.0 | 107.0 | unchanged |
+| Seoul -> Busan | 138.0 | 138.0 | unchanged |
+
+Madrid -> Barcelona is slower because Renfe's own timetable is: its fastest
+nonstop AVE in the feed takes 182 min, against OSM's tier price of 155.
+
+Not corrected, and why: a published row replaces OSM's price between the
+same two stations only, so a corridor whose OSM relation is priced too FAST
+through a run of stops stays too fast -- Shanghai -> Kunming 539 (G201: 575),
+Beijing -> Fuzhou 436 (G87: 471), Changchun -> Shanghai 516 (562). Rome ->
+Milan stays on OSM (no licensed feed); Britain stays on OSM (owner).
