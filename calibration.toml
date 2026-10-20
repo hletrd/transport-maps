@@ -426,11 +426,13 @@ track_speed_factor = 0.881
 # half, the mean speaks for part of the route only. The line-speed fits above
 # are on exactly the relations this admits.
 line_speed_min_cover = 0.5
-# TIMETABLES (rebuild 34): where an open GTFS feed times a train
-# (sources/gtfs_rail.FEEDS: German long-distance via DELFI/gtfs.de, Korail
-# intercity via KorailGTFS, both CC BY 4.0), a leg between two of its calls is
-# its scheduled departure-to-arrival minutes -- an observation, not a price --
-# and the OSM relations of that operator at the feed's tiers are dropped. No
+# TIMETABLES (rebuild 34; rebuild 37 for the rest): where an open GTFS feed
+# times a train (sources/gtfs_rail.FEEDS: Germany, Korea, France, Spain,
+# Switzerland, Austria, the Netherlands, Belgium, Norway, Finland, Denmark,
+# Canada) or an operator's own page does (sources/rail_published: Shinkansen,
+# China Railway, Acela), a leg between two of its calls is its scheduled
+# departure-to-arrival minutes -- an observation, not a price -- and the OSM
+# relations of a feed's operator at the feed's tiers are dropped. No
 # constant here moves for it: the tiers stay fitted on OSM `duration` tags and
 # price every train no feed covers.
 
