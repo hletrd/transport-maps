@@ -143,13 +143,20 @@ def meta_path(cache: pathlib.Path) -> pathlib.Path:
     return cache.with_name(cache.name + ".meta.json")
 
 
+# Who is asking. OVapi's usage policy (gtfs.ovapi.nl/README) asks every client
+# to say so, in exchange for serving without registration; the same string
+# as sources/routes.py and sources/wikidata.py send.
+USER_AGENT = "transport-maps/0.1 (open-data isochrone build; https://worldmap.atik.kr/)"
+
+
 def _stream(url: str, headers: dict[str, str], timeout: float):
     """The one place this module touches the network; tests replace it.
 
     Returns a context manager yielding a response with `status_code`,
     `headers`, `iter_bytes()` and `raise_for_status()` -- httpx's shape.
     """
-    return httpx.stream("GET", url, headers=headers, follow_redirects=True, timeout=timeout)
+    return httpx.stream("GET", url, headers={"User-Agent": USER_AGENT, **headers},
+                        follow_redirects=True, timeout=timeout)
 
 
 def _now() -> str:
