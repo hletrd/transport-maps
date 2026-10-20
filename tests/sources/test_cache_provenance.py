@@ -383,6 +383,7 @@ STAMPED = [
     (gtfs_rail, "FEEDS", [{"name": "x", "tier": "regional"}], _gtfs_path),
     (gtfs_rail, "RAIL_ROUTE_TYPES", {2}, _gtfs_path),
     (gtfs_rail, "GTFS_PARSER_VERSION", 999, _gtfs_path),
+    (gtfs_rail, "MAX_KMH", 400.0, _gtfs_path),
 ]
 
 
