@@ -394,6 +394,11 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     # for one point agree.
     from transport_maps.service.bundle import with_end_minutes
 
+    # The mode breakdown is read off the solve's own edges, before the shift:
+    # the door ends are no mode's minutes, and added after, the arrival half
+    # was charged to whatever mode reached the cell -- 5.5 minutes more rail
+    # on every cell a train reaches.
+    solved = minutes
     minutes = with_end_minutes(minutes, source, idx.n_cells, ground.END_MINUTES)
 
     # The variants are built without the zoom-7+ level: three quarters of
@@ -431,7 +436,7 @@ def _solve_one(origin: dict, idx, csr, speeds, shared: dict) -> str:
     rep_arr = hover.representative_array(shared["hover_groups"], minutes[: idx.n_cells])
     rep = {p: int(v) for p, v in enumerate(rep_arr) if v >= 0}
     last = itinerary.arrival_airport_per_node(idx, minutes, predecessors)
-    acc = modes.mode_minutes_per_node(idx, minutes, predecessors, cell_class=shared["cell_class"],
+    acc = modes.mode_minutes_per_node(idx, solved, predecessors, cell_class=shared["cell_class"],
                                       ferry_keys=shared.get("ferry_keys"))
 
     hover.write_hover(idx, minutes[: idx.n_cells], out / f"{slug}.bin", parents=parents, rep=rep)
