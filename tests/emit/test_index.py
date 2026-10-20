@@ -51,6 +51,17 @@ REQUIRED_ATTRIBUTION = {
     # sources/gtfs_rail.FEEDS: the timetables rail legs are timed from.
     "DELFI": "CC BY",
     "KorailGTFS": "CC BY",
+    "SNCF": "ODbL",
+    "Renfe": "CC BY",
+    "opentransportdata.swiss": "terms of use",
+    "ÖBB": "CC BY",
+    "OVapi": "CC0",
+    "NMBS/SNCB": "CC BY",
+    "Entur": "NLOD",
+    "digitraffic.fi": "CC BY",
+    "Rejseplanen": "CC BY",
+    "VIA Rail": "Open Government Licence",
+    "Published timetables": None,
     # The fitted cruise speed and climb/descent penalty are derived from their
     # data, so the ODbL attribution obligation applies to us too.
     "adsb.lol": "ODbL",
@@ -424,3 +435,16 @@ def test_the_index_carries_country_only_when_origins_toml_does(tmp_path):
     listed = json.loads(out.read_text())["origins"]
     assert listed[0]["country"] == "IN"
     assert "country" not in listed[1]
+
+
+def test_every_timetable_feed_is_credited_at_its_licence_page():
+    """A feed added to sources/gtfs_rail.FEEDS without a credit would ship its
+    timetable uncredited while every other check stays green.
+
+    Mutation performed and reverted: drop the Rejseplanen entry from
+    index.ATTRIBUTION -> RED (dk_rejseplanen uncredited)."""
+    from transport_maps.sources import gtfs_rail
+
+    urls = {entry["url"] for entry in index.ATTRIBUTION}
+    missing = [f["name"] for f in gtfs_rail.FEEDS if f["licence_url"] not in urls]
+    assert not missing, f"FEEDS not credited in index.ATTRIBUTION: {missing}"

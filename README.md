@@ -114,6 +114,17 @@ from `dist/` must carry the same credits; `dist/index.json` ships them in its
 | [HydroLAKES](https://www.hydrosheds.org/products/hydrolakes) | CC BY 4.0 | lake outlines drawn on the map (Messager et al. 2016) |
 | [DELFI e.V. (German timetable, via gtfs.de)](https://gtfs.de/en/feeds/de_fv/) | CC BY 4.0 | scheduled journey times of German long-distance trains (ICE, IC, EC) |
 | [KorailGTFS (Mikołaj Kuranowski)](https://mkuran.pl/gtfs/) | CC BY 4.0 | scheduled journey times of Korail intercity trains (KTX, ITX, Mugunghwa) |
+| [SNCF Voyageurs (French timetable, via transport.data.gouv.fr)](https://transport.data.gouv.fr/datasets/horaires-sncf) | ODbL 1.0 | scheduled journey times of TGV INOUI, OUIGO, Intercités, Lyria and ICE trains in France |
+| [Renfe Viajeros (Spanish timetable, data.renfe.com)](https://data.renfe.com/dataset/horarios-de-alta-velocidad-larga-distancia-y-media-distancia) | CC BY 4.0 | scheduled journey times of AVE, Avlo, Avant, Euromed, Alvia and Intercity trains |
+| [opentransportdata.swiss (Swiss timetable)](https://opentransportdata.swiss/en/terms-of-use/) | opentransportdata.swiss terms of use | scheduled journey times of Swiss intercity trains (IC, IR, EC, ICE, TGV) |
+| [ÖBB-Personenverkehr (Austrian timetable, data.oebb.at)](https://data.oebb.at/de/datensaetze~soll-fahrplan-gtfs~) | CC BY 4.0 | scheduled journey times of Railjet, Nightjet, EuroCity, InterCity and ICE trains in Austria |
+| [OVapi (Dutch timetable, gtfs.ovapi.nl)](https://openov.nl/) | CC0 1.0 | scheduled journey times of Dutch Intercity, Intercity direct and international trains |
+| [NMBS/SNCB (Belgian timetable, via the Belgian Mobility Open Data Portal)](https://data.belgianmobility.io/en/terms.html) | CC BY 4.0 | scheduled journey times of InterCity and EuroCity trains in Belgium |
+| [Entur (Norwegian timetable; contains data under the Norwegian licence for Open Government data, NLOD)](https://developer.entur.org/stops-and-timetable-data) | NLOD 2.0 | scheduled journey times of Vy, SJ Nord and Go-Ahead Norge long-distance trains |
+| [Fintraffic / digitraffic.fi (Finnish timetable)](https://www.digitraffic.fi/en/railway-traffic/) | CC BY 4.0 | scheduled journey times of VR Pendolino, InterCity and night trains |
+| [Rejseplanen (Danish timetable)](https://datavejviser-indtastning.digst.govcloud.dk/dataset/rejseplanen-gtfs) | CC BY 4.0 | scheduled journey times of DSB InterCity, IC Lyn and EuroCity trains |
+| [VIA Rail Canada (Canadian timetable)](https://www.viarail.ca/en/developer-resources) | Open Government Licence - Canada 2.0 | scheduled journey times of VIA Rail intercity and long-distance trains |
+| [Published timetables of JR East, JR Central, JR West, JR Kyushu and China Railway (12306)](https://timetables.jreast.co.jp/) | timetable facts, each cited to its operator's page | scheduled journey times of the fastest Shinkansen and Chinese high-speed trains between major stations |
 | [adsb.lol](https://adsb.lol/) | ODbL 1.0 | observed flights behind the fitted cruise speed and climb/descent penalty |
 
 OpenStreetMap enters three ways: rail route relations and ferry ways

@@ -142,6 +142,17 @@ drawn one by one, the page asks the solver for the child under the pointer.
 - HydroLAKES (CC BY 4.0) - lake outlines drawn on the map
 - DELFI e.V., via gtfs.de (CC BY 4.0) - scheduled journey times of German long-distance trains
 - KorailGTFS, Mikołaj Kuranowski (CC BY 4.0) - scheduled journey times of Korail intercity trains
+- SNCF Voyageurs (French timetable, via transport.data.gouv.fr) (ODbL 1.0) - scheduled journey times of TGV INOUI, OUIGO, Intercités, Lyria and ICE trains in France
+- Renfe Viajeros (Spanish timetable, data.renfe.com) (CC BY 4.0) - scheduled journey times of AVE, Avlo, Avant, Euromed, Alvia and Intercity trains
+- opentransportdata.swiss (Swiss timetable) (opentransportdata.swiss terms of use) - scheduled journey times of Swiss intercity trains (IC, IR, EC, ICE, TGV)
+- ÖBB-Personenverkehr (Austrian timetable, data.oebb.at) (CC BY 4.0) - scheduled journey times of Railjet, Nightjet, EuroCity, InterCity and ICE trains in Austria
+- OVapi (Dutch timetable, gtfs.ovapi.nl) (CC0 1.0) - scheduled journey times of Dutch Intercity, Intercity direct and international trains
+- NMBS/SNCB (Belgian timetable, via the Belgian Mobility Open Data Portal) (CC BY 4.0) - scheduled journey times of InterCity and EuroCity trains in Belgium
+- Entur (Norwegian timetable; contains data under the Norwegian licence for Open Government data, NLOD) (NLOD 2.0) - scheduled journey times of Vy, SJ Nord and Go-Ahead Norge long-distance trains
+- Fintraffic / digitraffic.fi (Finnish timetable) (CC BY 4.0) - scheduled journey times of VR Pendolino, InterCity and night trains
+- Rejseplanen (Danish timetable) (CC BY 4.0) - scheduled journey times of DSB InterCity, IC Lyn and EuroCity trains
+- VIA Rail Canada (Canadian timetable) (Open Government Licence - Canada 2.0) - scheduled journey times of VIA Rail intercity and long-distance trains
+- Published timetables of JR East, JR Central, JR West, JR Kyushu and China Railway (12306) (timetable facts, each cited to its operator's page) - scheduled journey times of the fastest Shinkansen and Chinese high-speed trains between major stations
 - adsb.lol (ODbL) - observed flights behind the fitted cruise speed and climb/descent penalty
 
 At runtime the page calls two external services: OpenStreetMap's Nominatim

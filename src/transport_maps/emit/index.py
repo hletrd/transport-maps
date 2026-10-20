@@ -114,6 +114,77 @@ ATTRIBUTION: tuple[dict[str, str], ...] = (
         "url": "https://mkuran.pl/gtfs/",
         "usedFor": "scheduled journey times of Korail intercity trains (KTX, ITX, Mugunghwa)",
     },
+    # The rest of sources/gtfs_rail.FEEDS, one entry per publisher; each url
+    # is its feed's `licence_url` (tests/emit/test_index.py holds them to it).
+    {
+        "name": "SNCF Voyageurs (French timetable, via transport.data.gouv.fr)",
+        "licence": "ODbL 1.0",
+        "url": "https://transport.data.gouv.fr/datasets/horaires-sncf",
+        "usedFor": "scheduled journey times of TGV INOUI, OUIGO, Intercités, Lyria and ICE trains in France",
+    },
+    {
+        "name": "Renfe Viajeros (Spanish timetable, data.renfe.com)",
+        "licence": "CC BY 4.0",
+        "url": "https://data.renfe.com/dataset/horarios-de-alta-velocidad-larga-distancia-y-media-distancia",
+        "usedFor": "scheduled journey times of AVE, Avlo, Avant, Euromed, Alvia and Intercity trains",
+    },
+    {
+        "name": "opentransportdata.swiss (Swiss timetable)",
+        "licence": "opentransportdata.swiss terms of use",
+        "url": "https://opentransportdata.swiss/en/terms-of-use/",
+        "usedFor": "scheduled journey times of Swiss intercity trains (IC, IR, EC, ICE, TGV)",
+    },
+    {
+        "name": "ÖBB-Personenverkehr (Austrian timetable, data.oebb.at)",
+        "licence": "CC BY 4.0",
+        "url": "https://data.oebb.at/de/datensaetze~soll-fahrplan-gtfs~",
+        "usedFor": "scheduled journey times of Railjet, Nightjet, EuroCity, InterCity and ICE trains in Austria",
+    },
+    {
+        "name": "OVapi (Dutch timetable, gtfs.ovapi.nl)",
+        "licence": "CC0 1.0",
+        "url": "https://openov.nl/",
+        "usedFor": "scheduled journey times of Dutch Intercity, Intercity direct and international trains",
+    },
+    {
+        "name": "NMBS/SNCB (Belgian timetable, via the Belgian Mobility Open Data Portal)",
+        "licence": "CC BY 4.0",
+        "url": "https://data.belgianmobility.io/en/terms.html",
+        "usedFor": "scheduled journey times of InterCity and EuroCity trains in Belgium",
+    },
+    {
+        # NLOD 2.0 asks for this wording.
+        "name": "Entur (Norwegian timetable; contains data under the Norwegian licence for Open Government data, NLOD)",
+        "licence": "NLOD 2.0",
+        "url": "https://developer.entur.org/stops-and-timetable-data",
+        "usedFor": "scheduled journey times of Vy, SJ Nord and Go-Ahead Norge long-distance trains",
+    },
+    {
+        "name": "Fintraffic / digitraffic.fi (Finnish timetable)",
+        "licence": "CC BY 4.0",
+        "url": "https://www.digitraffic.fi/en/railway-traffic/",
+        "usedFor": "scheduled journey times of VR Pendolino, InterCity and night trains",
+    },
+    {
+        "name": "Rejseplanen (Danish timetable)",
+        "licence": "CC BY 4.0",
+        "url": "https://datavejviser-indtastning.digst.govcloud.dk/dataset/rejseplanen-gtfs",
+        "usedFor": "scheduled journey times of DSB InterCity, IC Lyn and EuroCity trains",
+    },
+    {
+        "name": "VIA Rail Canada (Canadian timetable)",
+        "licence": "Open Government Licence - Canada 2.0",
+        "url": "https://www.viarail.ca/en/developer-resources",
+        "usedFor": "scheduled journey times of VIA Rail intercity and long-distance trains",
+    },
+    {
+        # sources/rail_published.TRAINS: a handful of trains' calls, each row
+        # citing the page it was read from. Times are facts; credited all the same.
+        "name": "Published timetables of JR East, JR Central, JR West, JR Kyushu and China Railway (12306)",
+        "licence": "timetable facts, each cited to its operator's page",
+        "url": "https://timetables.jreast.co.jp/",
+        "usedFor": "scheduled journey times of the fastest Shinkansen and Chinese high-speed trains between major stations",
+    },
     {
         "name": "adsb.lol",
         "licence": "ODbL 1.0",
