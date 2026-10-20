@@ -40,6 +40,29 @@ calls at both, which may be a few minutes slower than the fastest train in
 the whole timetable -- still a train that runs, where OSM's price was a
 guess.
 
+What a row can and cannot correct. It replaces OSM's price between the same
+two stations (`graph/rail.ride_edges`), so a corridor OSM prices too SLOW
+comes right: Beijing -> Shanghai rode in 270 min and now rides in G25's 258.
+But where OSM's relation reaches the two stations through a run of stops, the
+chain of its own legs still stands beside the row, and a corridor it prices
+too FAST stays too fast: measured on 2026-10-20, Shanghai -> Kunming 539
+(G201: 575), Beijing -> Fuzhou 436 (G87: 471), Changchun -> Shanghai 516
+(fastest direct: 562). Those need the relations' tier speeds measured
+against these rows, not more rows.
+
+Amtrak's GTFS download is not used (sources/gtfs_rail says why), but its
+own timetable for the Acela (content.amtrak.com/content/timetable/Acela.pdf,
+the 29-page timetable for 2026-10-20) states every train's calls. OSM's
+relations priced New York -> Washington at 202 min against the 175 the
+fastest Acela takes. The rows are the fewest of its 87 trains that together
+come within 1 min of the fastest time between every pair of Washington,
+Baltimore, Philadelphia, New York, New Haven, Providence and Boston (21
+pairs; 9 trains). The timetable prints one time per call -- the departure,
+and the arrival at the last -- so a call's arrival is its departure here: a
+ride ending at a station a train dwells at (New York, for trains running
+through) reads a few minutes long, and one of the trains ending there times
+that pair instead.
+
 Facts from the operators' own timetables only -- no aggregator, no journey
 planner -- and every number here can be checked on the page its row cites.
 """
@@ -76,6 +99,8 @@ CHECKED_JP = "2026-10-20 (the operator's timetable for that day)"
 # for the date checked, and the corridor's fastest is its leftTicket answer.
 CR_SOURCE = "https://kyfw.12306.cn/otn/queryTrainInfo/init"
 CHECKED_CN = "2026-10-20 (12306's timetable for 2026-10-22)"
+AMTRAK_SOURCE = "https://content.amtrak.com/content/timetable/Acela.pdf"
+CHECKED_US = "2026-10-20 (Amtrak's Acela timetable for that day)"
 
 TRAINS: tuple[PublishedTrain, ...] = (
     PublishedTrain("JR Central / JR West", "のぞみ 64号", "high_speed", (
@@ -250,6 +275,73 @@ TRAINS: tuple[PublishedTrain, ...] = (
         ("熊本", 32.790311, 130.688557, "09:02", "09:03"),
         ("鹿児島中央", 31.58365, 130.542218, "09:53", ""),
     ), "https://www.jrkyushu-timetable.jp/sp/2610/0008/00089601.html", CHECKED_JP),
+    # ---- Amtrak's Acela; the comment is the days the train runs.
+    PublishedTrain("Amtrak", "Acela 2112", "high_speed", (
+        ("Washington Union Station", 38.8973, -77.0063, "", "11:55"),
+        ("Baltimore Penn Station", 39.3073, -76.6157, "12:27", "12:27"),
+        ("Philadelphia 30th Street Station", 39.9556, -75.182, "13:33", "13:33"),
+        ("New York Penn Station", 40.7506, -73.9935, "14:53", ""),
+    ), AMTRAK_SOURCE, CHECKED_US),   # Mo-Fr
+    PublishedTrain("Amtrak", "Acela 2113", "high_speed", (
+        ("New York Penn Station", 40.7506, -73.9935, "", "10:00"),
+        ("Philadelphia 30th Street Station", 39.9556, -75.182, "11:10", "11:10"),
+        ("Baltimore Penn Station", 39.3073, -76.6157, "12:22", "12:22"),
+        ("Washington Union Station", 38.8973, -77.0063, "13:00", ""),
+    ), AMTRAK_SOURCE, CHECKED_US),   # Mo-Fr
+    PublishedTrain("Amtrak", "Acela 2167", "high_speed", (
+        ("Boston South Station", 42.3523, -71.0552, "", "13:00"),
+        ("Providence", 41.8296, -71.4134, "13:37", "13:37"),
+        ("New Haven Union Station", 41.2973, -72.9267, "15:16", "15:16"),
+        ("New York Penn Station", 40.7506, -73.9935, "17:00", "17:00"),
+        ("Philadelphia 30th Street Station", 39.9556, -75.182, "18:11", "18:11"),
+        ("Washington Union Station", 38.8973, -77.0063, "20:03", ""),
+    ), AMTRAK_SOURCE, CHECKED_US),   # Mo-Fr
+    PublishedTrain("Amtrak", "Acela 2193", "high_speed", (
+        ("Boston South Station", 42.3523, -71.0552, "", "18:05"),
+        ("Providence", 41.8296, -71.4134, "18:40", "18:40"),
+        ("New York Penn Station", 40.7506, -73.9935, "21:46", ""),
+    ), AMTRAK_SOURCE, CHECKED_US),   # Mo-Fr
+    PublishedTrain("Amtrak", "Acela 2250", "high_speed", (
+        ("Washington Union Station", 38.8973, -77.0063, "", "08:40"),
+        ("Baltimore Penn Station", 39.3073, -76.6157, "09:14", "09:14"),
+        ("Philadelphia 30th Street Station", 39.9556, -75.182, "10:23", "10:23"),
+        ("New York Penn Station", 40.7506, -73.9935, "11:58", "11:58"),
+        ("Providence", 41.8296, -71.4134, "14:59", "14:59"),
+        ("Boston South Station", 42.3523, -71.0552, "15:56", ""),
+    ), AMTRAK_SOURCE, CHECKED_US),   # SuSa
+    PublishedTrain("Amtrak", "Acela 2255", "high_speed", (
+        ("Boston South Station", 42.3523, -71.0552, "", "13:10"),
+        ("Providence", 41.8296, -71.4134, "13:44", "13:44"),
+        ("New Haven Union Station", 41.2973, -72.9267, "15:10", "15:10"),
+        ("New York Penn Station", 40.7506, -73.9935, "17:00", "17:00"),
+        ("Philadelphia 30th Street Station", 39.9556, -75.182, "18:13", "18:13"),
+        ("Baltimore Penn Station", 39.3073, -76.6157, "19:25", "19:25"),
+        ("Washington Union Station", 38.8973, -77.0063, "20:06", ""),
+    ), AMTRAK_SOURCE, CHECKED_US),   # SuSa
+    PublishedTrain("Amtrak", "Acela 2264", "high_speed", (
+        ("Washington Union Station", 38.8973, -77.0063, "", "17:55"),
+        ("Baltimore Penn Station", 39.3073, -76.6157, "18:29", "18:29"),
+        ("Philadelphia 30th Street Station", 39.9556, -75.182, "19:35", "19:35"),
+        ("New York Penn Station", 40.7506, -73.9935, "21:03", "21:03"),
+        ("New Haven Union Station", 41.2973, -72.9267, "22:39", "22:39"),
+        ("Providence", 41.8296, -71.4134, "00:06", "00:06"),
+        ("Boston South Station", 42.3523, -71.0552, "00:49", ""),
+    ), AMTRAK_SOURCE, CHECKED_US),   # Su
+    PublishedTrain("Amtrak", "Acela 2271", "high_speed", (
+        ("Boston South Station", 42.3523, -71.0552, "", "06:55"),
+        ("Providence", 41.8296, -71.4134, "07:31", "07:31"),
+        ("New Haven Union Station", 41.2973, -72.9267, "09:14", "09:14"),
+        ("New York Penn Station", 40.7506, -73.9935, "11:06", "11:06"),
+        ("Philadelphia 30th Street Station", 39.9556, -75.182, "12:21", "12:21"),
+        ("Baltimore Penn Station", 39.3073, -76.6157, "13:26", "13:26"),
+        ("Washington Union Station", 38.8973, -77.0063, "14:01", ""),
+    ), AMTRAK_SOURCE, CHECKED_US),   # Mo-Fr
+    PublishedTrain("Amtrak", "Acela 2293", "high_speed", (
+        ("Boston South Station", 42.3523, -71.0552, "", "18:15"),
+        ("Providence", 41.8296, -71.4134, "18:52", "18:52"),
+        ("New Haven Union Station", 41.2973, -72.9267, "20:32", "20:32"),
+        ("New York Penn Station", 40.7506, -73.9935, "22:06", ""),
+    ), AMTRAK_SOURCE, CHECKED_US),   # SuSa
     # ---- China Railway: each corridor's fastest direct train on 2026-10-22.
     # 北京南-上海虹桥: fastest of 54 trains, 258 min (17:00-21:18)
     PublishedTrain("China Railway", "G25", "high_speed", (
