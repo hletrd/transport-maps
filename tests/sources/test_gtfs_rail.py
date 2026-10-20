@@ -118,3 +118,76 @@ def test_rides_run_back_into_the_other_twin():
            for r in rail.two_way(edges).iter_rows(named=True)}
     assert got == {(a, b + x): 40.0, (b, a + x): 40.0, (b, c): 30.0, (c, b): 30.0}
     assert rail.reverse_ride(a, b + x) == (b, a + x)
+
+
+def _zip(path, files, folder=""):
+    with zipfile.ZipFile(path, "w") as z:
+        for name, text in files.items():
+            z.writestr(folder + name, text)
+    return path
+
+
+def _mixed_feed(tmp_path, folder=""):
+    """A national feed's shape: a TGV and a TER over the same stations, told
+    apart only by their stop ids (SNCF's export), the TGV calling once at a
+    stop stops.txt does not list (Amtrak's "OSM") and once with no time (VIA's
+    request stops)."""
+    stops = "stop_id,stop_name,stop_lat,stop_lon,parent_station\n"
+    for cat in ("TGV INOUI", "Train TER"):
+        stops += "".join(f"StopPoint:OCE{cat}-{k},{n},{lat},{lon},\n"
+                         for k, n, lat, lon in (("1", "Paris", 48.84, 2.37),
+                                                ("2", "Dijon", 47.32, 5.03),
+                                                ("3", "Lyon", 45.76, 4.86)))
+    files = {
+        "agency.txt": "agency_id,agency_name\n1187,SNCF VOYAGEURS\n",
+        "routes.txt": "route_id,agency_id,route_short_name,route_type\nr,1187,K7,2\n",
+        "stops.txt": stops,
+        "trips.txt": "trip_id,route_id\ntgv,r\nter,r\n",
+        "stop_times.txt": (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "tgv,07:00:00,07:00:00,StopPoint:OCETGV INOUI-1,1\n"
+            "tgv,08:30:00,08:31:00,OSM,2\n"
+            "tgv,,,StopPoint:OCETGV INOUI-2,3\n"
+            "tgv,09:00:00,09:00:00,StopPoint:OCETGV INOUI-3,4\n"
+            "ter,07:00:00,07:00:00,StopPoint:OCETrain TER-1,1\n"
+            "ter,09:00:00,09:05:00,StopPoint:OCETrain TER-2,2\n"
+            "ter,11:00:00,11:00:00,StopPoint:OCETrain TER-3,3\n"),
+    }
+    return _zip(tmp_path / f"mixed{len(folder)}.zip", files, folder)
+
+
+def test_a_feed_takes_only_the_trains_its_select_names(tmp_path):
+    """SNCF's feed carries every TER; `select` keeps the TGV at its tier, a
+    call at an unlisted stop or with no time is skipped, and a feed packed in
+    a folder (ÖBB's GTFS_Fahrplan_2026/) reads the same.
+
+    Mutations performed and reverted, each RED: `tier_of` ignoring `select`
+    (the TER is taken too); `_member` looking at the archive root only
+    (KeyError on the folder feed); not skipping the unlisted stop (KeyError);
+    not skipping the untimed call (ValueError).
+    """
+    feed = {"name": "x", "tier": "high_speed",
+            "select": (("stop_id", r"^StopPoint:OCETGV INOUI-", "high_speed"),
+                       ("stop_id", r"^StopPoint:OCEINTERCITES-", "long_distance"))}
+    for folder in ("", "GTFS_Fahrplan_2026/"):
+        (pat,) = gtfs_rail.patterns(_mixed_feed(tmp_path, folder), feed)
+        assert [s[1] for s in pat["stops"]] == ["Paris", "Lyon"]
+        assert pat["tier"] == "high_speed" and pat["minutes"] == {(0, 1): 120.0}
+    # Without `select`, every train at the feed's own tier.
+    pats = gtfs_rail.patterns(_mixed_feed(tmp_path), {"tier": "regional"})
+    assert len(pats) == 2 and {p["tier"] for p in pats} == {"regional"}
+
+
+def test_select_rules_are_ordered_and_a_none_tier_refuses():
+    """Mutation performed and reverted: return the LAST matching rule's tier
+    -> RED (RJX 162 reads None)."""
+    feed = {"tier": "long_distance",
+            "select": (("trip_short_name", r"^RJX ", "high_speed"),
+                       ("trip_short_name", r"^RJ", None),
+                       ("route_type", r"^10[23]$", "long_distance"))}
+    assert gtfs_rail.tier_of(feed, {"trip_short_name": "RJX 162"}) == "high_speed"
+    assert gtfs_rail.tier_of(feed, {"trip_short_name": "RJ 658", "route_type": "102"}) is None
+    assert gtfs_rail.tier_of(feed, {"trip_short_name": "IC 5", "route_type": "103"}) == \
+        "long_distance"
+    assert gtfs_rail.tier_of(feed, {"trip_short_name": "S 3", "route_type": "109"}) is None
+
