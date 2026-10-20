@@ -157,7 +157,11 @@ FEEDS: tuple[dict, ...] = (
         "tier": "long_distance",
         # GTFS extended types: 101 high speed, 102 long distance, 103
         # inter-regional; 106 (RE, R) and 109 (S-Bahn) stay OSM's.
-        "select": (("route_type", r"^101$", "high_speed"),
+        # SNCF's trains are its own feed's to time: this one's are a copy, and
+        # not an exact one (TGV 6123 Paris -> Lyon in 110 min, a train SNCF's
+        # export does not run; its fastest takes 113).
+        "select": (("agency", r"^Société Nationale des Chemins de fer Français$", None),
+                   ("route_type", r"^101$", "high_speed"),
                    ("route_type", r"^10[23]$", "long_distance")),
         "supersedes": r"^(SBB|BLS|SOB)\b",
         "supersedes_tiers": ("high_speed", "long_distance"),
@@ -191,6 +195,11 @@ FEEDS: tuple[dict, ...] = (
         "select": (("route_short_name", r"^(Intercity direct|ICE|Eurostar)", "high_speed"),
                    ("route_short_name", r"^(Intercity|Nightjet|GoVolta|European Sleeper)",
                     "long_distance")),
+        # GTFS times every call in the agency's zone, but this feed gives
+        # London's in London's own clock on some trips and Amsterdam's on
+        # others (St Pancras 12:04 and 13:04 both reach Lille at 13:26), so a
+        # call at a stop in another zone is not timed. OSM keeps the Eurostar.
+        "drop_other_zones": True,
         "supersedes": r"^Nederlandse Spoorwegen|NS International",
         "supersedes_tiers": ("high_speed", "long_distance"),
     },
@@ -307,7 +316,8 @@ SNAP_M = 600.0
 # 3: the alighting row marked `alight_only` (graph/rail.ALIGHT_SUFFIX).
 # 4: legs of no running time dropped.
 # 5: a tier per pattern (a feed's `select`), and the tier in the route id.
-GTFS_PARSER_VERSION = 5
+# 6: a feed's `drop_other_zones`.
+GTFS_PARSER_VERSION = 6
 
 # GTFS route_type values that are trains: 2 (rail) and the extended 100-117
 # (railway service). Buses a rail feed carries (replacement services) are not.
@@ -385,7 +395,8 @@ def patterns(path: pathlib.Path, feed: dict | None = None) -> list[dict]:
     with zipfile.ZipFile(path) as z:
         stops = {s["stop_id"]: s for s in _read(z, "stops.txt")}
         routes = {r["route_id"]: r for r in _read(z, "routes.txt")}
-        agency = {a.get("agency_id", ""): a["agency_name"] for a in _read(z, "agency.txt")}
+        agencies = _read(z, "agency.txt")
+        agency = {a.get("agency_id", ""): a["agency_name"] for a in agencies}
         if len(agency) == 1:
             agency[""] = next(iter(agency.values()))   # agency_id is optional then
         taken: dict[str, tuple[dict, dict, str | None]] = {}
@@ -418,6 +429,15 @@ def patterns(path: pathlib.Path, feed: dict | None = None) -> list[dict]:
         return (where["stop_id"], s["stop_name"], float(where["stop_lat"]),
                 float(where["stop_lon"]))
 
+    def zone(stop_id: str) -> str:
+        s = stops[stop_id]
+        return (s.get("stop_timezone")
+                or stops.get(s.get("parent_station") or "", {}).get("stop_timezone") or "")
+
+    home = {a.get("agency_timezone", "") for a in agencies}
+    abroad = ({sid for sid in stops if zone(sid) and zone(sid) not in home}
+              if (feed or {}).get("drop_other_zones") else set())
+
     out: dict[tuple, dict] = {}
     for trip_id, rows in calls.items():
         route, fields, tier = taken[trip_id]
@@ -428,10 +448,11 @@ def patterns(path: pathlib.Path, feed: dict | None = None) -> list[dict]:
                 continue
         seq, arr, dep = [], [], []
         for _q, stop_id, a_t, d_t in rows:
-            if stop_id not in stops or not (a_t or d_t):
-                # A call at a stop stops.txt lacks (Amtrak's "OSM"), or one
-                # with no time at all (VIA's request stops, which GTFS leaves
-                # to be interpolated): neither is a timed call.
+            if stop_id not in stops or stop_id in abroad or not (a_t or d_t):
+                # A call at a stop stops.txt lacks (Amtrak's "OSM"), one in
+                # a zone the feed's clock is not trusted for, or one with no
+                # time at all (VIA's request stops, which GTFS leaves to be
+                # interpolated): none is a timed call.
                 continue
             st = station(stop_id)
             a = _minutes(a_t or d_t)
@@ -463,6 +484,7 @@ def _cache_path(fingerprints) -> pathlib.Path:
     return config.CACHE / ("gtfs_rail-" + _params_hash(
         [fp.sha256 for fp in fingerprints], [f["name"] for f in FEEDS],
         [f["tier"] for f in FEEDS], [list(f.get("select") or ()) for f in FEEDS],
+        [bool(f.get("drop_other_zones")) for f in FEEDS],
         sorted(RAIL_ROUTE_TYPES), GTFS_PARSER_VERSION)
         + ".parquet")
 

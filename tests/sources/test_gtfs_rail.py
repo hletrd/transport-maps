@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import zipfile
 
 import polars as pl
@@ -178,6 +179,34 @@ def test_a_feed_takes_only_the_trains_its_select_names(tmp_path):
     assert len(pats) == 2 and {p["tier"] for p in pats} == {"regional"}
 
 
+
+def test_a_feed_whose_clock_abroad_is_wrong_drops_those_calls(tmp_path):
+    """OVapi's London calls are in London's clock on some trips: with
+    `drop_other_zones` they are not timed, and the calls at home still are.
+
+    Mutation performed and reverted: ignore `drop_other_zones` -> RED (a
+    22-min London -> Lille leg is timed)."""
+    files = {
+        "agency.txt": "agency_id,agency_name,agency_timezone\nIFF,NS International,"
+                      "Europe/Amsterdam\n",
+        "routes.txt": "route_id,agency_id,route_short_name,route_type\nr,IFF,Eurostar,2\n",
+        "stops.txt": ("stop_id,stop_name,stop_lat,stop_lon,parent_station,stop_timezone\n"
+                      "ldn,London St. Pancras Int.,51.53,-0.13,,Europe/London\n"
+                      "lil,Lille Europe,50.64,3.08,,\n"
+                      "bru,Brussel-Zuid,50.84,4.34,,Europe/Amsterdam\n"),
+        "trips.txt": "trip_id,route_id\nt,r\n",
+        "stop_times.txt": ("trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+                           "t,13:04:00,13:04:00,ldn,1\nt,13:26:00,13:30:00,lil,2\n"
+                           "t,14:05:00,14:05:00,bru,3\n"),
+    }
+    path = _zip(tmp_path / "ovapi.zip", files)
+    (pat,) = gtfs_rail.patterns(path, {"tier": "high_speed", "drop_other_zones": True})
+    assert [s[1] for s in pat["stops"]] == ["Lille Europe", "Brussel-Zuid"]
+    assert pat["minutes"] == {(0, 1): 35.0}
+    (pat,) = gtfs_rail.patterns(path, {"tier": "high_speed"})
+    assert pat["minutes"][(0, 1)] == 22.0     # what the feed says, untrusted
+
+
 def test_select_rules_are_ordered_and_a_none_tier_refuses():
     """Mutation performed and reverted: return the LAST matching rule's tier
     -> RED (RJX 162 reads None)."""
@@ -240,7 +269,7 @@ def test_every_published_train_cites_its_page_and_runs_forward():
         assert t.source.startswith("https://") and t.checked
         assert t.calls[0][3] == "" and t.calls[-1][4] == ""
         times = rp.call_minutes(t)
-        assert all(b[0] > a[1] for a, b in zip(times, times[1:])), t.train
+        assert all(b[0] > a[1] for a, b in itertools.pairwise(times)), t.train
     df = rp.rows()
     assert (df.filter(pl.col("seq") == 0)["timetabled_min"] > 0).all()
     assert df["route_id"].n_unique() == len(df) // 2
