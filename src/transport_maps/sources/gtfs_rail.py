@@ -65,6 +65,7 @@ import re
 import time
 import zipfile
 
+import h3
 import numpy as np
 import polars as pl
 
@@ -79,6 +80,7 @@ logger = logging.getLogger(__name__)
 FEEDS: tuple[dict, ...] = (
     {
         "name": "de_fv",
+        "home": ("DEU",),
         "url": "https://download.gtfs.de/germany/fv_free/latest.zip",
         "what": "German long-distance rail (ICE, IC, EC and partners), 1.2 k stops",
         "publisher": "DELFI e.V., via gtfs.de",
@@ -93,6 +95,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "kr_korail",
+        "home": ("KOR",),
         "url": "https://mkuran.pl/gtfs/korail.zip",
         "what": "Korail intercity rail (KTX, ITX, Saemaeul, Mugunghwa, Nuriro), "
                 "built from Korail's published timetables",
@@ -113,6 +116,7 @@ FEEDS: tuple[dict, ...] = (
     # `select` (`tier_of`): OSM's relations keep the rest.
     {
         "name": "fr_sncf",
+        "home": ("FRA",),
         "url": "https://eu.ftp.opendatasoft.com/sncf/plandata/"
                "Export_OpenData_SNCF_GTFS_NewTripId.zip",
         "what": "SNCF TGV INOUI, OUIGO, Intercités, Lyria and ICE in France",
@@ -130,6 +134,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "es_renfe",
+        "home": ("ESP",),
         "url": "https://ssl.renfe.com/gtransit/Fichero_AV_LD/google_transit.zip",
         "what": "Renfe AVE, Avlo, Avant, Euromed, Alvia and Intercity",
         "publisher": "Renfe Viajeros, via data.renfe.com",
@@ -146,6 +151,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "ch_sbb",
+        "home": ("CHE",),
         # The permalink follows each year's file (gtfs_fp2026_YYYYMMDD.zip).
         "url": "https://data.opentransportdata.swiss/en/dataset/"
                "timetable-2026-gtfs2020/permalink",
@@ -168,6 +174,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "at_oebb",
+        "home": ("AUT",),
         # One file per timetable year: valid 2025-12-14 to 2026-12-12, then
         # GTFS_Fahrplan_2027.zip. The download page asks for the terms to be
         # ticked, not for an account.
@@ -185,6 +192,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "nl_ovapi",
+        "home": ("NLD",),
         "url": "https://gtfs.ovapi.nl/nl/gtfs-nl.zip",
         "what": "Dutch Intercity, Intercity direct and international trains (NS and others)",
         "publisher": "OVapi (Stichting OpenGeo), from NDOV timetable data",
@@ -205,6 +213,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "be_sncb",
+        "home": ("BEL",),
         # The anonymous tier of the Belgian Mobility Open Data Portal: no key,
         # 100 requests a day, which a daily input check stays well inside.
         "url": "https://api-management-discovery-production.azure-api.net/"
@@ -221,6 +230,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "no_vy",
+        "home": ("NOR",),
         "url": "https://storage.googleapis.com/marduk-production/outbound/gtfs/"
                "rb_vyg-aggregated-gtfs.zip",
         "what": "Vy long-distance trains in Norway (Bergensbanen, Dovre- and Sørlandsbanen)",
@@ -236,6 +246,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "no_sjn",
+        "home": ("NOR",),
         "url": "https://storage.googleapis.com/marduk-production/outbound/gtfs/"
                "rb_sjn-aggregated-gtfs.zip",
         "what": "SJ Nord long-distance trains in Norway (Dovrebanen, Nordlandsbanen)",
@@ -250,6 +261,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "no_goa",
+        "home": ("NOR",),
         "url": "https://storage.googleapis.com/marduk-production/outbound/gtfs/"
                "rb_goa-aggregated-gtfs.zip",
         "what": "Go-Ahead Norge long-distance trains (Sørlandsbanen)",
@@ -264,6 +276,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "fi_vr",
+        "home": ("FIN",),
         "url": "https://rata.digitraffic.fi/api/v1/trains/gtfs-passenger.zip",
         "what": "VR long-distance trains in Finland (Pendolino, InterCity, night trains)",
         "publisher": "Fintraffic / digitraffic.fi",
@@ -279,6 +292,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "dk_rejseplanen",
+        "home": ("DNK",),
         "url": "https://www.rejseplanen.info/labs/GTFS.zip",
         "what": "DSB InterCity, IC Lyn and EuroCity trains in Denmark",
         "publisher": "Rejseplanen A/S",
@@ -292,6 +306,7 @@ FEEDS: tuple[dict, ...] = (
     },
     {
         "name": "ca_via",
+        "home": ("CAN",),
         "url": "https://www.viarail.ca/sites/all/files/gtfs/viarail.zip",
         "what": "VIA Rail Canada intercity and long-distance trains",
         "publisher": "VIA Rail Canada",
@@ -584,5 +599,33 @@ def with_timetables(osm_routes: pl.DataFrame) -> pl.DataFrame:
     from . import rail_published
 
     timed = pl.concat([timetable_rows(), rail_published.rows()])
-    tt = snap(timed.drop("feed"), kept)
+    tt = snap(with_cover(timed).drop("feed"), kept)
     return pl.concat([kept, tt], how="diagonal_relaxed")
+
+
+def with_cover(tt: pl.DataFrame) -> pl.DataFrame:
+    """`tt` with `covers`: whether a leg's timing stands for EVERY train
+    between its two stations, so that an OSM price between them is dropped
+    (`graph/rail.ride_edges`) rather than kept beside it.
+
+    A feed is the whole intercity timetable of its `home` country and no
+    other: SBB's carries an EC from Florence to Bologna in 72 min, and as the
+    only timing of that pair it erased the 37-min Frecciarossa OSM prices --
+    Rome -> Milan went from 181 min to 242. So a leg covers its pair when one
+    of its ends is at home (a feed's own trains across a border are the
+    service there); a leg wholly abroad is one more train beside OSM's. A
+    published train (sources/rail_published) is the fastest on its pairs by
+    construction and covers them wherever it runs.
+    """
+    from . import countries
+
+    home = {f["name"]: set(f.get("home") or ()) for f in FEEDS}
+    cells = [h3.latlng_to_cell(la, lo, config.SOLVE_RES)
+             for la, lo in zip(tt["lat"], tt["lon"], strict=True)]
+    uniq = sorted(set(cells))
+    country = dict(zip(uniq, countries.cell_country(uniq), strict=True)) if uniq else {}
+    at_home = [f not in home or not home[f] or country[c] in home[f]
+               for f, c in zip(tt["feed"], cells, strict=True)]
+    return (tt.with_columns(pl.Series("_home", at_home, dtype=pl.Boolean))
+              .with_columns(pl.col("_home").any().over("route_id").alias("covers"))
+              .drop("_home"))

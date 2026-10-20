@@ -273,3 +273,54 @@ def test_every_published_train_cites_its_page_and_runs_forward():
     df = rp.rows()
     assert (df.filter(pl.col("seq") == 0)["timetabled_min"] > 0).all()
     assert df["route_id"].n_unique() == len(df) // 2
+
+
+def test_a_timing_abroad_sits_beside_osm_and_one_at_home_replaces_it():
+    """SBB's EC from Florence to Bologna (72 min) was the only timing of that
+    pair and erased OSM's 37-min Frecciarossa: a leg that does not `cover`
+    its pair is one more service, in both directions.
+
+    Mutations performed and reverted, each RED: `ride_edges` dropping OSM
+    under any timed leg (A->B reads only 72); `two_way` anti-joining on any
+    timed pair (B->A loses the 37)."""
+    a, b = (43.78, 11.25), (44.51, 11.34)
+    osm_ab = [_row(1, 0, *a, "A", tier="high_speed"), _row(1, 1, *b, "B", tier="high_speed")]
+    ec = [_row(-2, 0, *a, "A", timetabled_min=72.0, alight_only=False, covers=False),
+          _row(-2, 1, *b, "B", alight_only=True, covers=False)]
+    cal = rail.load_rail_calibration()
+    ka, kb = rail.station_key(*a), rail.station_key(*b)
+    x = rail.ALIGHT_SUFFIX
+    edges = rail.ride_edges(pl.DataFrame(osm_ab + ec), cal)
+    got = {(r["from_station"], r["to_station"]): r["minutes"] for r in edges.iter_rows(named=True)}
+    assert got[(ka, kb + x)] == 72.0 and (ka, kb) in got and got[(ka, kb)] < 72.0
+    back = {(r["from_station"], r["to_station"]) for r in rail.two_way(edges).iter_rows(named=True)}
+    assert {(kb, ka), (kb, ka + x)} <= back
+    # The same leg at home covers the pair: OSM's price goes, both ways.
+    home = [{**r, "covers": True} for r in ec]
+    edges = rail.ride_edges(pl.DataFrame(osm_ab + home), cal)
+    assert set(zip(edges["from_station"], edges["to_station"])) == {(ka, kb + x)}
+    both = rail.two_way(edges)
+    back = set(zip(both["from_station"], both["to_station"], strict=True))
+    assert back == {(ka, kb + x), (kb, ka + x)}
+
+
+def test_a_leg_covers_its_pair_when_one_end_is_in_its_feeds_home(monkeypatch):
+    """Mutation performed and reverted: require BOTH ends at home -> RED (the
+    Zurich -> Milan EC no longer covers)."""
+    from transport_maps.sources import countries
+
+    def country(cells):
+        import h3
+        return [("CHE" if h3.cell_to_latlng(c)[0] > 45.8 else "ITA") for c in cells]
+
+    monkeypatch.setattr(countries, "cell_country", country)
+    monkeypatch.setattr(gtfs_rail, "FEEDS", ({"name": "ch", "home": ("CHE",)},))
+
+    def leg(rid, p, q, feed):
+        return [{"route_id": rid, "seq": 0, "lat": p[0], "lon": p[1], "feed": feed},
+                {"route_id": rid, "seq": 1, "lat": q[0], "lon": q[1], "feed": feed}]
+    zur, mil, fir, bol = (47.38, 8.54), (45.49, 9.20), (43.78, 11.25), (44.51, 11.34)
+    df = pl.DataFrame(leg(1, zur, mil, "ch") + leg(2, fir, bol, "ch")
+                      + leg(3, fir, bol, "published"))
+    got = gtfs_rail.with_cover(df).group_by("route_id").agg(pl.col("covers").first())
+    assert dict(zip(got["route_id"], got["covers"])) == {1: True, 2: False, 3: True}

@@ -275,9 +275,15 @@ def priced_legs(routes: pl.DataFrame, cal) -> pl.DataFrame:
     timed = (nxt["timetabled_min"].to_numpy(allow_copy=True).astype(float)
              if "timetabled_min" in nxt.columns else np.full(len(nxt), np.nan))
     minutes = np.where(np.isnan(timed), minutes, timed)
+    # Whether that timing stands for every train between the two stations
+    # (sources/gtfs_rail.with_cover); a frame without the column is all one
+    # feed's, at home.
+    covers = (nxt["covers"].fill_null(False).to_numpy() if "covers" in nxt.columns
+              else np.ones(len(nxt), dtype=bool))
     return pl.DataFrame({"route_id": nxt["route_id"], "from_station": nxt["station"],
                          "to_station": nxt["to_station"], "minutes": minutes,
-                         "timetabled": ~np.isnan(timed)})
+                         "timetabled": ~np.isnan(timed),
+                         "covers": ~np.isnan(timed) & covers})
 
 
 def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
@@ -293,13 +299,15 @@ def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
     tiers run 1.04 with no residual distance trend.
     """
     out = priced_legs(routes, cal).drop("route_id")
-    # Where a timetable times a pair of stations, its fastest train IS the
-    # service, and an OSM price between the same two stations -- a guess at
-    # trains no faster than it -- does not get to undercut it. The timetabled
-    # leg arrives at the station's alight-only twin, so the pair is matched on
-    # the station itself.
+    # Where a timetable times a pair of stations for every train between them
+    # (`covers`), its fastest train IS the service, and an OSM price between
+    # the same two stations -- a guess at trains no faster than it -- does not
+    # get to undercut it. A timing that does not cover the pair (a feed's
+    # train abroad) is one more service beside OSM's. The timetabled leg
+    # arrives at the station's alight-only twin, so the pair is matched on the
+    # station itself.
     base_to = pl.col("to_station").str.replace(f"{ALIGHT_SUFFIX}$", "")
-    timed = (out.filter(pl.col("timetabled"))
+    timed = (out.filter(pl.col("covers"))
                 .select("from_station", base_to.alias("_to")).unique())
     out = (out.with_columns(base_to.alias("_to"))
               .join(timed.with_columns(pl.lit(True).alias("_covered")),
@@ -308,7 +316,8 @@ def ride_edges(routes: pl.DataFrame, cal) -> pl.DataFrame:
               .drop("_to", "_covered", "timetabled"))
     # Several routes share a track segment at different speeds; the fastest
     # service that actually runs is the one a traveller would take.
-    return out.group_by("from_station", "to_station").agg(pl.col("minutes").min())
+    return out.group_by("from_station", "to_station").agg(pl.col("minutes").min(),
+                                                          pl.col("covers").any())
 
 
 def reverse_ride(a: str, b: str) -> tuple[str, str]:
@@ -328,17 +337,18 @@ def two_way(edges: pl.DataFrame) -> pl.DataFrame:
     reverse of boarding at X and alighting at Y is boarding at Y and alighting
     at X, never a ride that LEAVES an alighting twin -- which would let a
     second train continue from it without the change being paid. And as in
-    `ride_edges`, where a timetable times a pair in either direction, an OSM
-    price for it does not survive by being reversed.
+    `ride_edges`, where a timetable times a pair in either direction for every
+    train (`covers`), an OSM price for it does not survive by being reversed.
     """
     timed = pl.col("to_station").str.ends_with(ALIGHT_SUFFIX)
     base_to = pl.col("to_station").str.replace(f"{ALIGHT_SUFFIX}$", "")
-    pairs = (edges.with_columns(timed.alias("_t"),
+    cover = pl.col("covers") if "covers" in edges.columns else timed
+    pairs = (edges.with_columns(timed.alias("_t"), cover.alias("_c"),
                                 pl.min_horizontal("from_station", base_to).alias("a"),
                                 pl.max_horizontal("from_station", base_to).alias("b"))
                   .filter(pl.col("a") != pl.col("b"))
-                  .group_by("a", "b", "_t").agg(pl.col("minutes").min()))
-    covered = pairs.filter(pl.col("_t")).select("a", "b")
+                  .group_by("a", "b", "_t").agg(pl.col("minutes").min(), pl.col("_c").any()))
+    covered = pairs.filter(pl.col("_c")).select("a", "b").unique()
     pairs = pl.concat([pairs.filter(pl.col("_t")),
                        pairs.filter(~pl.col("_t")).join(covered, on=["a", "b"], how="anti")])
     suffix = pl.when(pl.col("_t")).then(pl.lit(ALIGHT_SUFFIX)).otherwise(pl.lit(""))
