@@ -332,7 +332,15 @@ SNAP_M = 600.0
 # 4: legs of no running time dropped.
 # 5: a tier per pattern (a feed's `select`), and the tier in the route id.
 # 6: a feed's `drop_other_zones`.
-GTFS_PARSER_VERSION = 6
+# 7: calls at (0, 0) skipped; legs faster than MAX_KMH dropped.
+GTFS_PARSER_VERSION = 7
+
+# No train covers the straight line between two calls faster than this, with
+# a minute allowed for the timetable's rounding. A physical bound, NOT fitted:
+# the fastest scheduled runs average under 300 km/h point to point (Nozomi
+# Shin-Osaka -> Hiroshima 250, G25 Beijing -> Nanjing 278). What it catches is
+# a feed's slip: DELFI times ICE 77 from Emmerich to Arnhem, 30 km, in 2 min.
+MAX_KMH = 320.0
 
 # GTFS route_type values that are trains: 2 (rail) and the extended 100-117
 # (railway service). Buses a rail feed carries (replacement services) are not.
@@ -463,11 +471,14 @@ def patterns(path: pathlib.Path, feed: dict | None = None) -> list[dict]:
                 continue
         seq, arr, dep = [], [], []
         for _q, stop_id, a_t, d_t in rows:
-            if stop_id not in stops or stop_id in abroad or not (a_t or d_t):
+            if (stop_id not in stops or stop_id in abroad or not (a_t or d_t)
+                    or (float(stops[stop_id]["stop_lat"] or 0) == 0
+                        and float(stops[stop_id]["stop_lon"] or 0) == 0)):
                 # A call at a stop stops.txt lacks (Amtrak's "OSM"), one in
-                # a zone the feed's clock is not trusted for, or one with no
+                # a zone the feed's clock is not trusted for, one with no
                 # time at all (VIA's request stops, which GTFS leaves to be
-                # interpolated): none is a timed call.
+                # interpolated), or one at (0, 0), which is no position
+                # (OVapi's München Ost): none is a timed call.
                 continue
             st = station(stop_id)
             a = _minutes(a_t or d_t)
@@ -495,11 +506,34 @@ def patterns(path: pathlib.Path, feed: dict | None = None) -> list[dict]:
     return list(out.values())
 
 
+def timed_legs(pat: dict) -> list[tuple[int, int, float]]:
+    """(i, j, minutes) of a pattern's legs that are rides a train can make."""
+    out = []
+    for (i, j), minutes in pat["minutes"].items():
+        if minutes <= 0:
+            # A timing point the train passes in the same minute (DB's border
+            # marker "Kehl(Gr)"): no ride, and a zero-weight edge the graph
+            # build refuses. The stops either side still join through their
+            # longer pairs.
+            continue
+        if _km(pat["stops"][i], pat["stops"][j]) * 60 / (minutes + 1) > MAX_KMH:
+            continue                      # a slip in the feed (MAX_KMH)
+        out.append((i, j, minutes))
+    return out
+
+
+def _km(a: tuple, b: tuple) -> float:
+    """Great-circle km between two `patterns` stops (id, name, lat, lon)."""
+    la1, lo1, la2, lo2 = map(np.radians, (a[2], a[3], b[2], b[3]))
+    h = np.sin((la2 - la1) / 2) ** 2 + np.cos(la1) * np.cos(la2) * np.sin((lo2 - lo1) / 2) ** 2
+    return float(2 * 6371.0088 * np.arcsin(np.sqrt(h)))
+
+
 def _cache_path(fingerprints) -> pathlib.Path:
     return config.CACHE / ("gtfs_rail-" + _params_hash(
         [fp.sha256 for fp in fingerprints], [f["name"] for f in FEEDS],
         [f["tier"] for f in FEEDS], [list(f.get("select") or ()) for f in FEEDS],
-        [bool(f.get("drop_other_zones")) for f in FEEDS],
+        [bool(f.get("drop_other_zones")) for f in FEEDS], MAX_KMH,
         sorted(RAIL_ROUTE_TYPES), GTFS_PARSER_VERSION)
         + ".parquet")
 
@@ -518,13 +552,7 @@ def timetable_rows() -> pl.DataFrame:
         pats = patterns(fp.path, feed)
         for pat in pats:
             base = "|".join((feed["name"], pat["tier"], *(s[0] for s in pat["stops"])))
-            for (i, j), minutes in pat["minutes"].items():
-                if minutes <= 0:
-                    # A timing point the train passes in the same minute
-                    # (DB's border marker "Kehl(Gr)"): no ride, and a
-                    # zero-weight edge the graph build refuses. The stops
-                    # either side still join through their longer pairs.
-                    continue
+            for i, j, minutes in timed_legs(pat):
                 key = f"{base}|{i}|{j}".encode()
                 rid = -(int.from_bytes(hashlib.sha1(b"gtfs|" + key).digest()[:6], "big") + 1)
                 for seq, k in enumerate((i, j)):

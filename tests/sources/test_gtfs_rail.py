@@ -324,3 +324,29 @@ def test_a_leg_covers_its_pair_when_one_end_is_in_its_feeds_home(monkeypatch):
                       + leg(3, fir, bol, "published"))
     got = gtfs_rail.with_cover(df).group_by("route_id").agg(pl.col("covers").first())
     assert dict(zip(got["route_id"], got["covers"])) == {1: True, 2: False, 3: True}
+
+
+def test_a_leg_no_train_could_run_and_a_call_at_null_island_are_dropped(tmp_path):
+    """DELFI times ICE 77 from Emmerich to Arnhem, 30 km, in 2 min; OVapi puts
+    München Ost at (0, 0). Neither may become a ride.
+
+    Mutations performed and reverted, each RED: drop the MAX_KMH test in
+    `timed_legs` (E->A is kept); drop the (0, 0) test in `patterns` (M is a
+    call)."""
+    em, ar, ob = ("e", "Emmerich", 51.84, 6.25), ("a", "Arnhem", 51.985, 5.90), \
+        ("o", "Oberhausen", 51.47, 6.85)
+    pat = {"stops": [ob, em, ar], "minutes": {(0, 1): 30.0, (0, 2): 32.0, (1, 2): 2.0}}
+    assert gtfs_rail.timed_legs(pat) == [(0, 1, 30.0), (0, 2, 32.0)]
+    files = {
+        "agency.txt": "agency_id,agency_name\n1,NS International\n",
+        "routes.txt": "route_id,agency_id,route_short_name,route_type\nr,1,Nightjet,2\n",
+        "stops.txt": ("stop_id,stop_name,stop_lat,stop_lon\n"
+                      "n,Nürnberg Hbf,49.446,11.082\nm,München Ost,0.0,0.0\n"
+                      "s,Salzburg Hbf,47.813,13.046\n"),
+        "trips.txt": "trip_id,route_id\nt,r\n",
+        "stop_times.txt": ("trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+                           "t,22:00:00,22:00:00,n,1\nt,23:40:00,23:50:00,m,2\n"
+                           "t,25:30:00,25:30:00,s,3\n"),
+    }
+    (p,) = gtfs_rail.patterns(_zip(tmp_path / "nj.zip", files), {"tier": "long_distance"})
+    assert [s[1] for s in p["stops"]] == ["Nürnberg Hbf", "Salzburg Hbf"]
