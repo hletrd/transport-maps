@@ -557,5 +557,10 @@ def with_timetables(osm_routes: pl.DataFrame) -> pl.DataFrame:
     kept = osm_routes.filter(~drop)
     logger.info("gtfs: %d OSM relations superseded by a timetable",
                 osm_routes.filter(drop)["route_id"].n_unique())
-    tt = snap(timetable_rows().drop("feed"), kept)
+    # The trains no open feed carries, from their operators' published pages
+    # (sources/rail_published), are timed the same way.
+    from . import rail_published
+
+    timed = pl.concat([timetable_rows(), rail_published.rows()])
+    tt = snap(timed.drop("feed"), kept)
     return pl.concat([kept, tt], how="diagonal_relaxed")

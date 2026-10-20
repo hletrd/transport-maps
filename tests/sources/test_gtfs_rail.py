@@ -191,3 +191,56 @@ def test_select_rules_are_ordered_and_a_none_tier_refuses():
         "long_distance"
     assert gtfs_rail.tier_of(feed, {"trip_short_name": "S 3", "route_type": "109"}) is None
 
+
+def test_published_trains_are_timed_like_a_feed_and_join_the_timetables(monkeypatch):
+    """A published train is every pair of its calls, departure(i) ->
+    arrival(j), past midnight included, arriving at the alighting twin; and
+    `with_timetables` carries the table beside the feeds.
+
+    Mutations performed and reverted, each RED: time pairs arrival(i) ->
+    arrival(j) (A->B reads 62); drop the carry for a midnight passed between
+    calls (T 2's C reads 20); drop the carry for one passed in a dwell (B->C
+    reads -1380);
+    leave the table out of `with_timetables` (no published row arrives).
+    """
+    from transport_maps.sources import rail_published as rp
+
+    t = rp.PublishedTrain("Op", "T 1", "high_speed", (
+        ("A", 35.0, 139.0, "", "23:00"),
+        ("B", 35.5, 138.0, "23:58", "00:01"),
+        ("C", 36.0, 137.0, "00:40", "")), "https://example.org/t1", "2026-10-20")
+    df = rp.rows((t,))
+    board = df.filter(pl.col("seq") == 0).sort("timetabled_min")
+    got = {(r["name"], df.filter((pl.col("route_id") == r["route_id"]) & (pl.col("seq") == 1))
+            ["name"][0]): r["timetabled_min"] for r in board.iter_rows(named=True)}
+    assert got == {("A", "B"): 58.0, ("B", "C"): 39.0, ("A", "C"): 100.0}
+    assert df.filter(pl.col("seq") == 1)["alight_only"].all()
+    assert df["route_id"].n_unique() == 3
+    # Midnight passed on the line, not in a dwell: 23:52 departure, 00:20 arrival.
+    late = rp.PublishedTrain("Op", "T 2", "high_speed", (
+        ("A", 35.0, 139.0, "", "23:30"), ("B", 35.5, 138.0, "23:50", "23:52"),
+        ("C", 36.0, 137.0, "00:20", "")), "https://example.org/t2", "2026-10-20")
+    assert rp.call_minutes(late) == [(1410.0, 1410.0), (1430.0, 1432.0), (1460.0, 1460.0)]
+
+    monkeypatch.setattr(gtfs_rail, "timetable_rows", lambda: rp.rows(()))
+    monkeypatch.setattr(rp, "TRAINS", (t,))
+    osm_routes = pl.DataFrame([_row(1, 0, 35.0, 139.0, "A"), _row(1, 1, 36.0, 137.0, "C")])
+    out = gtfs_rail.with_timetables(osm_routes)
+    assert out.filter(pl.col("timetabled_min").is_not_null())["timetabled_min"].sort().to_list() \
+        == [39.0, 58.0, 100.0]
+
+
+def test_every_published_train_cites_its_page_and_runs_forward():
+    """The table's own rows: a source URL and a date on each, calls in time
+    order (every pair positive), first arrival and last departure empty."""
+    from transport_maps.sources import rail_published as rp
+
+    assert rp.TRAINS
+    for t in rp.TRAINS:
+        assert t.source.startswith("https://") and t.checked
+        assert t.calls[0][3] == "" and t.calls[-1][4] == ""
+        times = rp.call_minutes(t)
+        assert all(b[0] > a[1] for a, b in zip(times, times[1:])), t.train
+    df = rp.rows()
+    assert (df.filter(pl.col("seq") == 0)["timetabled_min"] > 0).all()
+    assert df["route_id"].n_unique() == len(df) // 2

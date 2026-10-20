@@ -81,7 +81,7 @@ def _load_rail():
     n = len(routes)
     routes = gtfs_rail.with_timetables(routes)
     print(f"rail:     timetables -- {len(routes) - n:,} timed calls from "
-          f"{', '.join(f['name'] for f in gtfs_rail.FEEDS)}")
+          f"{', '.join(f['name'] for f in gtfs_rail.FEEDS)} and published pages")
     return routes
 
 
