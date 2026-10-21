@@ -32,12 +32,17 @@ def test_speeds_span_the_full_range(idx):
 
 
 def test_roadless_terrain_is_slower_than_motorway_terrain(idx):
-    speeds = ground.cell_speed_kmh(idx)
-    # Through the index, which knows whether a point sits in a base cell or a
-    # fine child; a literal resolution went stale when the grid changed.
-    sahara = idx.cell_index(idx.cell_at(23.0, 10.0))
-    seoul = idx.cell_index(idx.cell_at(37.5665, 126.9780))
-    assert speeds[sahara] < speeds[seoul]
+    """By class, not by two places: a point picked as "the Sahara" has a
+    GRIP4 track through it (tertiary, 34.5 km/h) and central Seoul is slowed
+    by the fitted city-core factor (32 km/h), so the old pair compared a road
+    with a congested street. Every roadless cell must be slower than the
+    slowest motorway cell, after the income and city factors. Mutation
+    performed and reverted: roadless_kmh 5.0 -> 50.0 -> red."""
+    classes = ground.cell_class(idx)
+    speeds = ground.cell_speed_kmh(idx, classes)
+    roadless, motorway = speeds[classes == 0], speeds[classes == ground.MOTORWAY_CLASS]
+    assert len(roadless) and len(motorway)
+    assert roadless.max() < motorway.min()
 
 
 def test_hex_edge_cost_uses_destination_speed_not_source(idx, monkeypatch):
