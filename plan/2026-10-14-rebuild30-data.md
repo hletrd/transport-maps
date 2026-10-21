@@ -483,3 +483,34 @@ rail-reached cell said 5.5 min more rail than it rode (e225ac1). The solver's
 rule). The first start (18b7023, 23:01) had finished no origin; it was
 stopped and restarted on 2bb3e98 with the same service date. Renfe's feed
 was updated upstream in between, and all four builds read the new copy.
+
+## Rebuild 37 shipped (2026-10-21)
+
+9b76cbb9-20261021T010348Z from 2bb3e98 (deployed with ed281dd, tests only
+since). The second start died at 07:21 when /default filled (0 B of 18.6 TB;
+this project ~273 GB of it); restarted at 08:39 once 3 TB was free. The input
+check then took new SNCF, Renfe and Entur feeds, and its North America
+refresh timed out at 10.4 of 19 GB, so North America is the 2026-09-21
+extract as in rebuild 36. All four maps exit 0, check_variants 0 faster
+cells. The first deploy_verify refused a 0-byte `.port-harcourt.bin.*.tmp`
+left by the ENOSPC crash (the origin itself was rebuilt complete at 11:12);
+removed, and the second passed, browser_verify ALL CHECKS PASSED at the four
+viewports, console 0. airports.json regenerated: byte-identical.
+
+Solver: Seoul -> Gumi 135 min as before, railMin 101 -> 95 (the door ends
+out of the rail minutes, e225ac1/2bb3e98).
+
+Door to door, live r36 -> r37 at the same 46 points (scratchpad cmp37.py):
+Osaka -> Hiroshima 2 h 16 -> 1 h 57, Vienna -> Salzburg 3 h 10 -> 2 h 58,
+Copenhagen -> Aarhus 3 h 17 -> 3 h 05, Tokyo -> Osaka 3 h 06 -> 3 h 01,
+Paris -> Lyon 2 h 31 -> 2 h 26, Zurich -> Geneva 3 h 02 -> 3 h 00, Madrid ->
+Barcelona 3 h 12 -> 3 h 37. The last is right: Adif has held ~150 km of the
+line at 160 km/h since 2026-01 (track and tunnel defects), and Renfe's own
+feed has no Atocha -> Sants train under 182 min; OSM's tier price assumed
+the line at speed. NYC -> Washington, Toronto -> Montreal, Oslo -> Bergen and
+Beijing -> Shanghai stay where they were: their rides are faster now, but
+flying still wins door to door. Every other pair +0.
+
+Tests: the full local suite and, for the 16 that need the OSM road extracts,
+h200. One stale fixture fixed there (ed281dd: the "Sahara" point has a
+tertiary track; compared by class now).
