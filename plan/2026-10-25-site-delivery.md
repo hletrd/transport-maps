@@ -7,7 +7,7 @@ including HTTP/3 on nginx and Cloudflare.
 - [x] Enable Cloudflare proxying and HTTP/3; preserve client IP rate limiting.
 - [x] Publish immutable, versioned assets and dataset URLs with atomic release selection.
 - [x] Configure CDN caching for PMTiles and versioned files; bypass APIs.
-- [ ] Fetch detailed readings and route overrides by region instead of worldwide arrays.
+- [x] Fetch detailed readings and route overrides by region instead of worldwide arrays.
 - [ ] Improve the title, description and readable HTML for interactive world isochrone searches.
 - [ ] Verify deployed behavior at all four project viewports and repeat loading measurements.
 
@@ -55,3 +55,27 @@ worldwide latency or Korea edge routing from one connection. The public DNS
 change was visible via Google's resolver while the local resolver retained
 the previous record temporarily. The API helper's three tests passed, and
 dropping preservation of unrelated rules made its regression test fail.
+
+Regional delivery is live. Existing arrays were indexed in 266 s without a
+solver rebuild. Twelve live CDN readings across six places, with and without
+flights, matched independently read original times, airports and mode totals;
+they required 406,196 decoded bytes in total. Initial page measurements made
+zero detailed-array requests and transferred about 3.09 MB, versus 9.78 MB in
+the initial desktop run (about 68% less). Latency did not improve proportionally:
+the measured Cloudflare route reached LAX and the first document still went to
+the origin. The mobile layout shift remains a separate existing issue.
+
+The browser checks caught two arrival races: regional row refresh overwrote a
+committed screen-reader announcement, and the former 10-second permalink poll
+expired on a slow CDN load. Both are corrected and behavior-tested, including
+mutations. The permalink now restores on array arrival and respects a newer
+city or destination. Range status/offset/length, final regions, late aborted
+responses, directory boundaries and unknown slots are tested. The full deploy
+gate and all four viewport/browser checks passed.
+
+Origin Range Requests are now restricted to PMTiles, `.r6.bin` and `.over.bin`.
+Enabling them for ordinary whole-file binaries had removed compression; a
+fresh transport namespace and scoped rule restored hover_cells.bin to 125,075
+wire bytes with gzip instead of 725,920. The cache configuration now has four
+rules. An intentional broad-range mutation fails the regression cases for
+coarse arrays, the directory and JSON. The publisher retains old snapshots.

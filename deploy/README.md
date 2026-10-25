@@ -133,6 +133,14 @@ before uploading when snapshots exist; the legacy chunked fallback cannot free
 that space. Expand storage or explicitly retire an obsolete release first.
 Page-only deployments reuse the dataset snapshot.
 
+The publisher also prepares regional route directories from `.over.bin` and
+adds `readingRanges` to the completed index. This is a one-time scan of existing
+slot arrays, not a graph rebuild. Later page deploys reuse directories whose
+source mtime and layout match. Versioned `.r6.bin` and `.over.bin` are served
+unencoded for byte-range access. The browser fetches detail only for a resting
+pointer or chosen destination; complete-array loading remains the fallback for
+older dataset indexes. See `docs/contract.md` for the directory layout.
+
 ## Cloudflare
 
 `worldmap.atik.kr` is proxied through Cloudflare. HTTP/3 is enabled at the edge;
@@ -140,9 +148,12 @@ the existing zone TLS mode is Full and Rocket Loader is off. The origin retains
 its Let's Encrypt certificate. These zone settings also affect other hosts, so
 the setup script verifies the TLS mode without changing it globally.
 
-`deploy/cloudflare-cache-rules.json` scopes three rules to this hostname: cache
-`/assets/`, cache `/data/` with Origin Range Requests, and bypass `/api/`. The
-origin's cache headers determine freshness. Origin Range Requests avoid fetching
+`deploy/cloudflare-cache-rules.json` scopes four rules to this hostname: cache
+`/assets/`, cache `/data/`, enable Origin Range Requests only for `.pmtiles`,
+`.r6.bin` and `.over.bin`, and bypass `/api/`. Other binary files keep whole-file
+gzip compression; enabling origin ranges on them would force identity encoding
+and enlarge startup downloads. The origin's cache headers determine freshness.
+Origin Range Requests avoid fetching
 an entire PMTiles file on a cold range request; Cloudflare may fetch a larger
 aligned range than the browser asked for.
 

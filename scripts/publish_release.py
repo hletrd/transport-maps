@@ -9,17 +9,82 @@ Old snapshots remain available to open tabs and CDN misses; no automatic GC.
 from __future__ import annotations
 
 import argparse
+import array
+import bisect
 import hashlib
+import itertools
 import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
-PAGE_FILES = ("app.js", "boot.js", "preview.png", "llms.txt", "robots.txt", "sitemap.xml")
+PAGE_FILES = ("app.js", "boot.js", "detail.js", "preview.png", "llms.txt", "robots.txt", "sitemap.xml")
 DATA_FILES = ("index.json", "hover_cells.bin", "reading_parents.bin", "water.pmtiles",
               "borders.pmtiles", "borders.json", "places.json", "airports.json", "airspace.json")
+
+
+def prepare_reading_ranges(root: Path, index: dict) -> None:
+    """Index existing sorted override arrays without rebuilding any journeys."""
+    if not index.get("readingRes") or not index.get("overrideUrlSuffix"):
+        return
+    parents, slots = index["readingParentCount"], index["readingSlots"]
+    channels = len(index["modeChannels"])
+    if not all(isinstance(n, int) and n > 0 for n in (parents, slots, channels)):
+        raise ValueError("invalid regional reading layout")
+    width = 6 + 2 * channels
+    suffix = index["overrideUrlSuffix"]
+    if suffix != ".over.bin" or index.get("readingUrlSuffix") != ".r6.bin":
+        raise ValueError("unknown regional reading file format")
+    sources = {p for p in regular_files(root, ("origins", "v")) if p.name.endswith(suffix)}
+    for prefix in ["origins/", *(v["path"] + "origins/" for v in index.get("variants", []))]:
+        if not re.fullmatch(r"(?:v/[A-Za-z0-9_-]+/)?origins/", prefix):
+            raise ValueError("unsafe variant directory")
+        for origin in index["origins"]:
+            slug = origin["slug"]
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", slug):
+                raise ValueError("unsafe origin slug")
+            if root / prefix / (slug + suffix) not in sources:
+                raise ValueError(f"missing route overrides: {prefix}{slug}{suffix}")
+    generated = 0
+    for source in sorted(sources):
+        stem = source.name.removesuffix(suffix)
+        reading = source.with_name(stem + index["readingUrlSuffix"])
+        if reading.is_symlink() or reading.stat().st_size != parents * slots * 2:
+            raise ValueError(f"invalid fine reading length: {reading}")
+        stat = source.stat()
+        if stat.st_size % width:
+            raise ValueError(f"invalid route override length: {source}")
+        count = stat.st_size // width
+        target = source.with_name(stem + ".over.index.bin")
+        if target.is_symlink():
+            raise ValueError(f"refusing symlink: {target}")
+        if (target.exists() and target.stat().st_size == (parents + 2) * 4
+                and target.stat().st_mtime_ns == stat.st_mtime_ns):
+            continue
+        with source.open("rb") as stream:
+            numbers = array.array("I")
+            numbers.fromfile(stream, count)
+        if sys.byteorder != "little":
+            numbers.byteswap()
+        ordered = numbers.tolist()
+        if (any(a >= b for a, b in itertools.pairwise(ordered))
+                or (ordered and ordered[-1] >= parents * slots)):
+            raise ValueError(f"route slots are not unique, sorted and in range: {source}")
+        offsets = array.array("I", [count, *(bisect.bisect_left(ordered, n * slots) for n in range(parents + 1))])
+        if sys.byteorder != "little":
+            offsets.byteswap()
+        atomic_write(target, offsets.tobytes())
+        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        generated += 1
+        if generated % 200 == 0:
+            print(f"indexed regional routes for {generated} origin/variant files", file=sys.stderr, flush=True)
+    desired = {"blocks": 32, "overrideIndexSuffix": ".over.index.bin"}
+    if index.get("readingRanges") != desired:
+        index["readingRanges"] = desired
+        atomic_write(root / "index.json", (json.dumps(index, ensure_ascii=False) + "\n").encode())
 
 
 def regular_files(root: Path, names: tuple[str, ...]) -> list[Path]:
@@ -124,6 +189,7 @@ def publish(root: Path) -> dict[str, str]:
     for name in ("hover_cells.bin", "water.pmtiles", "app.js", "boot.js"):
         if not (root / name).is_file():
             raise ValueError(f"required release file is missing: {name}")
+    prepare_reading_ranges(root, index)
     assets = regular_files(root, (*PAGE_FILES, "vendor"))
     digest = hashlib.sha256(template.encode())
     for path in assets:
@@ -131,7 +197,10 @@ def publish(root: Path) -> dict[str, str]:
     asset_id = digest.hexdigest()[:20]
     data = regular_files(root, (*DATA_FILES, "origins", "v"))
     data_manifest = manifest(root, data)
-    data_id = build + "-" + hashlib.sha256(json.dumps(data_manifest).encode()).hexdigest()[:16]
+    # Compression/range-policy revisions get fresh CDN keys without changing
+    # the model build or mutating an existing snapshot.
+    data_identity = {"transport": 1, "files": data_manifest}
+    data_id = build + "-" + hashlib.sha256(json.dumps(data_identity).encode()).hexdigest()[:16]
     snapshot(root, "assets", asset_id, assets, link=False)
     snapshot(root, "data", data_id, data, link=True)
     if manifest(root, data) != data_manifest:

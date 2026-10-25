@@ -163,6 +163,11 @@ def test_every_index_json_key_the_page_reads_is_written(tmp_path):
                       hover_cell_count=1, reading_parent_count=1,
                       graph={"rail": True, "ferry": True}, identity=identity,
                       solver_bundle=bundle)
+    # Regional indexes are prepared during publication from the finished arrays.
+    from scripts.publish_release import prepare_reading_ranges
+    payload = json.loads(out.read_text())
+    (tmp_path / "origins" / "s.r6.bin").write_bytes(bytes(payload["readingSlots"] * 2))
+    prepare_reading_ranges(tmp_path, payload)
     written = set(json.loads(out.read_text()))
     # Not `import.meta.url` (app.js resolves the MapLibre worker with it) or any
     # other `x.meta`: only reads of the index.json object itself.

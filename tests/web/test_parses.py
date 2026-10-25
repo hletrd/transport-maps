@@ -38,7 +38,7 @@ WEB = config.ROOT / "web"
 #: script loaded with a plain <script src>, deliberately, so the CSP needs no
 #: hash. The vendored bundles are not here: they are pinned by sha256 in
 #: `test_vendor.py` and are not ours to parse-check.
-SCRIPTS = {"app.js": ".mjs", "boot.js": ".cjs"}
+SCRIPTS = {"app.js": ".mjs", "boot.js": ".cjs", "detail.js": ".mjs"}
 
 
 @pytest.fixture(scope="module")

@@ -57,6 +57,7 @@ const SOLVE_RES = 6, HOVER_RES = 4, MAX_MINUTES = 65534;
 const origin = {{ readingPending: false }};
 const fineCells = {{ tipAt: null }};
 const wantFine = () => {{}};
+const wantDetail = () => {{}};
 const drawn = [];
 let GRID = 6, VALUE = 300, pinB = null, namePlaces = false, raf = 0;
 let hoveredCell = null, hoveredAt = null;

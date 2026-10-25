@@ -2,6 +2,7 @@
 import * as maplibregl from "./vendor/maplibre-gl.js";
 import * as pmtiles from "./vendor/pmtiles.js";
 import * as h3 from "./vendor/h3.js";
+import { createDetailReader } from "./detail.js";
 
 // Sequential ramps, brightest where the journey is shortest. Multi-hue on
 // purpose: a SINGLE hue cannot separate this many bands on a dark ground.
@@ -436,6 +437,7 @@ const SCALE_TRIM = 0.05;
 const WIDE_VIEW_BANDS = Math.ceil(0.6 * N_BANDS);
 const DETAIL_TICKS = 6;
 let readingParents = null;
+let detailTimer = 0;
 // Read by fitReading() and layoutForSize(), which are now CALLED above the
 // globe's load await so the small layout is in place while "Loading the map..."
 // is on screen. Same reason as the block above: a binding a module-scope caller
@@ -2953,6 +2955,8 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
   // 10 MB per origin. Dropped on the switch rather than kept per city, so the
   // page holds one reading array at a time however many cities are visited.
   origin.reading = null;
+  origin.detail = null;
+  clearTimeout(detailTimer);
   origin.readingPending = false;
   origin.over = null;
   const current = () => gen === originGen;
@@ -3001,12 +3005,8 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
   };
   const get = (url) => fetch(url, { signal: sig });
 
-  // The reading tier: one whole fetch, off the critical path, abortable on an
-  // origin switch. Deliberately not range requests -- the deploy gzips
-  // `location ~* \.bin$`, nginx cannot serve a byte range out of a gzipped
-  // response, and a browser cannot opt out of Accept-Encoding, so a ranged
-  // .bin comes back 200 with the WHOLE body and slicing it would read block 0
-  // for every point on Earth with no error anywhere.
+  // Older indexes use whole-array fetches. Published regional indexes opt
+  // into strict byte ranges from unencoded immutable URLs instead.
   // The route behind the fine reading, where it differs from the coarse
   // cell's (emit/override.py). Only once the reading tier is in, because its
   // entries are reading-tier slots; non-fatal like everything on this path.
@@ -3035,6 +3035,23 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
     const done = () => { if (current()) { origin.readingPending = false; reoutline(); } };
     loadReadingParents().then((cells) => {
       if (!cells || !current()) return null;
+      if (meta.readingRanges) {
+        origin.detail = createDetailReader({
+          base: originBase(), slug: o.slug, parents: cells.length, slots: READING_SLOTS,
+          channels: MODE_NAMES.length, blocks: meta.readingRanges.blocks,
+          indexSuffix: meta.readingRanges.overrideIndexSuffix,
+          readingSuffix: meta.readingUrlSuffix, overrideSuffix: meta.overrideUrlSuffix,
+          signal: sig,
+          onError: (err) => console.warn("regional readings unavailable:", err.message),
+          onLoad: () => {
+            if (!current()) return;
+            refreshDetail();
+          },
+        });
+        const at = pinB ? { lat: pinB.lat, lng: pinB.lon } : lastPointer;
+        if (at) wantDetail(at.lat, at.lng);
+        return null;
+      }
       return get(`${originBase()}${o.slug}${meta.readingUrlSuffix}`)
         .then((r) => (okOr(r, `${o.slug}${meta.readingUrlSuffix}`) ? r.arrayBuffer() : null))
         .then((b) => {
@@ -3114,6 +3131,7 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
       if (!current()) return;
       origin.times = checked(b, 2, `${o.slug}.bin`);
       settle();
+      origin.restorePin?.();
       // Only now: the res-4 array is what makes the page usable, and the
       // reading array is 10 MB against its 181 KB. Starting them together
       // would put the big one in front of the small one on a mobile link for
@@ -3348,9 +3366,10 @@ function parseOverride(b, name) {
 //: The fine cell's own route under a point, or null: {airport, modes}.
 function fineRoute(lat, lon) {
   const ov = origin.over;
-  if (!ov || !origin.reading || !readingParents) return null;
+  if (!readingParents || (!origin.detail && (!ov || !origin.reading))) return null;
   const j = readingIndex(lat, lon);
   if (j < 0) return null;
+  if (origin.detail) return origin.detail.route(j);
   let lo = 0, hi = ov.slots.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1, v = ov.slots[mid];
@@ -3414,7 +3433,7 @@ function lookupRaw(lat, lon) {
   // city's reading tier measures from the city, so it is not consulted.
   if (pointShown()) { lastReadingRes = HOVER_RES; return pointMap.times[i]; }
   const coarse = origin.times ? origin.times[i] : undefined;
-  if (origin.reading && readingParents) {
+  if ((origin.reading || origin.detail) && readingParents) {
     const j = readingIndex(lat, lon);
     if (j >= 0) {
       // The cell the tiles draw here, where the solver's block has it: a res-7
@@ -3422,7 +3441,8 @@ function lookupRaw(lat, lon) {
       // the reading tier already holds what is drawn.
       const drawn = fineReading(lat, lon);
       if (drawn) { lastReadingRes = drawn.res; return drawn.t; }
-      const fine = origin.reading[j];
+      const fine = origin.detail ? origin.detail.get(j) : origin.reading[j];
+      if (fine === undefined) { lastReadingRes = HOVER_RES; return coarse; }
       // The two tiers can contradict each other, and one of them is a lie.
       // `write_reading` fills every slot of a res-3 block with the sentinel
       // and then writes only the slots that are LAND CELLS; the res-4 tier
@@ -3457,6 +3477,27 @@ function lookupRaw(lat, lon) {
 // Which grid the last reading came from, for the line that says so.
 function readingGrid() {
   return lastReadingRes;
+}
+
+// Fetch only where a visitor rests the pointer or selects a destination.
+// Ordinary list sorting and viewport sampling must never download the world.
+function wantDetail(lat, lon) {
+  clearTimeout(detailTimer);
+  if (!origin.detail || !readingParents || pointShown()) return;
+  const index = readingIndex(lat, lon), reader = origin.detail;
+  if (index < 0 || reader.get(index) !== undefined) return;
+  detailTimer = setTimeout(() => { reader.request(index); }, FINE_REST_MS);
+}
+
+function refreshDetail() {
+  const previous = $("status").textContent;
+  rereadFine();
+  renderPins(); renderLegs(); render($("q").value); renderDeparture(); refreshScale();
+  // Updating row times must not replace a committed journey with a search
+  // result count. Preserve an ongoing search, or announce the refined journey.
+  if (pinB && previous.includes("door to door")) {
+    announceReading(pinB.lat, pinB.lon, lookup(pinB.lat, pinB.lon), pinB.label);
+  } else announce(previous);
 }
 
 //: Which tile level the bands are drawn at, for the block readings: "native"
@@ -4232,6 +4273,7 @@ function describe(lat, lon) {
 // last pointer reading -- a different continent -- above them.
 function showReading(lat, lng, point) {
   lastPointer = { lat, lng, point };
+  wantDetail(lat, lng);
   const t = lookup(lat, lng);
   // Captured HERE, on the line after the lookup, and not read again forty
   // lines down where it is used. readingGrid() answers about the LAST lookup,
@@ -4342,6 +4384,7 @@ map.on("mousemove", (e) => {
     // Hovering still explores: the tooltip below follows the pointer and
     // carries the hovered time, the ring still moves, and clearing the route
     // hands the headline back.
+    if (pinB) wantDetail(lat, lng);
     const t = pinB ? lookup(lat, lng) : showReading(lat, lng, e.point);
     // On the line after the lookup, as showReading captures it: readingGrid()
     // answers about the LAST lookup, and the ring must outline that one's cell.
@@ -6051,24 +6094,18 @@ if (requestedPin) {
   // The departure the link named. A restore that fires after the visitor has
   // switched city is restoring a pin measured from somewhere else.
   const forGen = originGen;
-  const restore = () => {
-    // Abandon, rather than wait: the retry loop runs for ten seconds at 250 ms,
-    // and it guarded only on `origin.times`. A visitor who pinned their own
-    // destination in that window, or switched departure city, had the link's
-    // pin written over the top of it with nothing said. Returning true stops
-    // the interval; the link's pin no longer applies either way.
-    if (originGen !== forGen || pinB) return true;
-    if (!origin.times) return false;
+  origin.restorePin = () => {
+    // The array arrival invokes this once, even on a connection slower than
+    // ten seconds. A newer departure or destination always wins.
+    if (originGen !== forGen || pinB) { origin.restorePin = null; return; }
+    if (!origin.times) return;
+    origin.restorePin = null;
     const p = namePlaces ? nearestPlace(lat, lon) : null;
     commitDestination(lat, lon,
       requestedPin.label || (p && placeLead(p)) || fmtCoord(lat, lon),
       { geocoded: Boolean(requestedPin.label) });
-    return true;
   };
-  if (!restore()) {
-    let tries = 0;
-    const t = setInterval(() => { if (restore() || ++tries > 40) clearInterval(t); }, 250);
-  }
+  origin.restorePin();
 }
 
 // Location only on request. A permission prompt on load, before the page has

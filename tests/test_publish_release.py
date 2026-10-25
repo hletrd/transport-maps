@@ -2,10 +2,11 @@
 
 import json
 import re
+import struct
 
 import pytest
 
-from scripts.publish_release import atomic_write, publish
+from scripts.publish_release import atomic_write, prepare_reading_ranges, publish
 
 
 @pytest.fixture
@@ -91,3 +92,49 @@ def test_incomplete_existing_snapshot_does_not_replace_live_page(site):
     with pytest.raises(ValueError, match="incomplete"):
         publish(site)
     assert (site / "index.html").read_bytes() == before
+
+
+def regional_files(site, selected=(0, 3, 5, 10)):
+    index = json.loads((site / "index.json").read_text())
+    index.update(readingRes=6, readingParentCount=3, readingSlots=4,
+                 modeChannels=["rail", "ferry"], readingUrlSuffix=".r6.bin", overrideUrlSuffix=".over.bin")
+    (site / "index.json").write_text(json.dumps(index))
+    (site / "origins/seoul.r6.bin").write_bytes(struct.pack("<12H", *range(12)))
+    n = len(selected)
+    (site / "origins/seoul.over.bin").write_bytes(struct.pack(f"<{n}I", *selected) + bytes(n * 6))
+    return index
+
+
+def test_regional_index_boundaries_and_repeated_publication(site):
+    index = regional_files(site)
+    original = (site / "origins/seoul.over.bin").read_bytes()
+    prepare_reading_ranges(site, index)
+    directory = site / "origins/seoul.over.index.bin"
+    assert struct.unpack("<5I", directory.read_bytes()) == (4, 0, 2, 3, 4)
+    assert index["readingRanges"] == {"blocks": 32, "overrideIndexSuffix": ".over.index.bin"}
+    before = directory.stat().st_mtime_ns
+    prepare_reading_ranges(site, index)
+    assert directory.stat().st_mtime_ns == before
+    assert (site / "origins/seoul.over.bin").read_bytes() == original
+
+
+@pytest.mark.parametrize("selected", [(3, 0), (1, 1), (12,)])
+def test_regional_index_refuses_invalid_route_slots(site, selected):
+    index = regional_files(site, selected)
+    with pytest.raises(ValueError, match="route slots"):
+        prepare_reading_ranges(site, index)
+    assert "readingRanges" not in json.loads((site / "index.json").read_text())
+
+
+def test_regional_index_supports_no_route_overrides(site):
+    index = regional_files(site, ())
+    prepare_reading_ranges(site, index)
+    assert struct.unpack("<5I", (site / "origins/seoul.over.index.bin").read_bytes()) == (0, 0, 0, 0, 0)
+
+
+def test_regional_index_requires_every_advertised_origin(site):
+    index = regional_files(site)
+    index["origins"].append({"slug": "missing"})
+    with pytest.raises(ValueError, match="missing route overrides"):
+        prepare_reading_ranges(site, index)
+    assert "readingRanges" not in json.loads((site / "index.json").read_text())

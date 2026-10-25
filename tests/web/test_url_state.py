@@ -287,3 +287,33 @@ def test_an_unusable_parameter_is_reported_rather_than_swallowed():
         assert "URL_REJECTED.push(key)" in _function(helper)
     # The unknown-city message is unchanged.
     assert 'No departure city called' in APP
+
+
+@pytest.mark.parametrize("change", ["none", "origin", "destination"])
+def test_link_destination_waits_for_array_arrival_without_a_time_limit(node, tmp_path, change):
+    restoration = _js.block("if (requestedPin) {")
+    at = APP.index('origin.times = checked(b, 2, `${o.slug}.bin`);')
+    begin = APP.rfind("    .then((b) => {", 0, at)
+    arrival = _js.block("    .then((b) => {", APP[begin:])
+    script = tmp_path / "delayed-link.mjs"
+    script.write_text(f'''
+let originGen=1,pinB=null;const origin={{times:null}},requestedCamera={{}};
+const requestedPin={{lat:40,lon:-73,label:"JFK"}},namePlaces=false,events=[];
+const nearestPlace=()=>null,placeLead=()=>null,fmtCoord=()=>"coordinates";
+const commitDestination=(...args)=>events.push(args);
+const setInterval=()=>{{throw new Error("restoration must follow data arrival, not a polling timeout");}};
+{restoration}
+for(let n=0;n<80;n++)origin.restorePin();
+if({json.dumps(change)}==="origin")originGen++;
+if({json.dumps(change)}==="destination")pinB={{label:"new destination"}};
+const current=()=>true,checked=()=>[123],settle=()=>{{}},loadReading=()=>{{}},o={{slug:"tokyo"}};
+await Promise.resolve(new ArrayBuffer(2)){arrival});
+console.log(JSON.stringify({{events,cleared:origin.restorePin===null}}));
+''')
+    done = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=20)
+    assert done.returncode == 0, done.stderr
+    result = json.loads(done.stdout)
+    assert result["cleared"]
+    assert len(result["events"]) == (1 if change == "none" else 0)
+    if change == "none":
+        assert result["events"][0][:3] == [40, -73, "JFK"]

@@ -10,8 +10,16 @@
     },
     {
       "ref": "transport_maps_data",
-      "description": "Worldmap immutable datasets and PMTiles ranges",
+      "description": "Worldmap immutable datasets",
       "expression": "(http.host eq \"worldmap.atik.kr\" and starts_with(http.request.uri.path, \"/data/\"))",
+      "action": "set_cache_settings",
+      "action_parameters": {"cache": true},
+      "enabled": true
+    },
+    {
+      "ref": "transport_maps_ranges",
+      "description": "Worldmap PMTiles and regional array byte ranges",
+      "expression": "(http.host eq \"worldmap.atik.kr\" and starts_with(http.request.uri.path, \"/data/\") and (ends_with(http.request.uri.path, \".pmtiles\") or ends_with(http.request.uri.path, \".r6.bin\") or ends_with(http.request.uri.path, \".over.bin\")))",
       "action": "set_cache_settings",
       "action_parameters": {"cache": true, "origin_range_requests": {"mode": "on"}},
       "enabled": true

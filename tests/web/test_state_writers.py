@@ -56,7 +56,7 @@ def test_rebuilding_the_city_list_does_not_delete_the_address_results() -> None:
 
 
 def test_a_shared_link_does_not_overwrite_a_destination_the_visitor_chose() -> None:
-    """The permalink restore retries every 250 ms for ten seconds waiting for
+    """The permalink restore used to poll for ten seconds waiting for
     origin.times, and guarded on nothing else. A visitor who pinned their own
     destination in that window, or switched departure city, had the link's pin
     written over the top with nothing said.
@@ -64,7 +64,7 @@ def test_a_shared_link_does_not_overwrite_a_destination_the_visitor_chose() -> N
     Mutation performed and reverted: drop the `originGen !== forGen || pinB`
     clause -> red.
     """
-    body = _body("  const restore = () =>")
+    body = _body("  origin.restorePin = () =>")
     assert "origin.times" in body, "the restore no longer waits for the arrays"
     assert "pinB" in body, (
         "the permalink restore does not check whether the visitor has already "

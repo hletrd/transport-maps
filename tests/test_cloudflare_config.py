@@ -70,3 +70,27 @@ def test_preview_makes_no_changes_or_backup(monkeypatch, tmp_path):
     configure("test-secret", "zone", RULES, backup, apply=False)
     assert all(method == "GET" for method, _, _ in calls)
     assert not backup.exists()
+
+
+@pytest.mark.parametrize("path,ranged", [
+    ("/data/build/water.pmtiles", True),
+    ("/data/build/origins/seoul.r6.bin", True),
+    ("/data/build/v/no-air/origins/seoul.over.bin", True),
+    ("/data/build/hover_cells.bin", False),
+    ("/data/build/origins/seoul.modes.bin", False),
+    ("/data/build/origins/seoul.over.index.bin", False),
+    ("/data/build/index.json", False),
+    ("/api/solve", False),
+])
+def test_only_range_files_disable_origin_compression(path, ranged):
+    rules = json.loads(RULES.read_text())["rules"]
+    selected = []
+    for rule in rules:
+        if rule["action_parameters"].get("origin_range_requests", {}).get("mode") != "on":
+            continue
+        # This checked-in subset of the Rules language uses equality, boolean
+        # operators and these two string predicates. Evaluate its real selectors.
+        expression = rule["expression"].replace("http.host", "host").replace("http.request.uri.path", "path").replace(" eq ", " == ")
+        selected.append(eval(expression, {"__builtins__": {}}, {"host": "worldmap.atik.kr", "path": path,
+                        "starts_with": str.startswith, "ends_with": str.endswith}))
+    assert any(selected) is ranged

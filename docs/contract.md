@@ -189,6 +189,7 @@ file when a field marked *frozen* no longer matches today's code
 | `readingParentsUrl`, `readingUrlSuffix` | string | `reading_parents.bin`, `.r6.bin` | no reading tier |
 | `readingParentCount` | int | length of `reading_parents.bin`; a mismatch makes the page drop the reading tier and read res 4 | no cross-check |
 | `overrideUrlSuffix` | string | `.over.bin`, present only when every origin has one | no override |
+| `readingRanges` | {`blocks`, `overrideIndexSuffix`} | Added by the release publisher after preparing every origin and variant's regional directory; currently 32 blocks and `.over.index.bin` | fetch the complete reading and override arrays |
 | `airspaceUrl` | string | `airspace.json`, present only when the build wrote it | flights drawn on the great circle |
 | `variants` | [{`exclude`, `path`, `maxZoom`}] | complete exclusion variants | none offered |
 | `attribution` | [{`name`, `licence`, `url`, `usedFor`}] | `emit/index.py:ATTRIBUTION`. `check_dist` refuses a missing credit. | built-in credits |
@@ -200,6 +201,35 @@ file when a field marked *frozen* no longer matches today's code
 
 `deploy_verify.sh`'s `solver_gate` refuses a deploy whose `index.json` offers
 `solver` while the web host's bundle has a different `buildId`.
+
+### Regional reading transport
+
+The release publisher derives `.over.index.bin` from the existing sorted
+`.over.bin` slots; it does not rerun the solver or change travel times. The
+directory is little-endian uint32: the total entry count `n`, followed by
+`readingParentCount + 1` offsets into the three override arrays. Offset `b`
+is the first entry whose global slot is at least `b * readingSlots`. The first
+offset is zero and the last is `n`; equal adjacent offsets describe an empty
+block. Every advertised origin and exclusion variant must have a directory
+before `readingRanges` is published.
+
+`web/detail.js` requests up to 32 consecutive reading blocks by HTTP Range.
+For override entries `[a, b)`, it requests the slot bytes `[4a, 4b)`, airport
+bytes `[4n + 2a, 4n + 2b)`, and mode bytes
+`[6n + 2 * channels * a, 6n + 2 * channels * b)`. Slot numbers remain global;
+they are not rebased to the region. A final region may contain fewer blocks.
+These are half-open intervals; HTTP Range's end is one byte earlier.
+
+The client requires status 206, exact Content-Range bounds and total size, and
+the expected body length. Times and their matching route overrides become
+visible together. A rejected response keeps the existing coarse reading,
+with its grid disclosure. An origin switch aborts requests and discards late
+responses. At most two regions load concurrently, and 64 are kept per origin.
+Only a resting pointer or selected destination requests detail; list sorting
+and viewport sampling do not fetch regions. Save-Data still keeps the coarse
+readings. Versioned `.r6.bin` and `.over.bin` responses are unencoded, with
+Cloudflare Origin Range Requests enabled only on these ranged file types.
+Coarse arrays and the region directory retain whole-file gzip compression.
 
 ## The map from a point: `/api/map`
 

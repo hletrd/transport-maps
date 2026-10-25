@@ -49,12 +49,12 @@
         "https://www.hydrosheds.org/products/hydrolakes"
       ],
       "conditionsOfAccess": "A derivative of mixed-licence open data: ODbL 1.0 (OpenStreetMap, adsb.lol), CC BY-SA 4.0 (Wikipedia), CC BY 4.0 (GeoNames, HydroLAKES, the rail timetables of DELFI, KorailGTFS, Renfe, ÖBB, NMBS/SNCB, Fintraffic and Rejseplanen), ODbL 1.0 (the SNCF timetable), NLOD 2.0 (Entur's timetables), the Open Government Licence - Canada (VIA Rail's timetable), the opentransportdata.swiss terms of use (the Swiss timetable), CC0 (Wikidata, GRIP4, the OVapi timetable) and public-domain (OurAirports, Natural Earth, LSIB) sources. Each source's attribution and share-alike terms apply to the data derived from it; credits are listed in index.json and on the page.",
-      "isAccessibleForFree": true,
-      "dateModified": "2026-10-20"
+      "isAccessibleForFree": true
     },
     {
       "@type": "WebApplication",
       "name": "Isochronic Passage Chart",
+      "dateModified": "2026-10-25",
       "applicationCategory": "TravelApplication",
       "operatingSystem": "Any modern web browser",
       "browserRequirements": "Requires WebGL",
@@ -71,6 +71,7 @@
 <link rel="preload" href="./vendor/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="./vendor/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="modulepreload" href="./vendor/maplibre-gl.js">
+<link rel="modulepreload" href="./detail.js">
 <link rel="modulepreload" href="./vendor/maplibre-gl-shared.js">
 <link rel="modulepreload" href="./vendor/pmtiles.js">
 <link rel="modulepreload" href="./vendor/h3.js">
@@ -1282,7 +1283,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          breakdown beneath the number — the arrival airport, the mode of the
          last leg — comes from a wider grid still, about 45 km across, and can
          name a different airport from the one the time was computed through.
-         Until the finer array has loaded, or if your browser is set to save
+         Until that region&rsquo;s finer readings have loaded, or if your browser is set to save
          data, the number itself comes from that wider grid, the outline
          widens to that grid's cell, and the line under it says so.</p>
       <p>Country borders are the U.S. Department of State&rsquo;s Large Scale
