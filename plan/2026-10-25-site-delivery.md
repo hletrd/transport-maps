@@ -4,9 +4,9 @@ Owner request: apply the performance and search improvements in sequence,
 including HTTP/3 on nginx and Cloudflare.
 
 - [x] Enable nginx HTTP/3 and verify the negotiated protocol and live map.
-- [ ] Enable Cloudflare proxying and HTTP/3; preserve client IP rate limiting.
+- [x] Enable Cloudflare proxying and HTTP/3; preserve client IP rate limiting.
 - [x] Publish immutable, versioned assets and dataset URLs with atomic release selection.
-- [ ] Configure CDN caching for PMTiles and versioned files; bypass APIs.
+- [x] Configure CDN caching for PMTiles and versioned files; bypass APIs.
 - [ ] Fetch detailed readings and route overrides by region instead of worldwide arrays.
 - [ ] Improve the title, description and readable HTML for interactive world isochrone searches.
 - [ ] Verify deployed behavior at all four project viewports and repeat loading measurements.
@@ -43,3 +43,15 @@ assets return immutable cache headers; the versioned PMTiles probe returned
 206 and the exact requested range. No dataset was replaced with the stale
 local dist. The first publication uses production build
 `9b76cbb9-20261021T010348Z`.
+
+Cloudflare proxying is enabled. HTTP/3 was already on; TLS remains Full and
+Rocket Loader remains off. Three hostname-scoped cache rules cache the two
+immutable namespaces (Origin Range Requests on for data) and bypass `/api/`.
+Verified an asset MISS followed by HIT, PMTiles 206/HIT with the exact range,
+and a malformed API request returning 400/no-store/DYNAMIC without invoking a
+solve. Chromium connected through the edge over h3 with the map, 60 city rows,
+loaded tiles and no console errors. This probe reached LAX; do not infer
+worldwide latency or Korea edge routing from one connection. The public DNS
+change was visible via Google's resolver while the local resolver retained
+the previous record temporarily. The API helper's three tests passed, and
+dropping preservation of unrelated rules made its regression test fail.

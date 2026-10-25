@@ -3,9 +3,10 @@
 A single static page: a MapLibre globe painting per-origin isochrone bands from
 the PMTiles the pipeline emits.
 
-## Self-hosted by design
+## Same-origin assets
 
-No script, style or font is fetched from a CDN. MapLibre, PMTiles, h3-js,
+Scripts, styles and fonts are served from this site's own hostname through
+Cloudflare. No package or webfont CDN is contacted. MapLibre, PMTiles, h3-js,
 fflate and IBM Plex Sans are vendored under `vendor/`, so the deployed site
 works behind a strict `script-src 'self'` CSP for its own code. Two runtime
 calls do leave the browser, and the CSP in `deploy/` names exactly those:

@@ -1,0 +1,28 @@
+{
+  "rules": [
+    {
+      "ref": "transport_maps_assets",
+      "description": "Worldmap immutable page assets",
+      "expression": "(http.host eq \"worldmap.atik.kr\" and starts_with(http.request.uri.path, \"/assets/\"))",
+      "action": "set_cache_settings",
+      "action_parameters": {"cache": true},
+      "enabled": true
+    },
+    {
+      "ref": "transport_maps_data",
+      "description": "Worldmap immutable datasets and PMTiles ranges",
+      "expression": "(http.host eq \"worldmap.atik.kr\" and starts_with(http.request.uri.path, \"/data/\"))",
+      "action": "set_cache_settings",
+      "action_parameters": {"cache": true, "origin_range_requests": {"mode": "on"}},
+      "enabled": true
+    },
+    {
+      "ref": "transport_maps_api",
+      "description": "Worldmap computations bypass edge caching",
+      "expression": "(http.host eq \"worldmap.atik.kr\" and starts_with(http.request.uri.path, \"/api/\"))",
+      "action": "set_cache_settings",
+      "action_parameters": {"cache": false},
+      "enabled": true
+    }
+  ]
+}

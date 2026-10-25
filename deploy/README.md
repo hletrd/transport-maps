@@ -133,6 +133,33 @@ before uploading when snapshots exist; the legacy chunked fallback cannot free
 that space. Expand storage or explicitly retire an obsolete release first.
 Page-only deployments reuse the dataset snapshot.
 
+## Cloudflare
+
+`worldmap.atik.kr` is proxied through Cloudflare. HTTP/3 is enabled at the edge;
+the existing zone TLS mode is Full and Rocket Loader is off. The origin retains
+its Let's Encrypt certificate. These zone settings also affect other hosts, so
+the setup script verifies the TLS mode without changing it globally.
+
+`deploy/cloudflare-cache-rules.json` scopes three rules to this hostname: cache
+`/assets/`, cache `/data/` with Origin Range Requests, and bypass `/api/`. The
+origin's cache headers determine freshness. Origin Range Requests avoid fetching
+an entire PMTiles file on a cold range request; Cloudflare may fetch a larger
+aligned range than the browser asked for.
+
+Before enabling the proxy, install `deploy/worldmap-cloudflare-realip.conf` as
+`/etc/nginx/snippets/worldmap-cloudflare-realip.conf`. It trusts
+`CF-Connecting-IP` only from Cloudflare's published address ranges, so solver
+limits still apply per visitor and direct requests cannot spoof their IP.
+Refresh the ranges from `https://api.cloudflare.com/client/v4/ips` when needed.
+
+`scripts/configure_cloudflare.py --token-file PATH --zone-id ZONE --backup PATH`
+previews the change. Add `--apply` to write the rules, enable HTTP/3 if needed
+and turn on proxying for the existing DNS record. It preserves unrelated cache
+rules and DNS targets, backs up the original state to a new private file, and
+does not enable the proxy if cache configuration fails. The token requires DNS
+Edit, Zone Read, Zone Settings Edit and Cache Rules Edit for this zone. Never
+commit it. Verify cache HITs, API bypass and PMTiles 206 responses after changes.
+
 ## Unversioned compatibility caching
 
 Every artifact except the fonts is rewritten by a rebuild, and they must change
