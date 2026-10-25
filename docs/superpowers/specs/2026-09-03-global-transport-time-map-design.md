@@ -3,6 +3,11 @@
 **Date:** 2026-09-03
 **Status:** Superseded in part — see "As built (2026-09)" below
 
+This is a historical design and implementation snapshot. Current hosting,
+loading behavior and performance records are in
+[Site delivery](../../site-delivery.md); current file formats are in the
+[data contract](../../contract.md).
+
 ## As built (2026-09)
 
 The pipeline and the page were built from this spec and diverged as they went.

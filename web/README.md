@@ -6,12 +6,13 @@ the PMTiles the pipeline emits.
 ## Same-origin assets
 
 Scripts, styles and fonts are served directly from this site's Seoul origin.
-Cloudflare provides DNS; its proxy is currently disabled after a routing
-regression. No package or webfont CDN is contacted. MapLibre, PMTiles, h3-js,
+The main hostname is DNS-only; public map data can use the separately proxied
+`worldmap-data.atik.kr` hostname. No package or webfont CDN is contacted.
+MapLibre, PMTiles, h3-js,
 fflate and IBM Plex Sans are vendored under `vendor/`, so the deployed site
-works behind a strict `script-src 'self'` CSP for its own code. Two runtime
-calls do leave the browser, and the CSP in `deploy/` names exactly those:
-OpenStreetMap's Nominatim for address search and click-to-address (only on an
+works behind a strict `script-src 'self'` CSP for its own code. In addition to
+the public-data CDN, the CSP permits OpenStreetMap's Nominatim for address
+search and click-to-address (only on an
 explicit search or a click, never per keystroke — its usage policy forbids
 autocomplete), and the Google tag for page-view counting.
 
@@ -25,7 +26,7 @@ below), not from a jsDelivr `+esm` rebuild.
 | package | version | note |
 |---|---|---|
 | maplibre-gl | **6.11.2** | ES modules from the npm tarball, renamed `.mjs` to `.js` |
-| pmtiles | 4.5.0 | still the latest; works unchanged with MapLibre 6 |
+| pmtiles | 4.5.0 | installed version; works with MapLibre 6 |
 | h3-js | 4.2.1 | |
 | fflate | 0.8.3 | transitive dep of pmtiles |
 
@@ -53,8 +54,8 @@ The worker is same-origin, so MapLibre 6 constructs it directly
 (`new Worker(url, {type: "module"})`); it only routes through a `blob:` URL
 when the worker is cross-origin. The page was measured working under the
 production CSP with `blob:` removed from `script-src` and `worker-src` on
-2026-10-02, but the CSP is left as it is: dropping `blob:` is a separate,
-server-side change.
+2026-10-02. That removal was deployed on 2026-10-06; the current policy uses
+same-origin scripts and workers without `blob:` exceptions.
 
 The 5.x note that used to stand here -- pmtiles' protocol handler "called once
 for the metadata and then never for tiles" on 6.x -- does not reproduce on
@@ -106,8 +107,10 @@ rather than reading a hard-coded list (it used `iterdir()` until cycle 15,
 which could not see the subdirectory at all while this sentence claimed it
 could), so a newly vendored file fails the gate
 until its hash is recorded here. The six font faces are served
-`immutable, max-age=31536000` and are named by family, subset and weight, not by
-content, so a swapped face would be cached for a year with no other signal.
+`immutable, max-age=31536000`. Their basenames describe family, subset and
+weight; published URLs also include the asset content hash, so a changed face
+gets a new URL. Unversioned compatibility font URLs still require a filename
+change when replacing a face.
 
 ## Where each file came from
 
@@ -147,11 +150,11 @@ meet nor match the glyphs, and a name mixing both would set in two builds.
 
 ## Deploy
 
-`scripts/deploy_verify.sh` copies `index.html`, `boot.js`, `app.js`, `detail.js`, `delivery.js`, `loading.js`,
-`llms.txt`, `robots.txt`, `sitemap.xml`, `preview.png` and `vendor/` into the
-pipeline's
-`dist/` (so `index.json`, `hover_cells.bin` and `origins/` are siblings) and
-rsyncs that to the server; see `deploy/README.md`.
+For a full deploy, `scripts/deploy_verify.sh` copies `web/` into the validated
+`dist/`. `--page-only` ships `web/` directly and reuses the server's complete
+dataset. The publisher includes all application modules, including
+`detail.js`, `delivery.js` and `loading.js`. See the
+[deployment runbook](../deploy/README.md) for preflight and publication.
 
 The server must support HTTP Range requests — PMTiles reads byte ranges, and a
 server without them fails with "Check that your storage backend supports HTTP
@@ -183,6 +186,8 @@ without falsely declaring the map ready. PMTiles headers start immediately
 when an archive is registered. Directory bytes already inside the first
 16 KiB are reused only with the same strong ETag; caller abort and archive
 invalidation still apply. Resolution and travel-time data are unchanged.
+The [delivery guide](../docs/site-delivery.md) records active routing, measured
+gains, protocol scope and slow-request diagnostics.
 
 ## Colour schemes
 

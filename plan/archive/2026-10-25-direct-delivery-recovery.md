@@ -1,5 +1,9 @@
 # Direct delivery recovery
 
+Historical recovery record. The main hostname remains direct, and a separate
+adaptive data CDN was subsequently deployed. See
+[Site delivery](../../docs/site-delivery.md) for the current state.
+
 The owner reported severe map loading delays after the Cloudflare rollout and
 asked how overseas access would work without it.
 

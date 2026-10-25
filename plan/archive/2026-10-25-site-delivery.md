@@ -1,8 +1,9 @@
 # Site delivery and discoverability
 
-The Cloudflare proxy rollout below was subsequently reverted after the owner
-reported slow map loading. Current delivery and recovery measurements are in
-[Direct delivery recovery](2026-10-25-direct-delivery-recovery.md).
+Historical rollout: the main-host Cloudflare proxy below was subsequently
+reverted in [Direct delivery recovery](2026-10-25-direct-delivery-recovery.md).
+A separate adaptive data CDN and map-loading improvements followed. See
+[Site delivery](../../docs/site-delivery.md) for the current state.
 
 Owner request: apply the performance and search improvements in sequence,
 including HTTP/3 on nginx and Cloudflare.

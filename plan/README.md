@@ -1,5 +1,25 @@
 # Plans
 
+## Current delivery and recent rollouts
+
+The current deployment and loading behavior are summarized in
+[Site delivery](../docs/site-delivery.md). Dated plans record what happened
+at that stage; a later rollout may supersede their deployment state.
+
+| 2026-10-25 rollout | Result | Record |
+| --- | --- | --- |
+| HTTP/3, immutable releases, regional detail and SEO | Deployed; the initial main-host proxy switch was later reversed | [Initial rollout](archive/2026-10-25-site-delivery.md) |
+| Main-host direct delivery recovery | Main hostname remains DNS-only to Seoul | [Routing recovery](archive/2026-10-25-direct-delivery-recovery.md) |
+| Separate data CDN and first paint | Adaptive data routing, origin retry and embedded critical CSS | [CDN and FCP](archive/2026-10-25-adaptive-delivery-and-fcp.md) |
+| First map and city changes | Tiles prioritized, duplicate directory reads removed, loading/retry UI; owner confirmed faster loading | [Map loading](archive/2026-10-25-map-loading.md) |
+
+The earlier reported five-second TTFB has no request-level root cause yet.
+The latest loading improvement is confirmed, but a recurrence needs the
+affected URL and Timing breakdown; see the
+[diagnostic procedure](../docs/site-delivery.md#diagnosing-another-slow-request).
+
+## Review history
+
 Implementation plans derived from the multi-agent reviews in `.context/reviews/`
 (cycle 15: per-agent files plus `_aggregate.md`, with per-agent IDs `CR15-n`,
 `PR15-n`, `SEC15-n`, `CRIT15-n`, `VER15-n`, `TE15-n`, `TR15-n`, `ARCH15-n`,

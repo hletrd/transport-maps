@@ -1,100 +1,78 @@
 # Deployment — worldmap.atik.kr
 
-Static hosting on nginx. `scripts/deploy_verify.sh` does the whole thing and
-refuses to ship an inconsistent build:
+nginx serves immutable frontend and dataset releases on the Seoul origin.
+The main hostname stays DNS-only; the optional public-data hostname is
+proxied. See [Site delivery](../docs/site-delivery.md) for current release IDs,
+loading behavior, protocol scope, measurements and slow-request diagnostics.
 
-1. refuses while a `build-all` is running — its lock, or a matching process
-   ABOVE 1 % CPU (orphans of a killed build sit at 0.0 % for days and must not
-   block every deploy);
-2. runs `scripts/check_dist.py` — every origin's arrays agree in length with
-   `hover_cells.bin` (widths from the emitters), `index.json` carries
-   `bandEdgesMin`, `hoverCellCount` and `modeChannels` (a missing one names
-   `transport-maps reindex` as the remedy), `{slug}.json` is present, valid,
-   and carries real `offsets`, every origin agrees on `offsets.airports` so two
-   builds cannot be mixed, `.rail.bin` and `.rail.json` ship together and
-   `.rail.json` has its `stations` list, every `.pmtiles` header is sane,
-   `index.json` lists exactly the origins of `data/origins.toml`, no stray
-   `*-journal`/`.tmp`/dotfile is present, and the page copy states no city
-   count (it must come from `index.json`). **It also refuses an `index.json`
-   whose `attribution` block does not credit every source the pipeline
-   consumes** -- the only automated licence gate in the project, and the reason
-   the nine credits reach the live site at all. It WARNS, without blocking, on
-   a build-host path in a PMTiles metadata blob;
-3. assembles the page into the build output — `web/vendor/` mirrored with
-   `--delete`, the rest of `web/` (everything but `web/README.md`) on top — so
-   `index.html`, `app.js`, `boot.js`, `llms.txt` and `vendor/` sit beside
-   `index.json`, `hover_cells.bin` and `origins/`;
-4. runs the page-asset gate over what it has just assembled. It runs in BOTH
-   modes — `--page-only` publishes `web/` and nothing else, so before it did,
-   that path shipped ungated. The gate refuses on **nine** conditions, not the
-   four this list carried until cycle 17: the licence firewall (on `web/` as
-   well as `dist/`), the vendored-bundle hash pins, the CSP inline-script hash,
-   and the attribution and privacy obligations — plus, since `c2d11f5`, a
-   repo-wide `uv run ruff check .`, any test reporting `deselected`, `xfailed`,
-   `xpassed` or `error` (pytest exits 0 on all four, so the stage would
-   otherwise report success while checking less than it claims), a **floor on
-   the passed count**, and any skip whose reason does not carry the
-   `needs a built dist/` sentinel — a skip because nothing is built has stopped
-   checking nothing, a skip for any other reason is a check that silently
-   stopped running;
-5. checks free space on the server before moving a byte -- `df -Pk` over the
-   connection rsync is about to use, against the measured payload plus 30 %.
-   `--delay-updates` stages the new set beside the old one, and running out
-   mid-rename leaves exactly the mixed `dist/` step 1 exists to prevent, on the
-   server, where no gate can see it. A server that will not answer is a
-   warning, not a refusal;
-6. rsyncs `dist/` to the server with `--delete --delete-delay --delay-updates`,
-   explicit modes and `deploy/rsync-excludes.txt`, logging to a temp file;
-7. curls the live files, including two byte-range requests against a
-   `.pmtiles`, and ASSERTS each status (200, or 206 on the range probes) rather
-   than printing it; then reports whether the security headers are present;
-8. runs `scripts/browser_verify.sh` against the deployed URL. Under
-   `set -euo pipefail` its exit code is the deploy's, so a page that does not
-   RUN fails the deploy. CLAUDE.md: "No deploy is done until it has been opened
-   in a browser... `curl` returning 200 proves nothing about whether the page
-   runs." This script therefore does not leave that stage to the operator; it
-   is step 8, and the header of `deploy_verify.sh` said otherwise until cycle 6.
+## Choose the deployment scope
 
-The order of 3 and 4 matters and was wrong until cycle 3: the gate used to run
-before the page was merged in, so `index.html`, `app.js`, `llms.txt` and
-`vendor/` — the assets that actually ship — were scanned by nothing.
+Run from the repository root. Host, document root and URL come from
+`deploy/.env` (see [.env.example](.env.example)).
 
-`scripts/deploy_verify.sh --page-only` ships `web/` alone, without the
-`dist/` gate and without `--delete`, for a page fix while a rebuild owns
-`dist/`; the page reads every newer `index.json` field with a fallback, so an
-older build stays valid. Host, server root and site URL come from
-`deploy/.env` (see `deploy/.env.example`); the defaults are the live site.
+| Change | Command | Dataset source |
+| --- | --- | --- |
+| Frontend only | `scripts/deploy_verify.sh --page-only` | Reuse the complete dataset already on the server |
+| Complete rebuilt dataset | `scripts/deploy_verify.sh` | Validated local `dist/` |
+| Dataset built on h200 | `scripts/deploy_from_h200.sh` | Validated build-host `dist/`, transferred directly |
 
-`scripts/browser_verify.sh` then opens the live site (or a local preview,
-given its URL) in a browser and checks the canvas, the city list and legend
-counts (read from the deployed `index.json`, never hard-coded), the
-departure label, the coast and borders layers, a route with surface modes
-and tooltips, address search, click-to-depart, zoom 3, the city list's
-door-to-door times, a searched destination agreeing with its itinerary, globe
-labels carrying their own accessible names, the `?from=`/`?to=` permalink and
-an unknown slug, the console, four viewports with a route open (including the
-legend's hour ticks and the departure card not overlapping the reading), the
-bottom-sheet handle after a return to desktop, and — on a phone — that a tap
-leaves the answer and the whole legend on screen, and that the folded sheet
-still shows the band strip, the ticks, the keys and the door-to-door caption. It kills only the browser
-processes it started. **A deploy is not done until that has passed**
-(CLAUDE.md).
+Never full-deploy an old operator-machine `dist/` to ship a page fix. Full
+builds require consistent hover layouts, every origin/variant, the coastline,
+borders and the matching solver bundle where advertised. A partial build is
+not a release.
 
 ## Before deploying
 
-- Run `uvx pip-audit` (not installed in the venv; run it ad hoc) and
-  `uv run pytest tests/test_licence_firewall.py`.
-- The CSP was rehearsed and is INSTALLED (2026-09-13). Rehearsal: `dist/` served
-  locally with the policy injected as a meta tag, page opened, map 7,845 water
-  features and 52 bands, 553 cities, address search reaching Nominatim and
-  returning results, zero CSP refusals, zero console errors. Install: the
-  snippet at `/etc/nginx/snippets/`, included at server level and inside all
-  five locations that set their own `add_header`, six now-duplicated
-  server-level headers removed, `nginx -t` passed, reload, and the live page
-  re-opened with the same result. All six headers verified present on `/`,
-  `app.js` and `origins/seoul.bin` -- the `.bin` and `.pmtiles` locations are
-  the ones that used to drop them. Backup at
-  `/etc/nginx/worldmap.atik.kr.bak.*` on the host.
+The shell needs `uv`, Python, Node, rsync, SSH and `agent-browser`. The deploy
+refuses before upload if the browser executable is missing or the installed
+publisher differs from local source. If the publisher changed, install the
+matching root-owned helper first using the commands below.
+
+Audit the project's runtime requirements, rather than only the isolated
+`uvx` tool environment:
+
+```sh
+uv export --locked --format requirements.txt --no-dev --no-emit-project \
+  --output-file /tmp/worldmap-runtime-requirements.txt
+uvx pip-audit -r /tmp/worldmap-runtime-requirements.txt
+```
+
+[`pip-audit` supports requirements-file audits](https://github.com/pypa/pip-audit#usage).
+The deploy script runs ruff and the licence firewall itself. Review findings
+before deploying; do not treat an audit-tool error as a passing audit.
+
+## What the script verifies and publishes
+
+1. Check publisher SHA256 and browser availability. A build-host deployment
+   uses the existing `BROWSER_VERIFY=by-caller` contract and immediately runs
+   the browser check from the operator's machine.
+2. In full mode, refuse a running/inconsistent build, run `check_dist.py`,
+   check solver identity, and assemble `web/` into the complete dataset.
+   Page-only mode validates the page copy without replacing dataset files.
+3. Run ruff, the licence firewall, all `tests/web/` and the water tests. The
+   gate checks vendor pins, module syntax/publication, CSP, attribution and
+   UI rules. Unexpected skips, deselections, xfails, errors, a missing test
+   count or too few passing tests fail the gate. Only explicitly marked
+   unbuilt-`dist/` skips are accepted in a checkout without a built dataset.
+4. Full mode measures changed transfer size and requires staging space plus
+   30%. Retained immutable snapshots prevent the legacy chunked fallback
+   from freeing old blocks. An unavailable free-space reading is currently
+   logged as a warning; an insufficient measured value refuses the deploy.
+5. Upload files while excluding the public `index.html`. Full mode stages
+   replacements with rsync; page-only mode uploads `web/` without deletion.
+   Protected release directories are retained. Upload the raw HTML as
+   `.release-index.html`, then invoke the installed publisher to select the
+   new page atomically.
+6. Verify live files, status codes, byte ranges and security headers, then
+   run the complete browser gate. An HTTP 200 alone does not complete a deploy.
+
+The browser gate covers the canvas, timed city rows, coast and borders,
+routes, tooltips, address search, departure changes, permalinks, console,
+legend, folded sheet and layout at 1280×800, 820×1180, 390×844 and 844×390.
+For delivery/loading changes, additionally delay a tile response and fail one
+request: the loading notice must remain visible, retry must recover, and
+optional downloads must wait. Only close the browser sessions/processes
+created for the check.
 
 ## Immutable release URLs
 
@@ -172,31 +150,22 @@ exposes range/ETag/timing headers. The CSP allows this hostname for connections
 only. Its separate ECDSA Let's Encrypt certificate is renewed by Certbot's
 webroot authenticator with `nginx -t && systemctl reload nginx` as deploy hook.
 
-`web/delivery.js` starts on the direct path without waiting for a probe. After
-FCP it downloads the probe twice per path: one warm-up and one timed sample,
-64 KiB total per page (none with Save-Data). Resource Timing excludes JavaScript
-scheduling delay. The CDN must be at least 20% and 20 ms faster; a five-minute
-session hint helps subsequent navigations. Only plain GET/HEAD requests for
-the exact selected public dataset may change hosts, without cookies or a
-referrer. Page code, coordinates and solver calls remain direct.
-
-CDN errors, bad JSON/ranges or stalled responses retry the identical version
-and range on the origin and keep that page direct. Header, idle-body and
-whole-body limits are 1.8 s, 3 s and 30 s respectively. Caller cancellation
-does not retry. PMTiles retains a canonical cache key across paths.
-`window.__dataDelivery.getState()` exposes measurements, choice and fallbacks.
+The browser chooses a data path without blocking first paint and retries CDN
+failures on the identical origin release. Selection thresholds, timeouts,
+session hints and browser diagnostics are documented in
+[Data route selection](../docs/site-delivery.md#data-route-selection).
 
 The retained Cloudflare settings are HTTP/3 on, Full TLS and Rocket Loader off.
-The cache rules apply to the data hostname; the main hostname stays direct. These zone settings
-also affect other hosts, so the setup script verifies TLS without changing it
-globally.
+The cache rules apply to proxied traffic; the main hostname stays direct.
+Zone settings also affect other hosts. The setup script verifies TLS without
+changing it globally.
 
 `deploy/cloudflare-cache-rules.json` scopes rules to these two hostnames: cache
 `/assets/`, cache `/data/`, enable Origin Range Requests only for `.pmtiles`,
 `.r6.bin` and `.over.bin`, and bypass `/api/`. Other binary files keep whole-file
-gzip compression; a fifth rule caches the CDN probe. Enabling origin ranges on them would force identity encoding
-and enlarge startup downloads. The origin's cache headers determine freshness.
-Origin Range Requests avoid fetching
+gzip compression; a fifth rule caches the CDN probe. Enabling origin ranges
+on whole-file binaries would force identity encoding and enlarge startup
+downloads. The origin's cache headers determine freshness. Origin Range Requests avoid fetching
 an entire PMTiles file on a cold range request; Cloudflare may fetch a larger
 aligned range than the browser asked for.
 
@@ -208,13 +177,40 @@ Refresh the ranges from `https://api.cloudflare.com/client/v4/ips` when needed.
 
 `scripts/configure_cloudflare.py --host worldmap-data.atik.kr --token-file PATH --zone-id ZONE --backup PATH`
 previews the change. Add `--apply` to write the rules while preserving the DNS
-proxy and protocol settings. Only `--enable-proxy` explicitly turns proxying
-and edge HTTP/3 on for the selected host. Never enable the main record as part
-of data-host setup. It preserves unrelated cache
+proxy and protocol settings. `--enable-proxy` enables only the selected DNS
+record and, if necessary, enables HTTP/3 for the entire zone. Never enable
+the main record as part of data-host setup. It preserves unrelated cache
 rules and DNS targets, backs up the original state to a new private file, and
 does not enable the proxy if cache configuration fails. The token requires DNS
 Edit, Zone Read, Zone Settings Edit and Cache Rules Edit for this zone. Never
 commit it. Verify cache HITs, API bypass and PMTiles 206 responses after changes.
+
+## Recovery
+
+For a page regression, use an isolated checkout of the last verified
+application revision, install its matching publisher and run the page-only
+deploy with the complete browser gate. Reuse the current complete dataset;
+do not overwrite immutable asset files or copy a few files into an existing
+release directory.
+
+To turn off adaptive data delivery, remove the `worldmap-data-cdn` meta tag
+from the page template and deploy through the same gates. New page loads then
+use the origin; the independent after-FCP stylesheet activation still works.
+Keep the data hostname available to existing tabs. Enabling the main site's
+proxy is not a rollback for this feature.
+
+| Origin backup directory | Historical state |
+| --- | --- |
+| `/etc/nginx/worldmap-backup-20261025-http3/` | Before origin HTTP/3 |
+| `/var/backups/worldmap-20261025-release/` | Before immutable publication; original Cloudflare settings and the main-record proxy rollback |
+| `/var/backups/worldmap-20261025-adaptive/` | Before data-host rollout; nginx/header/helper backups and private, credential-free `cloudflare-before.json` |
+
+These are dated snapshots, not interchangeable current configurations.
+Compare them with current source before restoring individual settings: an
+early header file may omit the data-host CSP permission, and an early vhost
+may omit versioned caching or API routes. Validate nginx before a graceful
+reload and verify the page, ranges and APIs afterwards. Preserve unrelated
+zone rules and domains. Cache purges do not repair mismatched immutable files.
 
 ## Unversioned compatibility caching
 
@@ -234,34 +230,35 @@ location, fell through to `location /` with no `Cache-Control` at all, and a
 revalidated `maplibre-gl.js` beside a heuristically cached old
 `maplibre-gl.css` is exactly the mismatch above.
 
-`.woff2` is the one asset cached for a year. The font files are named by
-family/subset/weight, not by content — bump the filename when Plex is
-refreshed, or the old face is served for a year.
+On unversioned compatibility paths, `.woff2` is the exception cached for a
+year; change its basename when replacing a face. Published font URLs include
+the asset content hash and therefore change automatically with the content.
 
 ## Security headers: the `add_header` inheritance trap
 
-nginx `add_header` does **not** merge across levels. A `location` that sets any
-header of its own (here: `Cache-Control`) inherits **none** of the `add_header`
-lines from the `server` block. With the headers declared once at server level,
-the live site served no Content-Security-Policy, HSTS, `nosniff` or
+With the current default inheritance, a `location` that sets any header of
+its own (here: `Cache-Control`) inherits none of the server's `add_header`
+directives. Before this was fixed, the live site served no Content-Security-Policy, HSTS, `nosniff` or
 `X-Frame-Options` on `/`, `app.js`, `index.json`, any `.bin` or `.pmtiles` —
 only on files no location matched (`robots.txt`, `preview.png`, 404s).
 
 The headers therefore live in `deploy/worldmap-security-headers.conf` and are
-`include`d at server level **and** inside every location. Install both files:
+`include`d at server level **and** inside every location. Back up the active
+files before installing changes. For the main vhost and shared headers:
 
-    scp deploy/worldmap-security-headers.conf atik.kr:/etc/nginx/snippets/
-    scp deploy/worldmap.atik.kr.conf atik.kr:/etc/nginx/sites-available/worldmap
-    ssh atik.kr 'nginx -t && systemctl reload nginx'
+```sh
+scp deploy/worldmap-security-headers.conf deploy/worldmap.atik.kr.conf atik.kr:/tmp/
+ssh atik.kr 'sudo install -m 644 /tmp/worldmap-security-headers.conf /etc/nginx/snippets/worldmap-security-headers.conf && sudo install -m 644 /tmp/worldmap.atik.kr.conf /etc/nginx/sites-available/worldmap.atik.kr && sudo nginx -t && sudo systemctl reload nginx'
+```
 
 and verify on a page asset, not on the root alone:
 
-    curl -sI https://worldmap.atik.kr/app.js | grep -iE 'content-security|strict-transport|x-frame|x-content'
+    curl -sI https://worldmap.atik.kr/app.js | rg -i 'content-security|strict-transport|x-frame|x-content'
 
 The CSP allows the public-data CDN, Nominatim (address search, only on request)
 and the Google tag (loader by host,
 inline bootstrap by hash, collection endpoints in `connect-src`/`img-src`). The
-page's third call, `/api/solve`, is same-origin and is covered by `'self'`.
+solver APIs are same-origin and covered by `'self'`.
 Scripts and workers no longer allow `blob:`: MapLibre 5 needed it for its
 workers, MapLibre 6 loads its worker from `vendor/` (dropped 2026-10-06, after
 a report-only run of the stricter policy on the live page). Changing the inline gtag snippet in `web/index.html` changes
@@ -463,15 +460,18 @@ Byte Serving" — Python's `http.server` is one such.
 Let's Encrypt via certbot, auto-renewing. HSTS is set without `preload`, which
 is a registry submission and hard to reverse.
 
-HTTP/3 is enabled for `worldmap.atik.kr` alongside HTTPS over TCP. The host's
-default virtual host owns `reuseport` on UDP 443 for IPv4 and IPv6; this site's
-QUIC listeners share those sockets. Keep `Alt-Svc` in the shared header snippet
+HTTP/3 is enabled for both `worldmap.atik.kr` and `worldmap-data.atik.kr`
+alongside HTTPS over TCP. The host's default virtual host owns `reuseport`
+on UDP 443 for IPv4 and IPv6; both sites' QUIC listeners share those sockets.
+Keep `Alt-Svc` in the shared header snippet
 so responses from locations with their own `Cache-Control` advertise HTTP/3.
 The explicit `http3 on` overrides the host's global `http3 off`.
 The installed nginx includes `--with-http_v3_module`; both the host firewall
 and the cloud network must allow UDP 443. Verify the negotiated protocol in a
 browser, as the host's curl does not include HTTP/3 support.
 
-With Cloudflare proxying enabled, HTTP/3 connects visitors to Cloudflare;
-Cloudflare connects to this origin over HTTP/2. Direct origin access can also
-negotiate HTTP/3. The origin's HTTP/2 listener remains enabled for both paths.
+On the proxied data hostname, HTTP/3 can connect visitors to Cloudflare;
+Cloudflare does not support HTTP/3 to the origin. The origin's HTTP/2 listener
+remains available to the edge and to direct visitors. Main-host direct access
+can negotiate HTTP/3; verify the actual protocol rather than inferring it
+from `Alt-Svc` alone. The two hostnames have separate Certbot certificates.

@@ -24,6 +24,21 @@ It computes expected door-to-door travel time from each departure city in
 in dense regions), by air, rail, ferry and road, and emits one PMTiles band
 set plus binary time, airport, mode and rail-station arrays per departure.
 
+## Documentation
+
+| Topic | Guide |
+| --- | --- |
+| Current hosting, loading flow and performance measurements | [Site delivery](docs/site-delivery.md) |
+| Deploy, verify and recover a release | [Deployment runbook](deploy/README.md) |
+| Browser modules, vendored assets and design | [Frontend](web/README.md) |
+| Dataset formats and pipeline/page compatibility | [Data contract](docs/contract.md) |
+| Work records and prior reviews | [Plans and rollout history](plan/README.md) |
+
+The main site connects directly to Seoul. Public map data can use a separate
+Cloudflare hostname when the browser measures a faster path. Map tiles and
+basic times load before optional route data, with visible loading and retry
+states. See the delivery guide for measured results and their limits.
+
 ## Development
 
 ```bash

@@ -1,5 +1,9 @@
 # Adaptive data delivery and first contentful paint
 
+Historical rollout record. The subsequent map-loading rollout changed request
+priority and loading feedback. See [Site delivery](../../docs/site-delivery.md)
+for current behavior and the combined measurement index.
+
 The owner requested the overseas delivery improvements and reported slow
 first contentful paint in an actual desktop browser. The main page remains
 DNS-only to Seoul. This rollout adds a separate data CDN and reduces the

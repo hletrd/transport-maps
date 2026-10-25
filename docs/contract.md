@@ -12,21 +12,31 @@ check. `tests/test_contract_doc.py` keeps the two in step: it fails when an
 
 ## Owners
 
-Three parties touch the contract.
+Four components touch the contract.
 
 - **Pipeline**: `src/transport_maps/`, run on the owner's Mac by
-  `transport-maps build-all` (and `reindex`, `assets`). It writes every file
-  below except `water.pmtiles`, which `scripts/build_water_tiles.py` writes
-  once.
-- **Page**: `web/app.js`. It reads `dist/` over HTTP and never writes it.
+  `transport-maps build-all` (and `reindex`, `assets`). It writes the shared
+  and per-origin build artifacts except `water.pmtiles`, which
+  `scripts/build_water_tiles.py` writes separately.
+- **Page**: `web/app.js` with `detail.js`, `delivery.js` and `loading.js`.
+  It reads the published dataset over HTTP and never writes it. Local previews
+  can read files beside the page; production uses one pinned release prefix.
 - **Service**: `src/transport_maps/service/`, the resident solver on the web
-  host. It reads only the solver bundle and answers `GET /api/solve` and,
-  since 2026-10-04, `GET /api/map` (`deploy/README.md`, "The on-demand
-  solver"; "The map from a point" below).
+  host. It reads the solver bundle and answers `GET /api/solve`,
+  `GET /api/map` and `GET /api/cells` (see the API sections below).
+- **Release publisher**: `scripts/publish_release.py`. It derives regional
+  override directories, adds their optional transport metadata to the index,
+  and publishes immutable asset/data snapshots without recalculating journeys.
 
 The **writer** owns a format. If a layout changes, the writer changes first,
 the reader follows in the same commit, and `contractVersion` goes up (see
 "Versioning").
+
+The release publisher selects immutable `/assets/` and `/data/` directories.
+Changing the delivery host, request order or loading notice does not change
+the wire contract. See [Site delivery](site-delivery.md) for routing, caching,
+PMTiles header reuse and loading behavior, and the
+[deployment runbook](../deploy/README.md) for atomic publication.
 
 ## Versioning
 
@@ -173,6 +183,9 @@ for an `index.json` that predates the field. `reindex` refuses to rewrite the
 file when a field marked *frozen* no longer matches today's code
 (`cli._CURRENT_INDEX_CONSTANTS`). Rebuild instead.
 
+The table covers pipeline-written fields. The publisher's optional additions
+are documented separately under [Publication additions](#publication-additions).
+
 | Field | Type | Meaning | Page if absent |
 |---|---|---|---|
 | `contractVersion` | int | this contract's version (above); *frozen* | read as 1 |
@@ -189,7 +202,6 @@ file when a field marked *frozen* no longer matches today's code
 | `readingParentsUrl`, `readingUrlSuffix` | string | `reading_parents.bin`, `.r6.bin` | no reading tier |
 | `readingParentCount` | int | length of `reading_parents.bin`; a mismatch makes the page drop the reading tier and read res 4 | no cross-check |
 | `overrideUrlSuffix` | string | `.over.bin`, present only when every origin has one | no override |
-| `readingRanges` | {`blocks`, `overrideIndexSuffix`} | Added by the release publisher after preparing every origin and variant's regional directory; currently 32 blocks and `.over.index.bin` | fetch the complete reading and override arrays |
 | `airspaceUrl` | string | `airspace.json`, present only when the build wrote it | flights drawn on the great circle |
 | `variants` | [{`exclude`, `path`, `maxZoom`}] | complete exclusion variants | none offered |
 | `attribution` | [{`name`, `licence`, `url`, `usedFor`}] | `emit/index.py:ATTRIBUTION`. `check_dist` refuses a missing credit. | built-in credits |
@@ -201,6 +213,16 @@ file when a field marked *frozen* no longer matches today's code
 
 `deploy_verify.sh`'s `solver_gate` refuses a deploy whose `index.json` offers
 `solver` while the web host's bundle has a different `buildId`.
+
+## Publication additions
+
+Writer: `scripts/publish_release.py:prepare_reading_ranges`, after a complete
+build. These optional additions do not change the pipeline's frozen fields
+or the travel-time arrays.
+
+| Field | Type | Meaning | Page if absent |
+| --- | --- | --- | --- |
+| `readingRanges` | {`blocks`, `overrideIndexSuffix`} | Added after preparing every origin and variant's regional directory; currently 32 blocks and `.over.index.bin` | fetch the complete reading and override arrays |
 
 ### Regional reading transport
 

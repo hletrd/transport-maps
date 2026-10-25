@@ -81,6 +81,11 @@ source and includes `loading.js`. No nginx/DNS/Cloudflare policy or model
 change was required for this rollout. The owner's exact five-second TTFB
 remains unverified pending the affected request URL and timing breakdown.
 
+The owner subsequently confirmed noticeably faster loading. This confirms
+the perceived improvement, not the cause of the earlier five-second request.
+Current behavior and recurrence diagnostics are maintained in
+[Site delivery](../../docs/site-delivery.md).
+
 References: [Chrome Push retirement](https://developer.chrome.com/blog/removing-push),
 [Cloudflare HTTP/3 scope](https://developers.cloudflare.com/speed/optimization/protocol/http3/),
 [PMTiles cloud storage](https://docs.protomaps.com/pmtiles/cloud-storage).
