@@ -11,6 +11,9 @@ tmp*
 .build-*
 .release-*
 README.md
+# Published snapshots survive later rsync --delete deployments.
+/assets/
+/data/
 # Per-origin completion records (transport_maps/progress.py). `.*` already
 # covers them; named so narrowing that rule cannot start publishing them.
 .progress/

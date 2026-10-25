@@ -155,6 +155,12 @@ The server must support HTTP Range requests — PMTiles reads byte ranges, and a
 server without them fails with "Check that your storage backend supports HTTP
 Byte Serving". nginx does this by default; Python's `http.server` does not.
 
+The deployed page pins its assets and dataset to immutable release directories.
+`scripts/publish_release.py` rewrites local asset links and adds a
+`worldmap-data-root` meta tag; `app.js` uses that prefix for every dataset fetch.
+Without the tag, a local page continues reading files beside itself. See
+`deploy/README.md` for atomic publication, cache rules and retention requirements.
+
 ## Colour schemes
 
 Twelve schemes, each eleven anchor colours interpolated in OKLab to as many

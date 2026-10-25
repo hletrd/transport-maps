@@ -96,7 +96,44 @@ processes it started. **A deploy is not done until that has passed**
   the ones that used to drop them. Backup at
   `/etc/nginx/worldmap.atik.kr.bak.*` on the host.
 
-## Caching is load-bearing, not an optimisation
+## Immutable release URLs
+
+The public HTML selects `/assets/<content-hash>/` for scripts, styles and fonts
+and `/data/<build-id>-<manifest-hash>/` for one complete dataset. The publisher
+writes the HTML atomically after both snapshots exist. Its `worldmap-data-root`
+meta tag pins all data fetches, including map tiles and mode variants, to that
+dataset. The source page without this tag still works against a local `dist/`.
+
+`scripts/publish_release.py` runs on the web host after rsync and before the live
+checks. Install the root-owned helper and its restricted-key gate before using
+the deployment scripts:
+
+```sh
+scp scripts/publish_release.py deploy/worldmap-deploy-gate.sh atik.kr:/tmp/
+ssh atik.kr 'sudo mkdir -p /usr/local/lib/worldmap && sudo install -m 644 /tmp/publish_release.py /usr/local/lib/worldmap/publish_release.py && sudo install -m 755 /tmp/worldmap-deploy-gate.sh /usr/local/bin/worldmap-deploy-gate'
+```
+
+rsync stages the raw page as `.release-index.html`, leaving the selected page
+intact until publication. Asset snapshots copy the small page files; data
+snapshots hard-link the completed dataset on the same filesystem. Later uploads
+must replace files (`--delay-updates`), never modify their contents in place.
+`assets/` and `data/` are protected from rsync deletion. Existing release paths
+are never overwritten or automatically removed.
+
+Versioned responses use `public, max-age=31536000, immutable`; errors use
+`no-store`. PMTiles remain unencoded so Range requests receive 206. HTML and
+unversioned compatibility paths retain `no-cache`. Cloudflare must explicitly
+make the versioned paths eligible for caching, including `.pmtiles` and JSON.
+Keep `/api/` outside those cache rules.
+
+The first hard-linked snapshot costs directory metadata rather than another
+copy of the dataset. Subsequent full rebuilds need storage for both generations:
+the old snapshot keeps replaced files allocated. A low-space deploy now refuses
+before uploading when snapshots exist; the legacy chunked fallback cannot free
+that space. Expand storage or explicitly retire an obsolete release first.
+Page-only deployments reuse the dataset snapshot.
+
+## Unversioned compatibility caching
 
 Every artifact except the fonts is rewritten by a rebuild, and they must change
 **together**:

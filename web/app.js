@@ -72,7 +72,9 @@ async function loadCells(url) {
   return new BigUint64Array(b);
 }
 
-const meta = await loadJSON("./index.json");
+const DATA_ROOT = document.querySelector('meta[name="worldmap-data-root"]')?.content || "./";
+function dataURL(path) { return DATA_ROOT + path; }
+const meta = await loadJSON(dataURL("index.json"));
 // A valid JSON body is not yet a valid index: an index.json written by
 // another tool, or truncated to {}, threw on cities[0] with no message.
 // `.length` on BOTH: an empty bandEdgesMin passed this check and then threw
@@ -166,7 +168,7 @@ const EDGES = meta.bandEdgesMin;
 const MODE_NAMES = meta.modeChannels ?? ["rail", "ferry", "highway", "major road", "minor road", "track"];
 
 // shared, origin-independent cell ordering — fetched once
-const hoverCells = await loadCells("./" + (meta.hoverCellsUrl || "hover_cells.bin"));
+const hoverCells = await loadCells(dataURL(meta.hoverCellsUrl || "hover_cells.bin"));
 if (meta.hoverCellCount != null && meta.hoverCellCount !== hoverCells.length)
   fatal(`index.json expects ${meta.hoverCellCount} hover cells but hover_cells.bin has ${hoverCells.length}: the two files come from different builds.`);
 
@@ -925,7 +927,7 @@ map.addLayer({ id: "sphere", type: "fill", source: "sphere",
 // this static water layer, built once from OpenStreetMap coastlines, cuts
 // them back to the real outline. It sits above the bands and below the
 // borders and the cursor; paintOrigin inserts each origin's bands beneath it.
-map.addSource(WATER_SOURCE, { type: "vector", url: "pmtiles://./water.pmtiles" });
+map.addSource(WATER_SOURCE, { type: "vector", url: `pmtiles://${dataURL("water.pmtiles")}` });
 map.addLayer({ id: "water", type: "fill", source: WATER_SOURCE, "source-layer": "water",
   paint: { "fill-color": SEA, "fill-opacity": 1 } });
 // Sea and lakes take the colour scheme's own ground, so switching schemes
@@ -950,7 +952,7 @@ paintSea();
 // (emit/borders.DISPUTED_PAIRS) -- because none of them is a
 // border the page should present as settled; and fainter for the special
 // lines (DMZ edges, the UNDOF lines, leases). Same white, same width.
-map.addSource(BORDERS_SOURCE, { type: "vector", url: "pmtiles://./borders.pmtiles" });
+map.addSource(BORDERS_SOURCE, { type: "vector", url: `pmtiles://${dataURL("borders.pmtiles")}` });
 const BORDER_WIDTH = ["interpolate", ["linear"], ["zoom"], 1, 0.6, 5, 1.1];
 map.addLayer({ id: "borders", type: "line", source: BORDERS_SOURCE, "source-layer": "borders",
   filter: ["==", ["get", "kind"], "international"],
@@ -2403,7 +2405,7 @@ originMarker.on("dragstart", () => {
 originMarker.on("drag", originDragMove);
 originMarker.on("dragend", originDragEnd);
 
-fetch("./places.json")
+fetch(dataURL("places.json"))
   .then((r) => (okOr(r, "places.json") ? r.json() : null))
   .then((p) => {
     if (!p) return;
@@ -2869,7 +2871,7 @@ function variantMeta() {
 //: exclusion variant the visitor chose.
 function originBase() {
   const v = variantMeta();
-  return v ? `./${v.path}origins/` : "./origins/";
+  return dataURL(v ? `${v.path}origins/` : "origins/");
 }
 
 function paintOrigin(o, { keepZoom = false, force = false } = {}) {
@@ -3261,7 +3263,7 @@ async function fetchReadingCells(url) {
 
 function loadReadingParents() {
   if (readingParentsWanted) return readingParentsWanted;
-  const url = "./" + (meta.readingParentsUrl || "reading_parents.bin");
+  const url = dataURL(meta.readingParentsUrl || "reading_parents.bin");
   readingParentsWanted = fetchReadingCells(url).then((cells) => {
     readingParents = checkedParents(cells, meta.readingParentCount, url);
     return readingParents;
@@ -4917,7 +4919,7 @@ for (const c of cities) {
   c.skey = where ? `${c.key} ${fold(where)}` : c.key;
 }
 
-fetch("./airports.json")
+fetch(dataURL("airports.json"))
   .then((r) => (okOr(r, "airports.json") ? r.json() : null))
   .then((a) => {
     if (!a) return;
@@ -4943,7 +4945,7 @@ fetch("./airports.json")
 // The turns of the flights timed round closed airspace (flightPath). Asked
 // for only when index.json says the build wrote them; until they land, or
 // if they never do, a flight is drawn on its great circle as before.
-if (meta.airspaceUrl) fetch(`./${meta.airspaceUrl}`)
+if (meta.airspaceUrl) fetch(dataURL(meta.airspaceUrl))
   .then((r) => (okOr(r, meta.airspaceUrl) ? r.json() : null))
   .then((a) => {
     if (!a || a.version !== 1 || !a.pairs || typeof a.pairs !== "object") return;

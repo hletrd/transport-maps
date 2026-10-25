@@ -32,6 +32,11 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
     sha256sum "$ROOT/reading_parents.bin" ;;
   "python3 -c \"import json;print(json.load(open('$SOLVER_META'))['identity'].get('buildId',''))\"")
     python3 -c "import json;print(json.load(open('$SOLVER_META'))['identity'].get('buildId',''))" ;;
+  "python3 /usr/local/lib/worldmap/publish_release.py '$ROOT'")
+    # Root-owned code, fixed root, no evaluation of caller-supplied Python.
+    python3 /usr/local/lib/worldmap/publish_release.py "$ROOT" ;;
+  "test -d '$ROOT/data'")
+    test -d "$ROOT/data" ;;
   *)
     echo "worldmap-deploy-gate: refused: ${SSH_ORIGINAL_COMMAND:-<no command>}" >&2
     exit 1 ;;

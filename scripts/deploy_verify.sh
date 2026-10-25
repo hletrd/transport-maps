@@ -392,6 +392,13 @@ if [ "$MODE" = full ]; then
   if [ -z "$free_kb" ]; then
     echo "  could not read free space on $DEPLOY_HOST; continuing without the check"
   elif [ "$free_kb" -lt "$want_kb" ]; then
+    # Immutable snapshots keep the old files allocated. Chunking no longer
+    # releases their blocks and would run out of disk partway through.
+    if ssh -o BatchMode=yes "$DEPLOY_HOST" "test -d '$DEPLOY_ROOT/data'"; then
+      echo "  insufficient space for the new build while retaining immutable snapshots"
+      echo "  add storage or retire an old release explicitly before deploying"
+      exit 1
+    fi
     echo "  $DEPLOY_HOST:$DEPLOY_ROOT has $((free_kb/1024/1024)) GiB free; --delay-updates stages"
     echo "  the changed files ($((need_kb/1024/1024)) GiB) beside the old ones, so it needs about"
     echo "  $((want_kb/1024/1024)) GiB -- more than is free, so not in one pass."
@@ -409,7 +416,7 @@ if [ "$MODE" = full ]; then
   # --delete-delay and --delay-updates: every file is uploaded to a temp name
   # first and the renames happen at the end, so the window in which a visitor
   # sees a new index.json beside old origin arrays is seconds, not minutes.
-  if ! rsync "${RSYNC_COMMON[@]}" --delete --delete-delay --delay-updates \
+  if ! rsync "${RSYNC_COMMON[@]}" --exclude /index.html --delete --delete-delay --delay-updates \
         dist/ "$RSYNC_DEST" >"$LOG" 2>&1; then
     echo "  rsync failed; log: $LOG"; tail -20 "$LOG"; exit 1
   fi
@@ -418,10 +425,13 @@ else
   echo "=== page-only deploy: web/ without the dist gate and without --delete ==="
   uv run python scripts/check_dist.py --web web --copy-only
   page_gate
-  if ! rsync "${RSYNC_COMMON[@]}" web/ "$RSYNC_DEST" >"$LOG" 2>&1; then
+  if ! rsync "${RSYNC_COMMON[@]}" --exclude /index.html web/ "$RSYNC_DEST" >"$LOG" 2>&1; then
     echo "  rsync failed; log: $LOG"; tail -20 "$LOG"; exit 1
   fi
 fi
+
+rsync "${RSYNC_COMMON[@]}" web/index.html "${RSYNC_DEST}.release-index.html"
+ssh -o BatchMode=yes "$DEPLOY_HOST" "python3 /usr/local/lib/worldmap/publish_release.py '$DEPLOY_ROOT'"
 
 echo "=== 3. live checks ==="
 # These used to PRINT ten status codes and assert none of them: a deploy in

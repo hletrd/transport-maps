@@ -358,7 +358,7 @@ echo "  clicked label: $C"
 # Three distinct failures, so the output names the one that happened.
 echo "$C" | grep -q '"noLabel":true' && { echo "  !! no origin label was clickable within 25 s (the gazetteer never arrived)"; fail=1; }
 echo "$C" | grep -q '"unchanged":true' && { echo "  !! clicking an origin label did not change the departure"; fail=1; }
-echo "$C" | grep -qE '"to":"pmtiles://\./origins/[a-z0-9-]+\.pmtiles"' || { echo "  !! the bands source is not an origin archive ($C)"; fail=1; }
+echo "$C" | grep -qE '"to":"pmtiles://(\./|/data/[A-Za-z0-9_-]+/)origins/[a-z0-9-]+\.pmtiles"' || { echo "  !! the bands source is not an origin archive ($C)"; fail=1; }
 # low zoom: the coarse level must paint, the coast must be there, and the
 # borders layer must have rendered features (a 404 on borders.pmtiles, once
 # borders.json, or a failed addLayer used to pass because the old check looked

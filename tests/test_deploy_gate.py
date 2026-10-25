@@ -75,6 +75,10 @@ def test_every_check_deploy_verify_sends_is_let_through(tmp_path):
     assert any("hover_cells.bin" in c for c in commands) and any("meta.json" in c for c in commands)
     for c in commands:
         done = _gate(c, tmp_path)
+        if c == "test -d '/var/www/worldmap/data'":
+            assert "refused" not in done.stderr
+            assert done.returncode in (0, 1)
+            continue
         assert done.returncode == 0 and "STUB-" in done.stdout, (c, done.stderr)
 
 
