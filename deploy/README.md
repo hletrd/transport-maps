@@ -143,10 +143,16 @@ older dataset indexes. See `docs/contract.md` for the directory layout.
 
 ## Cloudflare
 
-`worldmap.atik.kr` is proxied through Cloudflare. HTTP/3 is enabled at the edge;
-the existing zone TLS mode is Full and Rocket Loader is off. The origin retains
-its Let's Encrypt certificate. These zone settings also affect other hosts, so
-the setup script verifies the TLS mode without changing it globally.
+`worldmap.atik.kr` currently uses DNS-only delivery to the Seoul origin. The
+Cloudflare proxy was disabled on 2026-10-25 after the operator's Korean route
+went through LAX and map loading regressed. The origin still serves HTTP/3,
+immutable release URLs and regional detail requests. Overseas visitors can
+reach the same server directly; a separate CDN hostname has not been deployed.
+
+The retained Cloudflare settings are HTTP/3 on, Full TLS and Rocket Loader off.
+The cache rules below are inactive for new direct requests. These zone settings
+also affect other hosts, so the setup script verifies TLS without changing it
+globally.
 
 `deploy/cloudflare-cache-rules.json` scopes four rules to this hostname: cache
 `/assets/`, cache `/data/`, enable Origin Range Requests only for `.pmtiles`,
@@ -164,8 +170,9 @@ limits still apply per visitor and direct requests cannot spoof their IP.
 Refresh the ranges from `https://api.cloudflare.com/client/v4/ips` when needed.
 
 `scripts/configure_cloudflare.py --token-file PATH --zone-id ZONE --backup PATH`
-previews the change. Add `--apply` to write the rules, enable HTTP/3 if needed
-and turn on proxying for the existing DNS record. It preserves unrelated cache
+previews the change. Add `--apply` to write the rules while preserving the DNS
+proxy and protocol settings. Only `--enable-proxy` explicitly turns proxying
+and edge HTTP/3 on. It preserves unrelated cache
 rules and DNS targets, backs up the original state to a new private file, and
 does not enable the proxy if cache configuration fails. The token requires DNS
 Edit, Zone Read, Zone Settings Edit and Cache Rules Edit for this zone. Never

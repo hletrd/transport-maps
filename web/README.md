@@ -5,8 +5,9 @@ the PMTiles the pipeline emits.
 
 ## Same-origin assets
 
-Scripts, styles and fonts are served from this site's own hostname through
-Cloudflare. No package or webfont CDN is contacted. MapLibre, PMTiles, h3-js,
+Scripts, styles and fonts are served directly from this site's Seoul origin.
+Cloudflare provides DNS; its proxy is currently disabled after a routing
+regression. No package or webfont CDN is contacted. MapLibre, PMTiles, h3-js,
 fflate and IBM Plex Sans are vendored under `vendor/`, so the deployed site
 works behind a strict `script-src 'self'` CSP for its own code. Two runtime
 calls do leave the browser, and the CSP in `deploy/` names exactly those:

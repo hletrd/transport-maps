@@ -12,7 +12,8 @@ API = "https://api.cloudflare.com/client/v4/"
 HOST = "worldmap.atik.kr"
 
 
-def configure(token: str, zone: str, rules_file: Path, backup: Path, *, apply: bool) -> None:
+def configure(token: str, zone: str, rules_file: Path, backup: Path, *, apply: bool,
+              enable_proxy: bool = False) -> None:
     def request(path, method="GET", body=None, *, missing=False):
         req = urllib.request.Request(API + f"zones/{zone}/" + path,
                                      data=json.dumps(body).encode() if body is not None else None,
@@ -47,18 +48,20 @@ def configure(token: str, zone: str, rules_file: Path, backup: Path, *, apply: b
     if not apply:
         print(json.dumps({"host": HOST, "http3": before["http3"]["value"],
                           "ssl": before["ssl"]["value"], "proxy": [r["proxied"] for r in records],
+                          "enableProxy": enable_proxy,
                           "preservedRules": len(keep), "managedRules": wanted}))
         return
     fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as stream:
         json.dump(before, stream, indent=2)
     result = request(phase, "PUT", {"rules": keep + wanted})
-    if before["http3"]["value"] != "on":
+    if enable_proxy and before["http3"]["value"] != "on":
         request("settings/http3", "PATCH", {"value": "on"})
     for record in records:
-        if not record["proxied"]:
+        if enable_proxy and not record["proxied"]:
             request(f"dns_records/{record['id']}", "PATCH", {"proxied": True})
-    print(json.dumps({"host": HOST, "http3": "on", "proxied": True,
+    print(json.dumps({"host": HOST, "http3": "on" if enable_proxy else before["http3"]["value"],
+                      "proxied": all(enable_proxy or r["proxied"] for r in records),
                       "ruleset": result["id"], "rules": len(result["rules"]), "backup": str(backup)}))
 
 
@@ -69,5 +72,8 @@ if __name__ == "__main__":
     parser.add_argument("--backup", type=Path, required=True)
     parser.add_argument("--rules", type=Path, default=Path(__file__).resolve().parents[1] / "deploy/cloudflare-cache-rules.json")
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--enable-proxy", action="store_true",
+                        help="explicitly enable proxying; otherwise preserve the current DNS state")
     args = parser.parse_args()
-    configure(args.token_file.read_text().strip(), args.zone_id, args.rules, args.backup, apply=args.apply)
+    configure(args.token_file.read_text().strip(), args.zone_id, args.rules, args.backup,
+              apply=args.apply, enable_proxy=args.enable_proxy)

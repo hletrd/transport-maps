@@ -11,7 +11,7 @@ from scripts.configure_cloudflare import configure
 RULES = Path(__file__).resolve().parents[1] / "deploy/cloudflare-cache-rules.json"
 
 
-def api(monkeypatch, *, fail_cache=False):
+def api(monkeypatch, *, fail_cache=False, proxied=False, http3="on"):
     calls = []
     unrelated = {"id": "other", "ref": "other_site", "action": "set_cache_settings",
                  "expression": '(http.host eq "other.atik.kr")', "action_parameters": {"cache": False}}
@@ -23,11 +23,11 @@ def api(monkeypatch, *, fail_cache=False):
         calls.append((method, path, body))
         if method == "GET":
             if path == "settings/http3":
-                result = {"value": "on"}
+                result = {"value": http3}
             elif path == "settings/ssl":
                 result = {"value": "full"}
             elif path.startswith("dns_records?"):
-                result = [{"id": "record", "type": "A", "content": "192.0.2.1", "proxied": False, "proxiable": True}]
+                result = [{"id": "record", "type": "A", "content": "192.0.2.1", "proxied": proxied, "proxiable": True}]
             else:
                 result = {"id": "existing", "rules": [unrelated]}
         elif method == "PUT":
@@ -45,7 +45,7 @@ def api(monkeypatch, *, fail_cache=False):
 def test_apply_preserves_other_rules_and_only_changes_dns_proxy_flag(monkeypatch, tmp_path):
     calls, unrelated = api(monkeypatch)
     backup = tmp_path / "before.json"
-    configure("test-secret", "zone", RULES, backup, apply=True)
+    configure("test-secret", "zone", RULES, backup, apply=True, enable_proxy=True)
     mutations = [(m, p, b) for m, p, b in calls if m != "GET"]
     assert [m for m, _, _ in mutations] == ["PUT", "PATCH"]
     rules = mutations[0][2]["rules"]
@@ -60,7 +60,7 @@ def test_apply_preserves_other_rules_and_only_changes_dns_proxy_flag(monkeypatch
 def test_failed_cache_configuration_does_not_switch_dns(monkeypatch, tmp_path):
     calls, _ = api(monkeypatch, fail_cache=True)
     with pytest.raises(RuntimeError, match="cache API"):
-        configure("test-secret", "zone", RULES, tmp_path / "before.json", apply=True)
+        configure("test-secret", "zone", RULES, tmp_path / "before.json", apply=True, enable_proxy=True)
     assert not any(method == "PATCH" for method, _, _ in calls)
 
 
@@ -70,6 +70,13 @@ def test_preview_makes_no_changes_or_backup(monkeypatch, tmp_path):
     configure("test-secret", "zone", RULES, backup, apply=False)
     assert all(method == "GET" for method, _, _ in calls)
     assert not backup.exists()
+
+
+@pytest.mark.parametrize("proxied", [False, True])
+def test_cache_updates_preserve_proxy_and_protocol_without_opt_in(monkeypatch, tmp_path, proxied):
+    calls, _ = api(monkeypatch, proxied=proxied, http3="off")
+    configure("test-secret", "zone", RULES, tmp_path / "before.json", apply=True)
+    assert [method for method, _, _ in calls if method != "GET"] == ["PUT"]
 
 
 @pytest.mark.parametrize("path,ranged", [
