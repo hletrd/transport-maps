@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Isochronic Passage Chart — travel time to anywhere on Earth</title>
-<meta name="description" content="How many hours it takes, door to door, to reach any point on Earth from cities on every inhabited continent, by air, rail, road and ferry. An isochrone world map recomputed from open data, after Francis Galton's isochronic passage chart of 1881.">
+<title>Interactive World Isochrone Map | Isochronic Passage Chart</title>
+<meta name="description" content="Explore an interactive world isochrone map. See estimated door-to-door travel times by air, rail, road and ferry from cities worldwide.">
 <link rel="canonical" href="https://worldmap.atik.kr/">
 <meta name="theme-color" content="#0a0b0d">
 <meta name="robots" content="index,follow,max-image-preview:large">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Isochronic Passage Chart">
-<meta property="og:title" content="Isochronic Passage Chart — travel time to anywhere on Earth">
-<meta property="og:description" content="Hours required, door to door, to reach any point on Earth from cities on every inhabited continent, by air, rail, road and ferry. Recomputed from open data, after Galton, 1881.">
+<meta property="og:title" content="Interactive World Isochrone Map | Isochronic Passage Chart">
+<meta property="og:description" content="Explore estimated door-to-door travel times around the world. Choose a departure city and compare journeys by air, rail, road and ferry.">
 <meta property="og:url" content="https://worldmap.atik.kr/">
 <meta property="og:image" content="https://worldmap.atik.kr/preview.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="A dark globe shaded by travel time from Seoul, brightest nearby and fading to violet at three days">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Isochronic Passage Chart">
-<meta name="twitter:description" content="Hours required, door to door, to reach any point on Earth from cities on every inhabited continent.">
+<meta name="twitter:title" content="Interactive World Isochrone Map | Isochronic Passage Chart">
+<meta name="twitter:description" content="Explore estimated door-to-door travel times around the world by air, rail, road and ferry.">
 <meta name="twitter:image" content="https://worldmap.atik.kr/preview.png">
 
 <script type="application/ld+json">
@@ -54,6 +54,8 @@
     {
       "@type": "WebApplication",
       "name": "Isochronic Passage Chart",
+      "alternateName": "Interactive World Isochrone Map",
+      "description": "An interactive world isochrone map of estimated door-to-door travel times by air, rail, road and ferry. Choose a departure city and explore travel-time bands on a globe.",
       "dateModified": "2026-10-25",
       "applicationCategory": "TravelApplication",
       "operatingSystem": "Any modern web browser",
@@ -1153,6 +1155,14 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
   <details class="panel" id="key">
     <summary>Sources and method</summary>
     <div class="body">
+      <h3>Interactive world isochrone map</h3>
+      <p>An isochrone map groups places by the time it takes to reach them from
+         a starting point. This interactive world map estimates door-to-door
+         travel times by air, rail, road and ferry.</p>
+      <p>Choose a departure city, rotate or zoom the globe, and point to a
+         destination to read its travel time. The colours show travel-time
+         bands. Estimates include ground access, airport procedures and
+         transfers, using a model built from open data.</p>
       <p>Times assume you leave when you choose: the first service is not waited
          for. A flight connection is charged the minimum connection time or the
          expected wait for the next departure, whichever is longer, capped at the
@@ -1370,7 +1380,7 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
 <noscript>
   <div style="position:fixed;inset:0;background:#0a0b0d;color:#e9e7e4;z-index:20;padding:40px;max-width:62ch">
     <h1 style="font-weight:600">Isochronic Passage Chart</h1>
-    <p>An interactive world map showing how many hours it takes to reach any point
+    <p>An interactive world isochrone map showing estimated door-to-door travel times to any point
     on Earth from cities on every inhabited continent, combining scheduled flights, rail, ferries,
     road speed and transfer times. It needs JavaScript and WebGL to draw the globe.</p>
     <p>Built from open data: OurAirports, Wikipedia (CC BY-SA 4.0), Wikidata,

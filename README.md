@@ -2,7 +2,7 @@
 
 # Isochronic Passage Chart
 
-**How long it takes to reach anywhere on Earth, door to door, from the cities in `data/origins.toml`.** The count is not repeated here: it has been wrong in this file twice, and `dist/index.json` is the only place that knows what was actually built.
+**An interactive world isochrone map of door-to-door travel times from the cities in `data/origins.toml`.** The count is not repeated here: it has been wrong in this file twice, and `dist/index.json` is the only place that knows what was actually built.
 
 [![Live site](https://img.shields.io/badge/live-worldmap.atik.kr-1f6feb)](https://worldmap.atik.kr/)
 ![Python 3.14](https://img.shields.io/badge/python-3.14-3776ab)
@@ -10,7 +10,7 @@
 ![PMTiles](https://img.shields.io/badge/tiles-PMTiles-6b4fbb)
 ![H3 resolution 6/7](https://img.shields.io/badge/grid-H3_res_6%2F7-e8802b)
 
-[**Open the map**](https://worldmap.atik.kr/) · [How it is built](#development) · [Data sources](#data-sources-and-attribution)
+[**Open the interactive isochrone map**](https://worldmap.atik.kr/) · [How it is built](#development) · [Data sources](#data-sources-and-attribution)
 
 <img src="web/preview.png" alt="The globe, seen from above East Asia, painted in travel-time bands from Seoul" width="720">
 
