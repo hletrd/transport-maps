@@ -8,7 +8,7 @@
 #
 # The key lives on a shared machine (h200), so it can do exactly what
 # scripts/deploy_verify.sh asks of the web host and nothing else: rsync inside
-# the web root (through rrsync, which refuses any path outside it) and the four
+# the web root (through rrsync, which refuses any path outside it) and the
 # read-only checks below, matched as whole strings and then run as written
 # HERE -- the incoming command is never evaluated. Anything else is refused.
 # deploy/README.md, "Deploying from the build host", has the install steps.
@@ -30,6 +30,8 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
     sha256sum "$ROOT/hover_cells.bin" ;;
   "sha256sum '$ROOT/reading_parents.bin'")
     sha256sum "$ROOT/reading_parents.bin" ;;
+  "sha256sum /usr/local/lib/worldmap/publish_release.py")
+    sha256sum /usr/local/lib/worldmap/publish_release.py ;;
   "python3 -c \"import json;print(json.load(open('$SOLVER_META'))['identity'].get('buildId',''))\"")
     python3 -c "import json;print(json.load(open('$SOLVER_META'))['identity'].get('buildId',''))" ;;
   "python3 /usr/local/lib/worldmap/publish_release.py '$ROOT'")

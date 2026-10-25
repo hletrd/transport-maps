@@ -113,6 +113,21 @@ scp scripts/publish_release.py deploy/worldmap-deploy-gate.sh atik.kr:/tmp/
 ssh atik.kr 'sudo mkdir -p /usr/local/lib/worldmap && sudo install -m 644 /tmp/publish_release.py /usr/local/lib/worldmap/publish_release.py && sudo install -m 755 /tmp/worldmap-deploy-gate.sh /usr/local/bin/worldmap-deploy-gate'
 ```
 
+The deploy preflight compares the installed publisher's SHA256 with the local
+source before uploading anything. Update the helper first when its source
+changes. The publisher must include every top-level browser module in
+`PAGE_FILES`; the syntax tests enforce this. The browser executable must also
+be available before publication (the build-host caller has its existing
+`BROWSER_VERIFY=by-caller` contract).
+
+Publication embeds the font declarations and MapLibre layout CSS in the HTML,
+rebasing font URLs to the immutable asset directory. Native control icon
+backgrounds are deferred in the complete, unchanged vendor stylesheet. That
+stylesheet becomes active only after FCP and its load event. The publisher
+removes ordinary HTML/CSS comments from the page, preserving script bytes,
+quoted CSS strings and licence notices. Source files and vendor pins remain
+unchanged. This removes both render-blocking stylesheet requests.
+
 rsync stages the raw page as `.release-index.html`, leaving the selected page
 intact until publication. Asset snapshots copy the small page files; data
 snapshots hard-link the completed dataset on the same filesystem. Later uploads
@@ -146,18 +161,40 @@ older dataset indexes. See `docs/contract.md` for the directory layout.
 `worldmap.atik.kr` currently uses DNS-only delivery to the Seoul origin. The
 Cloudflare proxy was disabled on 2026-10-25 after the operator's Korean route
 went through LAX and map loading regressed. The origin still serves HTTP/3,
-immutable release URLs and regional detail requests. Overseas visitors can
-reach the same server directly; a separate CDN hostname has not been deployed.
+immutable release URLs and regional detail requests.
+
+`worldmap-data.atik.kr` is a separate proxied A record pointing to the same
+origin. Its nginx site serves only immutable `/data/` releases, the fixed
+16 KiB `/delivery-probe-v1.bin`, and certificate challenges. `/api/` and page
+paths return 404. Install `worldmap-data.atik.kr.conf` and
+`worldmap-data-cors.conf`; the latter allows only the main page's origin and
+exposes range/ETag/timing headers. The CSP allows this hostname for connections
+only. Its separate ECDSA Let's Encrypt certificate is renewed by Certbot's
+webroot authenticator with `nginx -t && systemctl reload nginx` as deploy hook.
+
+`web/delivery.js` starts on the direct path without waiting for a probe. After
+FCP it downloads the probe twice per path: one warm-up and one timed sample,
+64 KiB total per page (none with Save-Data). Resource Timing excludes JavaScript
+scheduling delay. The CDN must be at least 20% and 20 ms faster; a five-minute
+session hint helps subsequent navigations. Only plain GET/HEAD requests for
+the exact selected public dataset may change hosts, without cookies or a
+referrer. Page code, coordinates and solver calls remain direct.
+
+CDN errors, bad JSON/ranges or stalled responses retry the identical version
+and range on the origin and keep that page direct. Header, idle-body and
+whole-body limits are 1.8 s, 3 s and 30 s respectively. Caller cancellation
+does not retry. PMTiles retains a canonical cache key across paths.
+`window.__dataDelivery.getState()` exposes measurements, choice and fallbacks.
 
 The retained Cloudflare settings are HTTP/3 on, Full TLS and Rocket Loader off.
-The cache rules below are inactive for new direct requests. These zone settings
+The cache rules apply to the data hostname; the main hostname stays direct. These zone settings
 also affect other hosts, so the setup script verifies TLS without changing it
 globally.
 
-`deploy/cloudflare-cache-rules.json` scopes four rules to this hostname: cache
+`deploy/cloudflare-cache-rules.json` scopes rules to these two hostnames: cache
 `/assets/`, cache `/data/`, enable Origin Range Requests only for `.pmtiles`,
 `.r6.bin` and `.over.bin`, and bypass `/api/`. Other binary files keep whole-file
-gzip compression; enabling origin ranges on them would force identity encoding
+gzip compression; a fifth rule caches the CDN probe. Enabling origin ranges on them would force identity encoding
 and enlarge startup downloads. The origin's cache headers determine freshness.
 Origin Range Requests avoid fetching
 an entire PMTiles file on a cold range request; Cloudflare may fetch a larger
@@ -169,10 +206,11 @@ Before enabling the proxy, install `deploy/worldmap-cloudflare-realip.conf` as
 limits still apply per visitor and direct requests cannot spoof their IP.
 Refresh the ranges from `https://api.cloudflare.com/client/v4/ips` when needed.
 
-`scripts/configure_cloudflare.py --token-file PATH --zone-id ZONE --backup PATH`
+`scripts/configure_cloudflare.py --host worldmap-data.atik.kr --token-file PATH --zone-id ZONE --backup PATH`
 previews the change. Add `--apply` to write the rules while preserving the DNS
 proxy and protocol settings. Only `--enable-proxy` explicitly turns proxying
-and edge HTTP/3 on. It preserves unrelated cache
+and edge HTTP/3 on for the selected host. Never enable the main record as part
+of data-host setup. It preserves unrelated cache
 rules and DNS targets, backs up the original state to a new private file, and
 does not enable the proxy if cache configuration fails. The token requires DNS
 Edit, Zone Read, Zone Settings Edit and Cache Rules Edit for this zone. Never
@@ -220,8 +258,8 @@ and verify on a page asset, not on the root alone:
 
     curl -sI https://worldmap.atik.kr/app.js | grep -iE 'content-security|strict-transport|x-frame|x-content'
 
-The CSP names exactly the two third-party runtime calls the page makes:
-Nominatim (address search, only on request) and the Google tag (loader by host,
+The CSP allows the public-data CDN, Nominatim (address search, only on request)
+and the Google tag (loader by host,
 inline bootstrap by hash, collection endpoints in `connect-src`/`img-src`). The
 page's third call, `/api/solve`, is same-origin and is covered by `'self'`.
 Scripts and workers no longer allow `blob:`: MapLibre 5 needed it for its

@@ -27,7 +27,8 @@ def api(monkeypatch, *, fail_cache=False, proxied=False, http3="on"):
             elif path == "settings/ssl":
                 result = {"value": "full"}
             elif path.startswith("dns_records?"):
-                result = [{"id": "record", "type": "A", "content": "192.0.2.1", "proxied": proxied, "proxiable": True}]
+                ident = "cdn-record" if "worldmap-data.atik.kr" in path else "record"
+                result = [{"id": ident, "type": "A", "content": "192.0.2.1", "proxied": proxied, "proxiable": True}]
             else:
                 result = {"id": "existing", "rules": [unrelated]}
         elif method == "PUT":
@@ -50,7 +51,8 @@ def test_apply_preserves_other_rules_and_only_changes_dns_proxy_flag(monkeypatch
     assert [m for m, _, _ in mutations] == ["PUT", "PATCH"]
     rules = mutations[0][2]["rules"]
     assert unrelated in rules
-    assert all('http.host eq "worldmap.atik.kr"' in r["expression"] for r in rules if r is not rules[0])
+    assert all(any(f'http.host eq "{host}"' in r["expression"] for host in
+                   ("worldmap.atik.kr", "worldmap-data.atik.kr")) for r in rules if r is not rules[0])
     assert mutations[1] == ("PATCH", "dns_records/record", {"proxied": True})
     assert next(r for r in rules if r.get("ref") == "transport_maps_api")["action_parameters"]["cache"] is False
     assert "test-secret" not in backup.read_text()
@@ -77,6 +79,21 @@ def test_cache_updates_preserve_proxy_and_protocol_without_opt_in(monkeypatch, t
     calls, _ = api(monkeypatch, proxied=proxied, http3="off")
     configure("test-secret", "zone", RULES, tmp_path / "before.json", apply=True)
     assert [method for method, _, _ in calls if method != "GET"] == ["PUT"]
+
+
+def test_enabling_the_data_host_does_not_enable_the_main_host(monkeypatch, tmp_path):
+    calls, _ = api(monkeypatch)
+    configure("test-secret", "zone", RULES, tmp_path / "before.json", apply=True,
+              enable_proxy=True, host="worldmap-data.atik.kr")
+    patches = [(path, body) for method, path, body in calls if method == "PATCH"]
+    assert patches == [("dns_records/cdn-record", {"proxied": True})]
+
+
+def test_an_unmanaged_hostname_is_refused_before_any_request(monkeypatch, tmp_path):
+    calls, _ = api(monkeypatch)
+    with pytest.raises(ValueError, match="hostname"):
+        configure("test-secret", "zone", RULES, tmp_path / "before.json", apply=True, host="other.atik.kr")
+    assert calls == []
 
 
 @pytest.mark.parametrize("path,ranged", [

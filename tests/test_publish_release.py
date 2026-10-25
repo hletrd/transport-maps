@@ -45,6 +45,56 @@ def test_page_selects_complete_asset_and_data_snapshots(site):
     assert (site / "assets" / release["assets"] / "vendor/lib.js").read_text() == "lib"
 
 
+@pytest.mark.parametrize("quote", ["", "'", '"'])
+def test_first_paint_css_is_embedded_with_versioned_font_urls(site, quote):
+    (site / "vendor/font.woff2").write_bytes(b"font")
+    (site / "vendor/fonts.css").write_text(
+        f"@font-face{{src:url({quote}./font.woff2{quote})}}"
+        ".icon{background:url(data:image/svg+xml;base64,AAAA)}")
+    release = publish(site)
+    html = (site / "index.html").read_text()
+    assert 'data-source="vendor/fonts.css"' in html
+    assert f'url("/assets/{release["assets"]}/vendor/font.woff2")' in html
+    assert "url(data:image/svg+xml;base64,AAAA)" in html
+    assert 'rel="stylesheet"' not in html
+
+
+def test_a_missing_critical_style_keeps_the_previous_page(site):
+    (site / "vendor/fonts.css").unlink()
+    with pytest.raises(ValueError, match="first-paint stylesheet"):
+        publish(site)
+    assert (site / "index.html").read_text() == "previous page"
+
+
+def test_map_layout_is_immediate_and_control_icons_are_deferred(site):
+    template = site / ".release-index.html"
+    template.write_text(template.read_text().replace("</head>",
+        '<link href="./vendor/maplibre-gl.css" rel="stylesheet"></head>'))
+    css = ('.maplibregl-canvas{position:absolute;background-image:url("data:canvas");}'
+           '.maplibregl-ctrl-icon{width:20px;background-image:url("data:icon");}')
+    (site / "vendor/maplibre-gl.css").write_text(css)
+    release = publish(site)
+    html = (site / "index.html").read_text()
+    core = re.search(r'<style data-source="vendor/maplibre-gl.css">(.*?)</style>', html, re.S)[1]
+    assert "position:absolute" in core and "width:20px" in core
+    assert "data:canvas" in core and "data:icon" not in core
+    assert 'media="print" data-after-paint' in html
+    assert (site / "assets" / release["assets"] / "vendor/maplibre-gl.css").read_text() == css
+
+
+def test_comment_removal_preserves_script_hashes_and_css_strings(site):
+    template = site / ".release-index.html"
+    script = '<script>const x="<!--keep-->"; /* keep CSP bytes */</script>'
+    template.write_text(template.read_text().replace("</head>",
+        '<!-- remove HTML note --><style>/* remove CSS note */.x{content:"/* keep */"}'
+        '/*! keep licence */</style>' + script + '</head>'))
+    publish(site)
+    html = (site / "index.html").read_text()
+    assert script in html
+    assert 'content:"/* keep */"' in html and "/*! keep licence */" in html
+    assert "remove HTML note" not in html and "remove CSS note" not in html
+
+
 def test_new_publication_preserves_old_urls_and_reuses_unchanged_snapshots(site):
     old = publish(site)
     assert publish(site) == old

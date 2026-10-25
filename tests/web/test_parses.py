@@ -38,7 +38,14 @@ WEB = config.ROOT / "web"
 #: script loaded with a plain <script src>, deliberately, so the CSP needs no
 #: hash. The vendored bundles are not here: they are pinned by sha256 in
 #: `test_vendor.py` and are not ours to parse-check.
-SCRIPTS = {"app.js": ".mjs", "boot.js": ".cjs", "detail.js": ".mjs"}
+SCRIPTS = {"app.js": ".mjs", "boot.js": ".cjs", "detail.js": ".mjs", "delivery.js": ".mjs"}
+
+
+def test_all_application_scripts_are_parsed_and_published():
+    from scripts.publish_release import PAGE_FILES
+    scripts = {p.name for p in WEB.glob("*.js")}
+    assert scripts == set(SCRIPTS), "a new application script has no syntax check"
+    assert scripts <= set(PAGE_FILES), "a module would be missing from immutable assets"
 
 
 @pytest.fixture(scope="module")

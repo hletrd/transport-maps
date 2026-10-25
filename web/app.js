@@ -3,6 +3,7 @@ import * as maplibregl from "./vendor/maplibre-gl.js";
 import * as pmtiles from "./vendor/pmtiles.js";
 import * as h3 from "./vendor/h3.js";
 import { createDetailReader } from "./detail.js";
+import { dataFetch as fetch, createRoutedSource } from "./delivery.js";
 
 // Sequential ramps, brightest where the journey is shortest. Multi-hue on
 // purpose: a SINGLE hue cannot separate this many bands on a dark ground.
@@ -75,6 +76,11 @@ async function loadCells(url) {
 
 const DATA_ROOT = document.querySelector('meta[name="worldmap-data-root"]')?.content || "./";
 function dataURL(path) { return DATA_ROOT + path; }
+function tileURL(path) {
+  const url = dataURL(path);
+  if (!proto.get(url)) proto.add(new pmtiles.PMTiles(createRoutedSource(url, fetch, pmtiles.EtagMismatch)));
+  return `pmtiles://${url}`;
+}
 const meta = await loadJSON(dataURL("index.json"));
 // A valid JSON body is not yet a valid index: an index.json written by
 // another tool, or truncated to {}, threw on cities[0] with no message.
@@ -929,7 +935,7 @@ map.addLayer({ id: "sphere", type: "fill", source: "sphere",
 // this static water layer, built once from OpenStreetMap coastlines, cuts
 // them back to the real outline. It sits above the bands and below the
 // borders and the cursor; paintOrigin inserts each origin's bands beneath it.
-map.addSource(WATER_SOURCE, { type: "vector", url: `pmtiles://${dataURL("water.pmtiles")}` });
+map.addSource(WATER_SOURCE, { type: "vector", url: tileURL("water.pmtiles") });
 map.addLayer({ id: "water", type: "fill", source: WATER_SOURCE, "source-layer": "water",
   paint: { "fill-color": SEA, "fill-opacity": 1 } });
 // Sea and lakes take the colour scheme's own ground, so switching schemes
@@ -954,7 +960,7 @@ paintSea();
 // (emit/borders.DISPUTED_PAIRS) -- because none of them is a
 // border the page should present as settled; and fainter for the special
 // lines (DMZ edges, the UNDOF lines, leases). Same white, same width.
-map.addSource(BORDERS_SOURCE, { type: "vector", url: `pmtiles://${dataURL("borders.pmtiles")}` });
+map.addSource(BORDERS_SOURCE, { type: "vector", url: tileURL("borders.pmtiles") });
 const BORDER_WIDTH = ["interpolate", ["linear"], ["zoom"], 1, 0.6, 5, 1.1];
 map.addLayer({ id: "borders", type: "line", source: BORDERS_SOURCE, "source-layer": "borders",
   filter: ["==", ["get", "kind"], "international"],
@@ -2912,7 +2918,9 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
   clearTileTrouble();
   if (map.getLayer("bands")) map.removeLayer("bands");
   if (map.getSource("bands")) map.removeSource("bands");
-  map.addSource("bands", { type: "vector", url: `pmtiles://${originBase()}${o.slug}.pmtiles` });
+  const archive = `${originBase()}${o.slug}.pmtiles`;
+  if (!proto.get(archive)) proto.add(new pmtiles.PMTiles(createRoutedSource(archive, fetch, pmtiles.EtagMismatch)));
+  map.addSource("bands", { type: "vector", url: `pmtiles://${archive}` });
   map.addLayer({
     id: "bands", type: "fill", source: "bands", "source-layer": "bands",
     // Neighbouring bands overlap by one cell (see contour/bands.py) and the
@@ -3042,6 +3050,7 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
           indexSuffix: meta.readingRanges.overrideIndexSuffix,
           readingSuffix: meta.readingUrlSuffix, overrideSuffix: meta.overrideUrlSuffix,
           signal: sig,
+          fetcher: fetch,
           onError: (err) => console.warn("regional readings unavailable:", err.message),
           onLoad: () => {
             if (!current()) return;

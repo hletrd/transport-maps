@@ -147,7 +147,7 @@ meet nor match the glyphs, and a name mixing both would set in two builds.
 
 ## Deploy
 
-`scripts/deploy_verify.sh` copies `index.html`, `boot.js`, `app.js`,
+`scripts/deploy_verify.sh` copies `index.html`, `boot.js`, `app.js`, `detail.js`, `delivery.js`,
 `llms.txt`, `robots.txt`, `sitemap.xml`, `preview.png` and `vendor/` into the
 pipeline's
 `dist/` (so `index.json`, `hover_cells.bin` and `origins/` are siblings) and
@@ -162,6 +162,15 @@ The deployed page pins its assets and dataset to immutable release directories.
 `worldmap-data-root` meta tag; `app.js` uses that prefix for every dataset fetch.
 Without the tag, a local page continues reading files beside itself. See
 `deploy/README.md` for atomic publication, cache rules and retention requirements.
+
+`delivery.js` routes only the pinned public dataset between the origin and
+`worldmap-data.atik.kr`. It uses network probes after first contentful paint,
+a short session hint, and origin retries when CDN responses fail validation
+or time out. PMTiles sources keep the same cache key on both paths. Local
+previews and Save-Data use direct requests. The publisher embeds first-paint
+font/layout CSS; the full vendor control stylesheet activates after FCP and
+after loading. No inline event handlers or additional script CSP exceptions
+are needed.
 
 ## Colour schemes
 

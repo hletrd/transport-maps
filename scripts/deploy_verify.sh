@@ -38,6 +38,17 @@ MODE=full
 LOG="$(mktemp -t deploy_verify.XXXXXX)"
 RSYNC_COMMON=(-a --chmod=D755,F644 --exclude-from=deploy/rsync-excludes.txt)
 
+publisher_gate() {
+  local want have
+  want=$(shasum -a 256 scripts/publish_release.py | awk '{print $1}')
+  have=$(ssh -o BatchMode=yes "$DEPLOY_HOST" "sha256sum /usr/local/lib/worldmap/publish_release.py" | awk '{print $1}')
+  if [ -z "$have" ] || [ "$have" != "$want" ]; then
+    echo "  !! installed release publisher differs from scripts/publish_release.py"
+    echo "     Install the matching root-owned publisher before uploading page files."
+    return 1
+  fi
+}
+
 # What --delay-updates will actually stage: the files that differ from the
 # live set, in KiB. Measured by rsync's own dry run over the same flags, not by
 # `du dist`: a rebuild of the three variant sets changed 56 of 108 GiB, and
@@ -318,6 +329,11 @@ page_gate() {
   echo "  page gate: $n_passed passed, $n_dist_skips skipped for an unbuilt dist/, of $collected collected"
 }
 
+if [ "${BROWSER_VERIFY:-}" != "by-caller" ] && ! command -v agent-browser >/dev/null 2>&1; then
+  echo "  !! agent-browser is unavailable: refusing to publish without browser verification"
+  exit 1
+fi
+publisher_gate
 if [ "$MODE" = full ]; then
   echo "=== 1. artifact consistency ==="
   # A build rewrites dist/origins in place; its lock (or, for a build started

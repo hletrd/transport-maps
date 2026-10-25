@@ -8,6 +8,8 @@
 <link rel="canonical" href="https://worldmap.atik.kr/">
 <meta name="theme-color" content="#0a0b0d">
 <meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="worldmap-data-cdn" content="https://worldmap-data.atik.kr">
+<script type="module" src="./delivery.js"></script>
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Isochronic Passage Chart">
@@ -1333,7 +1335,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
          map and that one time from them and keeps no log of either. Picking a city from the
          list, or dropping the marker on a city, makes no solver request.</p>
       <p><b>Hosting and DNS.</b> This site is served from a server in Seoul.
-         Cloudflare provides DNS for this domain. See
+         The browser compares small test downloads from this server and
+         Cloudflare, then can use the faster route for public map files.
+         Cloudflare receives your IP address, request metadata and public file
+         and byte-range requests when its route is tested or used. Computation
+         requests with departure and destination coordinates go directly to
+         this site&rsquo;s server. The route preference stays in your browser
+         session. Cloudflare also provides DNS for this domain. See
          <a href="https://www.cloudflare.com/privacypolicy/"
             target="_blank" rel="noopener">Cloudflare&rsquo;s privacy policy</a>.</p>
       <p><b>Google Analytics.</b> Page views are counted by Google Analytics,

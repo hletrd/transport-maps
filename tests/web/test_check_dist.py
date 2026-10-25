@@ -827,7 +827,7 @@ def test_the_page_draws_the_layer_the_emitter_writes():
     assert layer, "web/app.js no longer adds a layer from the water source"
     assert layer.group(1) == water.LAYER, (
         f"the page draws source-layer {layer.group(1)!r} and the emitter writes {water.LAYER!r}")
-    assert 'url: `pmtiles://${dataURL("water.pmtiles")}`' in app, (
+    assert 'url: tileURL("water.pmtiles")' in app, (
         "the page no longer loads water.pmtiles, which REQUIRED_EXTRAS gates")
 
 

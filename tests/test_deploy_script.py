@@ -1087,6 +1087,26 @@ def _bash_fn(name: str) -> str:
     return fn.group(0)
 
 
+def test_publisher_gate_refuses_a_missing_or_outdated_server_helper(tmp_path):
+    import os
+    import subprocess
+
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    (tools / "shasum").write_text("#!/bin/sh\nprintf '%s  publisher.py\\n' aaaa\n")
+    (tools / "ssh").write_text("#!/bin/sh\nprintf '%s  publisher.py\\n' \"$TEST_PUBLISHER_SHA\"\n")
+    for executable in tools.iterdir():
+        executable.chmod(0o755)
+    for value in ("aaaa", "old", ""):
+        env = {**os.environ, "PATH": f"{tools}:{os.environ['PATH']}", "TEST_PUBLISHER_SHA": value}
+        done = subprocess.run(["bash", "-c", "set -euo pipefail\nDEPLOY_HOST=stub\n"
+                               + _bash_fn("publisher_gate") + "publisher_gate\n"],
+                              capture_output=True, text=True, env=env)
+        assert (done.returncode == 0) is (value == "aaaa")
+    code = _code(DEPLOY)
+    assert code.index("\npublisher_gate\n") < code.index('if [ "$MODE" = full ]; then')
+
+
 def test_each_batch_carries_an_origins_map_and_its_variants_together(tmp_path):
     """A batch swaps whole origins: a departure's full-map files and its
     avoid-a-mode files from one build, never split across batches.
