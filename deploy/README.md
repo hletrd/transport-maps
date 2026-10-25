@@ -342,3 +342,16 @@ Byte Serving" — Python's `http.server` is one such.
 
 Let's Encrypt via certbot, auto-renewing. HSTS is set without `preload`, which
 is a registry submission and hard to reverse.
+
+HTTP/3 is enabled for `worldmap.atik.kr` alongside HTTPS over TCP. The host's
+default virtual host owns `reuseport` on UDP 443 for IPv4 and IPv6; this site's
+QUIC listeners share those sockets. Keep `Alt-Svc` in the shared header snippet
+so responses from locations with their own `Cache-Control` advertise HTTP/3.
+The explicit `http3 on` overrides the host's global `http3 off`.
+The installed nginx includes `--with-http_v3_module`; both the host firewall
+and the cloud network must allow UDP 443. Verify the negotiated protocol in a
+browser, as the host's curl does not include HTTP/3 support.
+
+With Cloudflare proxying enabled, HTTP/3 connects visitors to Cloudflare;
+Cloudflare connects to this origin over HTTP/2. Direct origin access can also
+negotiate HTTP/3. The origin's HTTP/2 listener remains enabled for both paths.
