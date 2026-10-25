@@ -21,7 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-PAGE_FILES = ("app.js", "boot.js", "detail.js", "delivery.js", "preview.png", "llms.txt", "robots.txt", "sitemap.xml")
+PAGE_FILES = ("app.js", "boot.js", "detail.js", "delivery.js", "loading.js", "preview.png", "llms.txt", "robots.txt", "sitemap.xml")
 DATA_FILES = ("index.json", "hover_cells.bin", "reading_parents.bin", "water.pmtiles",
               "borders.pmtiles", "borders.json", "places.json", "airports.json", "airspace.json")
 

@@ -147,7 +147,7 @@ meet nor match the glyphs, and a name mixing both would set in two builds.
 
 ## Deploy
 
-`scripts/deploy_verify.sh` copies `index.html`, `boot.js`, `app.js`, `detail.js`, `delivery.js`,
+`scripts/deploy_verify.sh` copies `index.html`, `boot.js`, `app.js`, `detail.js`, `delivery.js`, `loading.js`,
 `llms.txt`, `robots.txt`, `sitemap.xml`, `preview.png` and `vendor/` into the
 pipeline's
 `dist/` (so `index.json`, `hover_cells.bin` and `origins/` are siblings) and
@@ -171,6 +171,18 @@ previews and Save-Data use direct requests. The publisher embeds first-paint
 font/layout CSS; the full vendor control stylesheet activates after FCP and
 after loading. No inline event handlers or additional script CSP exceptions
 are needed.
+
+`loading.js` keeps a visible city-specific loading notice until the current
+map sources, rendered tiles, camera movement and basic travel-time array are
+ready. A five-second wait gains an explanation; a failed download offers
+retry. Existing `#status` announcements remain the single live region.
+The same readiness gate defers place names, airport/rail metadata and route
+breakdowns so they do not compete with the first map. Aborted city changes
+cancel queued work; a 12-second ceiling or map failure releases optional work
+without falsely declaring the map ready. PMTiles headers start immediately
+when an archive is registered. Directory bytes already inside the first
+16 KiB are reused only with the same strong ETag; caller abort and archive
+invalidation still apply. Resolution and travel-time data are unchanged.
 
 ## Colour schemes
 

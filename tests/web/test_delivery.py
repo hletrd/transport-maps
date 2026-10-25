@@ -211,6 +211,25 @@ console.log(JSON.stringify({seen,length:result.data.byteLength}));
     assert result == {"seen": ["bytes=0-16383", "bytes=0-126"], "length": 127}
 
 
+def test_pmtiles_reuses_header_bytes_for_a_matching_directory_and_respects_abort(run):
+    result = run('''
+class Changed extends Error{};const seen=[];
+const source=createRoutedSource('/data/build-1/a.pmtiles',async(url,o)=>{
+ seen.push(new Headers(o.headers).get('Range'));
+ return new Response(Uint8Array.from({length:16},(_,i)=>i),{status:206,headers:{ETag:'"same"'}});
+},Changed);
+await source.getBytes(0,16);
+const directory=await source.getBytes(3,5,undefined,'"same"');
+const ctrl=new AbortController();ctrl.abort();let aborted=false;
+try{await source.getBytes(3,5,ctrl.signal,'"same"');}catch{aborted=true;}
+let mismatch=false;
+try{await source.getBytes(3,5,undefined,'"other"');}catch(e){mismatch=e instanceof Changed;}
+console.log(JSON.stringify({calls:seen,bytes:[...new Uint8Array(directory.data)],aborted,mismatch}));
+''')
+    assert result == {"calls": ["bytes=0-15", "bytes=3-7"], "bytes": [3, 4, 5, 6, 7],
+                      "aborted": True, "mismatch": True}
+
+
 def test_browser_probes_start_after_the_first_paint_opportunity(tmp_path):
     module = tmp_path / "delivery.mjs"
     module.write_bytes(SOURCE.read_bytes())

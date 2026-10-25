@@ -4,6 +4,7 @@ import * as pmtiles from "./vendor/pmtiles.js";
 import * as h3 from "./vendor/h3.js";
 import { createDetailReader } from "./detail.js";
 import { dataFetch as fetch, createRoutedSource } from "./delivery.js";
+import { createMapLoading } from "./loading.js";
 
 // Sequential ramps, brightest where the journey is shortest. Multi-hue on
 // purpose: a SINGLE hue cannot separate this many bands on a dark ground.
@@ -78,7 +79,13 @@ const DATA_ROOT = document.querySelector('meta[name="worldmap-data-root"]')?.con
 function dataURL(path) { return DATA_ROOT + path; }
 function tileURL(path) {
   const url = dataURL(path);
-  if (!proto.get(url)) proto.add(new pmtiles.PMTiles(createRoutedSource(url, fetch, pmtiles.EtagMismatch)));
+  if (!proto.get(url)) {
+    const archive = new pmtiles.PMTiles(createRoutedSource(url, fetch, pmtiles.EtagMismatch));
+    proto.add(archive);
+    // Begin the small header request before MapLibre's asynchronous source
+    // setup. The protocol uses this same promise and reports any failure.
+    archive.getHeader().catch(() => {});
+  }
   return `pmtiles://${url}`;
 }
 const meta = await loadJSON(dataURL("index.json"));
@@ -788,6 +795,12 @@ const map = new maplibregl.Map({
       + "Arrow keys pan, plus and minus zoom, Enter sets a destination.",
   }
 });
+const mapLoading = createMapLoading(map, $("mapbusy"), {
+  retry: () => { if (active) paintOrigin(active, {keepZoom: true, force: true}); },
+});
+addEventListener("pagehide", () => mapLoading.dispose(), {once: true});
+const backgroundFetch = (url, options = {}) => mapLoading.wait(options.signal)
+  .then(() => fetch(url, {...options, priority: "low"}));
 
 // The only listener MapLibre has for `error` is a console.error, so a missing
 // origins/{slug}.pmtiles, or a server that stops honouring byte ranges, gave a
@@ -876,6 +889,7 @@ function noteTileTrouble(msg, sourceId) {
       + "travel times themselves are unaffected.";
   el.textContent = say + detail;
   el.hidden = false;
+  mapLoading.fail("Some map data could not be downloaded. Try again or choose another city.");
   // #tiletrouble is a plain <p>: it is VISIBLE, and it was announced to
   // nobody. A screen-reader user heard "Travel times from Seoul are ready"
   // -- announce()'s own words, from the same load -- while the globe was
@@ -2413,7 +2427,7 @@ originMarker.on("dragstart", () => {
 originMarker.on("drag", originDragMove);
 originMarker.on("dragend", originDragEnd);
 
-fetch(dataURL("places.json"))
+backgroundFetch(dataURL("places.json"))
   .then((r) => (okOr(r, "places.json") ? r.json() : null))
   .then((p) => {
     if (!p) return;
@@ -2916,11 +2930,11 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
   const sig = ctl.signal;
 
   clearTileTrouble();
+  mapLoading.begin(o.name);
   if (map.getLayer("bands")) map.removeLayer("bands");
   if (map.getSource("bands")) map.removeSource("bands");
-  const archive = `${originBase()}${o.slug}.pmtiles`;
-  if (!proto.get(archive)) proto.add(new pmtiles.PMTiles(createRoutedSource(archive, fetch, pmtiles.EtagMismatch)));
-  map.addSource("bands", { type: "vector", url: `pmtiles://${archive}` });
+  const variant = variantMeta();
+  map.addSource("bands", { type: "vector", url: tileURL(`${variant ? variant.path : ""}origins/${o.slug}.pmtiles`) });
   map.addLayer({
     id: "bands", type: "fill", source: "bands", "source-layer": "bands",
     // Neighbouring bands overlap by one cell (see contour/bands.py) and the
@@ -2976,6 +2990,7 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
     // per arrival, not once per settle: settle() runs five times an origin,
     // and rebuilding the list five times is four rebuilds nobody sees.
     if (origin.times && listTimesFor !== origin.times) {
+      mapLoading.timesReady();
       listTimesFor = origin.times;
       render($("q").value);
       // paintOrigin announces "Loading travel times" and nothing resolved it:
@@ -3011,7 +3026,7 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
       throw new Error(`${name} has ${Math.floor(b.byteLength / width)} entries but hover_cells.bin has ${hoverCells.length}: the files come from different builds`);
     return new Uint16Array(b);
   };
-  const get = (url) => fetch(url, { signal: sig });
+  const get = (url) => backgroundFetch(url, { signal: sig });
 
   // Older indexes use whole-array fetches. Published regional indexes opt
   // into strict byte ranges from unencoded immutable URLs instead.
@@ -3131,7 +3146,7 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
                     operators: Array.isArray(j.operators) ? j.operators : [] };
     settle();
   }).catch((err) => { if (current() && !sig.aborted) console.warn("rail detail unavailable:", err.message); });
-  get(`${originBase()}${o.slug}.bin`)
+  fetch(`${originBase()}${o.slug}.bin`, {signal: sig, priority: "high"})
     .then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${o.slug}.bin`);
       return r.arrayBuffer();
@@ -3151,6 +3166,7 @@ function paintOrigin(o, { keepZoom = false, force = false } = {}) {
       if (!current() || sig.aborted) return;
       console.error("hover data unavailable:", err);
       origin.failed = err.message;       // so the readout says "unavailable", not "loading"
+      mapLoading.fail(`Travel times for ${o.name} could not be downloaded.`);
       $("where").textContent = `Times unavailable for ${o.name}: ${err.message}.`;
       // #time was left on the string paintOrigin put there, so the page said
       // "Reading the travel times from Nairobi…" in 50 px directly above
@@ -4971,7 +4987,7 @@ for (const c of cities) {
   c.skey = where ? `${c.key} ${fold(where)}` : c.key;
 }
 
-fetch(dataURL("airports.json"))
+backgroundFetch(dataURL("airports.json"))
   .then((r) => (okOr(r, "airports.json") ? r.json() : null))
   .then((a) => {
     if (!a) return;
@@ -4997,7 +5013,7 @@ fetch(dataURL("airports.json"))
 // The turns of the flights timed round closed airspace (flightPath). Asked
 // for only when index.json says the build wrote them; until they land, or
 // if they never do, a flight is drawn on its great circle as before.
-if (meta.airspaceUrl) fetch(dataURL(meta.airspaceUrl))
+if (meta.airspaceUrl) backgroundFetch(dataURL(meta.airspaceUrl))
   .then((r) => (okOr(r, meta.airspaceUrl) ? r.json() : null))
   .then((a) => {
     if (!a || a.version !== 1 || !a.pairs || typeof a.pairs !== "object") return;

@@ -76,6 +76,7 @@
 <link rel="preload" href="./vendor/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="modulepreload" href="./vendor/maplibre-gl.js">
 <link rel="modulepreload" href="./detail.js">
+<link rel="modulepreload" href="./loading.js">
 <link rel="modulepreload" href="./vendor/maplibre-gl-shared.js">
 <link rel="modulepreload" href="./vendor/pmtiles.js">
 <link rel="modulepreload" href="./vendor/h3.js">
@@ -176,6 +177,8 @@ body{
 /* If the page cannot start, the message in the readout must be visible: on a
    phone the bottom sheet would otherwise cover it. */
 body.fatal .rail{display:none}
+body.fatal #mapbusy{display:none}
+#mapbusy [hidden]{display:none}
 summary{
   list-style:none;cursor:pointer;padding:10px 14px;
   font-size:var(--t-lbl);color:var(--text-2);font-weight:500;
@@ -886,6 +889,13 @@ summary:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--accent
      Not a live region -- the page keeps exactly one, #status, and app.js
      announces each stage there. Filled and shown by paintPointMap(). -->
 <div class="pointbusy" id="pointbusy" hidden></div>
+<div class="pointbusy" id="mapbusy">
+  <b>Loading the map…</b>
+  <span class="sub">Preparing the globe and travel times.</span>
+  <span class="elapsed"></span>
+  <span class="bar" aria-hidden="true"></span>
+  <button class="btn" type="button" hidden>Try again</button>
+</div>
 
 <!-- Between the masthead and the reading there were 306 x 413 px of empty
      scrim, and the departure city -- the thing every figure on the page is

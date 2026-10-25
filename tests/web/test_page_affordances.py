@@ -209,7 +209,7 @@ def test_the_drawn_journey_is_redrawn_when_the_airport_table_lands():
     Mutation performed and reverted: drop the `renderRoute()` call from the
     airports.json handler -> red.
     """
-    m = re.search(r'fetch\(dataURL\("airports\.json"\)\)(.*?)\.catch', APP, re.S)
+    m = re.search(r'backgroundFetch\(dataURL\("airports\.json"\)\)(.*?)\.catch', APP, re.S)
     assert m, "the airports.json fetch has moved; re-derive this test"
     # Strip the comments FIRST. Written without this, the assertion was
     # satisfied by the explanatory comment beside the call -- the exact vacuity

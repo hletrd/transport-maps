@@ -582,7 +582,7 @@ console.log(JSON.stringify(exactLegRows({json.dumps(legs)}).map(
 def test_a_late_airports_json_names_the_exact_legs_too():
     """The itinerary is repainted when airports.json lands; the exact legs
     read the same table for their glosses, so they are repainted with it."""
-    handler = _js.APP[_js.APP.index('fetch(dataURL("airports.json"))'):]
+    handler = _js.APP[_js.APP.index('backgroundFetch(dataURL("airports.json"))'):]
     handler = handler[:handler.index(".catch(")]
     assert "if (pinB) { renderLegs(); paintExact(false); }" in handler
 

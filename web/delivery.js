@@ -180,13 +180,20 @@ export function createDataDelivery({origin, root, cdn, storage = null, saveData 
 // PMTiles Source interface. Keep one canonical cache key across both routes.
 export function createRoutedSource(url, fetcher, EtagMismatch,
   userAgent = globalThis.navigator?.userAgent || "") {
-  let reload = false;
+  let reload = false, prefix = null;
   const windowsChrome = /Windows/.test(userAgent) && /Chrome|Chromium|Edg|OPR|Brave/.test(userAgent);
   return {
     getKey: () => url,
     async getBytes(offset, length, signal, etag) {
+      signal?.throwIfAborted();
+      // PMTiles often asks for a leaf directory already contained in its
+      // first 16 KiB read. Reuse those bytes without another round trip.
+      if (!reload && offset > 0 && prefix?.etag && etag === prefix.etag
+          && offset + length <= prefix.data.byteLength) {
+        return {...prefix, data: prefix.data.slice(offset, offset + length)};
+      }
       const request = (last, cache) => fetcher(url, {signal, cache,
-        headers: {Range: `bytes=${offset}-${last}`}});
+        priority: "high", headers: {Range: `bytes=${offset}-${last}`}});
       let response = await request(offset + length - 1, reload ? "reload" : windowsChrome ? "no-store" : undefined);
       if (offset === 0 && response.status === 416) {
         const match = /^bytes \*\/(\d+)$/.exec(response.headers.get("Content-Range") || "");
@@ -196,7 +203,7 @@ export function createRoutedSource(url, fetcher, EtagMismatch,
       const value = response.headers.get("ETag");
       const actual = value && !value.startsWith("W/") ? value : undefined;
       if (response.status === 416 || (etag && actual && etag !== actual)) {
-        reload = true;
+        reload = true; prefix = null;
         throw new EtagMismatch("The PMTiles archive changed between byte ranges");
       }
       if (!response.ok) throw new Error(`PMTiles HTTP ${response.status}`);
@@ -204,8 +211,10 @@ export function createRoutedSource(url, fetcher, EtagMismatch,
           || +response.headers.get("Content-Length") > length)) throw new Error("PMTiles byte ranges unavailable");
       const data = await response.arrayBuffer();
       if (data.byteLength > length) throw new Error("Oversized PMTiles range");
-      return {data, etag: actual, cacheControl: response.headers.get("Cache-Control") || undefined,
+      const result = {data, etag: actual, cacheControl: response.headers.get("Cache-Control") || undefined,
         expires: response.headers.get("Expires") || undefined};
+      if (offset === 0 && data.byteLength <= 16384) prefix = result;
+      return result;
     },
   };
 }

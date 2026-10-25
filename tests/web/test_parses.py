@@ -38,7 +38,7 @@ WEB = config.ROOT / "web"
 #: script loaded with a plain <script src>, deliberately, so the CSP needs no
 #: hash. The vendored bundles are not here: they are pinned by sha256 in
 #: `test_vendor.py` and are not ours to parse-check.
-SCRIPTS = {"app.js": ".mjs", "boot.js": ".cjs", "detail.js": ".mjs", "delivery.js": ".mjs"}
+SCRIPTS = {"app.js": ".mjs", "boot.js": ".cjs", "detail.js": ".mjs", "delivery.js": ".mjs", "loading.js": ".mjs"}
 
 
 def test_all_application_scripts_are_parsed_and_published():
