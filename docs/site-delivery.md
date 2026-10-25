@@ -118,12 +118,23 @@ mutation-tested; the deployed page passed the complete browser gate.
 
 ## Diagnosing another slow request
 
-The exact reported five-second first response was not reproduced. Sampled
-direct requests generally had 30–40 ms TTFB; one 1.28-second sample included
-a 1.01-second TCP connection. Server load was low at the time. The owner's
-later speed confirmation does not establish the cause of that request delay.
-If it recurs, capture its URL and Timing breakdown before changing protocols
-or enabling the main site's proxy.
+The owner clarified that the five-second first response was the main document,
+`https://worldmap.atik.kr/`, not PMTiles. This is separate from the map-data
+download improvements. The five-second root response has not been reproduced.
+
+A 2026-10-25 root-only follow-up measured 25–41 ms to first byte across 12
+curl requests using ordinary DNS, a pinned origin address, IPv4 and HTTP/1.1.
+The initial browser HTTP/2 navigation took 24 ms; three subsequent HTTP/3
+root navigations took 25.8, 36.5 and 109.8 ms, all to `130.162.144.168`.
+Both local and public DNS returned the origin A record, with no AAAA or HTTPS
+record returned in these checks. Loopback HTTPS took 44 ms including TLS,
+and host load was low. No runtime configuration was changed for this check.
+
+An earlier sample took 1.28 s, including 1.01 s establishing TCP. Neither
+these measurements nor the owner's speed confirmation identifies the cause
+of the original delay. If it recurs, capture the slow root request's Protocol,
+Remote Address and Timing breakdown before changing protocols or enabling
+the main site's proxy.
 
 In DevTools, record URL, Protocol, Remote Address, status, cache state and
 Timing. Distinguish queueing, DNS/TCP/TLS, waiting for headers and content
